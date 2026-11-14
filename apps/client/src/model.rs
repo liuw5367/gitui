@@ -1186,7 +1186,7 @@ mod tests {
 
         // 回到初始提交，再拣选回来。
         let base = tab.commits[1].sha.clone();
-        reset_to(&mut tab, base.as_str(), git::ResetMode::Hard);
+        reset_to(&mut tab, base.as_str(), git::ResetMode::Hard).expect("reset");
         assert!(!repo.path.join("b.txt").exists());
 
         cherry_pick(&mut tab, picked.as_str()).expect("cherry-pick");
