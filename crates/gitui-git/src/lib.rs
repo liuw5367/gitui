@@ -45,6 +45,8 @@ impl StatusEntry {
 #[derive(Debug, Clone, Default)]
 pub struct Status {
     pub branch: String,
+    pub ahead: usize,
+    pub behind: usize,
     pub staged: usize,
     pub unstaged: usize,
     /// Raw `git status --porcelain=v2` entry lines (no branch headers).
@@ -120,6 +122,14 @@ impl Repo {
         for line in output.lines() {
             if let Some(branch) = line.strip_prefix("# branch.head ") {
                 status.branch = branch.trim().to_string();
+            } else if let Some(ab) = line.strip_prefix("# branch.ab ") {
+                for part in ab.split_whitespace() {
+                    if let Some(value) = part.strip_prefix('+') {
+                        status.ahead = value.parse().unwrap_or(0);
+                    } else if let Some(value) = part.strip_prefix('-') {
+                        status.behind = value.parse().unwrap_or(0);
+                    }
+                }
             } else if line.starts_with("# ") {
                 continue;
             } else if line.starts_with("1 ") || line.starts_with("2 ") {

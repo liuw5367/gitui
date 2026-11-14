@@ -12,6 +12,8 @@ use std::path::PathBuf;
 struct Loaded {
     path: String,
     branch: String,
+    ahead: usize,
+    behind: usize,
     staged: usize,
     unstaged: usize,
     status_lines: Vec<SharedString>,
@@ -43,6 +45,8 @@ fn load(path: &str) -> Loaded {
             Loaded {
                 path: repo.root().display().to_string(),
                 branch,
+                ahead: status.ahead,
+                behind: status.behind,
                 staged: status.staged,
                 unstaged: status.unstaged,
                 status_lines: status.lines.into_iter().map(SharedString::from).collect(),
@@ -56,6 +60,8 @@ fn load(path: &str) -> Loaded {
         Err(error) => Loaded {
             path: path.to_string(),
             branch: "—".to_string(),
+            ahead: 0,
+            behind: 0,
             selected: SharedString::from(""),
             staged: 0,
             unstaged: 0,
@@ -236,6 +242,8 @@ pub fn App() -> impl IntoElement {
 
     let repo_path = signal(SharedString::from(active_tab.path.clone()));
     let branch = signal(SharedString::from(active_tab.branch.clone()));
+    let ahead = signal(active_tab.ahead);
+    let behind = signal(active_tab.behind);
     let staged = signal(active_tab.staged);
     let unstaged = signal(active_tab.unstaged);
     let status_lines = signal(active_tab.status_lines.clone());
@@ -271,6 +279,8 @@ pub fn App() -> impl IntoElement {
         repo_path.set(SharedString::from(loaded.path.clone()));
         path_input.set(loaded.path.clone());
         branch.set(SharedString::from(loaded.branch));
+        ahead.set(loaded.ahead);
+        behind.set(loaded.behind);
         staged.set(loaded.staged);
         unstaged.set(loaded.unstaged);
         status_lines.set(loaded.status_lines);
@@ -304,6 +314,8 @@ pub fn App() -> impl IntoElement {
         repo_path.set(SharedString::from(tab.path.clone()));
         path_input.set(tab.path.clone());
         branch.set(SharedString::from(tab.branch));
+        ahead.set(tab.ahead);
+        behind.set(tab.behind);
         staged.set(tab.staged);
         unstaged.set(tab.unstaged);
         status_lines.set(tab.status_lines);
@@ -350,7 +362,7 @@ pub fn App() -> impl IntoElement {
                 .w(px(420.0)),
         )
         .child(
-            text(move || branch.get())
+            text(move || format!("{} ↑{} ↓{}", branch.get(), ahead.get(), behind.get()))
                 .text_size(px(10.0))
                 .text_color(move || theme().primary),
         )
