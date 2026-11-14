@@ -275,7 +275,7 @@ pub fn App() -> impl IntoElement {
     let continue_action = Arc::new({
         let reload_merge = reload_for_merge.clone();
         move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-            .and_then(|repo| repo.merge_continue())
+            .and_then(|repo| repo.continue_operation())
         {
             Ok(_) => {
                 error.set(SharedString::from(""));
@@ -291,7 +291,7 @@ pub fn App() -> impl IntoElement {
     let abort_action = Arc::new({
         let reload_merge = reload_for_merge.clone();
         move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-            .and_then(|repo| repo.merge_abort())
+            .and_then(|repo| repo.abort_operation())
         {
             Ok(_) => {
                 error.set(SharedString::from(""));

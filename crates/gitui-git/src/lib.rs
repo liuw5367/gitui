@@ -500,6 +500,28 @@ impl Repo {
         self.git(&["push", "origin", "HEAD"])
     }
 
+    /// Continue the in-progress operation, dispatching by operation type.
+    pub fn continue_operation(&self) -> Result<String, GitError> {
+        match self.operation() {
+            Some(Operation::Merge) => self.git(&["merge", "--continue"]),
+            Some(Operation::Rebase) => self.git(&["rebase", "--continue"]),
+            Some(Operation::CherryPick) => self.git(&["cherry-pick", "--continue"]),
+            Some(Operation::Revert) => self.git(&["revert", "--continue"]),
+            None => Err(GitError("no operation in progress".to_string())),
+        }
+    }
+
+    /// Abort the in-progress operation, dispatching by operation type.
+    pub fn abort_operation(&self) -> Result<String, GitError> {
+        match self.operation() {
+            Some(Operation::Merge) => self.git(&["merge", "--abort"]),
+            Some(Operation::Rebase) => self.git(&["rebase", "--abort"]),
+            Some(Operation::CherryPick) => self.git(&["cherry-pick", "--abort"]),
+            Some(Operation::Revert) => self.git(&["revert", "--abort"]),
+            None => Err(GitError("no operation in progress".to_string())),
+        }
+    }
+
     /// Continue a resolved merge.
     pub fn merge_continue(&self) -> Result<String, GitError> {
         self.git(&["merge", "--continue"])
@@ -866,7 +888,7 @@ mod tests {
 
         repo.resolve("a.txt", "one\nMERGED\n").unwrap();
         assert!(repo.conflicts().unwrap().is_empty());
-        repo.merge_continue().unwrap();
+        repo.continue_operation().unwrap();
         assert_eq!(repo.operation(), None);
     }
 
@@ -888,7 +910,7 @@ mod tests {
         assert!(!status.success());
         let repo = Repo::open(fixture.path()).unwrap();
         assert_eq!(repo.operation(), Some(Operation::Merge));
-        repo.merge_abort().unwrap();
+        repo.abort_operation().unwrap();
         assert_eq!(repo.operation(), None);
         assert!(repo.conflicts().unwrap().is_empty());
     }
