@@ -289,6 +289,7 @@ pub fn App() -> impl IntoElement {
     let operation = signal(active_tab.operation);
     let conflicts = signal(active_tab.conflicts.clone());
     let branches = signal(active_tab.branches.clone());
+    let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
     let conflict_stages = signal(active_tab.conflict_stages.clone());
     let conflict_result = signal(
@@ -907,6 +908,40 @@ pub fn App() -> impl IntoElement {
             text("Branches")
                 .text_size(px(9.0))
                 .text_color(move || theme().foreground),
+        )
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .child(
+                    input()
+                        .value(branch_name)
+                        .on_change(move |text: &str| branch_name.set(text.to_string()))
+                        .placeholder("new-branch")
+                        .text_size(px(9.0))
+                        .flex_1(),
+                )
+                .child(mini_button("New", true, {
+                    let reload_branch = reload_for_branch.clone();
+                    move || {
+                        let name = branch_name.get_untracked().trim().to_string();
+                        if name.is_empty() {
+                            error.set(SharedString::from("Branch name is empty"));
+                            return;
+                        }
+                        match Repo::open(repo_path.get_untracked().to_string().as_str())
+                            .and_then(|repo| repo.create_branch(&name))
+                        {
+                            Ok(_) => {
+                                branch_name.set(String::new());
+                                error.set(SharedString::from(""));
+                                reload_branch();
+                            }
+                            Err(err) => error.set(SharedString::from(err.to_string())),
+                        }
+                    }
+                })),
         )
         .child(each(
             branches,
