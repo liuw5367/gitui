@@ -56,6 +56,10 @@ fn load(path: &str) -> Loaded {
     }
 }
 
+fn short_name(path: &str) -> String {
+    path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
 fn header_button(
     label: &'static str,
     primary: bool,
@@ -101,6 +105,7 @@ pub fn App() -> impl IntoElement {
         .unwrap_or_default();
 
     let path_input = signal(initial.path.clone());
+    let recent = signal(vec![SharedString::from(initial.path.clone())]);
     let repo_path = signal(SharedString::from(initial.path));
     let branch = signal(SharedString::from(initial.branch));
     let staged = signal(initial.staged);
@@ -120,7 +125,7 @@ pub fn App() -> impl IntoElement {
             .map(|commit| commit.sha.clone())
             .unwrap_or_default();
         repo_path.set(SharedString::from(loaded.path.clone()));
-        path_input.set(loaded.path);
+        path_input.set(loaded.path.clone());
         branch.set(SharedString::from(loaded.branch));
         staged.set(loaded.staged);
         unstaged.set(loaded.unstaged);
@@ -129,7 +134,16 @@ pub fn App() -> impl IntoElement {
         selected.set(SharedString::from(first));
         diff.set(loaded.diff);
         error.set(loaded.error);
+        recent.update(|list| {
+            if let Some(index) = list.iter().position(|item| item.to_string() == loaded.path) {
+                list.remove(index);
+            }
+            list.insert(0, SharedString::from(loaded.path));
+            list.truncate(5);
+        });
     };
+
+    let reload_for_recent = reload.clone();
 
     let header = view()
         .h(px(46.0))
@@ -158,6 +172,40 @@ pub fn App() -> impl IntoElement {
         )
         .child(view().flex_1())
         .child(header_button("Open", true, reload));
+
+    let recent_bar = view()
+        .h(px(28.0))
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .px_3()
+        .bg(move || theme().background)
+        .child(
+            text("Recent")
+                .text_size(px(9.0))
+                .text_color(move || theme().foreground),
+        )
+        .child(each(
+            recent,
+            |path: &SharedString| path.clone(),
+            move |path, _| {
+                let reload_recent = reload_for_recent.clone();
+                view()
+                    .h(px(20.0))
+                    .px_2()
+                    .rounded(px(4.0))
+                    .bg(move || theme().primary)
+                    .on_press(move || {
+                        path_input.set(path.get().to_string());
+                        reload_recent();
+                    })
+                    .child(
+                        text(move || short_name(&path.get().to_string()))
+                            .text_size(px(9.0))
+                            .text_color(move || theme().primary_foreground),
+                    )
+            },
+        ));
 
     let status_pane = view()
         .w(px(250.0))
@@ -337,6 +385,7 @@ pub fn App() -> impl IntoElement {
         .bg(move || theme().background)
         .text_color(move || theme().foreground)
         .child(header)
+        .child(recent_bar)
         .child(main)
         .child(statusbar)
 }
