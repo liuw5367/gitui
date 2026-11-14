@@ -12,7 +12,7 @@ mod widgets;
 use gitui_agent::{AgentPermissions, AgentPlan, LocalPlanner, PlanStep, Planner};
 use gitui_git::{BlameLine, ChangedFile, Commit, CommitDetails, PushPreview, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{agent_panel, audit_panel, changes_list, commit_info_panel, diff_view, history, inspect_panel, inspector, palette_panel, push_panel, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, CommitInfoActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, PushActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{agent_panel, audit_panel, changes_list, commit_info_panel, diff_view, history, inspect_panel, inspector, palette_panel, push_panel, refs_panel, reflog_panel, repositories_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, CommitInfoActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, PushActions, RefsActions, ReflogActions, RepositoriesActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -176,6 +176,8 @@ pub fn App() -> impl IntoElement {
     let audit_open = signal(false);
     let audit_lines = signal(Vec::<String>::new());
     let audit_error = signal(SharedString::from(""));
+    let repositories_open = signal(false);
+    let open_repositories: Arc<dyn Fn()> = Arc::new(move || repositories_open.set(true));
     let palette_open = signal(false);
     let palette_query = signal(String::new());
     let open_palette: Arc<dyn Fn()> = Arc::new(move || {
@@ -486,6 +488,7 @@ pub fn App() -> impl IntoElement {
         }
     });
 
+    let repositories_open_action = open_action.clone();
     let palette_fetch = fetch_action.clone();
     let palette_pull = pull_action.clone();
     let toolbar = toolbar(
@@ -1700,6 +1703,11 @@ pub fn App() -> impl IntoElement {
             action: open_sync.clone(),
         },
         PaletteCommand {
+            label: "Repositories",
+            hint: "recent and open path",
+            action: open_repositories.clone(),
+        },
+        PaletteCommand {
             label: "Refs",
             hint: "branches, tags, remotes",
             action: open_refs.clone(),
@@ -1758,6 +1766,28 @@ pub fn App() -> impl IntoElement {
         PushActions {
             close: Arc::new(move || push_open.set(false)),
             confirm: confirm_push,
+        },
+    );
+    let repositories_panel = repositories_panel(
+        repositories_open,
+        recent,
+        path_input,
+        RepositoriesActions {
+            close: Arc::new(move || repositories_open.set(false)),
+            open: {
+                let open = repositories_open_action.clone();
+                Arc::new(move || {
+                    repositories_open.set(false);
+                    open();
+                })
+            },
+            open_recent: {
+                let open = open_recent.clone();
+                Arc::new(move |path: String| {
+                    repositories_open.set(false);
+                    open(path);
+                })
+            },
         },
     );
     let reflog_panel = reflog_panel(
@@ -1821,6 +1851,7 @@ pub fn App() -> impl IntoElement {
         .child(refs_panel)
         .child(commit_info_panel)
         .child(push_panel)
+        .child(repositories_panel)
         .child(agent_panel)
         .child(audit_panel)
         .child(palette_panel)
