@@ -104,6 +104,44 @@ fn save_recent(paths: &[SharedString]) {
     let _ = std::fs::write(file, text);
 }
 
+fn session_file() -> Option<PathBuf> {
+    let home = std::env::var_os("GITUI_HOME").or_else(|| std::env::var_os("HOME"))?;
+    Some(PathBuf::from(home).join(".gitui").join("session"))
+}
+
+fn load_session() -> (usize, Vec<String>) {
+    let Some(file) = session_file() else {
+        return (0, Vec::new());
+    };
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return (0, Vec::new());
+    };
+    let mut lines = text.lines();
+    let active = lines
+        .next()
+        .and_then(|line| line.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    let paths = lines
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(10)
+        .map(str::to_string)
+        .collect();
+    (active, paths)
+}
+
+fn save_session(active: usize, tabs: &[Loaded]) {
+    let Some(file) = session_file() else {
+        return;
+    };
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let mut lines = vec![active.to_string()];
+    lines.extend(tabs.iter().map(|tab| tab.path.clone()));
+    let _ = std::fs::write(file, lines.join("\n"));
+}
+
 fn header_button(
     label: &'static str,
     primary: bool,
@@ -142,18 +180,23 @@ pub fn App() -> impl IntoElement {
             .to_string()
     });
     let initial = load(&initial_path);
-    let first_sha = initial
-        .commits
-        .first()
-        .map(|commit| commit.sha.clone())
-        .unwrap_or_default();
+    let (saved_active, saved_paths) = load_session();
+    let mut initial_tabs = if saved_paths.is_empty() {
+        vec![initial.clone()]
+    } else {
+        saved_paths.iter().map(|path| load(path)).collect::<Vec<_>>()
+    };
+    if initial_tabs.is_empty() {
+        initial_tabs.push(initial.clone());
+    }
+    let initial_active = saved_active.min(initial_tabs.len() - 1);
+    let active_tab = initial_tabs[initial_active].clone();
 
-    let path_input = signal(initial.path.clone());
-    let tabs = signal(vec![initial.clone()]);
-    let active = signal(0_usize);
+    let path_input = signal(active_tab.path.clone());
+    let recent_path = active_tab.path.clone();
     let mut saved_recent = load_recent();
-    if !saved_recent.iter().any(|path| path == &initial.path) {
-        saved_recent.insert(0, initial.path.clone());
+    if !saved_recent.iter().any(|path| path == &recent_path) {
+        saved_recent.insert(0, recent_path);
     }
     saved_recent.truncate(5);
     let recent = signal(
@@ -163,15 +206,19 @@ pub fn App() -> impl IntoElement {
             .collect::<Vec<_>>(),
     );
     save_recent(recent.get_untracked().as_slice());
-    let repo_path = signal(SharedString::from(initial.path));
-    let branch = signal(SharedString::from(initial.branch));
-    let staged = signal(initial.staged);
-    let unstaged = signal(initial.unstaged);
-    let status_lines = signal(initial.status_lines);
-    let commits = signal(initial.commits);
-    let selected = signal(SharedString::from(first_sha));
-    let diff = signal(initial.diff);
-    let error = signal(initial.error);
+
+    let repo_path = signal(SharedString::from(active_tab.path.clone()));
+    let branch = signal(SharedString::from(active_tab.branch.clone()));
+    let staged = signal(active_tab.staged);
+    let unstaged = signal(active_tab.unstaged);
+    let status_lines = signal(active_tab.status_lines.clone());
+    let commits = signal(active_tab.commits.clone());
+    let selected = signal(active_tab.selected.clone());
+    let diff = signal(active_tab.diff.clone());
+    let error = signal(active_tab.error.clone());
+    let tabs = signal(initial_tabs);
+    let active = signal(initial_active);
+    save_session(active.get_untracked(), tabs.get_untracked().as_slice());
 
     let reload = move || {
         let requested = path_input.get_untracked();
@@ -209,6 +256,7 @@ pub fn App() -> impl IntoElement {
             list.truncate(5);
             save_recent(list.as_slice());
         });
+        save_session(active.get_untracked(), tabs.get_untracked().as_slice());
     };
 
     let reload_for_recent = reload.clone();
@@ -227,6 +275,7 @@ pub fn App() -> impl IntoElement {
         selected.set(tab.selected);
         diff.set(tab.diff);
         error.set(tab.error);
+        save_session(active.get_untracked(), tabs.get_untracked().as_slice());
     };
     let activate_for_tabs = activate.clone();
     let activate_for_close = activate.clone();
