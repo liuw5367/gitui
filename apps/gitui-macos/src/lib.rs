@@ -295,6 +295,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_unstage = reload.clone();
     let reload_for_commit = reload.clone();
     let reload_for_entry = reload.clone();
+    let reload_for_sync = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -355,7 +356,39 @@ pub fn App() -> impl IntoElement {
         )
         .child(view().flex_1())
         .child(header_button("Open", true, reload))
-        .child(header_button("Close tab", false, close_active));
+        .child(header_button("Close tab", false, close_active))
+        .child(header_button("Fetch", false, {
+            let reload_sync = reload_for_sync.clone();
+            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.fetch())
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_sync();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
+                }
+            }
+        }))
+        .child(header_button("Push", false, {
+            let reload_sync = reload_for_sync.clone();
+            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.push())
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_sync();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
+                }
+            }
+        }));
 
     let tab_bar = view()
         .h(px(30.0))

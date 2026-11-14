@@ -237,6 +237,16 @@ impl Repo {
         self.commit_with(message, true, false)
     }
 
+    /// Fetch and prune `origin`; no working-tree changes.
+    pub fn fetch(&self) -> Result<String, GitError> {
+        self.git(&["fetch", "--prune", "origin"])
+    }
+
+    /// Push the current HEAD to `origin`.
+    pub fn push(&self) -> Result<String, GitError> {
+        self.git(&["push", "origin", "HEAD"])
+    }
+
     /// Amend the last commit with the staged content and `message`.
     pub fn amend(&self, message: &str) -> Result<String, GitError> {
         self.commit_with(message, false, true)
@@ -360,6 +370,11 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
         }
+    }
+
+    fn subprocess_git(args: &[&str]) {
+        let status = Command::new("git").args(args).status().unwrap();
+        assert!(status.success(), "git {args:?} failed");
     }
 
     fn run(path: &Path, args: &[&str]) {
@@ -496,6 +511,32 @@ mod tests {
         let back = repo.status().unwrap();
         let b = back.entries.iter().find(|entry| entry.path == "b.txt").unwrap();
         assert!(b.is_unstaged());
+    }
+
+    #[test]
+    fn fetches_and_pushes_origin() {
+        let fixture = TempRepo::new();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let remote = std::env::temp_dir().join(format!(
+            "gitui-git-remote-{}-{unique}.git",
+            std::process::id()
+        ));
+        subprocess_git(&["init", "--bare", "-q", remote.to_str().unwrap()]);
+        run(&fixture.path, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.push().unwrap();
+        let has_main = Command::new("git")
+            .arg("--git-dir")
+            .arg(&remote)
+            .args(["rev-parse", "--verify", "main"])
+            .output()
+            .unwrap();
+        assert!(has_main.status.success());
+        repo.fetch().unwrap();
+        let _ = fs::remove_dir_all(remote);
     }
 
     #[test]
