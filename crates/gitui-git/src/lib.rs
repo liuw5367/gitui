@@ -223,6 +223,11 @@ impl Repo {
             .collect())
     }
 
+    /// Create a branch at HEAD and switch to it.
+    pub fn create_branch(&self, name: &str) -> Result<String, GitError> {
+        self.git(&["switch", "-c", name])
+    }
+
     /// Switch to an existing local branch.
     pub fn checkout(&self, branch: &str) -> Result<String, GitError> {
         self.git(&["switch", branch])
@@ -781,6 +786,18 @@ mod tests {
             .unwrap()
             .iter()
             .any(|branch| branch.name == "feature" && branch.current));
+    }
+
+    #[test]
+    fn creates_and_switches_to_a_branch() {
+        let fixture = TempRepo::new();
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.create_branch("created").unwrap();
+        assert!(repo
+            .branches()
+            .unwrap()
+            .iter()
+            .any(|branch| branch.name == "created" && branch.current));
     }
 
     #[test]
