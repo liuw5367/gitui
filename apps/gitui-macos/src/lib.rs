@@ -754,6 +754,16 @@ pub fn App() -> impl IntoElement {
                         .text_color(|| rgb(0xff3b30)),
                 )
                 .child(view().flex_1())
+                .child(header_button("Accept Ours", false, move || {
+                    if let Some(stages) = conflict_stages.get_untracked().as_ref() {
+                        conflict_result.set(stages.ours.clone());
+                    }
+                }))
+                .child(header_button("Accept Theirs", false, move || {
+                    if let Some(stages) = conflict_stages.get_untracked().as_ref() {
+                        conflict_result.set(stages.theirs.clone());
+                    }
+                }))
                 .child(header_button("Mark Resolved", true, {
                     let reload_conflict = reload_for_conflict.clone();
                     move || {
