@@ -16,6 +16,7 @@ pub(crate) struct StatusActions {
     pub(crate) unstage_path: Arc<dyn Fn(String)>,
     pub(crate) checkout: Arc<dyn Fn(String)>,
     pub(crate) create_branch: Arc<dyn Fn(String)>,
+    pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) select_conflict: Arc<dyn Fn(String)>,
 }
 
@@ -31,6 +32,7 @@ pub(crate) fn status_pane(
     branch_name: Signal<String>,
     actions: StatusActions,
 ) -> impl IntoElement {
+    let delete_armed = signal(false);
     view()
         .w(px(250.0))
         .flex_col()
@@ -85,7 +87,30 @@ pub(crate) fn status_pane(
                 .child(mini_button("New", true, {
                     let action = actions.create_branch.clone();
                     move || action(branch_name.get_untracked().trim().to_string())
+                }))
+                .child(mini_button("Delete", false, {
+                    let action = actions.delete_branch.clone();
+                    move || {
+                        let name = branch_name.get_untracked().trim().to_string();
+                        if delete_armed.get_untracked() {
+                            delete_armed.set(false);
+                            action(name);
+                        } else {
+                            delete_armed.set(true);
+                        }
+                    }
                 })),
+        )
+        .child(
+            text(move || {
+                if delete_armed.get() {
+                    "Delete again to confirm".to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .text_size(px(8.5))
+            .text_color(|| rgb(0xff3b30)),
         )
         .child(each(
             branches,

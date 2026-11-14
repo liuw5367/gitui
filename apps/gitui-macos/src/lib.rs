@@ -508,6 +508,25 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let delete_branch_action = Arc::new({
+        let reload_branch = reload_for_branch.clone();
+        move |name: String| {
+            if name.is_empty() {
+                error.set(SharedString::from("Branch name is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.delete_branch(&name))
+            {
+                Ok(_) => {
+                    branch_name.set(String::new());
+                    error.set(SharedString::from(""));
+                    reload_branch();
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -538,6 +557,7 @@ pub fn App() -> impl IntoElement {
             unstage_path: unstage_path_action,
             checkout: checkout_action,
             create_branch: create_branch_action,
+            delete_branch: delete_branch_action,
             select_conflict: select_conflict_action,
         },
     );
