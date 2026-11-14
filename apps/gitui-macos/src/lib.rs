@@ -67,6 +67,7 @@ pub fn App() -> impl IntoElement {
     let remote_url = signal(String::new());
     let selected_file = signal(String::new());
     let hunk_indices = signal(Vec::<usize>::new());
+    let file_patch = signal(SharedString::from(""));
     let tag_name = signal(String::new());
     let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
@@ -703,10 +704,12 @@ pub fn App() -> impl IntoElement {
             Ok(patch) => {
                 let count = patch.lines().filter(|line| line.starts_with("@@")).count();
                 hunk_indices.set((0..count).collect());
+                file_patch.set(SharedString::from(patch));
                 error.set(SharedString::from(""));
             }
             Err(err) => {
                 hunk_indices.set(Vec::new());
+                file_patch.set(SharedString::from(""));
                 error.set(SharedString::from(err.to_string()));
             }
         }
@@ -728,6 +731,7 @@ pub fn App() -> impl IntoElement {
                             let count =
                                 patch.lines().filter(|line| line.starts_with("@@")).count();
                             hunk_indices.set((0..count).collect());
+                            file_patch.set(SharedString::from(patch));
                         }
                     }
                     reload_hunk();
@@ -739,6 +743,7 @@ pub fn App() -> impl IntoElement {
     let hunks_bar = crate::sections::hunks_bar(
         selected_file,
         hunk_indices,
+        file_patch,
         HunkActions {
             stage: stage_hunk_action,
         },
