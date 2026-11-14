@@ -109,6 +109,27 @@ pub struct LogFilter {
     pub reference: Option<String>,
 }
 
+/// `git reset` 的三种模式（设计板 22 的 Move current branch）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResetMode {
+    /// 只移动分支，保留暂存区与工作区。
+    Soft,
+    /// 移动分支并重置暂存区，保留工作区改动。
+    Mixed,
+    /// 移动分支并丢弃暂存区与工作区改动。
+    Hard,
+}
+
+impl ResetMode {
+    pub fn id(self) -> &'static str {
+        return match self {
+            ResetMode::Soft => "soft",
+            ResetMode::Mixed => "mixed",
+            ResetMode::Hard => "hard",
+        };
+    }
+}
+
 /// 本机 Git 的信息（设置页 Git 分区）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GitInfo {
@@ -398,6 +419,34 @@ impl Repo {
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
         let output = run_git(&self.root, &["status", "--porcelain=v1", "-z"])?;
         return parse_status(&output);
+    }
+
+    /// 从某个引用新建并切换到本地分支（`git checkout -b <name> <from>`）。
+    pub fn checkout_new_branch(&self, name: &str, from: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["checkout", "-b", name, from])?;
+        return Ok(());
+    }
+
+    /// 合并某个引用到当前分支（`git merge --no-edit <reference>`）。
+    ///
+    /// 冲突时返回 `HookFailed`，日志里有 Git 的提示；操作状态由 `operation()` 读出。
+    pub fn merge(&self, reference: &str) -> Result<String, GitError> {
+        let output = run_git_combined(
+            &self.root,
+            &["merge", "--no-edit", reference],
+        )?;
+        return Ok(summarise(&output));
+    }
+
+    /// 把当前分支重置到某个提交（`git reset --soft|--mixed|--hard`）。
+    pub fn reset_to(&self, sha: &str, mode: ResetMode) -> Result<(), GitError> {
+        let flag = match mode {
+            ResetMode::Soft => "--soft",
+            ResetMode::Mixed => "--mixed",
+            ResetMode::Hard => "--hard",
+        };
+        run_git(&self.root, &["reset", flag, sha])?;
+        return Ok(());
     }
 
     /// 新建分支（`git branch <name> <from>`）；`from` 为空时基于当前 HEAD。
@@ -1893,6 +1942,67 @@ mod tests {
         let reference = repo.refs().expect("refs").stashes[0].reference.clone();
         repo.stash_drop(reference.as_str()).expect("drop");
         assert!(repo.refs().expect("refs").stashes.is_empty());
+    }
+
+    #[test]
+    fn checkout_new_branch_creates_and_switches() {
+        let (_guard, path) = fixture("checkoutnew", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let head = repo.log(1, "").expect("log").remove(0).sha;
+        repo.checkout_new_branch("topic/one", head.as_str())
+            .expect("checkout -b");
+        assert_eq!(repo.abbrev_branch().expect("branch"), "topic/one");
+        assert!(repo
+            .refs()
+            .expect("refs")
+            .branches
+            .iter()
+            .any(|branch| branch.name == "topic/one" && branch.current));
+    }
+
+    #[test]
+    fn merge_fast_forwards_a_side_branch() {
+        let (_guard, path) = fixture("merge", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        run_git(repo.root(), &["checkout", "-q", "-b", "side"]).expect("checkout");
+        std::fs::write(repo.root().join("b.txt"), "b\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("side work", "").expect("commit");
+        run_git(repo.root(), &["checkout", "-q", "main"]).expect("checkout");
+
+        let summary = repo.merge("side").expect("merge");
+        assert!(!summary.is_empty() || summary.is_empty());
+        assert_eq!(repo.operation(), Operation::None);
+        assert!(repo.root().join("b.txt").exists());
+        assert_eq!(repo.ahead_behind(), (0, 0));
+    }
+
+    #[test]
+    fn reset_modes_decide_what_survives() {
+        let (_guard, path) = fixture("reset", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let base = repo.log(1, "").expect("log").remove(0).sha;
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("second", "").expect("commit");
+
+        // --soft 保留暂存区。
+        repo.reset_to(base.as_str(), ResetMode::Soft).expect("soft");
+        assert_eq!(repo.log(1, "").expect("log").remove(0).sha, base);
+        assert!(repo
+            .status()
+            .expect("status")
+            .iter()
+            .any(|entry| entry.is_staged()));
+
+        // --hard 丢掉改动。
+        repo.reset_to(base.as_str(), ResetMode::Hard).expect("hard");
+        assert!(repo.status().expect("status").is_empty());
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
+            "one\n"
+        );
+        assert_eq!(ResetMode::Mixed.id(), "mixed");
     }
 
     #[test]

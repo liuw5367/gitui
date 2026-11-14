@@ -22,6 +22,8 @@ pub(crate) fn sidebar(
 
     let checkout = actions.checkout_branch.clone();
     let delete = actions.delete_branch.clone();
+    let new_branch = actions.checkout_new_branch.clone();
+    let merge = actions.merge_reference.clone();
     let branch_rows: Vec<AnyElement> = refs
         .branches
         .iter()
@@ -34,6 +36,8 @@ pub(crate) fn sidebar(
                 branch.behind,
                 checkout.clone(),
                 delete.clone(),
+                new_branch.clone(),
+                merge.clone(),
             )
         })
         .collect();
@@ -165,9 +169,13 @@ fn branch_row(
     behind: u32,
     checkout: std::sync::Arc<dyn Fn(String)>,
     delete: std::sync::Arc<dyn Fn(String)>,
+    new_branch: std::sync::Arc<dyn Fn(String, String)>,
+    merge: std::sync::Arc<dyn Fn(String)>,
 ) -> AnyElement {
     let checkout_name = name.clone();
     let delete_name = name.clone();
+    let new_branch_name = name.clone();
+    let merge_name = name.clone();
     let is_current = current;
     return view()
         .w_full()
@@ -189,12 +197,25 @@ fn branch_row(
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
             let checkout = checkout.clone();
             let delete = delete.clone();
+            let new_branch = new_branch.clone();
+            let merge = merge.clone();
             let checkout_name = checkout_name.clone();
             let delete_name = delete_name.clone();
+            let new_branch_name = new_branch_name.clone();
+            let merge_name = merge_name.clone();
             let items = vec![
                 MenuItem::new(i18n::t(language.get().as_str(), "branch.checkout"))
                     .disabled(is_current)
                     .on_select(move || checkout(checkout_name.clone())),
+                MenuItem::new(i18n::t(
+                    language.get().as_str(),
+                    "branch.checkoutAsNew",
+                ))
+                .on_select(move || new_branch(new_branch_name.clone(), new_branch_name.clone())),
+                MenuItem::separator(),
+                MenuItem::new(i18n::t(language.get().as_str(), "branch.mergeInto"))
+                    .disabled(is_current)
+                    .on_select(move || merge(merge_name.clone())),
                 MenuItem::separator(),
                 MenuItem::new(i18n::t(language.get().as_str(), "branch.delete"))
                     .disabled(is_current)

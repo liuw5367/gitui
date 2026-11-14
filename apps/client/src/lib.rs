@@ -101,6 +101,9 @@ pub(crate) struct Actions {
     pub(crate) set_active_changelist: Arc<dyn Fn(Option<String>)>,
     pub(crate) move_to_changelist: Arc<dyn Fn(String, Option<String>)>,
     pub(crate) create_changelist: Arc<dyn Fn(String)>,
+    pub(crate) checkout_new_branch: Arc<dyn Fn(String, String)>,
+    pub(crate) merge_reference: Arc<dyn Fn(String)>,
+    pub(crate) reset_to: Arc<dyn Fn(String, git::ResetMode)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -148,6 +151,7 @@ pub fn App() -> impl IntoElement {
     let palette_open = signal(false);
     let settings_state = signal(store::load_settings(&store_dir));
     let form_state = signal(Option::<screens::FormState>::None);
+    let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     let sync_state = signal(Option::<screens::SyncDialogState>::None);
     let agent_plan = signal(Option::<agent::Plan>::None);
     let agent_policies = signal({
@@ -1129,6 +1133,74 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let checkout_new_branch: Arc<dyn Fn(String, String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |name: String, from: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                if let Err(detail) = model::checkout_new_branch(tab, name.as_str(), from.as_str())
+                {
+                    tab.error = Some(detail);
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let merge_reference: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |reference: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                if let Err(detail) = model::merge_reference(tab, reference.as_str()) {
+                    tab.error = Some(detail);
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    // 重置不可撤销（--hard 会丢改动）：先确认。
+    let reset_to: Arc<dyn Fn(String, git::ResetMode)> = {
+        let tabs = tabs;
+        let active = active;
+        let language = language;
+        Arc::new(move |sha: String, mode: git::ResetMode| {
+            let language_now = language.get_untracked();
+            let pending = nsh_base::alert_dialog()
+                .title(i18n::t(language_now.as_str(), "branch.resetTitle"))
+                .description(i18n::with_arguments(
+                    language_now.as_str(),
+                    "branch.resetMessage",
+                    &[("short", sha.chars().take(7).collect::<String>())],
+                ))
+                .destructive("reset", i18n::t(language_now.as_str(), "branch.resetAction"))
+                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
+                .show();
+            let tabs = tabs;
+            let active = active;
+            spawn(async move {
+                if let Ok(result) = pending.await {
+                    if result.action.as_deref() != Some("reset") {
+                        return;
+                    }
+                    let current = active.get_untracked();
+                    let mut list = tabs.get_untracked();
+                    if let Some(tab) = list.get_mut(current) {
+                        if let Err(detail) = model::reset_to(tab, sha.as_str(), mode) {
+                            tab.error = Some(detail);
+                        }
+                        tabs.set(list);
+                    }
+                }
+            });
+        })
+    };
+
     let drop_tag: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
@@ -1284,6 +1356,9 @@ pub fn App() -> impl IntoElement {
         set_active_changelist,
         move_to_changelist,
         create_changelist,
+        checkout_new_branch,
+        merge_reference,
+        reset_to,
         apply_filter,
         clear_filter,
         clone_repository,
@@ -1379,6 +1454,18 @@ pub fn App() -> impl IntoElement {
             ),
         ];
         nsh_core::element::desktop::set_application_menu(items);
+    }
+
+    // 重置请求由历史行的右键菜单写入，这里统一执行（--mixed 保留改动、--hard 丢弃）。
+    {
+        let reset_request = reset_request;
+        let reset_to = actions.reset_to.clone();
+        effect(move || {
+            if let Some((sha, mode)) = reset_request.get() {
+                reset_request.set(None);
+                reset_to(sha, mode);
+            }
+        });
     }
 
     on_key("mod+o", {
@@ -1489,6 +1576,8 @@ pub fn App() -> impl IntoElement {
                             settings_section,
                             identity_for_view.clone(),
                             git_info_for_view.clone(),
+                            agent_policies,
+                            actions_for_view.set_agent_permission.clone(),
                             actions_for_view.clone(),
                         )
                         .into_element(),
@@ -1511,6 +1600,7 @@ pub fn App() -> impl IntoElement {
                             agent_plan,
                             agent_audit,
                             agent_policies,
+                            reset_request,
                             actions_for_view.clone(),
                         )
                         .into_element(),

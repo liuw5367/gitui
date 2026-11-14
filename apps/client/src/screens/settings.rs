@@ -22,13 +22,15 @@ pub(crate) enum Section {
     Shortcuts,
     About,
     Credentials,
+    Agent,
 }
 
 impl Section {
-    const ALL: [Section; 5] = [
+    const ALL: [Section; 6] = [
         Section::General,
         Section::Git,
         Section::Shortcuts,
+        Section::Agent,
         Section::About,
         Section::Credentials,
     ];
@@ -40,6 +42,7 @@ impl Section {
             Section::Shortcuts => "settings.shortcuts",
             Section::About => "settings.about",
             Section::Credentials => "settings.credentials",
+            Section::Agent => "settings.agent",
         };
     }
 }
@@ -52,6 +55,8 @@ pub(crate) fn settings(
     section: Signal<Section>,
     identity: (String, String),
     git_info: (String, String, String),
+    policies: Signal<agent::Policies>,
+    set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -76,6 +81,8 @@ pub(crate) fn settings(
                     section,
                     identity,
                     git_info,
+                    policies,
+                    set_permission,
                     actions,
                 )),
         )
@@ -212,6 +219,8 @@ fn main(
     section: Signal<Section>,
     identity: (String, String),
     git_info: (String, String, String),
+    policies: Signal<agent::Policies>,
+    set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
@@ -256,6 +265,8 @@ fn main(
                         Section::Credentials => {
                             credentials_page(language, git_info.clone()).into_element()
                         }
+                        Section::Agent => agent_page(language, policies, set_permission.clone())
+                            .into_element(),
                     }
                 })),
         ));
@@ -729,4 +740,119 @@ fn disabled_row(language: Signal<SharedString>, label_key: &'static str) -> AnyE
                 .text_color(move || design::text3()),
         )
         .into_element();
+}
+
+/// Agent 权限分区（设计板 13）：逐动作的 Ask / Allow / Deny，并说明边界。
+fn agent_page(
+    language: Signal<SharedString>,
+    policies: Signal<agent::Policies>,
+    set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
+) -> AnyElement {
+    let mut rows: Vec<AnyElement> = Vec::new();
+    for action in [
+        agent::Action::StageAll,
+        agent::Action::Commit,
+        agent::Action::UnstageAll,
+        agent::Action::Fetch,
+        agent::Action::Pull,
+        agent::Action::Push,
+        agent::Action::Discard,
+    ] {
+        let set_permission = set_permission.clone();
+        rows.push(
+            view()
+                .w_full()
+                .h(px(28.0))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    text(move || {
+                        i18n::t(language.get().as_str(), agent_action_key(action))
+                    })
+                    .flex_1()
+                    .text_size(px(11.5))
+                    .line_height(px(15.0))
+                    .text_color(move || design::text()),
+                )
+                .child(
+                    text(move || {
+                        if action.is_destructive() {
+                            i18n::t(language.get().as_str(), "agentPage.destructive")
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .text_size(px(9.0))
+                    .text_color(move || design::danger()),
+                )
+                .child(
+                    view()
+                        .h(px(20.0))
+                        .px(px(8.0))
+                        .items_center()
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(move || design::line_soft())
+                        .bg(move || design::panel2())
+                        .on_press({
+                            let set_permission = set_permission.clone();
+                            move || {
+                                let next = match policies.get_untracked().permission(action) {
+                                    agent::Permission::Ask => agent::Permission::Allow,
+                                    agent::Permission::Allow => agent::Permission::Deny,
+                                    agent::Permission::Deny => agent::Permission::Ask,
+                                };
+                                set_permission(action, next);
+                            }
+                        })
+                        .child(
+                            text(move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    match policies.get().permission(action) {
+                                        agent::Permission::Ask => "agent.ask",
+                                        agent::Permission::Allow => "agent.allow",
+                                        agent::Permission::Deny => "agent.deny",
+                                    },
+                                )
+                            })
+                            .text_size(px(10.0))
+                            .line_height(px(13.0))
+                            .text_color(move || design::text2()),
+                        ),
+                )
+                .into_element(),
+        );
+    }
+    return view()
+        .w_full()
+        .flex_col()
+        .gap(px(10.0))
+        .child(
+            text(move || i18n::t(language.get().as_str(), "agentPage.hint"))
+                .text_size(px(10.5))
+                .line_height(px(15.0))
+                .text_color(move || design::text3()),
+        )
+        .child(rows)
+        .child(
+            text(move || i18n::t(language.get().as_str(), "agentPage.boundary"))
+                .text_size(px(10.0))
+                .line_height(px(14.0))
+                .text_color(move || design::text3()),
+        )
+        .into_element();
+}
+
+fn agent_action_key(action: agent::Action) -> &'static str {
+    return match action {
+        agent::Action::StageAll => "agent.action.stageAll",
+        agent::Action::Commit => "agent.action.commit",
+        agent::Action::UnstageAll => "agent.action.unstageAll",
+        agent::Action::Fetch => "agent.action.fetch",
+        agent::Action::Pull => "agent.action.pull",
+        agent::Action::Push => "agent.action.push",
+        agent::Action::Discard => "agent.action.discard",
+    };
 }

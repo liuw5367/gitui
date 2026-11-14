@@ -289,7 +289,8 @@
     "sshKeys": "SSH 密钥",
     "sshKeysHint": "git 与助手可用的密钥。",
     "sshKeyCount": "~/.ssh 中有 %{count} 个文件",
-    "sshAgentsNote": "gitui 使用系统 SSH agent，不管理密钥。"
+    "sshAgentsNote": "gitui 使用系统 SSH agent，不管理密钥。",
+    "agent": "助手"
   },
   "refs": {
     "title": "引用",
@@ -332,7 +333,14 @@
     "delete": "删除分支…",
     "deleteTitle": "删除这个分支？",
     "deleteMessage": "%{name} 将被删除；未合并的提交仍可从 reflog 恢复。",
-    "deleteAction": "删除"
+    "deleteAction": "删除",
+    "checkoutAsNew": "检出为新本地分支",
+    "mergeInto": "合并到当前分支",
+    "resetMixed": "把当前分支重置到这里",
+    "resetHard": "重置到这里（丢弃改动）",
+    "resetTitle": "重置当前分支？",
+    "resetMessage": "分支会移到 %{short}，未提交的改动会丢失。",
+    "resetAction": "重置"
   },
   "shortcut": {
     "openRepo": "打开仓库",
@@ -378,5 +386,10 @@
     "failed": "失败",
     "close": "关闭",
     "done": "已完成"
+  },
+  "agentPage": {
+    "hint": "助手提议的每个仓库动作默认都要先询问，可在这里逐项调整。",
+    "boundary": "助手不会拿到 shell 或凭据；每一步都走与你手动操作相同的应用动作。",
+    "destructive": "会改动仓库"
   }
 }

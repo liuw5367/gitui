@@ -474,6 +474,49 @@ pub fn set_active_changelist(tab: &mut Tab, name: Option<String>) {
     tab.active_changelist = name;
 }
 
+/// 从引用新建并切换到本地分支。
+pub fn checkout_new_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.checkout_new_branch(name, from)
+        .map_err(|error| error.detail())?;
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.branch = refreshed.branch;
+    tab.refs = refreshed.refs;
+    tab.commits = refreshed.commits;
+    tab.selected = refreshed.selected;
+    tab.error = None;
+    return Ok(());
+}
+
+/// 把某个引用合并进当前分支。
+pub fn merge_reference(tab: &mut Tab, reference: &str) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let summary = repo.merge(reference).map_err(|error| error.detail())?;
+    refresh_changes(tab);
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.commits = refreshed.commits;
+    tab.refs = refreshed.refs;
+    tab.operation = refreshed.operation;
+    tab.conflicts = refreshed.conflicts;
+    return Ok(summary);
+}
+
+/// 把当前分支重置到某个提交。
+pub fn reset_to(tab: &mut Tab, sha: &str, mode: git::ResetMode) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.reset_to(sha, mode).map_err(|error| error.detail())?;
+    refresh_changes(tab);
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.commits = refreshed.commits;
+    tab.branch = refreshed.branch;
+    tab.ahead = refreshed.ahead;
+    tab.behind = refreshed.behind;
+    return Ok(());
+}
+
 /// 新建分支；`from` 为空时基于当前 HEAD。
 pub fn create_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;

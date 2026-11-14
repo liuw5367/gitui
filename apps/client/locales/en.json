@@ -289,7 +289,8 @@
     "sshKeys": "SSH keys",
     "sshKeysHint": "Keys available to git and the agent.",
     "sshKeyCount": "%{count} files in ~/.ssh",
-    "sshAgentsNote": "gitui uses your SSH agent; it does not manage keys."
+    "sshAgentsNote": "gitui uses your SSH agent; it does not manage keys.",
+    "agent": "Agent"
   },
   "refs": {
     "title": "Refs",
@@ -332,7 +333,14 @@
     "delete": "Delete Branch…",
     "deleteTitle": "Delete this branch?",
     "deleteMessage": "%{name} will be deleted. Unmerged commits are kept in the reflog.",
-    "deleteAction": "Delete"
+    "deleteAction": "Delete",
+    "checkoutAsNew": "Check Out as New Local Branch",
+    "mergeInto": "Merge into Current Branch",
+    "resetMixed": "Reset Current Branch Here",
+    "resetHard": "Reset Here (discard changes)",
+    "resetTitle": "Reset the current branch?",
+    "resetMessage": "The branch will move to %{short}. Uncommitted changes are lost.",
+    "resetAction": "Reset"
   },
   "shortcut": {
     "openRepo": "Open repository",
@@ -378,5 +386,10 @@
     "failed": "Failed",
     "close": "Close",
     "done": "Finished"
+  },
+  "agentPage": {
+    "hint": "Each repository action the agent may propose asks first unless you change it here.",
+    "boundary": "The agent never gets a shell or credentials; every step runs through the same app actions you use by hand.",
+    "destructive": "changes the repo"
   }
 }

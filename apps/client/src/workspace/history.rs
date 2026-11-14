@@ -10,6 +10,7 @@ use crate::i18n;
 use crate::model::Tab;
 use crate::widgets::kbd;
 use crate::Actions;
+use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
 const AUTHOR_W: f32 = 96.0;
@@ -29,6 +30,7 @@ pub(crate) fn history(
     filter_when: Signal<SharedString>,
     filter_open: Signal<bool>,
     compare_mode: Signal<bool>,
+    reset_request: Signal<Option<(String, git::ResetMode)>>,
     actions: Actions,
 ) -> impl IntoElement {
     let commits = tab.commits.clone();
@@ -193,6 +195,38 @@ pub(crate) fn history(
                                                 } else {
                                                     select(index);
                                                 }
+                                            })
+                                            // 右键：把当前分支重置到这个提交（--mixed，
+                                            // 工作区改动保留；--hard 见菜单第二项）。
+                                            .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+                                                let sha_mixed = commit.sha.clone();
+                                                let sha_hard = commit.sha.clone();
+                                                let items = vec![
+                                                    MenuItem::new(i18n::t(
+                                                        language_value.get().as_str(),
+                                                        "branch.resetMixed",
+                                                    ))
+                                                    .on_select(move || {
+                                                        reset_request.set(Some((
+                                                            sha_mixed.clone(),
+                                                            git::ResetMode::Mixed,
+                                                        )))
+                                                    }),
+                                                    MenuItem::new(i18n::t(
+                                                        language_value.get().as_str(),
+                                                        "branch.resetHard",
+                                                    ))
+                                                    .on_select(move || {
+                                                        reset_request.set(Some((
+                                                            sha_hard.clone(),
+                                                            git::ResetMode::Hard,
+                                                        )))
+                                                    }),
+                                                ];
+                                                let _ = nsh_core::element::desktop::popup_menu_at(
+                                                    items,
+                                                    event.page_position,
+                                                );
                                             })
                                             .child(graph_cell(is_selected || in_compare, is_merge))
                                             .child(

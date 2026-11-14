@@ -32,6 +32,7 @@ pub(crate) fn workspace(
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
+    reset_request: Signal<Option<(String, git::ResetMode)>>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -94,6 +95,7 @@ pub(crate) fn workspace(
                     agent_plan,
                     agent_audit,
                     agent_policies,
+                    reset_request,
                     actions_for_body,
                 )),
         )
@@ -120,6 +122,7 @@ fn match_body(
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
+    reset_request: Signal<Option<(String, git::ResetMode)>>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -168,6 +171,7 @@ fn match_body(
                 agent_plan,
                 agent_audit,
                 agent_policies,
+                reset_request,
                 actions,
             )
             .into_element();
@@ -195,6 +199,7 @@ fn body(
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
+    reset_request: Signal<Option<(String, git::ResetMode)>>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -274,6 +279,7 @@ fn body(
                                 filter_when,
                                 filter_open,
                                 compare_mode,
+                                reset_request,
                                 history_actions.clone(),
                             ))
                             .child(diff::diff(language, label.clone(), patch.clone()))
