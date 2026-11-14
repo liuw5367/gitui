@@ -15,6 +15,7 @@ pub(crate) fn history(
     on_reflog: Arc<dyn Fn()>,
     on_compare: Arc<dyn Fn()>,
     on_file_history: Arc<dyn Fn()>,
+    on_info: Arc<dyn Fn()>,
     mode: Signal<Mode>,
 ) -> impl IntoElement {
     view()
@@ -69,7 +70,8 @@ pub(crate) fn history(
                 )
                 .child(header_button("Reflog", false, move || on_reflog()))
                 .child(header_button("Compare", false, move || on_compare()))
-                .child(header_button("Files", false, move || on_file_history())),
+                .child(header_button("Files", false, move || on_file_history()))
+                .child(header_button("Info", false, move || on_info())),
         )
         .child(
             view()

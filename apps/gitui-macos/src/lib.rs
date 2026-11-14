@@ -10,9 +10,9 @@ mod sections;
 mod widgets;
 
 use gitui_agent::{AgentPermissions, AgentPlan, LocalPlanner, PlanStep, Planner};
-use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
+use gitui_git::{BlameLine, ChangedFile, Commit, CommitDetails, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{agent_panel, audit_panel, changes_list, diff_view, history, inspect_panel, inspector, palette_panel, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{agent_panel, audit_panel, changes_list, commit_info_panel, diff_view, history, inspect_panel, inspector, palette_panel, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, CommitInfoActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -135,6 +135,9 @@ pub fn App() -> impl IntoElement {
     let reflog_entries = signal(Vec::<ReflogEntry>::new());
     let reflog_selected = signal(SharedString::from(""));
     let reflog_error = signal(SharedString::from(""));
+    let commit_info_open = signal(false);
+    let commit_info = signal(None::<CommitDetails>);
+    let commit_files = signal(Vec::<ChangedFile>::new());
     let inspect_open = signal(false);
     let inspect_tab = signal(InspectTab::Compare);
     let inspect_from = signal(String::from("HEAD~1"));
@@ -1281,6 +1284,19 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
+    let open_commit_info: Arc<dyn Fn()> = Arc::new(move || {
+        let sha = selected.get_untracked().to_string();
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.commit_details(&sha))
+        {
+            Ok(details) => {
+                commit_files.set(details.files.clone());
+                commit_info.set(Some(details));
+                commit_info_open.set(true);
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
     let history = history(
         branch,
         commits,
@@ -1289,6 +1305,7 @@ pub fn App() -> impl IntoElement {
         open_reflog.clone(),
         open_compare.clone(),
         open_file_history.clone(),
+        open_commit_info.clone(),
         mode,
     );
 
@@ -1648,6 +1665,11 @@ pub fn App() -> impl IntoElement {
             action: open_file_history.clone(),
         },
         PaletteCommand {
+            label: "Commit info",
+            hint: "metadata and files",
+            action: open_commit_info.clone(),
+        },
+        PaletteCommand {
             label: "Agent plan",
             hint: "local stage/commit/push",
             action: open_agent.clone(),
@@ -1665,6 +1687,14 @@ pub fn App() -> impl IntoElement {
     ];
     let palette_panel = palette_panel(palette_open, palette_query, palette_commands, palette_close);
 
+    let commit_info_panel = commit_info_panel(
+        commit_info_open,
+        commit_info,
+        commit_files,
+        CommitInfoActions {
+            close: Arc::new(move || commit_info_open.set(false)),
+        },
+    );
     let reflog_panel = reflog_panel(
         reflog_open,
         reflog_entries,
@@ -1724,6 +1754,7 @@ pub fn App() -> impl IntoElement {
         .child(reflog_panel)
         .child(inspect_panel)
         .child(refs_panel)
+        .child(commit_info_panel)
         .child(agent_panel)
         .child(audit_panel)
         .child(palette_panel)

@@ -119,6 +119,25 @@ pub struct Commit {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChangedFile {
+    pub status: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitDetails {
+    pub sha: String,
+    pub short: String,
+    pub author: String,
+    pub email: String,
+    pub date: String,
+    pub parents: Vec<String>,
+    pub refs: String,
+    pub message: String,
+    pub files: Vec<ChangedFile>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlameLine {
     pub line: u32,
     pub sha: String,
@@ -488,6 +507,53 @@ impl Repo {
 
     pub fn reset_hard(&self, revision: &str) -> Result<String, GitError> {
         self.git(&["reset", "--hard", revision])
+    }
+
+    pub fn commit_details(&self, sha: &str) -> Result<CommitDetails, GitError> {
+        if sha.is_empty() {
+            return Err(GitError("no commit selected".to_string()));
+        }
+        let output = self.git(&[
+            "show",
+            "-s",
+            "--date=iso-strict",
+            "--format=%H%x1f%h%x1f%an%x1f%ae%x1f%cd%x1f%P%x1f%D%x1f%B",
+            sha,
+        ])?;
+        let fields: Vec<&str> = output.splitn(8, '\x1f').collect();
+        if fields.len() != 8 {
+            return Err(GitError("could not parse commit details".to_string()));
+        }
+        let files_output = self.git(&[
+            "show",
+            "--name-status",
+            "--format=",
+            "--no-renames",
+            sha,
+        ])?;
+        let mut files = Vec::new();
+        for line in files_output.lines().filter(|line| !line.trim().is_empty()) {
+            if let Some((status, path)) = line.split_once('\t') {
+                files.push(ChangedFile {
+                    status: status.to_string(),
+                    path: path.to_string(),
+                });
+            }
+        }
+        Ok(CommitDetails {
+            sha: fields[0].to_string(),
+            short: fields[1].to_string(),
+            author: fields[2].to_string(),
+            email: fields[3].to_string(),
+            date: fields[4].to_string(),
+            parents: fields[5]
+                .split_whitespace()
+                .map(|parent| parent.to_string())
+                .collect(),
+            refs: fields[6].to_string(),
+            message: fields[7].trim_end().to_string(),
+            files,
+        })
     }
 
     pub fn blame(&self, path: &str) -> Result<Vec<BlameLine>, GitError> {
@@ -1510,6 +1576,18 @@ mod tests {
         assert_eq!(lines[0].line, 1);
         assert_eq!(lines[0].author, "Test");
         assert_eq!(lines[1].code, "two");
+    }
+
+    #[test]
+    fn commit_details_report_metadata_and_files() {
+        let temp = TempRepo::new();
+        let repo = Repo::open(temp.path()).unwrap();
+        let details = repo.commit_details("HEAD").unwrap();
+        assert_eq!(details.author, "Test");
+        assert_eq!(details.message, "base");
+        assert_eq!(details.files.len(), 1);
+        assert_eq!(details.files[0].path, "a.txt");
+        assert_eq!(details.files[0].status, "A");
     }
 
 }
