@@ -122,6 +122,76 @@ impl CommitOptions {
     }
 }
 
+/// 拉取时如何整合上游（设计板 29 的三选）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PullStrategy {
+    /// `--no-rebase`：产生合并提交。
+    #[default]
+    Merge,
+    /// `--rebase`：把本地提交移到上游之上。
+    Rebase,
+    /// `--ff-only`：只允许快进，否则失败。
+    FfOnly,
+}
+
+impl PullStrategy {
+    pub fn id(self) -> &'static str {
+        return match self {
+            PullStrategy::Merge => "merge",
+            PullStrategy::Rebase => "rebase",
+            PullStrategy::FfOnly => "ff-only",
+        };
+    }
+
+    pub fn from_id(id: &str) -> PullStrategy {
+        return match id {
+            "rebase" => PullStrategy::Rebase,
+            "ff-only" => PullStrategy::FfOnly,
+            _ => PullStrategy::Merge,
+        };
+    }
+
+    fn flag(self) -> &'static str {
+        return match self {
+            PullStrategy::Merge => "--no-rebase",
+            PullStrategy::Rebase => "--rebase",
+            PullStrategy::FfOnly => "--ff-only",
+        };
+    }
+}
+
+/// 取回选项（设计板 28）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FetchOptions {
+    /// 删掉远端已删除的跟踪分支。
+    pub prune: bool,
+    /// 同时取回标签。
+    pub tags: bool,
+    /// 对所有远端执行。
+    pub all_remotes: bool,
+}
+
+/// 拉取选项（设计板 29）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PullOptions {
+    pub strategy: PullStrategy,
+    /// 拉取前自动贮藏、完成后恢复。
+    pub autostash: bool,
+    /// 变基时把本地所有提交一起移动。
+    pub rebase_local: bool,
+}
+
+/// 推送选项（设计板 15）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PushOptions {
+    /// 一并推送标签。
+    pub tags: bool,
+    /// `--force-with-lease`：远端没被别人改动才允许覆盖。
+    pub force_with_lease: bool,
+    /// 推送所有分支。
+    pub all_branches: bool,
+}
+
 /// 历史筛选条件。空字段表示不限制。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LogFilter {
@@ -836,7 +906,27 @@ impl Repo {
 
     /// 从远程取回引用（`git fetch --prune <remote>`）。
     pub fn fetch(&self, remote: &str) -> Result<String, GitError> {
-        let output = run_git_combined(&self.root, &["fetch", "--prune", remote])?;
+        return self.fetch_with(remote, &FetchOptions {
+            prune: true,
+            ..FetchOptions::default()
+        });
+    }
+
+    /// 带选项的取回：剪枝、标签、全部远端。
+    pub fn fetch_with(&self, remote: &str, options: &FetchOptions) -> Result<String, GitError> {
+        let mut args: Vec<&str> = vec!["fetch"];
+        if options.prune {
+            args.push("--prune");
+        }
+        if options.tags {
+            args.push("--tags");
+        }
+        if options.all_remotes {
+            args.push("--all");
+        } else {
+            args.push(remote);
+        }
+        let output = run_git_combined(&self.root, &args)?;
         return Ok(summarise(&output));
     }
 
@@ -860,23 +950,66 @@ impl Repo {
     /// 只用快进：会产生合并或冲突的拉取交给后续阶段的操作流程，避免在同步里隐式
     /// 生成合并提交。
     pub fn pull(&self) -> Result<String, GitError> {
-        let output = run_git_combined(&self.root, &["pull", "--ff-only"])?;
+        return self.pull_with(&PullOptions::default());
+    }
+
+    /// 带选项的拉取：整合方式、自动贮藏、整体变基。
+    pub fn pull_with(&self, options: &PullOptions) -> Result<String, GitError> {
+        let mut args: Vec<&str> = vec!["pull", options.strategy.flag()];
+        if options.autostash {
+            args.push("--autostash");
+        }
+        if options.rebase_local {
+            args.push("--rebase-merges");
+        }
+        let output = run_git_combined(&self.root, &args)?;
         return Ok(summarise(&output));
     }
 
     /// 推送当前分支到上游；没有上游时用 `-u <remote> <branch>` 建立。
     pub fn push(&self, remote: Option<&str>) -> Result<String, GitError> {
+        return self.push_with(remote, &PushOptions::default());
+    }
+
+    /// 带选项的推送：标签、`--force-with-lease`、全部分支。
+    pub fn push_with(
+        &self,
+        remote: Option<&str>,
+        options: &PushOptions,
+    ) -> Result<String, GitError> {
         let branch = self.abbrev_branch()?;
         let has_upstream = run_git(
             &self.root,
             &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
         )
         .is_ok();
-        let args: Vec<&str> = match (has_upstream, remote) {
-            (true, _) => vec!["push"],
-            (false, Some(remote)) => vec!["push", "-u", remote, branch.as_str()],
-            (false, None) => vec!["push", "-u", "origin", branch.as_str()],
-        };
+        let mut args: Vec<&str> = vec!["push"];
+        if options.force_with_lease {
+            args.push("--force-with-lease");
+        }
+        if options.tags {
+            args.push("--tags");
+        }
+        if options.all_branches {
+            args.push("--all");
+        }
+        if options.all_branches || options.tags {
+            // 已经指定了范围，不再追加分支名。
+        } else {
+            match (has_upstream, remote) {
+                (true, _) => {}
+                (false, Some(remote)) => {
+                    args.push("-u");
+                    args.push(remote);
+                    args.push(branch.as_str());
+                }
+                (false, None) => {
+                    args.push("-u");
+                    args.push("origin");
+                    args.push(branch.as_str());
+                }
+            }
+        }
         let output = run_git_combined(&self.root, &args)?;
         return Ok(summarise(&output));
     }
@@ -2242,6 +2375,58 @@ mod tests {
 
         repo.rename_branch("main", "renamed").expect("rename");
         assert_eq!(repo.abbrev_branch().expect("branch"), "renamed");
+    }
+
+    #[test]
+    fn sync_options_map_to_the_right_flags() {
+        assert_eq!(PullStrategy::default(), PullStrategy::Merge);
+        assert_eq!(PullStrategy::Rebase.flag(), "--rebase");
+        assert_eq!(PullStrategy::FfOnly.flag(), "--ff-only");
+        assert_eq!(PullStrategy::Merge.flag(), "--no-rebase");
+        assert_eq!(PullStrategy::from_id("rebase"), PullStrategy::Rebase);
+        assert_eq!(PullStrategy::from_id("ff-only"), PullStrategy::FfOnly);
+        assert_eq!(PullStrategy::from_id("nonsense"), PullStrategy::Merge);
+        assert_eq!(PullStrategy::Rebase.id(), "rebase");
+
+        let options = FetchOptions {
+            prune: true,
+            tags: true,
+            all_remotes: true,
+        };
+        assert!(options.all_remotes, "全部远端时不追加单个 remote 名");
+        assert!(!PushOptions::default().force_with_lease, "强推默认关闭");
+        assert!(!FetchOptions::default().prune, "取回默认不剪枝");
+        assert!(!PullOptions::default().autostash);
+    }
+
+    #[test]
+    fn push_with_force_lease_is_refused_when_the_remote_moved() {
+        // with_remote 返回 (工作区守卫, 工作区路径, 远端守卫, 远端路径)。
+        let (work_guard, work_path, remote_guard, remote_path) = with_remote("force-lease");
+        let _ = (&work_guard, &remote_guard);
+        let repo = Repo::open(&work_path).expect("open");
+        // 另一个人推进远端。
+        let other = TempDir::new("force-lease-other");
+        run_git(other.path(), &["clone", "-q", remote_path.as_str(), "."]).expect("clone");
+        run_git(other.path(), &["config", "user.name", "Other"]).expect("name");
+        run_git(other.path(), &["config", "user.email", "o@example.com"]).expect("email");
+        std::fs::write(other.path().join("other.txt"), "x\n").expect("write");
+        run_git(other.path(), &["add", "-A"]).expect("add");
+        run_git(other.path(), &["commit", "-q", "-m", "other"]).expect("commit");
+        run_git(other.path(), &["push", "-q", "origin", "HEAD"]).expect("push");
+
+        // 本地再提交，然后强推：lease 不成立，应被拒绝。
+        std::fs::write(repo.root().join("mine.txt"), "y\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("mine", "").expect("commit");
+        let forced = repo.push_with(
+            Some("origin"),
+            &PushOptions {
+                force_with_lease: true,
+                ..PushOptions::default()
+            },
+        );
+        assert!(forced.is_err(), "远端已前进时 --force-with-lease 必须失败");
     }
 
     #[test]

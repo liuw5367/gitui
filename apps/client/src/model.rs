@@ -724,7 +724,26 @@ impl Sync {
 }
 
 /// 执行一次同步，并把结果留在标签页上（供操作条显示）。
+/// 同步选项：三种动作共用一份，节省一个入参。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SyncOptions {
+    pub fetch: git::FetchOptions,
+    pub pull: git::PullOptions,
+    pub push: git::PushOptions,
+}
+
+impl SyncOptions {
+    /// 同步动作的选项是否含破坏性含义（强推）。
+    pub fn is_destructive(&self, kind: Sync) -> bool {
+        return kind == Sync::Push && self.push.force_with_lease;
+    }
+}
+
 pub fn sync(tab: &mut Tab, kind: Sync) {
+    return sync_with(tab, kind, &SyncOptions::default());
+}
+
+pub fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
@@ -738,9 +757,9 @@ pub fn sync(tab: &mut Tab, kind: Sync) {
         .and_then(|refs| refs.remotes.first().cloned())
         .unwrap_or_else(|| "origin".to_string());
     let result = match kind {
-        Sync::Fetch => repo.fetch(remote.as_str()),
-        Sync::Pull => repo.pull(),
-        Sync::Push => repo.push(Some(remote.as_str())),
+        Sync::Fetch => repo.fetch_with(remote.as_str(), &options.fetch),
+        Sync::Pull => repo.pull_with(&options.pull),
+        Sync::Push => repo.push_with(Some(remote.as_str()), &options.push),
     };
     match result {
         Ok(message) => {

@@ -100,6 +100,8 @@ pub(crate) struct Actions {
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) open_form: Arc<dyn Fn(screens::FormKind)>,
     pub(crate) open_sync: Arc<dyn Fn(model::Sync)>,
+    /// 同步面板里的选项开关。
+    pub(crate) set_sync_option: Arc<dyn Fn(&'static str, bool)>,
     pub(crate) run_sync: Arc<dyn Fn(model::Sync)>,
     pub(crate) close_sync: Arc<dyn Fn()>,
     pub(crate) drop_tag: Arc<dyn Fn(String)>,
@@ -803,10 +805,41 @@ pub fn App() -> impl IntoElement {
     };
 
     // 同步动作：先在对话框里确认，再执行并留在对话框展示结果。
+    // 打开同步面板；已经打开时只切 tab，保留当前选项。
     let open_sync: Arc<dyn Fn(model::Sync)> = {
         let sync_state = sync_state;
         Arc::new(move |kind: model::Sync| {
-            sync_state.set(Some(screens::SyncDialogState::new(kind)));
+            let mut state = sync_state
+                .get_untracked()
+                .unwrap_or_else(|| screens::SyncDialogState::new(kind));
+            state.kind = kind;
+            state.result = None;
+            sync_state.set(Some(state));
+        })
+    };
+
+    // 选项开关：键名固定，策略三项互斥。
+    let set_sync_option: Arc<dyn Fn(&'static str, bool)> = {
+        let sync_state = sync_state;
+        Arc::new(move |key: &'static str, value: bool| {
+            let Some(mut state) = sync_state.get_untracked() else {
+                return;
+            };
+            match key {
+                "prune" => state.options.fetch.prune = value,
+                "fetchTags" => state.options.fetch.tags = value,
+                "allRemotes" => state.options.fetch.all_remotes = value,
+                "autostash" => state.options.pull.autostash = value,
+                "rebaseLocal" => state.options.pull.rebase_local = value,
+                "pushTags" => state.options.push.tags = value,
+                "forceLease" => state.options.push.force_with_lease = value,
+                "allBranches" => state.options.push.all_branches = value,
+                "strategyMerge" => state.options.pull.strategy = git::PullStrategy::Merge,
+                "strategyRebase" => state.options.pull.strategy = git::PullStrategy::Rebase,
+                "strategyFfOnly" => state.options.pull.strategy = git::PullStrategy::FfOnly,
+                _ => return,
+            }
+            sync_state.set(Some(state));
         })
     };
 
@@ -815,10 +848,14 @@ pub fn App() -> impl IntoElement {
         let active = active;
         let sync_state = sync_state;
         Arc::new(move |kind: model::Sync| {
+            let Some(state) = sync_state.get_untracked() else {
+                return;
+            };
+            let options = state.options.clone();
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                model::sync(tab, kind);
+                model::sync_with(tab, kind, &options);
                 let result = match (&tab.sync_message, tab.sync_failed) {
                     (Some(message), false) => Ok(message.clone()),
                     (Some(message), true) => Err(message.clone()),
@@ -827,6 +864,7 @@ pub fn App() -> impl IntoElement {
                 tabs.set(list);
                 sync_state.set(Some(screens::SyncDialogState {
                     kind,
+                    options,
                     result: Some(result),
                     running: false,
                 }));
@@ -848,38 +886,6 @@ pub fn App() -> impl IntoElement {
             if let Some(tab) = list.get_mut(current) {
                 model::resolve_conflict(tab, path.as_str(), ours);
                 tabs.set(list);
-            }
-        })
-    };
-
-    // 同步动作：先在对话框里确认，再执行并留在对话框展示结果。
-    let open_sync: Arc<dyn Fn(model::Sync)> = {
-        let sync_state = sync_state;
-        Arc::new(move |kind: model::Sync| {
-            sync_state.set(Some(screens::SyncDialogState::new(kind)));
-        })
-    };
-
-    let run_sync: Arc<dyn Fn(model::Sync)> = {
-        let tabs = tabs;
-        let active = active;
-        let sync_state = sync_state;
-        Arc::new(move |kind: model::Sync| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::sync(tab, kind);
-                let result = match (&tab.sync_message, tab.sync_failed) {
-                    (Some(message), false) => Ok(message.clone()),
-                    (Some(message), true) => Err(message.clone()),
-                    (None, _) => Ok(String::new()),
-                };
-                tabs.set(list);
-                sync_state.set(Some(screens::SyncDialogState {
-                    kind,
-                    result: Some(result),
-                    running: false,
-                }));
             }
         })
     };
@@ -1699,6 +1705,7 @@ pub fn App() -> impl IntoElement {
         delete_branch,
         open_form,
         open_sync,
+        set_sync_option,
         run_sync,
         close_sync,
         drop_tag,
@@ -2009,6 +2016,8 @@ pub fn App() -> impl IntoElement {
             language,
             current_tab,
             sync_state,
+            actions.open_sync.clone(),
+            actions.set_sync_option.clone(),
             actions.run_sync.clone(),
             actions.close_sync.clone(),
         ))

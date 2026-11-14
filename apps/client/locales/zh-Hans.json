@@ -438,7 +438,21 @@
     "ok": "完成",
     "failed": "失败",
     "close": "关闭",
-    "done": "已完成"
+    "done": "已完成",
+    "optPrune": "清理远端已删除的分支",
+    "optTags": "同步标签",
+    "optAllRemotes": "对所有远端执行",
+    "optAutostash": "自动贮藏本地改动",
+    "optRebaseLocal": "变基包含本地全部提交",
+    "optPushTags": "推送标签",
+    "optForceLease": "带 lease 的强推",
+    "optAllBranches": "推送所有分支",
+    "optStrategy": "整合方式",
+    "strategy": "整合方式",
+    "merge": "合并",
+    "rebase": "变基",
+    "ffOnly": "仅快进",
+    "forceWarning": "强推会在确认无人推过之后覆盖远端分支，远端历史会被替换。"
   },
   "agentPage": {
     "hint": "助手提议的每个仓库动作默认都要先询问，可在这里逐项调整。",

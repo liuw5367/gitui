@@ -438,7 +438,21 @@
     "ok": "Done",
     "failed": "Failed",
     "close": "Close",
-    "done": "Finished"
+    "done": "Finished",
+    "optPrune": "Prune deleted branches",
+    "optTags": "Fetch tags",
+    "optAllRemotes": "Fetch all remotes",
+    "optAutostash": "Autostash local changes",
+    "optRebaseLocal": "Rebase all local commits",
+    "optPushTags": "Push tags",
+    "optForceLease": "Force with lease",
+    "optAllBranches": "Push all branches",
+    "optStrategy": "Integrate with",
+    "strategy": "Integrate with",
+    "merge": "Merge",
+    "rebase": "Rebase",
+    "ffOnly": "FF only",
+    "forceWarning": "Force push overwrites the remote branch if nobody else pushed to it. History on the remote is replaced."
   },
   "agentPage": {
     "hint": "Each repository action the agent may propose asks first unless you change it here.",
