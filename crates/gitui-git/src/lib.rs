@@ -119,6 +119,16 @@ pub struct Commit {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlameLine {
+    pub line: u32,
+    pub sha: String,
+    pub short: String,
+    pub author: String,
+    pub date: String,
+    pub code: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReflogEntry {
     pub selector: String,
     pub sha: String,
@@ -478,6 +488,61 @@ impl Repo {
 
     pub fn reset_hard(&self, revision: &str) -> Result<String, GitError> {
         self.git(&["reset", "--hard", revision])
+    }
+
+    pub fn blame(&self, path: &str) -> Result<Vec<BlameLine>, GitError> {
+        if path.is_empty() {
+            return Err(GitError("choose a file".to_string()));
+        }
+        let dates = match self.git(&[
+            "log",
+            "--all",
+            "--date=short",
+            "--format=%H%x1f%cd",
+        ]) {
+            Ok(output) => {
+                use std::collections::HashMap;
+                let mut dates = HashMap::new();
+                for line in output.lines() {
+                    if let Some((sha, date)) = line.split_once('\x1f') {
+                        dates.insert(sha.to_string(), date.to_string());
+                    }
+                }
+                dates
+            }
+            Err(_) => Default::default(),
+        };
+        let output = self.git(&["blame", "--line-porcelain", "--", path])?;
+        let mut lines = Vec::new();
+        let mut sha = String::new();
+        let mut line_no = 0u32;
+        let mut author = String::new();
+        for raw in output.lines() {
+            if let Some(code) = raw.strip_prefix('\t') {
+                lines.push(BlameLine {
+                    line: line_no,
+                    sha: sha.clone(),
+                    short: sha.chars().take(8).collect(),
+                    author: author.clone(),
+                    date: dates.get(&sha).cloned().unwrap_or_default(),
+                    code: code.to_string(),
+                });
+                continue;
+            }
+            if raw.len() >= 40 && raw[..40].chars().all(|ch| ch.is_ascii_hexdigit()) {
+                let fields: Vec<&str> = raw.split_whitespace().collect();
+                if fields.len() >= 3 {
+                    sha = fields[0].to_string();
+                    line_no = fields[2].parse().unwrap_or(0);
+                    author.clear();
+                }
+                continue;
+            }
+            if let Some(value) = raw.strip_prefix("author ") {
+                author = value.to_string();
+            }
+        }
+        Ok(lines)
     }
 
     pub fn compare(&self, from: &str, to: &str) -> Result<String, GitError> {
@@ -1434,6 +1499,17 @@ mod tests {
         let history = repo.file_history("a.txt", 10).unwrap();
         assert_eq!(history.len(), 2);
         assert!(history[0].summary.contains("change a file"));
+    }
+
+    #[test]
+    fn blame_reports_lines() {
+        let temp = TempRepo::new();
+        let repo = Repo::open(temp.path()).unwrap();
+        let lines = repo.blame("a.txt").unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].line, 1);
+        assert_eq!(lines[0].author, "Test");
+        assert_eq!(lines[1].code, "two");
     }
 
 }

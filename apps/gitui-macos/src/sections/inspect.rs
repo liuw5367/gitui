@@ -3,7 +3,7 @@
 use crate::design;
 use crate::widgets::header_button;
 use crate::InspectTab;
-use gitui_git::Commit;
+use gitui_git::{BlameLine, Commit};
 use nsh_base::{editor, input};
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub(crate) struct InspectActions {
     pub(crate) close: Arc<dyn Fn()>,
     pub(crate) compare: Arc<dyn Fn()>,
-    pub(crate) history: Arc<dyn Fn()>,
+    pub(crate) load: Arc<dyn Fn()>,
     pub(crate) select_commit: Arc<dyn Fn(String)>,
 }
 
@@ -55,6 +55,7 @@ pub(crate) fn inspect_panel(
     path: Signal<String>,
     diff: Signal<SharedString>,
     commits: Signal<Vec<Commit>>,
+    blame_lines: Signal<Vec<BlameLine>>,
     selected: Signal<SharedString>,
     error: Signal<SharedString>,
     actions: InspectActions,
@@ -120,6 +121,12 @@ pub(crate) fn inspect_panel(
                                     InspectTab::FileHistory,
                                     current,
                                     Arc::new(move |next| current.set(next)),
+                                ))
+                                .child(tab(
+                                    "Blame",
+                                    InspectTab::Blame,
+                                    current,
+                                    Arc::new(move |next| current.set(next)),
                                 )),
                         )
                         .child(view().flex_1())
@@ -177,10 +184,10 @@ pub(crate) fn inspect_panel(
                         .child(
                             view()
                                 .h(move || {
-                                    if current.get() == InspectTab::FileHistory {
-                                        px(44.0)
-                                    } else {
+                                    if current.get() == InspectTab::Compare {
                                         px(0.0)
+                                    } else {
+                                        px(44.0)
                                     }
                                 })
                                 .flex_row()
@@ -197,8 +204,8 @@ pub(crate) fn inspect_panel(
                                         .text_size(px(11.0))
                                         .flex_1(),
                                 )
-                                .child(header_button("Load history", true, {
-                                    let action = actions.history.clone();
+                                .child(header_button("Load", true, {
+                                    let action = actions.load.clone();
                                     move || action()
                                 })),
                         )
@@ -256,6 +263,63 @@ pub(crate) fn inspect_panel(
                                 )),
                         )
                         .child(
+                            view()
+                                .h(move || {
+                                    if current.get() == InspectTab::Blame {
+                                        px(300.0)
+                                    } else {
+                                        px(0.0)
+                                    }
+                                })
+                                .flex_col()
+                                .border_b_1()
+                                .border_color(move || design::line())
+                                .child(each(
+                                    blame_lines,
+                                    |entry: &BlameLine| format!("{}:{}", entry.sha, entry.line),
+                                    |entry, _| {
+                                        view()
+                                            .h(px(22.0))
+                                            .flex_row()
+                                            .items_center()
+                                            .gap_2()
+                                            .px_2()
+                                            .border_b_1()
+                                            .border_color(move || design::line_soft())
+                                            .child(
+                                                text(move || entry.get().line.to_string())
+                                                    .w(px(32.0))
+                                                    .text_size(px(9.0))
+                                                    .text_color(move || design::text3()),
+                                            )
+                                            .child(
+                                                text(move || entry.get().short)
+                                                    .w(px(60.0))
+                                                    .text_size(px(9.0))
+                                                    .text_color(move || design::text3()),
+                                            )
+                                            .child(
+                                                text(move || entry.get().author)
+                                                    .w(px(90.0))
+                                                    .text_size(px(9.0))
+                                                    .text_color(move || design::text2()),
+                                            )
+                                            .child(
+                                                text(move || entry.get().date)
+                                                    .w(px(70.0))
+                                                    .text_size(px(9.0))
+                                                    .text_color(move || design::text3()),
+                                            )
+                                            .child(
+                                                text(move || entry.get().code)
+                                                    .flex_1()
+                                                    .text_size(px(10.0))
+                                                    .text_color(move || design::text()),
+                                            )
+                                    },
+                                )),
+                        )
+                        .child(
                             text(move || error.get())
                                 .px_3()
                                 .text_size(px(9.5))
@@ -268,7 +332,13 @@ pub(crate) fn inspect_panel(
                                 .language("diff")
                                 .font_size(11.0)
                                 .line_height(19.0)
-                                .flex_1(),
+                                .h(move || {
+                                    if current.get() == InspectTab::Blame {
+                                        px(0.0)
+                                    } else {
+                                        px(260.0)
+                                    }
+                                }),
                         ),
                 ),
         )

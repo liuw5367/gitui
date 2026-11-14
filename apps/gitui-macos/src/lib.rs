@@ -8,7 +8,7 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_git::{Commit, ReflogEntry, Repo, StatusEntry};
+use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
 use sections::{changes_list, diff_view, history, inspect_panel, inspector, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
@@ -56,6 +56,7 @@ fn native(registry: &mut Registry) {
 pub(crate) enum InspectTab {
     Compare,
     FileHistory,
+    Blame,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -124,6 +125,7 @@ pub fn App() -> impl IntoElement {
     let inspect_path = signal(String::new());
     let inspect_diff = signal(SharedString::from(""));
     let inspect_commits = signal(Vec::<Commit>::new());
+    let inspect_blame = signal(Vec::<BlameLine>::new());
     let inspect_selected = signal(SharedString::from(""));
     let inspect_error = signal(SharedString::from(""));
     let open_compare: Arc<dyn Fn()> = Arc::new(move || {
@@ -1287,6 +1289,29 @@ pub fn App() -> impl IntoElement {
             Err(err) => inspect_error.set(SharedString::from(err.to_string())),
         }
     });
+    let run_blame: Arc<dyn Fn()> = Arc::new(move || {
+        let path = inspect_path.get_untracked().trim().to_string();
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.blame(&path))
+        {
+            Ok(lines) => {
+                inspect_blame.set(lines);
+                inspect_error.set(SharedString::from(""));
+            }
+            Err(err) => inspect_error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let load_inspect: Arc<dyn Fn()> = Arc::new({
+        let history = run_file_history.clone();
+        let blame = run_blame.clone();
+        move || {
+            if inspect_tab.get_untracked() == InspectTab::Blame {
+                blame();
+            } else {
+                history();
+            }
+        }
+    });
     let select_inspect_commit: Arc<dyn Fn(String)> = Arc::new(move |sha: String| {
         inspect_selected.set(SharedString::from(sha.clone()));
         match Repo::open(repo_path.get_untracked().to_string().as_str())
@@ -1307,12 +1332,13 @@ pub fn App() -> impl IntoElement {
         inspect_path,
         inspect_diff,
         inspect_commits,
+        inspect_blame,
         inspect_selected,
         inspect_error,
         InspectActions {
             close: close_inspect,
             compare: run_compare,
-            history: run_file_history,
+            load: load_inspect,
             select_commit: select_inspect_commit,
         },
     );
