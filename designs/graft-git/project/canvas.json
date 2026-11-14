@@ -144,6 +144,15 @@
       "x": 3040,
       "y": 2520
     },
+    "RefsOther.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "30 · Refs · Tags, Remotes, Stashes",
+      "w": 1440,
+      "x": 3040,
+      "y": 14780
+    },
     "RepoManager.dc.html": {
       "expand": "fill",
       "h": 900,
@@ -216,6 +225,24 @@
       "x": 1520,
       "y": 6440
     },
+    "SyncFetch.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "28 · Sync · Fetch",
+      "w": 1440,
+      "x": 0,
+      "y": 14780
+    },
+    "SyncPull.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "29 · Sync · Pull",
+      "w": 1440,
+      "x": 1520,
+      "y": 14780
+    },
     "Welcome.dc.html": {
       "expand": "fill",
       "h": 900,
@@ -242,33 +269,6 @@
       "w": 1440,
       "x": 0,
       "y": 1400
-    },
-    "RefsOther.dc.html": {
-      "x": 3040,
-      "y": 14780,
-      "w": 1440,
-      "h": 900,
-      "title": "30 · Refs · Tags, Remotes, Stashes",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SyncFetch.dc.html": {
-      "x": 0,
-      "y": 14780,
-      "w": 1440,
-      "h": 900,
-      "title": "28 · Sync · Fetch",
-      "expand": "fill",
-      "is_interactive": true
-    },
-    "SyncPull.dc.html": {
-      "x": 1520,
-      "y": 14780,
-      "w": 1440,
-      "h": 900,
-      "title": "29 · Sync · Pull",
-      "expand": "fill",
-      "is_interactive": true
     }
   },
   "createdOnFiles": {
@@ -281,78 +281,96 @@
   },
   "noteOrder": [
     "canvas-title",
-    "app-name"
+    "app-name",
+    "group-start",
+    "group-review",
+    "group-worktree",
+    "group-operations",
+    "group-files",
+    "group-nav",
+    "group-settings",
+    "group-details"
   ],
   "notes": {
     "app-name": {
-      "x": 0,
-      "y": -860,
-      "text": "APP_NAME 常量 · dev override GITUI_APP_NAME · 打包 app 不依赖 shell env",
       "kind": "title1",
-      "maxW": 1840
+      "maxW": 1840,
+      "text": "APP_NAME 常量 · dev override GITUI_APP_NAME · 打包 app 不依赖 shell env",
+      "w": 240,
+      "x": 0,
+      "y": -860
     },
     "canvas-title": {
-      "x": 0,
-      "y": -520,
+      "kind": "title1",
+      "maxW": 1840,
       "text": "gitui — a native Git client for macOS",
-      "kind": "title1",
-      "maxW": 1840
-    },
-    "group-start": {
+      "w": 240,
       "x": 0,
-      "y": -260,
-      "text": "01–03 · Start — open, clone, or create a repository",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "group-review": {
-      "x": 0,
-      "y": 1140,
-      "text": "04–09 · Review — history, filters, compare, refs, commit info",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "group-worktree": {
-      "x": 0,
-      "y": 3660,
-      "text": "10–13 · Worktree — staging, changelists, agent",
-      "kind": "title1",
-      "maxW": 2960
-    },
-    "group-operations": {
-      "x": 0,
-      "y": 6180,
-      "text": "14–17 · Operations — conflict, sync, states, recovery",
-      "kind": "title1",
-      "maxW": 2960
-    },
-    "group-files": {
-      "x": 0,
-      "y": 8700,
-      "text": "18–19 · Files — at commit, blame & history",
-      "kind": "title1",
-      "maxW": 2960
-    },
-    "group-nav": {
-      "x": 0,
-      "y": 10100,
-      "text": "20–22 · Navigation — palette, context menu, component sheet",
-      "kind": "title1",
-      "maxW": 4480
-    },
-    "group-settings": {
-      "x": 0,
-      "y": 12000,
-      "text": "23–27 · Settings — preferences, credentials, shortcuts",
-      "kind": "title1",
-      "maxW": 4480
+      "y": -520
     },
     "group-details": {
-      "x": 0,
-      "y": 14520,
-      "text": "28–30 · Details — Sync Fetch, Sync Pull, Refs",
       "kind": "title1",
-      "maxW": 4480
+      "maxW": 4480,
+      "text": "28–30 · Details — Sync Fetch, Sync Pull, Refs",
+      "w": 240,
+      "x": 0,
+      "y": 14520
+    },
+    "group-files": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "18–19 · Files — at commit, blame & history",
+      "w": 240,
+      "x": 0,
+      "y": 8700
+    },
+    "group-nav": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "20–22 · Navigation — palette, context menu, component sheet",
+      "w": 240,
+      "x": 0,
+      "y": 10100
+    },
+    "group-operations": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "14–17 · Operations — conflict, sync, states, recovery",
+      "w": 240,
+      "x": 0,
+      "y": 6180
+    },
+    "group-review": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "04–09 · Review — history, filters, compare, refs, commit info",
+      "w": 240,
+      "x": 0,
+      "y": 1140
+    },
+    "group-settings": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "23–27 · Settings — preferences, credentials, shortcuts",
+      "w": 240,
+      "x": 0,
+      "y": 12000
+    },
+    "group-start": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "01–03 · Start — open, clone, or create a repository",
+      "w": 240,
+      "x": 0,
+      "y": -260
+    },
+    "group-worktree": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "10–13 · Worktree — staging, changelists, agent",
+      "w": 240,
+      "x": 0,
+      "y": 3660
     }
   },
   "order": [

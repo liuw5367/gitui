@@ -52,7 +52,7 @@
             <span><b style="font-size:11px;font-weight:500;color:var(--text)">Soft</b><span style="display:block;font-size:9px;color:var(--text3);line-height:1.4">Move HEAD only. Keep the index and working tree.</span></span>
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-soft)">
-            <input type="radio" name="reset-kind" checked style="margin-top:2px">
+            <input type="radio" name="reset-kind" checked="" style="margin-top:2px">
             <span><b style="font-size:11px;font-weight:500;color:var(--text)">Mixed</b><span style="display:block;font-size:9px;color:var(--text3);line-height:1.4">Move HEAD and reset the index. Keep working-tree changes.</span></span>
           </label>
           <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 0">
@@ -116,8 +116,8 @@
           <label class="label" for="nb-name">Name</label>
           <div class="field"><input id="nb-name" value="feature/history-filters" spellcheck="false"></div>
           <label class="label" style="margin-top:9px" for="nb-from">From</label>
-          <div class="field"><input id="nb-from" value="3f2a1c9 · main" readonly></div>
-          <label class="checkrow" style="margin-top:8px"><input type="checkbox" checked> Checkout after create</label>
+          <div class="field"><input id="nb-from" value="3f2a1c9 · main" readonly=""></div>
+          <label class="checkrow" style="margin-top:8px"><input type="checkbox" checked=""> Checkout after create</label>
         </div>
         <div class="dialog-foot">
           <button class="btn" type="button">Cancel</button>
@@ -148,8 +148,8 @@
       <div class="gallery-cap"><span class="sw"></span>Commit filters</div>
       <div class="menu flat" role="menu" aria-label="Commit filters">
         <div class="mlabel">Show commits</div>
-        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox" checked> Only my commits</button>
-        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox" checked> Hide merge commits</button>
+        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox" checked=""> Only my commits</button>
+        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox" checked=""> Hide merge commits</button>
         <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox"> Hide tagged commits</button>
         <div class="msep"></div>
         <button class="mi" role="menuitem" type="button">Last 7 days<span class="sc">⌘7</span></button>
@@ -169,10 +169,10 @@
           <label class="label" for="nt-name">Tag name</label>
           <div class="field"><input id="nt-name" value="v1.4.1" spellcheck="false"></div>
           <label class="label" style="margin-top:9px" for="nt-target">Target</label>
-          <div class="field"><input id="nt-target" value="3f2a1c9 · Fix wrapped-line hunk alignment" readonly></div>
+          <div class="field"><input id="nt-target" value="3f2a1c9 · Fix wrapped-line hunk alignment" readonly=""></div>
           <label class="label" style="margin-top:9px" for="nt-msg">Message</label>
           <textarea class="textarea" id="nt-msg" style="min-height:44px">Release 1.4.1</textarea>
-          <label class="checkrow" style="margin-top:7px"><input type="checkbox" checked> Annotated tag</label>
+          <label class="checkrow" style="margin-top:7px"><input type="checkbox" checked=""> Annotated tag</label>
         </div>
         <div class="dialog-foot">
           <button class="btn" type="button">Cancel</button>
