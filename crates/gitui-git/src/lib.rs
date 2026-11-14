@@ -42,6 +42,25 @@ impl StatusEntry {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operation {
+    Merge,
+    Rebase,
+    CherryPick,
+    Revert,
+}
+
+impl Operation {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Merge => "MERGING",
+            Self::Rebase => "REBASING",
+            Self::CherryPick => "CHERRY-PICKING",
+            Self::Revert => "REVERTING",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Status {
     pub branch: String,
@@ -166,6 +185,22 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// The operation in progress, if any, from the Git state files.
+    pub fn operation(&self) -> Option<Operation> {
+        let git = self.root.join(".git");
+        if git.join("MERGE_HEAD").exists() {
+            Some(Operation::Merge)
+        } else if git.join("rebase-merge").is_dir() || git.join("rebase-apply").is_dir() {
+            Some(Operation::Rebase)
+        } else if git.join("CHERRY_PICK_HEAD").exists() {
+            Some(Operation::CherryPick)
+        } else if git.join("REVERT_HEAD").exists() {
+            Some(Operation::Revert)
+        } else {
+            None
+        }
     }
 
     /// Newest commits, up to `limit`.
@@ -585,6 +620,27 @@ mod tests {
         assert_eq!(repo.log(1).unwrap()[0].summary, "remote commit");
         let _ = fs::remove_dir_all(remote);
         let _ = fs::remove_dir_all(clone);
+    }
+
+    #[test]
+    fn detects_a_merge_in_progress() {
+        use std::process::Command;
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["checkout", "-qb", "feature"]);
+        fs::write(fixture.path.join("a.txt"), "one\nFEATURE\n").unwrap();
+        run(&fixture.path, &["commit", "-qam", "feature"]);
+        run(&fixture.path, &["checkout", "-q", "main"]);
+        fs::write(fixture.path.join("a.txt"), "one\nMAIN\n").unwrap();
+        run(&fixture.path, &["commit", "-qam", "main"]);
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&fixture.path)
+            .args(["merge", "feature"])
+            .status()
+            .unwrap();
+        assert!(!status.success());
+        let repo = Repo::open(fixture.path()).unwrap();
+        assert_eq!(repo.operation(), Some(Operation::Merge));
     }
 
     #[test]

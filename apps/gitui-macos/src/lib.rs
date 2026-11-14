@@ -3,7 +3,7 @@
 //! Slice 1: open the current repository, show status, recent history and the
 //! selected commit's patch. No staging, commit, push or settings.
 
-use gitui_git::{Commit, Repo, StatusEntry};
+use gitui_git::{Commit, Operation, Repo, StatusEntry};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
@@ -12,6 +12,7 @@ use std::path::PathBuf;
 struct Loaded {
     path: String,
     branch: String,
+    operation: Option<Operation>,
     ahead: usize,
     behind: usize,
     staged: usize,
@@ -45,6 +46,7 @@ fn load(path: &str) -> Loaded {
             Loaded {
                 path: repo.root().display().to_string(),
                 branch,
+                operation: repo.operation(),
                 ahead: status.ahead,
                 behind: status.behind,
                 staged: status.staged,
@@ -60,6 +62,7 @@ fn load(path: &str) -> Loaded {
         Err(error) => Loaded {
             path: path.to_string(),
             branch: "—".to_string(),
+            operation: None,
             ahead: 0,
             behind: 0,
             selected: SharedString::from(""),
@@ -242,6 +245,7 @@ pub fn App() -> impl IntoElement {
 
     let repo_path = signal(SharedString::from(active_tab.path.clone()));
     let branch = signal(SharedString::from(active_tab.branch.clone()));
+    let operation = signal(active_tab.operation);
     let ahead = signal(active_tab.ahead);
     let behind = signal(active_tab.behind);
     let staged = signal(active_tab.staged);
@@ -279,6 +283,7 @@ pub fn App() -> impl IntoElement {
         repo_path.set(SharedString::from(loaded.path.clone()));
         path_input.set(loaded.path.clone());
         branch.set(SharedString::from(loaded.branch));
+        operation.set(loaded.operation);
         ahead.set(loaded.ahead);
         behind.set(loaded.behind);
         staged.set(loaded.staged);
@@ -314,6 +319,7 @@ pub fn App() -> impl IntoElement {
         repo_path.set(SharedString::from(tab.path.clone()));
         path_input.set(tab.path.clone());
         branch.set(SharedString::from(tab.branch));
+        operation.set(tab.operation);
         ahead.set(tab.ahead);
         behind.set(tab.behind);
         staged.set(tab.staged);
@@ -417,6 +423,30 @@ pub fn App() -> impl IntoElement {
                 }
             }
         }));
+
+    let operation_banner = view()
+        .h(move || {
+            if operation.get().is_some() {
+                px(28.0)
+            } else {
+                px(0.0)
+            }
+        })
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .px_3()
+        .bg(move || theme().primary)
+        .child(
+            text(move || {
+                operation
+                    .get()
+                    .map(|op| format!("{} in progress", op.label()))
+                    .unwrap_or_default()
+            })
+            .text_size(px(10.0))
+            .text_color(move || theme().primary_foreground),
+        );
 
     let tab_bar = view()
         .h(px(30.0))
@@ -871,6 +901,7 @@ pub fn App() -> impl IntoElement {
         .bg(move || theme().background)
         .text_color(move || theme().foreground)
         .child(header)
+        .child(operation_banner)
         .child(tab_bar)
         .child(recent_bar)
         .child(commit_bar)
