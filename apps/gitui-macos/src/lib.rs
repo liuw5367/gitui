@@ -630,6 +630,26 @@ pub fn App() -> impl IntoElement {
         },
     );
 
+    let rename_branch_action = Arc::new({
+        let reload_branch = reload_for_branch.clone();
+        move |new_name: String| {
+            if new_name.is_empty() {
+                error.set(SharedString::from("Branch name is empty"));
+                return;
+            }
+            let current = branch.get_untracked().to_string();
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.rename_branch(&current, &new_name))
+            {
+                Ok(_) => {
+                    branch_name.set(String::new());
+                    error.set(SharedString::from(""));
+                    reload_branch();
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -663,6 +683,7 @@ pub fn App() -> impl IntoElement {
             checkout: checkout_action,
             create_branch: create_branch_action,
             delete_branch: delete_branch_action,
+            rename_branch: rename_branch_action,
             create_tag: create_tag_action,
             delete_tag: delete_tag_action,
             select_conflict: select_conflict_action,

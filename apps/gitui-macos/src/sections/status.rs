@@ -17,6 +17,7 @@ pub(crate) struct StatusActions {
     pub(crate) checkout: Arc<dyn Fn(String)>,
     pub(crate) create_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
+    pub(crate) rename_branch: Arc<dyn Fn(String)>,
     pub(crate) create_tag: Arc<dyn Fn(String)>,
     pub(crate) delete_tag: Arc<dyn Fn(String)>,
     pub(crate) select_conflict: Arc<dyn Fn(String)>,
@@ -104,6 +105,10 @@ pub(crate) fn status_pane(
                             delete_armed.set(true);
                         }
                     }
+                }))
+                .child(mini_button("Rename", false, {
+                    let action = actions.rename_branch.clone();
+                    move || action(branch_name.get_untracked().trim().to_string())
                 })),
         )
         .child(
