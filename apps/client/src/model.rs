@@ -417,6 +417,73 @@ pub fn delete_branch(tab: &mut Tab, branch: &str) {
     }
 }
 
+/// 新建分支；`from` 为空时基于当前 HEAD。
+pub fn create_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let from = if from.trim().is_empty() {
+        None
+    } else {
+        Some(from.trim())
+    };
+    repo.create_branch(name, from).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
+/// 新建标签。
+pub fn create_tag(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let from = if from.trim().is_empty() {
+        None
+    } else {
+        Some(from.trim())
+    };
+    repo.create_tag(name, from).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
+/// 添加远程。
+pub fn add_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.add_remote(name, url).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
+/// 贮藏当前改动。
+pub fn stash_changes(tab: &mut Tab, message: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.stash_push(message).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    refresh_changes(tab);
+    return Ok(());
+}
+
+/// 丢弃一条贮藏。
+pub fn drop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.stash_drop(reference).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
+/// 删除标签。
+pub fn drop_tag(tab: &mut Tab, name: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.delete_tag(name).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
+/// 移除远程。
+pub fn drop_remote(tab: &mut Tab, name: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.remove_remote(name).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
 /// 设置对比引用的两端；任一端为空表示关闭对比。
 pub fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Option<String>) {
     let (Some(base), Some(target)) = (base.clone(), target.clone()) else {
@@ -1133,6 +1200,42 @@ mod tests {
         delete_branch(&mut tab, "main");
         assert!(tab.error.is_some(), "应报告不能删除当前分支");
         assert!(tab.refs.branches.iter().any(|branch| branch.name == "main"));
+    }
+
+    #[test]
+    fn ref_forms_create_branches_tags_and_remotes() {
+        let repo = TempRepo::new("refwrite");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let before = tab.refs.branches.len();
+
+        create_branch(&mut tab, "feature/x", "").expect("branch");
+        assert_eq!(tab.refs.branches.len(), before + 1);
+        assert!(tab.refs.branches.iter().any(|branch| branch.name == "feature/x"));
+
+        create_tag(&mut tab, "v0.0.1", "").expect("tag");
+        assert_eq!(tab.refs.tags, vec!["v0.0.1".to_string()]);
+
+        add_remote(&mut tab, "origin", "https://example.com/repo.git").expect("remote");
+        assert_eq!(tab.refs.remotes, vec!["origin".to_string()]);
+
+        // 空名字被 Git 拒绝，错误应回传给调用方。
+        assert!(create_branch(&mut tab, "", "").is_err());
+    }
+
+    #[test]
+    fn stash_changes_moves_worktree_content_away() {
+        let repo = TempRepo::new("stashmodel");
+        std::fs::write(repo.path.join("a.txt"), "changed\n").expect("write");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert!(!tab.changes.is_empty());
+
+        stash_changes(&mut tab, "wip").expect("stash");
+        assert!(tab.changes.is_empty(), "贮藏后变更列表应为空");
+        assert_eq!(tab.refs.stashes.len(), 1);
+
+        let reference = tab.refs.stashes[0].reference.clone();
+        drop_stash(&mut tab, reference.as_str()).expect("drop");
+        assert!(tab.refs.stashes.is_empty());
     }
 
     #[test]

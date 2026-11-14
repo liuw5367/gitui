@@ -1,0 +1,254 @@
+//! 表单对话框（设计板 22）：新建分支 / 标签 / 远程 / 贮藏。
+//!
+//! `alert_dialog` 只有按钮没有输入框，这里自建一个居中的模态浮层，带 1–2 个输入
+//! 字段与取消/确认。确认后由调用方执行真正的 Git 操作。
+
+use crate::design::{self, metrics};
+use crate::i18n;
+use nsh_base::input;
+use nsh_core::prelude::*;
+
+/// 对话框的种类，决定标题、字段与确认文案。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FormKind {
+    NewBranch,
+    NewTag,
+    AddRemote,
+    NewStash,
+}
+
+impl FormKind {
+    fn title(self) -> &'static str {
+        return match self {
+            FormKind::NewBranch => "form.newBranch",
+            FormKind::NewTag => "form.newTag",
+            FormKind::AddRemote => "form.addRemote",
+            FormKind::NewStash => "form.newStash",
+        };
+    }
+
+    /// 第一个字段的标签。
+    fn first_label(self) -> &'static str {
+        return match self {
+            FormKind::NewBranch | FormKind::NewTag => "form.name",
+            FormKind::AddRemote => "form.remoteName",
+            FormKind::NewStash => "form.message",
+        };
+    }
+
+    /// 第二个字段的标签；`None` 表示只有一个字段。
+    fn second_label(self) -> Option<&'static str> {
+        return match self {
+            FormKind::NewBranch | FormKind::NewTag => Some("form.from"),
+            FormKind::AddRemote => Some("form.url"),
+            FormKind::NewStash => None,
+        };
+    }
+
+    fn confirm(self) -> &'static str {
+        return match self {
+            FormKind::NewBranch => "form.create",
+            FormKind::NewTag => "form.create",
+            FormKind::AddRemote => "form.add",
+            FormKind::NewStash => "form.stash",
+        };
+    }
+}
+
+/// 对话框状态。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FormState {
+    pub kind: FormKind,
+    pub first: String,
+    pub second: String,
+    pub error: Option<String>,
+}
+
+impl FormState {
+    pub fn new(kind: FormKind) -> FormState {
+        return FormState {
+            kind,
+            first: String::new(),
+            second: String::new(),
+            error: None,
+        };
+    }
+}
+
+/// 模态表单。`state` 为 `None` 时什么都不画。
+pub(crate) fn form_dialog(
+    language: Signal<SharedString>,
+    state: Signal<Option<FormState>>,
+    on_submit: std::sync::Arc<dyn Fn(FormState)>,
+    on_cancel: std::sync::Arc<dyn Fn()>,
+) -> impl IntoElement {
+    return view()
+        .absolute()
+        .inset(px(0.0))
+        .z_index(120)
+        .items_center()
+        .justify_center()
+        .bg(move || {
+            if state.get().is_some() {
+                design::token("overlay")
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press({
+            let on_cancel = on_cancel.clone();
+            move || on_cancel()
+        })
+        .child(dynamic(move || -> AnyElement {
+            let Some(form) = state.get() else {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            };
+            let submit_form = form.clone();
+            let on_submit = on_submit.clone();
+            let on_cancel = on_cancel.clone();
+            let form_for_field_one = form.clone();
+            let form_for_field_two = form.clone();
+            return view()
+                .w(px(420.0))
+                .p(px(16.0))
+                .flex_col()
+                .gap(px(10.0))
+                .rounded(px(metrics::RADIUS_PANEL))
+                .border_1()
+                .border_color(move || design::line())
+                .bg(move || design::token("popover"))
+                .on_press(|| {})
+                .child(
+                    text(move || i18n::t(language.get().as_str(), form.kind.title()))
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight(600))
+                        .line_height(px(18.0))
+                        .text_color(move || design::text()),
+                )
+                .child(field(
+                    language,
+                    form.kind.first_label(),
+                    form_for_field_one.clone(),
+                    |state: &FormState| state.first.clone(),
+                    {
+                        let form = form_for_field_one.clone();
+                        move |text: String| {
+                            let mut next = form.clone();
+                            next.first = text;
+                            state.set(Some(next));
+                        }
+                    },
+                ))
+                .child(dynamic(move || -> AnyElement {
+                    let Some(label_key) = form.kind.second_label() else {
+                        return view().w_full().h(px(0.0)).into_element();
+                    };
+                    return field(
+                        language,
+                        label_key,
+                        form_for_field_two.clone(),
+                        |state: &FormState| state.second.clone(),
+                        {
+                            let state = state;
+                            let form = form_for_field_two.clone();
+                            move |text: String| {
+                                let mut next = form.clone();
+                                next.second = text;
+                                state.set(Some(next));
+                            }
+                        },
+                    )
+                    .into_element();
+                }))
+                .child(
+                    view()
+                        .w_full()
+                        .h(move || {
+                            if state
+                                .get()
+                                .map(|form| form.error.is_some())
+                                .unwrap_or(false)
+                            {
+                                px(16.0)
+                            } else {
+                                px(0.0)
+                            }
+                        })
+                        .overflow_hidden()
+                        .items_center()
+                        .child(
+                            text(move || {
+                                state
+                                    .get()
+                                    .and_then(|form| form.error)
+                                    .unwrap_or_default()
+                            })
+                            .text_size(px(10.5))
+                            .line_height(px(14.0))
+                            .text_color(move || design::danger()),
+                        ),
+                )
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(view().flex_1())
+                        .child(crate::widgets::button(
+                            move || i18n::t(language.get().as_str(), "common.cancel"),
+                            {
+                                let on_cancel = on_cancel.clone();
+                                move || on_cancel()
+                            },
+                        ))
+                        .child(crate::widgets::primary_button(
+                            move || i18n::t(language.get().as_str(), form.kind.confirm()),
+                            {
+                                let on_submit = on_submit.clone();
+                                move || on_submit(submit_form.clone())
+                            },
+                        )),
+                )
+                .into_element();
+        }));
+}
+
+fn field(
+    language: Signal<SharedString>,
+    label_key: &'static str,
+    form: FormState,
+    read: impl Fn(&FormState) -> String + 'static,
+    write: impl Fn(String) + 'static,
+) -> impl IntoElement {
+    return view()
+        .w_full()
+        .flex_col()
+        .gap(px(4.0))
+        .child(
+            text(move || i18n::t(language.get().as_str(), label_key))
+                .text_size(px(10.5))
+                .font_weight(FontWeight(600))
+                .line_height(px(14.0))
+                .text_color(move || design::text2()),
+        )
+        .child(
+            view()
+                .w_full()
+                .h(px(metrics::FIELD_H))
+                .flex_row()
+                .items_center()
+                .px(px(8.0))
+                .rounded(px(metrics::RADIUS_CONTROL))
+                .border_1()
+                .border_color(move || design::field_border())
+                .bg(move || design::field())
+                .child(
+                    input()
+                        .value(read(&form))
+                        .on_change(move |text: &str| write(text.to_string()))
+                        .text_size(px(12.0))
+                        .flex_1(),
+                ),
+        );
+}

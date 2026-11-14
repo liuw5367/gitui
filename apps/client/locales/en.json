@@ -340,5 +340,23 @@
     "settings": "Settings",
     "cycleAppearance": "Cycle appearance",
     "dismiss": "Dismiss overlay"
+  },
+  "form": {
+    "newBranch": "New Branch",
+    "newTag": "New Tag",
+    "addRemote": "Add Remote",
+    "newStash": "Stash Changes",
+    "name": "Name",
+    "from": "From (optional)",
+    "remoteName": "Remote name",
+    "url": "URL",
+    "message": "Message (optional)",
+    "create": "Create",
+    "add": "Add",
+    "stash": "Stash",
+    "drop": "Delete…",
+    "dropTag": "Delete tag",
+    "dropRemote": "Remove remote",
+    "dropStash": "Drop stash"
   }
 }

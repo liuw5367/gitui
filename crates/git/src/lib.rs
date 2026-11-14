@@ -400,6 +400,67 @@ impl Repo {
         return parse_status(&output);
     }
 
+    /// 新建分支（`git branch <name> <from>`）；`from` 为空时基于当前 HEAD。
+    pub fn create_branch(&self, name: &str, from: Option<&str>) -> Result<(), GitError> {
+        let args: Vec<&str> = match from {
+            Some(from) => vec!["branch", name, from],
+            None => vec!["branch", name],
+        };
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 新建轻量标签（`git tag <name> <from>`）。
+    pub fn create_tag(&self, name: &str, from: Option<&str>) -> Result<(), GitError> {
+        let args: Vec<&str> = match from {
+            Some(from) => vec!["tag", name, from],
+            None => vec!["tag", name],
+        };
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 删除标签。
+    pub fn delete_tag(&self, name: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["tag", "-d", name])?;
+        return Ok(());
+    }
+
+    /// 添加远程（`git remote add <name> <url>`）。
+    pub fn add_remote(&self, name: &str, url: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["remote", "add", name, url])?;
+        return Ok(());
+    }
+
+    /// 删除远程。
+    pub fn remove_remote(&self, name: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["remote", "remove", name])?;
+        return Ok(());
+    }
+
+    /// 贮藏当前改动（`git stash push -u`）；`message` 为空时不带说明。
+    pub fn stash_push(&self, message: &str) -> Result<(), GitError> {
+        let args: Vec<&str> = if message.trim().is_empty() {
+            vec!["stash", "push", "-u"]
+        } else {
+            vec!["stash", "push", "-u", "-m", message.trim()]
+        };
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 取出最近一条贮藏（`git stash pop`）。
+    pub fn stash_pop(&self) -> Result<(), GitError> {
+        run_git(&self.root, &["stash", "pop"])?;
+        return Ok(());
+    }
+
+    /// 丢弃某条贮藏（`git stash drop`）。
+    pub fn stash_drop(&self, reference: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["stash", "drop", reference])?;
+        return Ok(());
+    }
+
     /// 切换到 `branch`（`git checkout <branch>`）。
     pub fn checkout_branch(&self, branch: &str) -> Result<(), GitError> {
         run_git(&self.root, &["checkout", branch])?;
@@ -1774,6 +1835,49 @@ mod tests {
         // 仓库级设置能被读到。
         run_git(repo.root(), &["config", "credential.helper", "store"]).expect("config");
         assert_eq!(credential_helper(repo.root()).expect("helper"), "store");
+    }
+
+    #[test]
+    fn refs_can_be_created_and_deleted() {
+        let (_guard, path) = fixture("refwrite", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+
+        repo.create_branch("feature", None).expect("branch");
+        repo.create_tag("v9.9.9", None).expect("tag");
+        repo.add_remote("upstream", "https://example.com/repo.git")
+            .expect("remote");
+        let refs = repo.refs().expect("refs");
+        assert!(refs.branches.iter().any(|branch| branch.name == "feature"));
+        assert_eq!(refs.tags, vec!["v9.9.9".to_string()]);
+        assert_eq!(refs.remotes, vec!["upstream".to_string()]);
+
+        repo.delete_tag("v9.9.9").expect("delete tag");
+        repo.remove_remote("upstream").expect("remove remote");
+        let refs = repo.refs().expect("refs");
+        assert!(refs.tags.is_empty());
+        assert!(refs.remotes.is_empty());
+        assert!(refs.branches.iter().any(|branch| branch.name == "feature"));
+    }
+
+    #[test]
+    fn stash_can_be_pushed_popped_and_dropped() {
+        let (_guard, path) = fixture("stash", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "changed\n").expect("write");
+
+        repo.stash_push("wip").expect("stash");
+        assert!(repo.status().expect("status").is_empty(), "贮藏后工作区应干净");
+        let stashes = repo.refs().expect("refs").stashes;
+        assert_eq!(stashes.len(), 1);
+        assert!(stashes[0].summary.contains("wip"));
+
+        repo.stash_pop().expect("pop");
+        assert!(!repo.status().expect("status").is_empty(), "取出后改动回来");
+
+        repo.stash_push("again").expect("stash");
+        let reference = repo.refs().expect("refs").stashes[0].reference.clone();
+        repo.stash_drop(reference.as_str()).expect("drop");
+        assert!(repo.refs().expect("refs").stashes.is_empty());
     }
 
     #[test]

@@ -340,5 +340,23 @@
     "settings": "设置",
     "cycleAppearance": "切换外观",
     "dismiss": "关闭浮层"
+  },
+  "form": {
+    "newBranch": "新建分支",
+    "newTag": "新建标签",
+    "addRemote": "添加远程",
+    "newStash": "贮藏改动",
+    "name": "名称",
+    "from": "起点（可选）",
+    "remoteName": "远程名称",
+    "url": "地址",
+    "message": "说明（可选）",
+    "create": "新建",
+    "add": "添加",
+    "stash": "贮藏",
+    "drop": "删除…",
+    "dropTag": "删除标签",
+    "dropRemote": "移除远程",
+    "dropStash": "丢弃贮藏"
   }
 }

@@ -92,6 +92,10 @@ pub(crate) struct Actions {
     pub(crate) set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)>,
     pub(crate) checkout_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
+    pub(crate) open_form: Arc<dyn Fn(screens::FormKind)>,
+    pub(crate) drop_tag: Arc<dyn Fn(String)>,
+    pub(crate) drop_remote: Arc<dyn Fn(String)>,
+    pub(crate) drop_stash: Arc<dyn Fn(String)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -138,6 +142,7 @@ pub fn App() -> impl IntoElement {
     let changelist_open = signal(false);
     let palette_open = signal(false);
     let settings_state = signal(store::load_settings(&store_dir));
+    let form_state = signal(Option::<screens::FormState>::None);
     let agent_plan = signal(Option::<agent::Plan>::None);
     let agent_policies = signal({
         let mut policies = agent::Policies::default();
@@ -942,6 +947,94 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let open_form: Arc<dyn Fn(screens::FormKind)> = {
+        let form_state = form_state;
+        Arc::new(move |kind: screens::FormKind| {
+            form_state.set(Some(screens::FormState::new(kind)));
+        })
+    };
+
+    // 表单提交：按种类执行对应的 Git 写操作，失败时把原因留在对话框里。
+    let submit_form: Arc<dyn Fn(screens::FormState)> = {
+        let tabs = tabs;
+        let active = active;
+        let form_state = form_state;
+        Arc::new(move |form: screens::FormState| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.get_mut(current) else {
+                return;
+            };
+            let first = form.first.trim().to_string();
+            let second = form.second.trim().to_string();
+            if first.is_empty() {
+                let mut next = form.clone();
+                next.error = Some("名称不能为空".to_string());
+                form_state.set(Some(next));
+                return;
+            }
+            let result = match form.kind {
+                screens::FormKind::NewBranch => model::create_branch(tab, first.as_str(), second.as_str()),
+                screens::FormKind::NewTag => model::create_tag(tab, first.as_str(), second.as_str()),
+                screens::FormKind::AddRemote => model::add_remote(tab, first.as_str(), second.as_str()),
+                screens::FormKind::NewStash => model::stash_changes(tab, first.as_str()),
+            };
+            tabs.set(list);
+            match result {
+                Ok(()) => form_state.set(None),
+                Err(detail) => {
+                    let mut next = form;
+                    next.error = Some(detail);
+                    form_state.set(Some(next));
+                }
+            }
+        })
+    };
+
+    let cancel_form: Arc<dyn Fn()> = {
+        let form_state = form_state;
+        Arc::new(move || form_state.set(None))
+    };
+
+    let drop_tag: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |name: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let _ = model::drop_tag(tab, name.as_str());
+                tabs.set(list);
+            }
+        })
+    };
+
+    let drop_remote: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |name: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let _ = model::drop_remote(tab, name.as_str());
+                tabs.set(list);
+            }
+        })
+    };
+
+    let drop_stash: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |reference: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let _ = model::drop_stash(tab, reference.as_str());
+                tabs.set(list);
+            }
+        })
+    };
+
     let checkout_branch: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
@@ -1049,6 +1142,10 @@ pub fn App() -> impl IntoElement {
         set_compare_refs,
         checkout_branch,
         delete_branch,
+        open_form,
+        drop_tag,
+        drop_remote,
+        drop_stash,
         apply_filter,
         clear_filter,
         clone_repository,
@@ -1281,6 +1378,12 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(screens::form_dialog(
+            language,
+            form_state,
+            submit_form.clone(),
+            cancel_form.clone(),
+        ))
         .child(dynamic(move || -> AnyElement {
             if !palette_open.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();

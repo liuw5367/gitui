@@ -12,6 +12,7 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
 use crate::Actions;
+use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
 /// 页签。
@@ -62,6 +63,38 @@ pub(crate) fn refs_view(
                         .text_color(move || design::text()),
                 )
                 .child(view().flex_1())
+                .child(create_button(
+                    language,
+                    "form.newBranch",
+                    {
+                        let open_form = actions.open_form.clone();
+                        move || open_form(crate::screens::FormKind::NewBranch)
+                    },
+                ))
+                .child(create_button(
+                    language,
+                    "form.newTag",
+                    {
+                        let open_form = actions.open_form.clone();
+                        move || open_form(crate::screens::FormKind::NewTag)
+                    },
+                ))
+                .child(create_button(
+                    language,
+                    "form.addRemote",
+                    {
+                        let open_form = actions.open_form.clone();
+                        move || open_form(crate::screens::FormKind::AddRemote)
+                    },
+                ))
+                .child(create_button(
+                    language,
+                    "form.newStash",
+                    {
+                        let open_form = actions.open_form.clone();
+                        move || open_form(crate::screens::FormKind::NewStash)
+                    },
+                ))
                 .child(tab_button(
                     language,
                     RefsTab::Refs,
@@ -77,7 +110,7 @@ pub(crate) fn refs_view(
         )
         .child(dynamic(move || -> AnyElement {
             match selected_tab.get() {
-                RefsTab::Refs => refs_table(language, tab.clone()).into_element(),
+                RefsTab::Refs => refs_table(language, tab.clone(), actions.clone()).into_element(),
                 RefsTab::Reflog => reflog_list(language, tab.clone(), now, actions.clone())
                     .into_element(),
             }
@@ -117,7 +150,14 @@ fn tab_button(
         );
 }
 
-fn refs_table(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
+fn refs_table(
+    language: Signal<SharedString>,
+    tab: Tab,
+    actions: Actions,
+) -> impl IntoElement {
+    let drop_tag = actions.drop_tag.clone();
+    let drop_remote = actions.drop_remote.clone();
+    let drop_stash = actions.drop_stash.clone();
     let mut sections: Vec<AnyElement> = Vec::new();
 
     let branch_rows: Vec<AnyElement> = tab
@@ -154,7 +194,20 @@ fn refs_table(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
         .remotes
         .iter()
         .map(|remote| {
-            return ref_row(remote.clone(), String::new(), String::new(), design::text2);
+            let drop_remote = drop_remote.clone();
+            let name = remote.clone();
+            return ref_row_with_menu(
+                language,
+                remote.clone(),
+                String::new(),
+                String::new(),
+                design::text2,
+                MenuAction {
+                    label_key: "form.dropRemote",
+                    name: name.clone(),
+                    run: Box::new(move || drop_remote(name.clone())),
+                },
+            );
         })
         .collect();
     sections.push(section(
@@ -168,7 +221,22 @@ fn refs_table(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
         .refs
         .tags
         .iter()
-        .map(|tag| ref_row(tag.clone(), String::new(), String::new(), design::tag_fg))
+        .map(|tag| {
+            let drop_tag = drop_tag.clone();
+            let name = tag.clone();
+            ref_row_with_menu(
+                language,
+                tag.clone(),
+                String::new(),
+                String::new(),
+                design::tag_fg,
+                MenuAction {
+                    label_key: "form.dropTag",
+                    name: name.clone(),
+                    run: Box::new(move || drop_tag(name.clone())),
+                },
+            )
+        })
         .collect();
     sections.push(section(
         language,
@@ -182,11 +250,19 @@ fn refs_table(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
         .stashes
         .iter()
         .map(|stash| {
-            return ref_row(
+            let drop_stash = drop_stash.clone();
+            let reference = stash.reference.clone();
+            return ref_row_with_menu(
+                language,
                 stash.reference.clone(),
                 stash.summary.clone(),
                 String::new(),
                 design::text2,
+                MenuAction {
+                    label_key: "form.dropStash",
+                    name: reference.clone(),
+                    run: Box::new(move || drop_stash(reference.clone())),
+                },
             );
         })
         .collect();
@@ -385,4 +461,92 @@ fn reflog_list(
                 .child(rows),
         ),
     );
+}
+
+/// 创建入口按钮（工具条右侧）。
+fn create_button(
+    language: Signal<SharedString>,
+    key: &'static str,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return view()
+        .h(px(18.0))
+        .px(px(6.0))
+        .items_center()
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(move || design::line_soft())
+        .hover(|style| style.bg(move || design::hover()))
+        .on_press(on_press)
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(9.5))
+                .line_height(px(12.0))
+                .text_color(move || design::text2()),
+        );
+}
+
+/// 行内的删除动作。
+struct MenuAction {
+    label_key: &'static str,
+    name: String,
+    run: Box<dyn Fn()>,
+}
+
+/// 带右键删除的引用行（标签、远程、贮藏）。
+fn ref_row_with_menu(
+    language: Signal<SharedString>,
+    name: String,
+    note: String,
+    track: String,
+    color: fn() -> AdaptiveColor,
+    action: MenuAction,
+) -> AnyElement {
+    let label = format!("{} {}", i18n::t(language.get_untracked().as_str(), action.label_key), action.name);
+    let run = std::sync::Arc::new(action.run);
+    return view()
+        .w_full()
+        .h(px(28.0))
+        .px(px(6.0))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .rounded(px(4.0))
+        .hover(|style| style.bg(move || design::hover()))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let run = run.clone();
+            let items = vec![
+                MenuItem::new(i18n::t(language.get().as_str(), "form.drop"))
+                    .on_select(move || run()),
+            ];
+            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+        })
+        .child(
+            text(name)
+                .w(px(220.0))
+                .text_size(px(11.5))
+                .line_height(px(15.0))
+                .text_color(move || color())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(
+            text(note)
+                .flex_1()
+                .text_size(px(10.0))
+                .line_height(px(14.0))
+                .text_color(move || design::text3())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(
+            text(track)
+                .text_size(px(9.5))
+                .text_color(move || design::text3()),
+        )
+        .child(
+            text(label)
+                .text_size(px(9.0))
+                .line_height(px(12.0))
+                .text_color(move || design::text3()),
+        )
+        .into_element();
 }
