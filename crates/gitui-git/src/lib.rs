@@ -61,6 +61,12 @@ impl Operation {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Identity {
+    pub name: String,
+    pub email: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Remote {
     pub name: String,
@@ -215,6 +221,29 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// Effective local Git identity. Missing values come back empty.
+    pub fn identity(&self) -> Identity {
+        Identity {
+            name: self
+                .git(&["config", "--get", "user.name"])
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+            email: self
+                .git(&["config", "--get", "user.email"])
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
+        }
+    }
+
+    /// Set the repository-local Git identity.
+    pub fn set_identity(&self, name: &str, email: &str) -> Result<(), GitError> {
+        self.git(&["config", "user.name", name])?;
+        self.git(&["config", "user.email", email])?;
+        Ok(())
     }
 
     /// Configured remotes, using their fetch URLs.
@@ -1185,6 +1214,17 @@ mod tests {
         repo.unstage_hunk("a.txt", 0).unwrap();
         assert_eq!(hunk_count(&repo.diff_staged("a.txt").unwrap()), 1);
         assert_eq!(hunk_count(&repo.diff_unstaged("a.txt").unwrap()), 1);
+    }
+
+    #[test]
+    fn reads_and_sets_local_identity() {
+        let fixture = TempRepo::new();
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.set_identity("Gitui Tester", "tester@example.invalid")
+            .unwrap();
+        let identity = repo.identity();
+        assert_eq!(identity.name, "Gitui Tester");
+        assert_eq!(identity.email, "tester@example.invalid");
     }
 
     #[test]
