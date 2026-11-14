@@ -56,6 +56,8 @@ fn native(registry: &mut Registry) {
 pub(crate) enum RefsTab {
     Branches,
     Tags,
+    Remotes,
+    Stashes,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1133,10 +1135,22 @@ pub fn App() -> impl IntoElement {
         tags,
         branch_name,
         tag_name,
+        remotes,
+        remote_name,
+        remote_url,
+        stashes,
         RefsActions {
             close: close_refs,
             checkout: checkout_action.clone(),
             delete_branch: delete_branch_action.clone(),
+            add_remote: add_remote_action.clone(),
+            remove_remote: remove_remote_action.clone(),
+            stash: StashActions {
+                push: stash_push_action.clone(),
+                apply: stash_apply_action.clone(),
+                pop: stash_pop_action.clone(),
+                drop: stash_drop_action.clone(),
+            },
             branch_name: Arc::new({
                 let action = create_branch_action.clone();
                 move || action(branch_name.get_untracked().trim().to_string())

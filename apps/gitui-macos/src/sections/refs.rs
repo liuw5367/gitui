@@ -3,7 +3,8 @@
 use crate::design;
 use crate::widgets::{header_button, mini_button};
 use crate::RefsTab;
-use gitui_git::{Branch, Tag};
+use crate::sections::StashActions;
+use gitui_git::{Branch, Remote, Stash, Tag};
 use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -16,6 +17,9 @@ pub(crate) struct RefsActions {
     pub(crate) branch_name: Arc<dyn Fn()>,
     pub(crate) create_tag: Arc<dyn Fn()>,
     pub(crate) delete_tag: Arc<dyn Fn()>,
+    pub(crate) add_remote: Arc<dyn Fn(String, String)>,
+    pub(crate) remove_remote: Arc<dyn Fn(String)>,
+    pub(crate) stash: StashActions,
 }
 
 fn nav_item(
@@ -57,6 +61,10 @@ pub(crate) fn refs_panel(
     tags: Signal<Vec<Tag>>,
     branch_name: Signal<String>,
     tag_name: Signal<String>,
+    remotes: Signal<Vec<Remote>>,
+    remote_name: Signal<String>,
+    remote_url: Signal<String>,
+    stashes: Signal<Vec<Stash>>,
     actions: RefsActions,
 ) -> impl IntoElement {
     view()
@@ -109,6 +117,18 @@ pub(crate) fn refs_panel(
                         .child(nav_item(
                             "Tags",
                             RefsTab::Tags,
+                            tab,
+                            Arc::new(move |next| tab.set(next)),
+                        ))
+                        .child(nav_item(
+                            "Remotes",
+                            RefsTab::Remotes,
+                            tab,
+                            Arc::new(move |next| tab.set(next)),
+                        ))
+                        .child(nav_item(
+                            "Stashes",
+                            RefsTab::Stashes,
                             tab,
                             Arc::new(move |next| tab.set(next)),
                         ))
@@ -246,6 +266,156 @@ pub(crate) fn refs_panel(
                                                 .text_size(px(11.0))
                                                 .text_color(move || design::text()),
                                         )
+                                    },
+                                )),
+                        )
+                        .child(
+                            view()
+                                .h(move || {
+                                    if tab.get() == RefsTab::Remotes {
+                                        px(420.0)
+                                    } else {
+                                        px(0.0)
+                                    }
+                                })
+                                .flex_col()
+                                .gap_2()
+                                .child(
+                                    text("Remotes")
+                                        .text_size(px(14.0))
+                                        .text_color(move || design::text()),
+                                )
+                                .child(
+                                    view()
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(
+                                            input()
+                                                .value(remote_name)
+                                                .on_change(move |text: &str| {
+                                                    remote_name.set(text.to_string())
+                                                })
+                                                .placeholder("remote name")
+                                                .text_size(px(11.0)),
+                                        )
+                                        .child(
+                                            view()
+                                                .flex_row()
+                                                .gap_1()
+                                                .child(
+                                                    input()
+                                                        .value(remote_url)
+                                                        .on_change(move |text: &str| {
+                                                            remote_url.set(text.to_string())
+                                                        })
+                                                        .placeholder("remote url")
+                                                        .text_size(px(11.0))
+                                                        .flex_1(),
+                                                )
+                                                .child(mini_button("Add", true, {
+                                                    let action = actions.add_remote.clone();
+                                                    move || {
+                                                        action(
+                                                            remote_name.get_untracked().trim().to_string(),
+                                                            remote_url.get_untracked().trim().to_string(),
+                                                        )
+                                                    }
+                                                })),
+                                        ),
+                                )
+                                .child(each(
+                                    remotes,
+                                    |remote: &Remote| remote.name.clone(),
+                                    move |remote, _| {
+                                        let name = remote.get().name.clone();
+                                        let remove = actions.remove_remote.clone();
+                                        view()
+                                            .flex_col()
+                                            .gap_0()
+                                            .child(
+                                                view()
+                                                    .h(px(24.0))
+                                                    .flex_row()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .child(
+                                                        text(move || remote.get().name)
+                                                            .flex_1()
+                                                            .text_size(px(11.0))
+                                                            .text_color(move || design::text()),
+                                                    )
+                                                    .child(mini_button("Remove", false, move || {
+                                                        remove(name.clone())
+                                                    })),
+                                            )
+                                            .child(
+                                                text(move || remote.get().url)
+                                                    .text_size(px(9.5))
+                                                    .text_color(move || design::text3()),
+                                            )
+                                    },
+                                )),
+                        )
+                        .child(
+                            view()
+                                .h(move || {
+                                    if tab.get() == RefsTab::Stashes {
+                                        px(420.0)
+                                    } else {
+                                        px(0.0)
+                                    }
+                                })
+                                .flex_col()
+                                .gap_2()
+                                .child(
+                                    view()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            text("Stashes")
+                                                .flex_1()
+                                                .text_size(px(14.0))
+                                                .text_color(move || design::text()),
+                                        )
+                                        .child(mini_button("Stash", true, {
+                                            let action = actions.stash.push.clone();
+                                            move || action()
+                                        })),
+                                )
+                                .child(each(
+                                    stashes,
+                                    |stash: &Stash| stash.selector.clone(),
+                                    move |stash, _| {
+                                        let selector = stash.get().selector.clone();
+                                        let apply_selector = selector.clone();
+                                        let pop_selector = selector.clone();
+                                        let drop_selector = selector;
+                                        let apply = actions.stash.apply.clone();
+                                        let pop = actions.stash.pop.clone();
+                                        let drop = actions.stash.drop.clone();
+                                        view()
+                                            .flex_col()
+                                            .gap_1()
+                                            .child(
+                                                text(move || stash.get().message)
+                                                    .text_size(px(10.0))
+                                                    .text_color(move || design::text2()),
+                                            )
+                                            .child(
+                                                view()
+                                                    .flex_row()
+                                                    .gap_1()
+                                                    .child(mini_button("Apply", true, move || {
+                                                        apply(apply_selector.clone())
+                                                    }))
+                                                    .child(mini_button("Pop", false, move || {
+                                                        pop(pop_selector.clone())
+                                                    }))
+                                                    .child(mini_button("Drop", false, move || {
+                                                        drop(drop_selector.clone())
+                                                    })),
+                                            )
                                     },
                                 )),
                         ),
