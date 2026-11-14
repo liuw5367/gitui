@@ -1,20 +1,29 @@
-//! 工作区：标题栏 + 工具栏 + 侧栏 + History/diff + 状态栏。
+//! 工作区：标题栏 + 工具栏 + 侧栏 + History/diff（+ 提交文件面板）+ 状态栏。
 //!
-//! P1 只读；打开失败时在整个正文区显示错误面板，而不是留在空白界面。
+//! diff 区显示三种内容之一：选中提交的补丁、提交内单个文件的补丁、两个提交的区间
+//! 补丁。打开失败时在正文区显示错误面板。
 
-use crate::design::{self, metrics};
+use crate::design;
 use crate::i18n;
+use crate::model;
 use crate::model::Tab;
 use crate::shell;
-use crate::workspace::{diff, history, sidebar};
+use crate::workspace::{diff, history, inspector, sidebar};
 use crate::Actions;
 use nsh_core::prelude::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn workspace(
     language: Signal<SharedString>,
     tabs: Signal<Vec<Tab>>,
     active: Signal<usize>,
     history_query: Signal<String>,
+    filter_reference: Signal<String>,
+    filter_author: Signal<String>,
+    filter_when: Signal<SharedString>,
+    filter_open: Signal<bool>,
+    inspector_open: Signal<bool>,
+    compare_mode: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -36,11 +45,7 @@ pub(crate) fn workspace(
             active,
             actions.clone(),
         ))
-        .child(shell::toolbar(
-            language,
-            history_query,
-            change_count,
-        ))
+        .child(shell::toolbar(language, history_query, change_count))
         .child(
             view()
                 .w_full()
@@ -51,23 +56,33 @@ pub(crate) fn workspace(
                     language,
                     current,
                     history_query,
+                    filter_reference,
+                    filter_author,
+                    filter_when,
+                    filter_open,
+                    inspector_open,
+                    compare_mode,
                     actions_for_body,
                 )),
         )
         .child(shell::statusbar(language, current));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn match_body(
     language: Signal<SharedString>,
     current: Memo<Option<Tab>>,
     history_query: Signal<String>,
+    filter_reference: Signal<String>,
+    filter_author: Signal<String>,
+    filter_when: Signal<SharedString>,
+    filter_open: Signal<bool>,
+    inspector_open: Signal<bool>,
+    compare_mode: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h_full()
-        .flex_row()
-        .child(dynamic(move || -> AnyElement {
+    return view().w_full().h_full().flex_row().child(dynamic(
+        move || -> AnyElement {
             let tab = current.get();
             let has_error = tab
                 .as_ref()
@@ -94,20 +109,73 @@ fn match_body(
                     .into_element();
             };
             let actions = actions.clone();
-            return body(language, current, tab, history_query, actions).into_element();
-        }));
+            return body(
+                language,
+                tab,
+                history_query,
+                filter_reference,
+                filter_author,
+                filter_when,
+                filter_open,
+                inspector_open,
+                compare_mode,
+                actions,
+            )
+            .into_element();
+        },
+    ));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn body(
     language: Signal<SharedString>,
-    current: Memo<Option<Tab>>,
     tab: Tab,
     history_query: Signal<String>,
+    filter_reference: Signal<String>,
+    filter_author: Signal<String>,
+    filter_when: Signal<SharedString>,
+    filter_open: Signal<bool>,
+    inspector_open: Signal<bool>,
+    compare_mode: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
     let tab_for_history = tab.clone();
-    let tab_for_diff = tab;
+    let tab_for_inspector = tab.clone();
+
+    // diff 区展示的内容：区间对比 > 单文件补丁 > 提交补丁。
+    let (label, patch) = match tab.compare_range() {
+        Some((from, to)) => {
+            let from_short = tab
+                .commits
+                .get(from)
+                .map(|commit| commit.short.clone())
+                .unwrap_or_default();
+            let to_short = tab
+                .commits
+                .get(to)
+                .map(|commit| commit.short.clone())
+                .unwrap_or_default();
+            (
+                i18n::with_arguments(
+                    language.get_untracked().as_str(),
+                    "compare.range",
+                    &[("from", from_short), ("to", to_short)],
+                ),
+                model::compare_patch(&tab).unwrap_or_default(),
+            )
+        }
+        None => match tab.file_patch.clone() {
+            Some((path, patch)) => (path, patch),
+            None => (
+                tab.selected_commit()
+                    .map(|commit| commit.short.clone())
+                    .unwrap_or_default(),
+                tab.patch.clone(),
+            ),
+        },
+    };
+    let inspector_visible = inspector_open.get_untracked();
     return view()
         .w_full()
         .h_full()
@@ -123,11 +191,22 @@ fn body(
                     language,
                     tab_for_history,
                     history_query,
+                    filter_reference,
+                    filter_author,
+                    filter_when,
+                    filter_open,
+                    compare_mode,
                     actions.clone(),
                 ))
-                .child(diff::diff(language, tab_for_diff)),
+                .child(diff::diff(language, label, patch, inspector_open)),
         )
-        .child(view().w_full().h(px(0.0)));
+        .when(inspector_visible, |this| {
+            this.child(inspector::inspector(
+                language,
+                tab_for_inspector,
+                actions.clone(),
+            ))
+        });
 }
 
 fn error_panel(
@@ -145,7 +224,7 @@ fn error_panel(
         .justify_center()
         .flex_col()
         .gap(px(10.0))
-        .child(widgets_icon())
+        .child(crate::widgets::icon("info", 20.0, design::danger))
         .child(
             text(move || i18n::t(language.get().as_str(), "error.title"))
                 .text_size(px(13.0))
@@ -179,8 +258,4 @@ fn error_panel(
                     },
                 )),
         );
-}
-
-fn widgets_icon() -> impl IntoElement {
-    return crate::widgets::icon("info", 20.0, design::danger);
 }

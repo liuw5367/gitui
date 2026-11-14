@@ -22,7 +22,7 @@ pub(crate) fn titlebar(
     let (left, right) = crate::window_insets();
     let activate = actions.activate_tab.clone();
     let close = actions.close_tab.clone();
-    let open = actions.choose_folder.clone();
+    let open = actions.go_repo_manager.clone();
     return view()
         .w_full()
         .h(px(metrics::TITLEBAR_H))

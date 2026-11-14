@@ -83,6 +83,9 @@ pub const SEG_H: f32 = 26.0;
 pub const SEARCH_W: f32 = 176.0;
 pub const SEARCH_H: f32 = 26.0;
 
+/// 窗口内容的内边距：设计板的标题栏与工具条左右 13、10。
+pub const WINDOW_PAD: f32 = 13.0;
+
 /// 正文基准字号（`body`）。
 pub const FONT_BASE: f32 = 13.0;
 /// 元数据字号（`.wglabel`、`.commit-cols` 等为 9.5，`.statusbar` 为 10.5）。

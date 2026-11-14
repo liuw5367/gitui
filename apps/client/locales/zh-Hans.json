@@ -79,10 +79,28 @@
     "yesterday": "昨天",
     "days": "%{count} 天",
     "months": [
-      "1 月", "2 月", "3 月", "4 月", "5 月", "6 月",
-      "7 月", "8 月", "9 月", "10 月", "11 月", "12 月"
+      "1 月",
+      "2 月",
+      "3 月",
+      "4 月",
+      "5 月",
+      "6 月",
+      "7 月",
+      "8 月",
+      "9 月",
+      "10 月",
+      "11 月",
+      "12 月"
     ],
-    "weekdays": ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+    "weekdays": [
+      "周日",
+      "周一",
+      "周二",
+      "周三",
+      "周四",
+      "周五",
+      "周六"
+    ],
     "monthDay": "%{month}%{day} 日",
     "monthDayYear": "%{year} 年 %{month}%{day} 日"
   },
@@ -103,5 +121,56 @@
     "done": "完成",
     "search": "搜索",
     "loading": "加载中…"
+  },
+  "repoManager": {
+    "title": "仓库管理",
+    "count": "%{count} 个仓库",
+    "subtitle": "最近 %{count} 个",
+    "tabOpen": "打开",
+    "tabClone": "克隆",
+    "tabInit": "新建",
+    "openEllipsis": "打开…",
+    "cloneEllipsis": "克隆…",
+    "initEllipsis": "新建…",
+    "openTitle": "打开仓库",
+    "openHint": "选择一个已经包含 Git 仓库的目录。",
+    "initTitle": "新建仓库",
+    "initHint": "在指定目录初始化仓库，分支为 main。",
+    "initPath": "目录",
+    "initAction": "新建仓库"
+  },
+  "filter": {
+    "title": "筛选提交",
+    "branch": "分支",
+    "author": "作者",
+    "when": {
+      "all": "不限时间",
+      "today": "今天",
+      "week": "最近 7 天",
+      "month": "最近 30 天",
+      "year": "最近一年"
+    },
+    "allBranches": "所有分支",
+    "allAuthors": "所有作者",
+    "apply": "应用",
+    "clear": "清除"
+  },
+  "compare": {
+    "mode": "对比",
+    "hint": "选择两个提交进行对比",
+    "clear": "清除",
+    "range": "%{from} → %{to}",
+    "withWorkingTree": "与工作区对比"
+  },
+  "files": {
+    "title": "文件",
+    "changes": "改动",
+    "info": "信息",
+    "atCommit": "提交 %{short}",
+    "empty": "没有文件",
+    "copyPath": "复制路径",
+    "openInEditor": "在编辑器中打开",
+    "source": "源码",
+    "blame": "追溯"
   }
 }

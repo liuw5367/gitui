@@ -12,6 +12,21 @@ const MAX_OUTPUT: usize = 8 * 1024 * 1024;
 /// 展示在错误里的 stderr 长度上限。
 const MAX_DETAIL: usize = 4096;
 
+/// 历史筛选条件。空字段表示不限制。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogFilter {
+    /// 关键字：摘要、作者、短 SHA、引用名。
+    pub query: String,
+    /// 只保留该作者。
+    pub author: Option<String>,
+    /// `--since` 的值（`2026-11-01` 或 `7 days ago`）。
+    pub since: Option<String>,
+    /// `--until` 的值。
+    pub until: Option<String>,
+    /// 只在该引用（分支、标签、`origin/main`）上读取。
+    pub reference: Option<String>,
+}
+
 /// 一个已经校验过的仓库。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Repo {
@@ -81,8 +96,17 @@ impl Repo {
     }
 
     /// 当前分支名；detached HEAD 时返回 `HEAD`。
+    ///
+    /// 空仓库还没有提交，`rev-parse --abbrev-ref HEAD` 会失败；这时用
+    /// `symbolic-ref` 读出尚未落地的分支名（刚 `git init` 的仓库要能显示 `main`）。
     pub fn abbrev_branch(&self) -> Result<String, GitError> {
-        let output = run_git(&self.root, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+        if let Ok(output) = run_git(&self.root, &["rev-parse", "--abbrev-ref", "HEAD"]) {
+            let branch = String::from_utf8_lossy(&output).trim().to_string();
+            if !branch.is_empty() {
+                return Ok(branch);
+            }
+        }
+        let output = run_git(&self.root, &["symbolic-ref", "--short", "HEAD"])?;
         let branch = String::from_utf8_lossy(&output).trim().to_string();
         return Ok(if branch.is_empty() {
             "HEAD".to_string()
@@ -129,6 +153,91 @@ impl Repo {
             });
         }
         return Ok(commits);
+    }
+
+    /// 带筛选的提交列表：分支/引用、作者、时间范围与关键字。
+    ///
+    /// 关键字在本地匹配（摘要、作者、短 SHA、引用）；其余条件交给 `git log`，
+    /// 避免把整个历史读进内存。
+    pub fn log_filtered(&self, limit: usize, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
+        let limit_arg = format!("-{}", limit.max(1));
+        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
+        let mut args: Vec<&str> = vec!["log", limit_arg.as_str(), "--date=unix", format];
+        let reference = filter.reference.clone().unwrap_or_default();
+        if !reference.is_empty() {
+            args.push(reference.as_str());
+        }
+        let since_arg = filter
+            .since
+            .as_ref()
+            .map(|since| format!("--since={}", since));
+        let until_arg = filter
+            .until
+            .as_ref()
+            .map(|until| format!("--until={}", until));
+        let author_arg = filter
+            .author
+            .as_ref()
+            .filter(|author| !author.is_empty())
+            .map(|author| format!("--author={}", author));
+        if let Some(value) = since_arg.as_deref() {
+            args.push(value);
+        }
+        if let Some(value) = until_arg.as_deref() {
+            args.push(value);
+        }
+        if let Some(value) = author_arg.as_deref() {
+            args.push(value);
+        }
+        let output = run_git(&self.root, &args)?;
+        let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
+        if !filter.query.is_empty() {
+            let needle = filter.query.to_lowercase();
+            commits.retain(|commit| {
+                commit.summary.to_lowercase().contains(&needle)
+                    || commit.author.to_lowercase().contains(&needle)
+                    || commit.short.contains(&needle)
+                    || commit
+                        .refs
+                        .iter()
+                        .any(|reference| reference.to_lowercase().contains(&needle))
+            });
+        }
+        return Ok(commits);
+    }
+
+    /// 历史里出现过的作者，按最近提交的先后去重。
+    pub fn authors(&self) -> Result<Vec<String>, GitError> {
+        let output = run_git(&self.root, &["log", "--format=%an"])?;
+        let mut authors: Vec<String> = Vec::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let name = line.trim();
+            if name.is_empty() {
+                continue;
+            }
+            if !authors.iter().any(|existing| existing == name) {
+                authors.push(name.to_string());
+            }
+        }
+        return Ok(authors);
+    }
+
+    /// 两个提交之间的区间 diff（`from..to`）。
+    ///
+    /// 用于多提交对比：`from` 为空时表示与工作区比较（`to` 作为起点）。
+    pub fn diff_between(&self, from: &str, to: &str) -> Result<String, GitError> {
+        let range = format!("{}..{}", from, to);
+        let output = run_git(&self.root, &["diff", "--no-color", range.as_str()])?;
+        return Ok(String::from_utf8_lossy(&output).to_string());
+    }
+
+    /// 某个提交里单个文件的补丁。
+    pub fn patch_for_path(&self, sha: &str, path: &str) -> Result<String, GitError> {
+        let output = run_git(
+            &self.root,
+            &["show", "--no-color", "--patch", "--format=", sha, "--", path],
+        )?;
+        return Ok(String::from_utf8_lossy(&output).to_string());
     }
 
     /// 一个提交的补丁文本（不含 commit 头）。
@@ -325,6 +434,17 @@ fn parse_track(track: &str) -> (u32, u32) {
         }
     }
     return (ahead, behind);
+}
+
+/// 在 `directory` 初始化一个空仓库（`git init -b main`）。
+pub fn init_repository(directory: &str) -> Result<(), GitError> {
+    let path = Path::new(directory);
+    std::fs::create_dir_all(path).map_err(|error| GitError::Unreadable {
+        path: path.display().to_string(),
+        reason: error.to_string(),
+    })?;
+    run_git(Path::new("."), &["init", "-q", "-b", "main", directory])?;
+    return Ok(());
 }
 
 /// 克隆 `url` 到 `destination`；目标目录必须不存在或为空。
@@ -627,6 +747,94 @@ mod tests {
         assert_eq!(parse_track("[ahead 2]"), (2, 0));
         assert_eq!(parse_track("[behind 3]"), (0, 3));
         assert_eq!(parse_track("[ahead 2, behind 1]"), (2, 1));
+    }
+
+    #[test]
+    fn filtered_log_honours_reference_author_and_keyword() {
+        let (_guard, path) = fixture("filtered", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        run_git(repo.root(), &["checkout", "-q", "-b", "side"]).expect("checkout");
+        run_git(repo.root(), &["commit", "-q", "--allow-empty", "-m", "side work"]).expect("commit");
+        run_git(repo.root(), &["checkout", "-q", "main"]).expect("checkout");
+
+        let only_side = repo
+            .log_filtered(
+                50,
+                &LogFilter {
+                    reference: Some("side".to_string()),
+                    ..LogFilter::default()
+                },
+            )
+            .expect("log");
+        assert_eq!(only_side.len(), 2);
+        assert_eq!(only_side[0].summary, "side work");
+
+        let keyword = repo
+            .log_filtered(
+                50,
+                &LogFilter {
+                    query: "first".to_string(),
+                    ..LogFilter::default()
+                },
+            )
+            .expect("log");
+        assert_eq!(keyword.len(), 1);
+
+        let other_author = repo
+            .log_filtered(
+                50,
+                &LogFilter {
+                    author: Some("Nobody".to_string()),
+                    ..LogFilter::default()
+                },
+            )
+            .expect("log");
+        assert!(other_author.is_empty());
+    }
+
+    #[test]
+    fn authors_are_unique_and_ordered() {
+        let (_guard, path) = fixture("authors", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        run_git(
+            repo.root(),
+            &["-c", "user.name=Other", "commit", "-q", "--allow-empty", "-m", "second"],
+        )
+        .expect("commit");
+        let authors = repo.authors().expect("authors");
+        // 按提交顺序（新的在前），因此后提交的作者排在最前面。
+        assert_eq!(authors, vec!["Other".to_string(), "Test".to_string()]);
+    }
+
+    #[test]
+    fn patch_for_path_limits_the_patch_to_one_file() {
+        let (_guard, path) = fixture("pathpatch", &[("a.txt", "one\n"), ("b.txt", "x\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "one\ntwo\n").expect("write");
+        std::fs::write(repo.root().join("b.txt"), "x\ny\n").expect("write");
+        run_git(repo.root(), &["commit", "-q", "-am", "two files"]).expect("commit");
+        let head = repo.log(1, "").expect("log").remove(0);
+        let patch = repo.patch_for_path(&head.sha, "a.txt").expect("patch");
+        assert!(patch.contains("a.txt"));
+        assert!(!patch.contains("b.txt"));
+        assert!(patch.contains("+two"));
+    }
+
+    #[test]
+    fn init_repository_creates_a_repo_on_main() {
+        let base = std::env::temp_dir().join(format!(
+            "git-init-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        let target = base.join("fresh");
+        init_repository(&target.display().to_string()).expect("init");
+        let repo = Repo::open(&target.display().to_string()).expect("open");
+        assert_eq!(repo.abbrev_branch().unwrap_or_default(), "main");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

@@ -79,10 +79,28 @@
     "yesterday": "Yesterday",
     "days": "%{count}d",
     "months": [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
     ],
-    "weekdays": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "weekdays": [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
     "monthDay": "%{month} %{day}",
     "monthDayYear": "%{month} %{day}, %{year}"
   },
@@ -103,5 +121,56 @@
     "done": "Done",
     "search": "Search",
     "loading": "Loading…"
+  },
+  "repoManager": {
+    "title": "Repository Manager",
+    "count": "%{count} repositories",
+    "subtitle": "%{count} recent",
+    "tabOpen": "Open",
+    "tabClone": "Clone",
+    "tabInit": "Init",
+    "openEllipsis": "Open…",
+    "cloneEllipsis": "Clone…",
+    "initEllipsis": "Init…",
+    "openTitle": "Open a repository",
+    "openHint": "Choose a folder that already contains a Git repository.",
+    "initTitle": "Create a repository",
+    "initHint": "Creates a new repository in the folder you name, on branch main.",
+    "initPath": "Folder",
+    "initAction": "Create Repository"
+  },
+  "filter": {
+    "title": "Filter commits",
+    "branch": "Branch",
+    "author": "Author",
+    "when": {
+      "all": "Any time",
+      "today": "Today",
+      "week": "Last 7 days",
+      "month": "Last 30 days",
+      "year": "Last year"
+    },
+    "allBranches": "All branches",
+    "allAuthors": "All authors",
+    "apply": "Apply",
+    "clear": "Clear"
+  },
+  "compare": {
+    "mode": "Compare",
+    "hint": "Select two commits to compare",
+    "clear": "Clear",
+    "range": "%{from} → %{to}",
+    "withWorkingTree": "Compare with Working Tree"
+  },
+  "files": {
+    "title": "Files",
+    "changes": "Changes",
+    "info": "Info",
+    "atCommit": "At commit %{short}",
+    "empty": "No files",
+    "copyPath": "Copy Path",
+    "openInEditor": "Open in Editor",
+    "source": "Source",
+    "blame": "Blame"
   }
 }

@@ -7,7 +7,6 @@
 //! 语言用应用内的 `Signal<SharedString>` 保存（`en` / `zh-Hans`），不走系统的
 //! `set_locale`，这样设置页可以在运行期切换而无需重启。
 
-use nsh_core::prelude::*;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -48,11 +47,6 @@ pub fn with_arguments(language: &str, key: &str, arguments: &[(&str, String)]) -
         text = text.replace(&format!("%{{{}}}", name), value);
     }
     return text;
-}
-
-/// 视图里用的一行文案：随语言信号更新。
-pub fn text_of(language: Signal<SharedString>, key: &'static str) -> String {
-    return t(language.get().as_str(), key);
 }
 
 /// 语言切换按钮使用的下一语言。

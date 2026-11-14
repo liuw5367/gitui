@@ -1,10 +1,12 @@
-//! gitui 的根组件：窗口属性、主题装载、语言状态与欢迎页/工作区路由。
+//! 根组件：窗口属性、主题装载、语言状态与屏幕路由。
 //!
-//! 一个窗口、多个仓库标签页。P1 只读：欢迎页可以打开或克隆仓库，工作区显示真实
-//! 历史、提交补丁与引用。写路径在后续阶段加入。
+//! 一个窗口、多个仓库标签页；屏幕为欢迎页、仓库管理页与工作区。当前只读：
+//! 打开/克隆/初始化仓库、按条件筛选历史、多提交对比、查看提交内单文件补丁。
+//! 写路径在后续阶段加入。
 
 pub mod brand;
 mod design;
+mod filters;
 mod i18n;
 mod model;
 mod screens;
@@ -19,6 +21,8 @@ use nsh_core::element::set_tokens;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
+use filters::When;
+use git::LogFilter;
 use model::Tab;
 
 /// `theme.json` 与设计稿 CSS 的 light/dark 值一一对应。
@@ -28,11 +32,20 @@ const THEME_JSON: &str = include_str!("../theme.json");
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Screen {
     Welcome,
+    RepoManager,
     Workspace,
 }
 
-/// 组件间共享的动作集合。统一用 `Arc<dyn Fn>` 传递，避免把十几个信号
-/// 逐个穿到子视图里。
+/// 仓库管理页的三种入口（设计板 03 的分段控件）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RepoForm {
+    Open,
+    Clone,
+    Init,
+}
+
+/// 组件间共享的动作集合。统一用 `Arc<dyn Fn>` 传递，避免把十几个信号逐个
+/// 穿到子视图里。
 #[derive(Clone)]
 pub(crate) struct Actions {
     pub(crate) open_path: Arc<dyn Fn(String)>,
@@ -40,10 +53,18 @@ pub(crate) struct Actions {
     pub(crate) close_tab: Arc<dyn Fn(usize)>,
     pub(crate) activate_tab: Arc<dyn Fn(usize)>,
     pub(crate) select_commit: Arc<dyn Fn(usize)>,
+    pub(crate) toggle_compare: Arc<dyn Fn(usize)>,
+    pub(crate) set_compare_mode: Arc<dyn Fn(bool)>,
+    pub(crate) select_file: Arc<dyn Fn(usize)>,
+    pub(crate) apply_filter: Arc<dyn Fn()>,
+    pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
+    pub(crate) init_repository: Arc<dyn Fn()>,
     pub(crate) toggle_language: Arc<dyn Fn()>,
     pub(crate) refresh: Arc<dyn Fn()>,
     pub(crate) go_welcome: Arc<dyn Fn()>,
+    pub(crate) go_repo_manager: Arc<dyn Fn()>,
+    pub(crate) set_repo_form: Arc<dyn Fn(RepoForm)>,
 }
 
 /// 应用根组件。
@@ -67,11 +88,22 @@ pub fn App() -> impl IntoElement {
             .unwrap_or_else(|| i18n::DEFAULT_LANGUAGE.to_string()),
     ));
 
+    // 历史筛选：关键字在工具栏搜索框，其余条件在 History 的筛选浮层。
+    let history_query = signal(String::new());
+    let filter_reference = signal(String::new());
+    let filter_author = signal(String::new());
+    let filter_when = signal(SharedString::from(When::All.id()));
+    let filter_open = signal(false);
+    let inspector_open = signal(false);
+    let compare_mode = signal(false);
+    let now = store::now_unix();
+
     let session = store::load_session(&store_dir);
+    let initial_filter = LogFilter::default();
     let mut initial_tabs: Vec<Tab> = session
         .paths
         .iter()
-        .map(|path| model::load_tab(path))
+        .map(|path| model::load_tab(path, &initial_filter))
         .filter(|tab| tab.error.is_none())
         .collect();
     let screen = signal(if initial_tabs.is_empty() {
@@ -86,13 +118,30 @@ pub fn App() -> impl IntoElement {
     let tabs = signal(initial_tabs);
     let recent = signal(store::load_recent(&store_dir));
 
-    // 欢迎页的克隆表单与搜索。
+    // 欢迎页与仓库管理页的输入框。
     let welcome_query = signal(String::new());
     let clone_url = signal(String::new());
     let clone_destination = signal(String::new());
     let clone_error = signal(Option::<String>::None);
     let cloning = signal(false);
-    let history_query = signal(String::new());
+    let init_path = signal(String::new());
+    let repo_form = signal(RepoForm::Open);
+
+    let current_filter: Arc<dyn Fn() -> LogFilter> = {
+        let history_query = history_query;
+        let filter_reference = filter_reference;
+        let filter_author = filter_author;
+        let filter_when = filter_when;
+        Arc::new(move || {
+            return filters::build(
+                history_query.get_untracked().as_str(),
+                filter_reference.get_untracked().as_str(),
+                filter_author.get_untracked().as_str(),
+                When::from_key(filter_when.get_untracked().as_str()),
+                now,
+            );
+        })
+    };
 
     let open_path: Arc<dyn Fn(String)> = {
         let tabs = tabs;
@@ -100,8 +149,9 @@ pub fn App() -> impl IntoElement {
         let recent = recent;
         let screen = screen;
         let store_dir = store_dir.clone();
+        let current_filter = current_filter.clone();
         Arc::new(move |path: String| {
-            let tab = model::load_tab(path.as_str());
+            let tab = model::load_tab(path.as_str(), &current_filter());
             let mut list = tabs.get_untracked();
             let existing = list
                 .iter()
@@ -189,18 +239,91 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let refresh: Arc<dyn Fn()> = {
+    let toggle_compare: Arc<dyn Fn(usize)> = {
         let tabs = tabs;
         let active = active;
+        Arc::new(move |index: usize| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::toggle_compare(tab, index);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let set_compare_mode: Arc<dyn Fn(bool)> = {
+        let tabs = tabs;
+        let active = active;
+        let compare_mode = compare_mode;
+        Arc::new(move |enabled: bool| {
+            compare_mode.set(enabled);
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                tab.comparing = enabled;
+                if !enabled {
+                    tab.compare.clear();
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let select_file: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |index: usize| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::select_file(tab, index);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let reload: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let current_filter = current_filter.clone();
         Arc::new(move || {
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get(current).cloned() {
-                let next = model::refresh(&tab);
-                list[current] = next;
+                list[current] = model::reload_with_filter(&tab, &current_filter());
                 tabs.set(list);
             }
         })
+    };
+
+    let apply_filter: Arc<dyn Fn()> = {
+        let reload = reload.clone();
+        let filter_open = filter_open;
+        Arc::new(move || {
+            filter_open.set(false);
+            reload();
+        })
+    };
+
+    let clear_filter: Arc<dyn Fn()> = {
+        let history_query = history_query;
+        let filter_reference = filter_reference;
+        let filter_author = filter_author;
+        let filter_when = filter_when;
+        let reload = reload.clone();
+        Arc::new(move || {
+            history_query.set(String::new());
+            filter_reference.set(String::new());
+            filter_author.set(String::new());
+            filter_when.set(SharedString::from(When::All.id()));
+            reload();
+        })
+    };
+
+    let refresh: Arc<dyn Fn()> = {
+        let reload = reload.clone();
+        Arc::new(move || reload())
     };
 
     let clone_repository: Arc<dyn Fn()> = {
@@ -236,6 +359,23 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let init_repository: Arc<dyn Fn()> = {
+        let init_path = init_path;
+        let clone_error = clone_error;
+        let open_path = open_path.clone();
+        Arc::new(move || {
+            let path = init_path.get_untracked();
+            if path.trim().is_empty() {
+                clone_error.set(Some("缺少目录".to_string()));
+                return;
+            }
+            match git::init_repository(path.trim()) {
+                Ok(()) => open_path(path.trim().to_string()),
+                Err(error) => clone_error.set(Some(error.detail())),
+            }
+        })
+    };
+
     let toggle_language: Arc<dyn Fn()> = {
         let language = language;
         let store_dir = store_dir.clone();
@@ -251,16 +391,34 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || screen.set(Screen::Welcome))
     };
 
+    let go_repo_manager: Arc<dyn Fn()> = {
+        let screen = screen;
+        Arc::new(move || screen.set(Screen::RepoManager))
+    };
+
+    let set_repo_form: Arc<dyn Fn(RepoForm)> = {
+        let repo_form = repo_form;
+        Arc::new(move |form: RepoForm| repo_form.set(form))
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
         close_tab,
         activate_tab,
         select_commit,
+        toggle_compare,
+        set_compare_mode,
+        select_file,
+        apply_filter,
+        clear_filter,
         clone_repository,
+        init_repository,
         toggle_language,
         refresh,
         go_welcome,
+        go_repo_manager,
+        set_repo_form,
     };
 
     on_key("mod+o", {
@@ -275,6 +433,14 @@ pub fn App() -> impl IntoElement {
     on_key("mod+r", {
         let refresh = actions.refresh.clone();
         move |_| refresh()
+    });
+    on_key("mod+f", {
+        let filter_open = filter_open;
+        move |_| filter_open.set(true)
+    });
+    on_key("escape", {
+        let filter_open = filter_open;
+        move |_| filter_open.set(false)
     });
 
     let language_value = language;
@@ -306,11 +472,30 @@ pub fn App() -> impl IntoElement {
                             actions_for_view.clone(),
                         )
                         .into_element(),
+                        Screen::RepoManager => screens::repo_manager(
+                            language_value,
+                            recent_value,
+                            welcome_query,
+                            clone_url,
+                            clone_destination,
+                            init_path,
+                            clone_error,
+                            cloning,
+                            repo_form,
+                            actions_for_view.clone(),
+                        )
+                        .into_element(),
                         Screen::Workspace => screens::workspace(
                             language_value,
                             tabs,
                             active,
                             history_query,
+                            filter_reference,
+                            filter_author,
+                            filter_when,
+                            filter_open,
+                            inspector_open,
+                            compare_mode,
                             actions_for_view.clone(),
                         )
                         .into_element(),
@@ -320,11 +505,7 @@ pub fn App() -> impl IntoElement {
 }
 
 /// 把打开的标签页写回会话，供下次启动恢复。
-pub(crate) fn persist(
-    dir: &std::path::Path,
-    active: Signal<usize>,
-    tabs: Signal<Vec<Tab>>,
-) {
+pub(crate) fn persist(dir: &std::path::Path, active: Signal<usize>, tabs: Signal<Vec<Tab>>) {
     let list = tabs.get_untracked();
     let paths: Vec<String> = list.iter().map(|tab| tab.path.clone()).collect();
     let session = store::Session {
@@ -334,16 +515,16 @@ pub(crate) fn persist(
     store::save_session(dir, &session);
 }
 
-/// 供子模块使用的窗口标题栏留白。
+/// 窗口标题栏留白（系统窗口按钮占用的左右宽度）。
 pub(crate) fn window_insets() -> (f32, f32) {
     let edges = title_bar();
     return (edges.left.0, edges.right.0);
 }
 
+/// 供子模块使用的设计常量。
+pub use design::metrics;
+
 #[native_module("app/native")]
 fn native(registry: &mut Registry) {
     registry.register::<App>();
 }
-
-pub use design::metrics;
-pub(crate) use widgets as ui;

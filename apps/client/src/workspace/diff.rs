@@ -4,7 +4,6 @@
 
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
 use crate::widgets;
 use domain::diff::{DiffLine, DiffLineKind, Patch};
 use nsh_core::prelude::*;
@@ -12,8 +11,13 @@ use nsh_core::prelude::*;
 /// 行号栏宽度（旧、新各一列）。
 const GUTTER_W: f32 = 34.0;
 
-pub(crate) fn diff(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
-    let patch = Patch::parse(tab.patch.as_str());
+pub(crate) fn diff(
+    language: Signal<SharedString>,
+    label: String,
+    patch_text: String,
+    inspector_open: Signal<bool>,
+) -> impl IntoElement {
+    let patch = Patch::parse(patch_text.as_str());
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
     let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
     let file_label = patch
@@ -46,6 +50,12 @@ pub(crate) fn diff(language: Signal<SharedString>, tab: Tab) -> impl IntoElement
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
+                    text(label)
+                        .text_size(px(9.5))
+                        .font_family("SF Mono")
+                        .text_color(move || design::text3()),
+                )
+                .child(
                     text(format!("+{} −{}", additions, deletions))
                         .text_size(px(9.5))
                         .font_family("SF Mono")
@@ -53,7 +63,18 @@ pub(crate) fn diff(language: Signal<SharedString>, tab: Tab) -> impl IntoElement
                 )
                 .child(view().flex_1())
                 .child(mode_toggle(language))
-                .child(widgets::icon("copy", 12.0, design::text3)),
+                .child(widgets::icon_button(
+                    "sidebar",
+                    12.0,
+                    move || {
+                        if inspector_open.get() {
+                            design::accent()
+                        } else {
+                            design::text2()
+                        }
+                    },
+                    move || inspector_open.set(!inspector_open.get_untracked()),
+                )),
         )
         .child(
             view().w_full().flex_1().min_h_0().child(

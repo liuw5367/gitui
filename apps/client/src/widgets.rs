@@ -145,11 +145,6 @@ pub(crate) fn kbd(label: impl Into<SharedString>) -> impl IntoElement {
         );
 }
 
-/// 1px 分隔线（水平）。
-pub(crate) fn hairline() -> impl IntoElement {
-    return view().w_full().h(px(1.0)).bg(move || design::line());
-}
-
 /// 竖向分隔线（工具栏用）。
 pub(crate) fn separator() -> impl IntoElement {
     return view()
