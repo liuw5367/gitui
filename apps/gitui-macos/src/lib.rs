@@ -217,6 +217,7 @@ pub fn App() -> impl IntoElement {
     let diff = signal(active_tab.diff.clone());
     let error = signal(active_tab.error.clone());
     let message = signal(String::new());
+    let commit_log = signal(SharedString::from(""));
     let tabs = signal(initial_tabs);
     let active = signal(initial_active);
     save_session(active.get_untracked(), tabs.get_untracked().as_slice());
@@ -445,9 +446,13 @@ pub fn App() -> impl IntoElement {
                     Ok(_) => {
                         message.set(String::new());
                         error.set(SharedString::from(""));
+                        commit_log.set(SharedString::from(""));
                         reload_commit();
                     }
-                    Err(err) => error.set(SharedString::from(err.to_string())),
+                    Err(err) => {
+                        error.set(SharedString::from(err.to_string()));
+                        commit_log.set(SharedString::from(err.to_string()));
+                    }
                 }
             }
         }));
@@ -661,6 +666,23 @@ pub fn App() -> impl IntoElement {
                 .text_color(move || theme().primary),
         );
 
+    let commit_log_panel = view()
+        .h(move || {
+            if commit_log.get().is_empty() {
+                px(0.0)
+            } else {
+                px(120.0)
+            }
+        })
+        .flex_col()
+        .p_2()
+        .bg(move || theme().background)
+        .child(
+            text(move || commit_log.get())
+                .text_size(px(9.0))
+                .text_color(move || theme().foreground),
+        );
+
     view()
         .flex_1()
         .bg(move || theme().background)
@@ -670,5 +692,6 @@ pub fn App() -> impl IntoElement {
         .child(recent_bar)
         .child(commit_bar)
         .child(main)
+        .child(commit_log_panel)
         .child(statusbar)
 }
