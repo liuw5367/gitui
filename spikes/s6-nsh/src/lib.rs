@@ -123,6 +123,8 @@ fn file_row(label: &'static str, index: usize, selected: Signal<usize>) -> impl 
 #[component]
 pub fn App() -> impl IntoElement {
     let initial_lines = if std::env::var_os("S6_LOAD_10K").is_some() { 10_000 } else { 200 };
+    let panes = std::env::var("S6_PANES").unwrap_or_else(|_| "3".to_owned());
+    let pane_label = panes.clone();
     let base = signal(make_text(initial_lines, 0));
     let ours = signal(make_text(initial_lines, 1));
     let theirs = signal(make_text(initial_lines, 2));
@@ -228,7 +230,7 @@ pub fn App() -> impl IntoElement {
         .child(file_row("src/git/index.rs", 2, file))
         .child(view().flex_1())
         .child(
-            text("10k lines × 3 editors")
+            text(move || format!("10k lines · {pane_label} panes"))
                 .text_size(px(9.0))
                 .text_color(move || theme().primary),
         );
@@ -269,16 +271,20 @@ pub fn App() -> impl IntoElement {
                 .flex_1(),
         );
 
-    let main = view()
+    let mut main = view()
         .flex_1()
         .flex_row()
         .gap_2()
         .p_2()
         .bg(move || theme().background)
-        .child(sidebar)
-        .child(pane("Base", base, true))
-        .child(result_pane)
-        .child(pane("Theirs", theirs, true));
+        .child(sidebar);
+    if panes != "1" {
+        main = main.child(pane("Base", base, true));
+    }
+    main = main.child(result_pane);
+    if panes == "3" {
+        main = main.child(pane("Theirs", theirs, true));
+    }
 
     let status = view()
         .h(px(26.0))
