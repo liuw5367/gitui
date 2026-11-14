@@ -8,7 +8,7 @@ mod sections;
 mod widgets;
 
 use gitui_git::{Branch, Repo, StatusEntry};
-use model::{load, load_recent, load_session, save_recent, save_session, short_name, Loaded};
+use model::{load, load_recent, load_session, save_recent, save_session, short_name};
 use sections::{diff_view, history, statusbar};
 use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
@@ -181,8 +181,8 @@ pub fn App() -> impl IntoElement {
         error.set(tab.error);
         save_session(active.get_untracked(), tabs.get_untracked().as_slice());
     };
-    let activate_for_tabs = activate.clone();
     let activate_for_close = activate.clone();
+    let activate_tabs: Arc<dyn Fn(usize)> = Arc::new(move |index| activate(index));
     let close_active = move || {
         let index = active.get_untracked();
         let len = tabs.get_untracked().len();
@@ -330,63 +330,7 @@ pub fn App() -> impl IntoElement {
             }
         }));
 
-    let tab_bar = view()
-        .h(px(30.0))
-        .flex_row()
-        .items_center()
-        .gap_1()
-        .px_3()
-        .bg(move || theme().background)
-        .child(each(
-            tabs,
-            |tab: &Loaded| tab.path.clone(),
-            move |tab, _| {
-                let index = tab.get().path.clone();
-                let activate = activate_for_tabs.clone();
-                view()
-                    .h(px(24.0))
-                    .px_2()
-                    .rounded(px(4.0))
-                    .bg(move || {
-                        let path = tab.get().path;
-                        if active.get()
-                            == tabs
-                                .get_untracked()
-                                .iter()
-                                .position(|item| item.path == path)
-                                .unwrap_or(usize::MAX)
-                        {
-                            theme().primary
-                        } else {
-                            theme().background
-                        }
-                    })
-                    .on_press(move || {
-                        let index = tabs
-                            .get_untracked()
-                            .iter()
-                            .position(|item| item.path == index)
-                            .unwrap_or(0);
-                        activate(index);
-                    })
-                    .child(
-                        text(move || short_name(&tab.get().path))
-                            .text_size(px(10.0))
-                            .text_color(move || {
-                                let index = tabs
-                                    .get_untracked()
-                                    .iter()
-                                    .position(|item| item.path == tab.get().path)
-                                    .unwrap_or(usize::MAX);
-                                if active.get() == index {
-                                    theme().primary_foreground
-                                } else {
-                                    theme().foreground
-                                }
-                            }),
-                    )
-            },
-        ));
+    let tab_bar = crate::sections::tabs(tabs, active, activate_tabs);
 
     let recent_bar = view()
         .h(px(28.0))
