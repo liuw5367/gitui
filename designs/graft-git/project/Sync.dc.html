@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>gitui — Sync</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="/_blob/dbb426056b594f574465a3a1a7f16ea9">
+<link rel="stylesheet" href="/_blob/7d3826c9f665385e19f10d9864082124">
 </head>
 <body>
 <x-dc>
@@ -552,8 +552,8 @@
         <div class="sync-head">
           <span class="sync-title">Sync</span>
           <div class="sync-tabs" role="tablist" aria-label="Sync operation">
-            <button class="sync-tab" type="button" role="tab" aria-selected="false">Fetch</button>
-            <button class="sync-tab" type="button" role="tab" aria-selected="false">Pull</button>
+            <a class="sync-tab" href="SyncFetch.dc.html" role="tab" aria-selected="false" style="text-decoration:none;cursor:default">Fetch</a>
+            <a class="sync-tab" href="SyncPull.dc.html" role="tab" aria-selected="false" style="text-decoration:none;cursor:default">Pull</a>
             <button class="sync-tab on" type="button" role="tab" aria-selected="true">Push</button>
           </div>
           <a class="sync-close" href="Workspace.dc.html" aria-label="Close sync">×</a>
@@ -567,14 +567,14 @@
               <span style="color:var(--text3)">→</span>
               <span class="ref">origin/main</span>
               <span class="badge-soft">2 ahead</span>
-              <button class="btn small" type="button">Set upstream</button>
+              <span class="hint">Upstream: origin/main</span>
             </div>
             <div class="sync-line">Remote <b>origin</b> · github.com/gitui/gitui <span class="spacer"></span><span class="hint">Manage</span></div>
 
             <div class="sync-options">
               <label class="checkrow"><input type="checkbox" checked> Push tags</label>
               <label class="checkrow"><input type="checkbox"> Force with lease</label>
-              <label class="checkrow"><input type="checkbox" checked> Push all branches</label>
+              <label class="checkrow"><input type="checkbox"> Push all branches</label>
             </div>
 
             <div class="sync-auth"><span class="status-dot"></span> Authenticated · GitHub</div>
