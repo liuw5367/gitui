@@ -13,6 +13,7 @@ struct Loaded {
     path: String,
     branch: String,
     operation: Option<Operation>,
+    conflicts: Vec<String>,
     ahead: usize,
     behind: usize,
     staged: usize,
@@ -47,6 +48,7 @@ fn load(path: &str) -> Loaded {
                 path: repo.root().display().to_string(),
                 branch,
                 operation: repo.operation(),
+                conflicts: repo.conflicts().unwrap_or_default(),
                 ahead: status.ahead,
                 behind: status.behind,
                 staged: status.staged,
@@ -63,6 +65,7 @@ fn load(path: &str) -> Loaded {
             path: path.to_string(),
             branch: "—".to_string(),
             operation: None,
+            conflicts: Vec::new(),
             ahead: 0,
             behind: 0,
             selected: SharedString::from(""),
@@ -246,6 +249,7 @@ pub fn App() -> impl IntoElement {
     let repo_path = signal(SharedString::from(active_tab.path.clone()));
     let branch = signal(SharedString::from(active_tab.branch.clone()));
     let operation = signal(active_tab.operation);
+    let conflicts = signal(active_tab.conflicts.clone());
     let ahead = signal(active_tab.ahead);
     let behind = signal(active_tab.behind);
     let staged = signal(active_tab.staged);
@@ -284,6 +288,7 @@ pub fn App() -> impl IntoElement {
         path_input.set(loaded.path.clone());
         branch.set(SharedString::from(loaded.branch));
         operation.set(loaded.operation);
+        conflicts.set(loaded.conflicts);
         ahead.set(loaded.ahead);
         behind.set(loaded.behind);
         staged.set(loaded.staged);
@@ -320,6 +325,7 @@ pub fn App() -> impl IntoElement {
         path_input.set(tab.path.clone());
         branch.set(SharedString::from(tab.branch));
         operation.set(tab.operation);
+        conflicts.set(tab.conflicts);
         ahead.set(tab.ahead);
         behind.set(tab.behind);
         staged.set(tab.staged);
@@ -678,6 +684,28 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(
+            text(move || {
+                if conflicts.get().is_empty() {
+                    String::new()
+                } else {
+                    "Conflicts".to_string()
+                }
+            })
+            .text_size(px(9.0))
+            .text_color(move || theme().foreground),
+        )
+        .child(each(
+            conflicts,
+            |path: &String| path.clone(),
+            |path, _| {
+                view().h(px(18.0)).child(
+                    text(move || path.get())
+                        .text_size(px(9.0))
+                        .text_color(|| rgb(0xff3b30)),
+                )
+            },
+        ))
         .child(
             text(move || error.get())
                 .text_size(px(9.0))
