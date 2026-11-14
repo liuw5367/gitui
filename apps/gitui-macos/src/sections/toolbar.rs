@@ -1,10 +1,37 @@
 //! Repository toolbar: open/close and sync actions.
 
-use crate::sections::header::HeaderActions;
 use crate::design;
+use crate::sections::header::HeaderActions;
+use crate::Mode;
 use crate::widgets::header_button;
 use nsh_base::input;
 use nsh_core::prelude::*;
+use std::sync::Arc;
+
+fn mode_button(
+    label: &'static str,
+    target: Mode,
+    mode: Signal<Mode>,
+    on_mode: Arc<dyn Fn(Mode)>,
+) -> impl IntoElement {
+    view()
+        .h(px(20.0))
+        .px_2()
+        .rounded(px(4.0))
+        .bg(move || {
+            if mode.get() == target {
+                design::content()
+            } else {
+                design::panel2()
+            }
+        })
+        .on_press(move || on_mode(target))
+        .child(
+            text(label)
+                .text_size(px(10.5))
+                .text_color(move || design::text2()),
+        )
+}
 
 pub(crate) fn toolbar(
     path_input: Signal<String>,
@@ -12,6 +39,8 @@ pub(crate) fn toolbar(
     ahead: Signal<usize>,
     behind: Signal<usize>,
     actions: HeaderActions,
+    mode: Signal<Mode>,
+    on_mode: Arc<dyn Fn(Mode)>,
 ) -> impl IntoElement {
     view()
         .h(px(44.0))
@@ -57,6 +86,18 @@ pub(crate) fn toolbar(
             move || action()
         }))
         .child(view().flex_1())
+        .child(
+            view()
+                .h(px(24.0))
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .p_1()
+                .rounded(px(6.0))
+                .bg(move || design::panel2())
+                .child(mode_button("History", Mode::History, mode, on_mode.clone()))
+                .child(mode_button("Changes", Mode::Changes, mode, on_mode)),
+        )
         .child(
             text(move || format!("{} ↑{} ↓{}", branch.get(), ahead.get(), behind.get()))
                 .text_size(px(10.5))

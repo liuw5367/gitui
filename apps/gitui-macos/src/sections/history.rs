@@ -1,6 +1,7 @@
 //! Commit history table.
 
 use crate::design;
+use crate::Mode;
 use gitui_git::Commit;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -10,9 +11,16 @@ pub(crate) fn history(
     commits: Signal<Vec<Commit>>,
     selected: Signal<SharedString>,
     on_select: Arc<dyn Fn(String)>,
+    mode: Signal<Mode>,
 ) -> impl IntoElement {
     view()
-        .h(px(256.0))
+        .h(move || {
+            if mode.get() == Mode::History {
+                px(256.0)
+            } else {
+                px(0.0)
+            }
+        })
         .w_full()
         .flex_col()
         .bg(move || design::content())

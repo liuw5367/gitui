@@ -116,6 +116,14 @@ pub(crate) fn selected() -> AdaptiveColor {
     token("sel")
 }
 
+pub(crate) fn panel() -> AdaptiveColor {
+    token("panel")
+}
+
+pub(crate) fn panel2() -> AdaptiveColor {
+    token("panel2")
+}
+
 pub(crate) fn text() -> AdaptiveColor {
     base_theme().foreground
 }

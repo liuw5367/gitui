@@ -8,14 +8,26 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_git::Repo;
+use gitui_git::{Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{diff_view, history, statusbar, titlebar, toolbar, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
+use sections::{changes_list, diff_view, history, inspector, statusbar, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
 use nsh_core::prelude::*;
 use std::sync::Arc;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Mode {
+    History,
+    Changes,
+}
+
+fn split_entries(entries: &[StatusEntry]) -> (Vec<StatusEntry>, Vec<StatusEntry>) {
+    let staged = entries.iter().filter(|entry| entry.is_staged()).cloned().collect();
+    let unstaged = entries.iter().filter(|entry| entry.is_unstaged()).cloned().collect();
+    (staged, unstaged)
+}
 
 #[native_module("gitui/native")]
 fn native(registry: &mut Registry) {
@@ -101,6 +113,12 @@ pub fn App() -> impl IntoElement {
     let unstaged = signal(active_tab.unstaged);
     let status_lines = signal(active_tab.status_lines.clone());
     let status_entries = signal(active_tab.status_entries.clone());
+    let (initial_staged_entries, initial_unstaged_entries) =
+        split_entries(&active_tab.status_entries);
+    let staged_entries = signal(initial_staged_entries);
+    let unstaged_entries = signal(initial_unstaged_entries);
+    let mode = signal(Mode::History);
+    let set_mode: Arc<dyn Fn(Mode)> = Arc::new(move |next| mode.set(next));
     let commits = signal(active_tab.commits.clone());
     let selected = signal(active_tab.selected.clone());
     let diff = signal(active_tab.diff.clone());
@@ -154,7 +172,10 @@ pub fn App() -> impl IntoElement {
         staged.set(loaded.staged);
         unstaged.set(loaded.unstaged);
         status_lines.set(loaded.status_lines);
+        let (loaded_staged, loaded_unstaged) = split_entries(&loaded.status_entries);
         status_entries.set(loaded.status_entries);
+        staged_entries.set(loaded_staged);
+        unstaged_entries.set(loaded_unstaged);
         commits.set(loaded.commits);
         selected.set(first);
         diff.set(loaded.diff);
@@ -209,7 +230,10 @@ pub fn App() -> impl IntoElement {
         staged.set(tab.staged);
         unstaged.set(tab.unstaged);
         status_lines.set(tab.status_lines);
+        let (tab_staged, tab_unstaged) = split_entries(&tab.status_entries);
         status_entries.set(tab.status_entries);
+        staged_entries.set(tab_staged);
+        unstaged_entries.set(tab_unstaged);
         commits.set(tab.commits);
         selected.set(tab.selected);
         diff.set(tab.diff);
@@ -294,6 +318,8 @@ pub fn App() -> impl IntoElement {
             pull: pull_action,
             push: push_action,
         },
+        mode,
+        set_mode,
     );
 
     let continue_action = Arc::new({
@@ -421,14 +447,11 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
-    let commit_bar = crate::sections::commit_bar(
-        message,
-        CommitActions {
-            commit: commit_action,
-            no_hooks: no_hooks_action,
-            amend: amend_action,
-        },
-    );
+    let commit_actions = CommitActions {
+        commit: commit_action,
+        no_hooks: no_hooks_action,
+        amend: amend_action,
+    };
 
     let accept_ours_action = Arc::new(move || {
         if let Some(stages) = conflict_stages.get_untracked().as_ref() {
@@ -898,6 +921,13 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
+    let changes_actions = ChangesActions {
+        stage_all: stage_all_action.clone(),
+        unstage_all: unstage_all_action.clone(),
+        stage_path: stage_path_action.clone(),
+        unstage_path: unstage_path_action.clone(),
+        select_file: select_file_action.clone(),
+    };
     let status_pane = crate::sections::status_pane(
         branch,
         staged,
@@ -960,7 +990,7 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let history = history(branch, commits, selected, select_commit);
+    let history = history(branch, commits, selected, select_commit, mode);
 
     let cherry_pick_action = Arc::new({
         let reload_pick = reload_for_branch.clone();
@@ -1001,11 +1031,29 @@ pub fn App() -> impl IntoElement {
         },
     );
 
+    let changes = changes_list(
+        mode,
+        staged_entries,
+        unstaged_entries,
+        selected_file,
+        changes_actions,
+    );
+    let inspector = inspector(
+        mode,
+        branch,
+        staged,
+        unstaged,
+        staged_entries,
+        message,
+        commit_log,
+        commit_actions,
+    );
     let content = view()
         .flex_1()
         .min_w_0()
         .flex_col()
         .child(history)
+        .child(changes)
         .child(diff_pane);
     let main = view()
         .flex_1()
@@ -1014,26 +1062,10 @@ pub fn App() -> impl IntoElement {
         .p_0()
         .bg(move || theme().background)
         .child(status_pane)
-        .child(content);
+        .child(content)
+        .child(inspector);
 
     let statusbar = statusbar(commits);
-
-    let commit_log_panel = view()
-        .h(move || {
-            if commit_log.get().is_empty() {
-                px(0.0)
-            } else {
-                px(120.0)
-            }
-        })
-        .flex_col()
-        .p_2()
-        .bg(move || theme().background)
-        .child(
-            text(move || commit_log.get())
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
-        );
 
     view()
         .flex_1()
@@ -1043,11 +1075,9 @@ pub fn App() -> impl IntoElement {
         .child(toolbar)
         .child(operation_banner)
         .child(recent_bar)
-        .child(commit_bar)
         .child(hunks_bar)
         .child(identity_bar)
         .child(conflict_panel)
         .child(main)
-        .child(commit_log_panel)
         .child(statusbar)
 }
