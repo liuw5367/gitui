@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::Repo;
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, StatusActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, StashActions, StatusActions};
 use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -61,6 +61,7 @@ pub fn App() -> impl IntoElement {
     let conflicts = signal(active_tab.conflicts.clone());
     let branches = signal(active_tab.branches.clone());
     let tags = signal(active_tab.tags.clone());
+    let stashes = signal(active_tab.stashes.clone());
     let tag_name = signal(String::new());
     let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
@@ -113,6 +114,7 @@ pub fn App() -> impl IntoElement {
         conflicts.set(loaded.conflicts);
         branches.set(loaded.branches);
         tags.set(loaded.tags);
+        stashes.set(loaded.stashes);
         conflict_path.set(loaded.conflict_path);
         conflict_stages.set(loaded.conflict_stages.clone());
         conflict_result.set(
@@ -152,6 +154,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_merge = reload.clone();
     let reload_for_conflict = reload.clone();
     let reload_for_branch = reload.clone();
+    let reload_for_stash = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -164,6 +167,7 @@ pub fn App() -> impl IntoElement {
         conflicts.set(tab.conflicts);
         branches.set(tab.branches);
         tags.set(tab.tags);
+        stashes.set(tab.stashes);
         conflict_path.set(tab.conflict_path);
         conflict_stages.set(tab.conflict_stages.clone());
         conflict_result.set(
@@ -568,6 +572,51 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let stash_push_action = Arc::new({
+        let reload_stash = reload_for_stash.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.stash_push(""))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_stash();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let stash_apply_action = Arc::new({
+        let reload_stash = reload_for_stash.clone();
+        move |selector: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.stash_apply(&selector))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_stash();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let stash_drop_action = Arc::new({
+        let reload_stash = reload_for_stash.clone();
+        move |selector: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.stash_drop(&selector))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_stash();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let stashes_bar = crate::sections::stashes_bar(
+        stashes,
+        StashActions {
+            push: stash_push_action,
+            apply: stash_apply_action,
+            drop: stash_drop_action,
+        },
+    );
+
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -669,6 +718,7 @@ pub fn App() -> impl IntoElement {
         .child(tab_bar)
         .child(recent_bar)
         .child(commit_bar)
+        .child(stashes_bar)
         .child(conflict_panel)
         .child(main)
         .child(commit_log_panel)
