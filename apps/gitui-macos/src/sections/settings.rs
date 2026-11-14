@@ -1,6 +1,7 @@
 //! Settings sheet: General, Git, Credentials, Shortcuts, About.
 
 use crate::design;
+use crate::model::short_name;
 use crate::widgets::header_button;
 use crate::SettingsTab;
 use nsh_base::input;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 pub(crate) struct SettingsActions {
     pub(crate) close: Arc<dyn Fn()>,
     pub(crate) save_identity: Arc<dyn Fn()>,
+    pub(crate) open_recent: Arc<dyn Fn(String)>,
 }
 
 fn nav_item(
@@ -66,6 +68,7 @@ pub(crate) fn settings_panel(
     tab: Signal<SettingsTab>,
     identity_name: Signal<String>,
     identity_email: Signal<String>,
+    recent: Signal<Vec<SharedString>>,
     actions: SettingsActions,
 ) -> impl IntoElement {
     view()
@@ -189,7 +192,30 @@ pub(crate) fn settings_panel(
                                             text("Repository scanning is manual; open a path from the toolbar.")
                                                 .text_size(px(10.5))
                                                 .text_color(move || design::text3()),
-                                        ),
+                                        )
+                                        .child(
+                                            text("Recent repositories")
+                                                .text_size(px(11.0))
+                                                .text_color(move || design::text()),
+                                        )
+                                        .child(each(
+                                            recent,
+                                            |path: &SharedString| path.clone(),
+                                            move |path, _| {
+                                                let open = actions.open_recent.clone();
+                                                view()
+                                                    .h(px(24.0))
+                                                    .flex_row()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .on_press(move || open(path.get().to_string()))
+                                                    .child(
+                                                        text(move || short_name(&path.get().to_string()))
+                                                            .text_size(px(10.5))
+                                                            .text_color(move || design::text2()),
+                                                    )
+                                            },
+                                        )),
                                 )
                                 .child(
                                     view()

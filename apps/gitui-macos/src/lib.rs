@@ -557,8 +557,6 @@ pub fn App() -> impl IntoElement {
         path_input.set(path);
         reload_for_recent();
     });
-    let recent_bar = crate::sections::recent_bar(recent, open_recent);
-
     let commit_action = Arc::new({
         let reload_commit = reload_for_commit.clone();
         move || {
@@ -1029,9 +1027,18 @@ pub fn App() -> impl IntoElement {
         settings_tab,
         identity_name,
         identity_email,
+        recent,
         SettingsActions {
             close: close_settings,
             save_identity: save_identity_action,
+            open_recent: Arc::new({
+                let open = open_recent.clone();
+                let settings_open = settings_open;
+                move |path| {
+                    settings_open.set(false);
+                    open(path);
+                }
+            }),
         },
     );
     let merge_branch_action = Arc::new({
@@ -1396,7 +1403,6 @@ pub fn App() -> impl IntoElement {
         .child(titlebar)
         .child(toolbar)
         .child(operation_banner)
-        .child(recent_bar)
         .child(conflict_panel)
         .child(main)
         .child(sync_panel)
