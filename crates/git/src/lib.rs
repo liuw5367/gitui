@@ -109,6 +109,31 @@ pub struct LogFilter {
     pub reference: Option<String>,
 }
 
+/// 本机 Git 的信息（设置页 Git 分区）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GitInfo {
+    /// `git --version` 的原文，例如 `git version 2.56.0`。
+    pub version: String,
+    /// `git --exec-path`。
+    pub exec_path: String,
+}
+
+/// 读取本机 Git 版本与执行路径；找不到 Git 时返回错误。
+pub fn info() -> Result<GitInfo, GitError> {
+    let version = run_git(Path::new("."), &["--version"])?;
+    let exec_path = run_git(Path::new("."), &["--exec-path"])?;
+    return Ok(GitInfo {
+        version: String::from_utf8_lossy(&version).trim().to_string(),
+        exec_path: String::from_utf8_lossy(&exec_path).trim().to_string(),
+    });
+}
+
+/// 读取某个仓库的 `credential.helper`；未配置时为空串。
+pub fn credential_helper(repo: &Path) -> Result<String, GitError> {
+    let output = run_git(repo, &["config", "--get", "credential.helper"]).unwrap_or_default();
+    return Ok(String::from_utf8_lossy(&output).trim().to_string());
+}
+
 /// 把 Git 的输出压成一行可展示的摘要：去掉空行，保留最后一条有效信息。
 fn summarise(output: &str) -> String {
     let mut lines: Vec<&str> = output
@@ -1732,6 +1757,23 @@ mod tests {
             .branches
             .iter()
             .any(|branch| branch.name == "feature"));
+    }
+
+    #[test]
+    fn info_reports_the_installed_git() {
+        let info = info().expect("git info");
+        assert!(info.version.starts_with("git version"), "{}", info.version);
+        assert!(!info.exec_path.is_empty());
+    }
+
+    #[test]
+    fn credential_helper_reads_the_repository_config() {
+        let (_guard, path) = fixture("helper", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        // 仓库级配置优先于全局；这台机器上全局可能已经配了助手，因此只断言
+        // 仓库级设置能被读到。
+        run_git(repo.root(), &["config", "credential.helper", "store"]).expect("config");
+        assert_eq!(credential_helper(repo.root()).expect("helper"), "store");
     }
 
     #[test]

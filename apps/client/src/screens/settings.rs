@@ -51,6 +51,7 @@ pub(crate) fn settings(
     settings_state: Signal<store::Settings>,
     section: Signal<Section>,
     identity: (String, String),
+    git_info: (String, String, String),
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -74,6 +75,7 @@ pub(crate) fn settings(
                     settings_state,
                     section,
                     identity,
+                    git_info,
                     actions,
                 )),
         )
@@ -209,6 +211,7 @@ fn main(
     settings_state: Signal<store::Settings>,
     section: Signal<Section>,
     identity: (String, String),
+    git_info: (String, String, String),
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
@@ -248,7 +251,11 @@ fn main(
                         )
                         .into_element(),
                         Section::About => about(language, name.clone(), email.clone()).into_element(),
-                        other => placeholder(language, other).into_element(),
+                        Section::Git => git_page(language, git_info.clone()).into_element(),
+                        Section::Shortcuts => shortcuts_page(language).into_element(),
+                        Section::Credentials => {
+                            credentials_page(language, git_info.clone()).into_element()
+                        }
                     }
                 })),
         ));
@@ -507,20 +514,219 @@ fn about(
         );
 }
 
-fn placeholder(language: Signal<SharedString>, section: Section) -> impl IntoElement {
+/// Git 分区（24）：本机 Git 版本与执行路径、凭据助手（只读）、仓库发现（未实现）。
+fn git_page(language: Signal<SharedString>, info: (String, String, String)) -> AnyElement {
+    let (version, exec_path, helper) = info;
+    let helper_text = if helper.trim().is_empty() {
+        i18n::t(language.get_untracked().as_str(), "settings.gitHelperNone")
+    } else {
+        helper
+    };
     return view()
         .w_full()
         .flex_col()
-        .gap(px(6.0))
+        .gap(px(18.0))
+        .child(section_block(
+            language,
+            "settings.gitExecutable",
+            "settings.gitExecutableHint",
+            view()
+                .flex_col()
+                .gap(px(4.0))
+                .child(
+                    text(version)
+                        .text_size(px(11.0))
+                        .font_family("SF Mono")
+                        .line_height(px(15.0))
+                        .text_color(move || design::text()),
+                )
+                .child(
+                    text(exec_path)
+                        .text_size(px(10.0))
+                        .font_family("SF Mono")
+                        .line_height(px(14.0))
+                        .text_color(move || design::text3())
+                        .text_overflow(nsh_core::EllipsizeMode::Middle),
+                )
+                .child(disabled_row(language, "settings.choose"))
+                .into_element(),
+        ))
+        .child(section_block(
+            language,
+            "settings.credentialHelper",
+            "settings.credentialHelperHint",
+            view()
+                .flex_col()
+                .gap(px(4.0))
+                .child(
+                    text(helper_text)
+                        .text_size(px(11.0))
+                        .font_family("SF Mono")
+                        .line_height(px(15.0))
+                        .text_color(move || design::text2()),
+                )
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "settings.gitHelperNote"))
+                        .text_size(px(10.0))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text3()),
+                )
+                .into_element(),
+        ))
+        .child(section_block(
+            language,
+            "settings.discovery",
+            "settings.discoveryHint",
+            disabled_row(language, "settings.scanNow"),
+        ))
+        .into_element();
+}
+
+/// 快捷键分区（25）：列出本构建真实的按键绑定。
+fn shortcuts_page(language: Signal<SharedString>) -> AnyElement {
+    let mut rows: Vec<AnyElement> = Vec::new();
+    for (keys, key) in [
+        ("⌘O", "shortcut.openRepo"),
+        ("⌘P", "shortcut.palette"),
+        ("⌘W", "shortcut.closeTab"),
+        ("⌘R", "shortcut.refresh"),
+        ("⌘F", "shortcut.filter"),
+        ("⌘,", "shortcut.settings"),
+        ("⇧⌘A", "shortcut.cycleAppearance"),
+        ("esc", "shortcut.dismiss"),
+    ] {
+        rows.push(
+            view()
+                .w_full()
+                .h(px(24.0))
+                .flex_row()
+                .items_center()
+                .gap(px(10.0))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), key))
+                        .flex_1()
+                        .text_size(px(11.5))
+                        .line_height(px(15.0))
+                        .text_color(move || design::text()),
+                )
+                .child(crate::widgets::kbd(keys))
+                .into_element(),
+        );
+    }
+    return view()
+        .w_full()
+        .flex_col()
+        .gap(px(2.0))
         .child(
-            text(move || i18n::t(language.get().as_str(), section.key()))
-                .text_size(px(11.5))
-                .font_weight(FontWeight(600))
-                .text_color(move || design::text2()),
+            text(move || i18n::t(language.get().as_str(), "settings.shortcutsHint"))
+                .text_size(px(10.5))
+                .line_height(px(15.0))
+                .text_color(move || design::text3()),
+        )
+        .child(rows)
+        .child(
+            text(move || i18n::t(language.get().as_str(), "settings.recordNotImplemented"))
+                .text_size(px(10.0))
+                .line_height(px(14.0))
+                .text_color(move || design::text3()),
+        )
+        .into_element();
+}
+
+/// 凭据分区（27）：本机 Git 的凭据助手与 ~/.ssh 状态（只读）。
+fn credentials_page(
+    language: Signal<SharedString>,
+    info: (String, String, String),
+) -> AnyElement {
+    let (_, _, helper) = info;
+    let helper_text = if helper.trim().is_empty() {
+        i18n::t(language.get_untracked().as_str(), "settings.gitHelperNone")
+    } else {
+        helper
+    };
+    let keys = std::env::var_os("HOME")
+        .map(|home| std::path::PathBuf::from(home).join(".ssh"))
+        .map(|dir| std::fs::read_dir(dir).map(|entries| entries.count()).unwrap_or(0))
+        .unwrap_or(0);
+    return view()
+        .w_full()
+        .flex_col()
+        .gap(px(18.0))
+        .child(section_block(
+            language,
+            "settings.connections",
+            "settings.connectionsHint",
+            view()
+                .flex_col()
+                .gap(px(4.0))
+                .child(
+                    text(helper_text)
+                        .text_size(px(11.0))
+                        .font_family("SF Mono")
+                        .line_height(px(15.0))
+                        .text_color(move || design::text()),
+                )
+                .child(disabled_row(language, "settings.signIn"))
+                .into_element(),
+        ))
+        .child(section_block(
+            language,
+            "settings.sshKeys",
+            "settings.sshKeysHint",
+            view()
+                .flex_col()
+                .gap(px(4.0))
+                .child(
+                    text(move || {
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "settings.sshKeyCount",
+                            &[("count", keys.to_string())],
+                        )
+                    })
+                    .text_size(px(11.0))
+                    .line_height(px(15.0))
+                    .text_color(move || design::text2()),
+                )
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "settings.sshAgentsNote"))
+                        .text_size(px(10.0))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text3()),
+                )
+                .into_element(),
+        ))
+        .into_element();
+}
+
+/// 禁用态按钮 + 「尚未实现」说明。
+fn disabled_row(language: Signal<SharedString>, label_key: &'static str) -> AnyElement {
+    return view()
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .child(
+            view()
+                .h(px(metrics::BUTTON_SMALL_H))
+                .px(px(8.0))
+                .items_center()
+                .rounded(px(5.0))
+                .border_1()
+                .border_color(move || design::btn_border())
+                .bg(move || design::btn())
+                .opacity(0.45)
+                .child(
+                    text(move || i18n::t(language.get().as_str(), label_key))
+                        .text_size(px(11.0))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text()),
+                ),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.notImplemented"))
-                .text_size(px(10.5))
+                .text_size(px(9.5))
+                .line_height(px(13.0))
                 .text_color(move || design::text3()),
-        );
+        )
+        .into_element();
 }

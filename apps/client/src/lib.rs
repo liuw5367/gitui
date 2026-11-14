@@ -1202,6 +1202,15 @@ pub fn App() -> impl IntoElement {
         .filter(|email| !email.is_empty())
         .unwrap_or_default();
     let identity_for_view = (identity_name, identity_email);
+    // 设置页 Git 分区展示本机 Git 的版本、执行路径与凭据助手。
+    let git_info_for_view = match git::info() {
+        Ok(info) => (
+            info.version,
+            info.exec_path,
+            git::credential_helper(std::path::Path::new(".")).unwrap_or_default(),
+        ),
+        Err(error) => (error.detail(), String::new(), String::new()),
+    };
 
     // 欢迎页放在独立窗口里：它是入口页，不与多标签主窗口混在一起。
     // `open_window` 同一 id 只建一次；在组件主体里建一次即可。
@@ -1243,6 +1252,7 @@ pub fn App() -> impl IntoElement {
                             settings_state,
                             settings_section,
                             identity_for_view.clone(),
+                            git_info_for_view.clone(),
                             actions_for_view.clone(),
                         )
                         .into_element(),
