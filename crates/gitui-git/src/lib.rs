@@ -62,6 +62,12 @@ impl Operation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Remote {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stash {
     pub selector: String,
     pub message: String,
@@ -209,6 +215,30 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// Configured remotes, using their fetch URLs.
+    pub fn remotes(&self) -> Result<Vec<Remote>, GitError> {
+        let output = self.git(&["remote", "-v"])?;
+        let mut remotes = Vec::new();
+        for line in output.lines() {
+            let mut parts = line.split_whitespace();
+            let (Some(name), Some(url), Some(kind)) = (parts.next(), parts.next(), parts.next())
+            else {
+                continue;
+            };
+            if kind != "(fetch)" {
+                continue;
+            }
+            if remotes.iter().any(|remote: &Remote| remote.name == name) {
+                continue;
+            }
+            remotes.push(Remote {
+                name: name.to_string(),
+                url: url.to_string(),
+            });
+        }
+        Ok(remotes)
     }
 
     /// Stash entries, newest first.
@@ -931,6 +961,23 @@ mod tests {
         let branches = repo.branches().unwrap();
         assert!(!branches.iter().any(|branch| branch.name == "feature"));
         assert!(branches.iter().any(|branch| branch.name == "renamed"));
+    }
+
+    #[test]
+    fn lists_remotes() {
+        let fixture = TempRepo::new();
+        run(
+            &fixture.path,
+            &["remote", "add", "origin", "https://example.invalid/repo.git"],
+        );
+        let repo = Repo::open(fixture.path()).unwrap();
+        assert_eq!(
+            repo.remotes().unwrap(),
+            vec![Remote {
+                name: "origin".to_string(),
+                url: "https://example.invalid/repo.git".to_string(),
+            }]
+        );
     }
 
     #[test]
