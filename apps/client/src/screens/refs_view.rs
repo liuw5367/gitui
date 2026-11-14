@@ -35,6 +35,7 @@ impl RefsTab {
 pub(crate) fn refs_view(
     language: Signal<SharedString>,
     tab: Tab,
+    reflog_query: Signal<String>,
     selected_tab: Signal<RefsTab>,
     set_tab: std::sync::Arc<dyn Fn(RefsTab)>,
     actions: Actions,
@@ -111,8 +112,16 @@ pub(crate) fn refs_view(
         .child(dynamic(move || -> AnyElement {
             match selected_tab.get() {
                 RefsTab::Refs => refs_table(language, tab.clone(), actions.clone()).into_element(),
-                RefsTab::Reflog => reflog_list(language, tab.clone(), now, actions.clone())
-                    .into_element(),
+                RefsTab::Reflog => {
+                    reflog_list(
+                        language,
+                        tab.clone(),
+                        now,
+                        reflog_query,
+                        actions.clone(),
+                    )
+                    .into_element()
+                }
             }
         }));
 }
@@ -503,11 +512,21 @@ fn reflog_list(
     language: Signal<SharedString>,
     tab: Tab,
     now: i64,
+    query: Signal<String>,
     actions: Actions,
 ) -> impl IntoElement {
     let undo = actions.undo_reflog.clone();
+    let needle = query.get_untracked().to_lowercase();
     let mut rows: Vec<AnyElement> = Vec::new();
     for (index, entry) in tab.reflog.iter().enumerate() {
+        // 关键字同时匹配动作与说明，空关键字不过滤。
+        if !needle.is_empty()
+            && !entry.action.to_lowercase().contains(&needle)
+            && !entry.summary.to_lowercase().contains(&needle)
+            && !entry.short.contains(&needle)
+        {
+            continue;
+        }
         let undo = undo.clone();
         let short = entry.short.clone();
         let action = entry.action.clone();
@@ -568,6 +587,54 @@ fn reflog_list(
                                 .text_color(move || design::text2()),
                         ),
                 )
+                .on_context_menu({
+                    let undo = actions.undo_reflog.clone();
+                    let open_form = actions.open_form_from.clone();
+                    let show = actions.show_in_history.clone();
+                    let copy_text = actions.copy_text.clone();
+                    let sha = entry.sha.clone();
+                    let short = entry.short.clone();
+                    move |event: &nsh_core::ContextMenuEvent| {
+                        let lang = language.get_untracked();
+                        let lang = lang.as_str();
+                        let items = vec![
+                            MenuItem::new(i18n::t(lang, "reflog.undo")).on_select({
+                                let undo = undo.clone();
+                                move || undo(index)
+                            }),
+                            MenuItem::new(i18n::t(lang, "menu.newBranchFromHere")).on_select({
+                                let open_form = open_form.clone();
+                                let sha = sha.clone();
+                                move || {
+                                    open_form(
+                                        crate::screens::FormKind::NewBranch,
+                                        sha.clone(),
+                                    )
+                                }
+                            }),
+                            MenuItem::new(i18n::t(lang, "menu.showInHistory")).on_select({
+                                let show = show.clone();
+                                let sha = sha.clone();
+                                move || show(sha.clone())
+                            }),
+                            MenuItem::separator(),
+                            MenuItem::new(i18n::t(lang, "menu.copySha")).on_select({
+                                let copy_text = copy_text.clone();
+                                let sha = sha.clone();
+                                move || copy_text(sha.clone())
+                            }),
+                            MenuItem::new(i18n::t(lang, "menu.copyName")).on_select({
+                                let copy_text = copy_text.clone();
+                                let short = short.clone();
+                                move || copy_text(short.clone())
+                            }),
+                        ];
+                        let _ = nsh_core::element::desktop::popup_menu_at(
+                            items,
+                            event.page_position,
+                        );
+                    }
+                })
                 .into_element(),
         );
     }
@@ -579,10 +646,42 @@ fn reflog_list(
                 .px(px(12.0))
                 .flex_col()
                 .child(
-                    text(move || i18n::t(language.get().as_str(), "reflog.hint"))
-                        .text_size(px(10.0))
-                        .line_height(px(14.0))
-                        .text_color(move || design::text3()),
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "reflog.hint"))
+                                .text_size(px(10.0))
+                                .line_height(px(14.0))
+                                .text_color(move || design::text3()),
+                        )
+                        .child(view().flex_1())
+                        .child(
+                            view()
+                                .w(px(180.0))
+                                .h(px(metrics::SEARCH_H))
+                                .px(px(7.0))
+                                .items_center()
+                                .rounded(px(5.0))
+                                .border_1()
+                                .border_color(move || design::field_border())
+                                .bg(move || design::field())
+                                .child(
+                                    nsh_base::input()
+                                        .value(query)
+                                        .on_change(move |text: &str| query.set(text.to_string()))
+                                        .placeholder(move || {
+                                            i18n::t(
+                                                language.get().as_str(),
+                                                "reflog.filterHint",
+                                            )
+                                        })
+                                        .text_size(px(10.5))
+                                        .flex_1(),
+                                ),
+                        ),
                 )
                 .child(view().w_full().h(px(1.0)).bg(move || design::line()))
                 .child(rows),

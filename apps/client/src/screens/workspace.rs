@@ -34,6 +34,7 @@ pub(crate) fn workspace(
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     notice: Signal<Option<String>>,
+    reflog_query: Signal<String>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -97,6 +98,7 @@ pub(crate) fn workspace(
                     agent_audit,
                     agent_policies,
                     reset_request,
+                    reflog_query,
                     actions_for_body,
                 )),
         )
@@ -124,6 +126,7 @@ fn match_body(
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
+    reflog_query: Signal<String>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -173,6 +176,7 @@ fn match_body(
                 agent_audit,
                 agent_policies,
                 reset_request,
+                reflog_query,
                 actions,
             )
             .into_element();
@@ -201,6 +205,7 @@ fn body(
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
+    reflog_query: Signal<String>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -298,6 +303,7 @@ fn body(
                         crate::Mode::Refs => crate::screens::refs_view(
                             language,
                             tab_for_changes.clone(),
+                            reflog_query,
                             refs_tab,
                             set_refs_tab.clone(),
                             changes_actions.clone(),

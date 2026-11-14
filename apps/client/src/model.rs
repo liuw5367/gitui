@@ -228,6 +228,30 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     return tab;
 }
 
+/// 按 SHA 选中一个提交（reflog 的「在历史中显示」）。
+///
+/// 当前筛选可能把该提交过滤掉了；找不到时先清空关键字再找一次，仍找不到返回
+/// `false`，由界面提示而不是悄悄失败。
+pub fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
+    if let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) {
+        select_commit(tab, index);
+        return true;
+    }
+    let filter = LogFilter::default();
+    if let Ok(commits) = Repo::open(tab.path.as_str()).and_then(|repo| {
+        repo.log_filtered(200, &filter)
+            .map_err(|error| error)
+    }) {
+        tab.commits = commits;
+        tab.filter = filter;
+    }
+    if let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) {
+        select_commit(tab, index);
+        return true;
+    }
+    return false;
+}
+
 /// 选中第 `index` 个提交，读取补丁与文件统计，并清掉单文件选择。
 pub fn select_commit(tab: &mut Tab, index: usize) {
     if index >= tab.commits.len() {
@@ -1387,6 +1411,38 @@ mod tests {
         // 继续合并。
         continue_operation(&mut tab).expect("continue");
         assert_eq!(tab.operation, git::Operation::None, "合并应已结束");
+    }
+
+    #[test]
+    fn select_by_sha_finds_the_commit_even_when_filtered_out() {
+        let repo = TempRepo::new("select-sha");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("a.txt"), "second\n").expect("write");
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["commit", "-q", "-am", "second"])
+            .status()
+            .expect("git");
+        assert!(status.success());
+
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert_eq!(tab.commits.len(), 2);
+        let oldest = tab.commits[1].sha.clone();
+
+        // 用关键字把列表筛到只剩最新一条，再按 SHA 找最旧那条。
+        tab.filter.query = "second".to_string();
+        let filtered = load_tab(&path, &tab.filter);
+        assert_eq!(filtered.commits.len(), 1, "筛选应只剩一条");
+        let mut tab = filtered;
+        assert!(select_by_sha(&mut tab, oldest.as_str()), "应能在清筛选后找到");
+        assert_eq!(
+            tab.commits.get(tab.selected.unwrap_or(0)).map(|c| c.sha.clone()),
+            Some(oldest)
+        );
+
+        // 不存在的 SHA 返回 false，不改变选中。
+        assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
     }
 
     #[test]

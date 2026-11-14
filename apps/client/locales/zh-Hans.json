@@ -369,7 +369,9 @@
     "undo": "撤销",
     "undoTitle": "重置到这条记录？",
     "undoMessage": "分支会以 git reset --hard 移到 %{short}，未提交的改动会丢失。",
-    "undoAction": "重置"
+    "undoAction": "重置",
+    "notFound": "该提交不在当前历史里",
+    "filterHint": "过滤记录"
   },
   "agent": {
     "name": "助手",
@@ -497,6 +499,8 @@
     "pushTag": "推送标签",
     "stashApply": "应用贮藏",
     "stashPop": "弹出贮藏",
-    "reveal": "在 Finder 中显示"
+    "reveal": "在 Finder 中显示",
+    "newBranchFromHere": "从这里新建分支…",
+    "showInHistory": "在历史中显示"
   }
 }

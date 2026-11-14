@@ -132,6 +132,8 @@ pub(crate) struct Actions {
     pub(crate) cherry_pick: Arc<dyn Fn(String)>,
     /// 反向提交（先确认）。
     pub(crate) revert_commit: Arc<dyn Fn(String)>,
+    /// reflog 的「在历史中显示」：切到 History 并选中该提交。
+    pub(crate) show_in_history: Arc<dyn Fn(String)>,
     /// 推送标签。
     pub(crate) push_tag: Arc<dyn Fn(String)>,
     /// 应用贮藏（保留条目）。
@@ -197,6 +199,8 @@ pub fn App() -> impl IntoElement {
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
+    // reflog 的过滤关键字（动作或说明）。
+    let reflog_query = signal(String::new());
     // 冲突视图：可编辑的结果区与 base 显隐。
     let conflict_result = signal(String::new());
     let conflict_base_open = signal(false);
@@ -1881,6 +1885,30 @@ pub fn App() -> impl IntoElement {
         Arc::new(move |reference: String| stash_action("pop", reference))
     };
 
+    let show_in_history: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        let mode = mode;
+        let notice = notice;
+        let language = language;
+        Arc::new(move |sha: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                if model::select_by_sha(tab, sha.as_str()) {
+                    mode.set(Mode::History);
+                    tabs.set(list);
+                } else {
+                    let lang = language.get_untracked();
+                    interactions::notify(
+                        notice,
+                        i18n::t(lang.as_str(), "reflog.notFound"),
+                    );
+                }
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1940,6 +1968,7 @@ pub fn App() -> impl IntoElement {
         cherry_pick,
         revert_commit,
         open_form_from,
+        show_in_history,
         push_tag,
         apply_stash,
         pop_stash,
@@ -2224,6 +2253,7 @@ pub fn App() -> impl IntoElement {
                             agent_policies,
                             reset_request,
                             notice,
+                            reflog_query,
                             actions_for_view.clone(),
                         )
                         .into_element(),

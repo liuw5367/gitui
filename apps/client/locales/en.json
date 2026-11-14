@@ -369,7 +369,9 @@
     "undo": "Undo",
     "undoTitle": "Reset to this entry?",
     "undoMessage": "The branch will move to %{short} with git reset --hard; uncommitted changes are lost.",
-    "undoAction": "Reset"
+    "undoAction": "Reset",
+    "notFound": "Commit is not in the current history",
+    "filterHint": "Filter entries"
   },
   "agent": {
     "name": "Agent",
@@ -497,6 +499,8 @@
     "pushTag": "Push Tag",
     "stashApply": "Apply Stash",
     "stashPop": "Pop Stash",
-    "reveal": "Reveal in Finder"
+    "reveal": "Reveal in Finder",
+    "newBranchFromHere": "New Branch from Here…",
+    "showInHistory": "Show in History"
   }
 }
