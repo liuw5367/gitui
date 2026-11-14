@@ -24,6 +24,7 @@ ROOT = Path("/tmp/s5-auth-http")
 WORK = Path("/tmp/s5-auth-work")
 REMOTE = ROOT / "repo.git"
 ASKPASS = Path("/tmp/s5-auth-askpass.sh")
+CLONE2 = Path("/tmp/s5-auth-clone2")
 USER = "demo"
 PASSWORD = "secret"
 
@@ -167,9 +168,54 @@ esac
             }
         )
 
+    good_env = base_env.copy()
+    good_env.update({"S5_USER": USER, "S5_PASS": PASSWORD})
+
+    # non-fast-forward: clone, push ahead, then push from the original worktree.
+    shutil.rmtree(CLONE2, ignore_errors=True)
+    subprocess.run(
+        ["git", "clone", url, str(CLONE2)],
+        env=good_env,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "config", "user.name", "S5"], cwd=CLONE2, check=True)
+    subprocess.run(["git", "config", "user.email", "s5@example.com"], cwd=CLONE2, check=True)
+    (CLONE2 / "b.txt").write_text("remote ahead\n")
+    subprocess.run(["git", "add", "b.txt"], cwd=CLONE2, check=True)
+    subprocess.run(["git", "commit", "-qm", "remote ahead"], cwd=CLONE2, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=CLONE2, env=good_env, check=True)
+
+    (WORK / "c.txt").write_text("local ahead\n")
+    subprocess.run(["git", "add", "c.txt"], cwd=WORK, check=True)
+    subprocess.run(["git", "commit", "-qm", "local ahead"], cwd=WORK, check=True)
+    non_ff = run(["git", "push", url, "main"], cwd=WORK, env=good_env)
+    results.append(
+        {
+            "case": "non_fast_forward",
+            "expected_ok": False,
+            "ok": non_ff.returncode == 0,
+            "exit": non_ff.returncode,
+            "stderr": non_ff.stderr.strip().splitlines()[-1] if non_ff.stderr.strip() else "",
+            "refs": 0,
+        }
+    )
+
     thread.join(timeout=0.1)
     server.shutdown()
     server.server_close()
+
+    network = run(["git", "ls-remote", url], env=good_env)
+    results.append(
+        {
+            "case": "network_down",
+            "expected_ok": False,
+            "ok": network.returncode == 0,
+            "exit": network.returncode,
+            "stderr": network.stderr.strip().splitlines()[-1] if network.stderr.strip() else "",
+            "refs": 0,
+        }
+    )
 
     print(json.dumps({"port": port, "url": url, "results": results}, indent=2))
     if any(result["ok"] != result["expected_ok"] for result in results):

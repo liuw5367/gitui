@@ -9,6 +9,8 @@ Starts a local `git http-backend` with basic auth (`demo` / `secret`) and tests:
 - no credentials → fail
 - wrong password → fail
 - correct password → `git ls-remote` succeeds
+- non-fast-forward push → rejected
+- server stopped → connection refused
 
 Credentials are passed with `GIT_ASKPASS`, never in the URL or argv.
 
