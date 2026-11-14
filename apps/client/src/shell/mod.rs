@@ -199,8 +199,10 @@ pub(crate) fn toolbar(
     mode: Signal<crate::Mode>,
     set_mode: std::sync::Arc<dyn Fn(crate::Mode)>,
     sync: std::sync::Arc<dyn Fn(crate::model::Sync) -> ()>,
+    refs: std::sync::Arc<dyn Fn() -> ()>,
     panel_open: Signal<bool>,
 ) -> impl IntoElement {
+    let do_refs = refs.clone();
     let do_fetch = sync.clone();
     let do_pull = sync.clone();
     let do_push = sync.clone();
@@ -233,7 +235,10 @@ pub(crate) fn toolbar(
             do_push(crate::model::Sync::Push)
         }))
         .child(widgets::separator())
-        .child(disabled_tool(language, "branch", "shell.branch"))
+        .child(tool_button(language, "branch", "shell.branch", {
+            let do_refs = do_refs.clone();
+            move || do_refs()
+        }))
         .child(disabled_tool(language, "archive", "shell.stash"))
         .child(view().flex_1())
         .child(

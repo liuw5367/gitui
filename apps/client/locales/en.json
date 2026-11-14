@@ -274,5 +274,17 @@
     "aboutHint": "A native Git client. macOS first; other platforms follow.",
     "identity": "Commit identity",
     "identityHint": "Used for commits you create; read from git config."
+  },
+  "refs": {
+    "title": "Refs",
+    "writeHint": "Read-only for now: creating and deleting refs comes with the write flows."
+  },
+  "reflog": {
+    "title": "Reflog",
+    "hint": "Every ref movement, including resets.",
+    "undo": "Undo",
+    "undoTitle": "Reset to this entry?",
+    "undoMessage": "The branch will move to %{short} with git reset --hard; uncommitted changes are lost.",
+    "undoAction": "Reset"
   }
 }

@@ -57,6 +57,7 @@ pub(crate) fn workspace(
             mode,
             actions.set_mode.clone(),
             actions.sync.clone(),
+            actions.set_mode_refs.clone(),
             inspector_open,
         ))
         .child(shell::op_banner(
@@ -218,6 +219,8 @@ fn body(
     };
     let inspector_visible = inspector_open.get_untracked();
     let tab_for_changes = tab.clone();
+    let refs_tab = signal(crate::screens::RefsTab::Refs);
+    let set_refs_tab = std::sync::Arc::new(move |next: crate::screens::RefsTab| refs_tab.set(next));
     let group_by_directory = settings_state.get_untracked().file_tree;
     let changes_actions = actions.clone();
     let history_actions = actions.clone();
@@ -254,6 +257,14 @@ fn body(
                             ))
                             .child(diff::diff(language, label.clone(), patch.clone()))
                             .into_element(),
+                        crate::Mode::Refs => crate::screens::refs_view(
+                            language,
+                            tab_for_changes.clone(),
+                            refs_tab,
+                            set_refs_tab.clone(),
+                            changes_actions.clone(),
+                        )
+                        .into_element(),
                         crate::Mode::Changes => crate::screens::changes_view(
                             language,
                             tab_for_changes.clone(),
@@ -273,6 +284,7 @@ fn body(
                     inspector_actions.clone(),
                 )
                 .into_element(),
+                crate::Mode::Refs => view().w(px(0.0)).h_full().into_element(),
                 crate::Mode::Changes => commit::commit_panel(
                     language,
                     tab_for_inspector.clone(),

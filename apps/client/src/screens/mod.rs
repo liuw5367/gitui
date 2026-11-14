@@ -5,12 +5,14 @@
 
 mod changes_view;
 mod palette;
+mod refs_view;
 mod settings;
 mod welcome;
 mod workspace;
 
 pub(crate) use changes_view::changes_view;
 pub(crate) use palette::palette;
+pub(crate) use refs_view::{refs_view, RefsTab};
 pub(crate) use settings::{settings, Section as SettingsSection};
 pub(crate) use welcome::welcome;
 pub(crate) use workspace::workspace;

@@ -54,6 +54,8 @@ pub struct Tab {
     pub sync_message: Option<String>,
     /// 最近一次同步是否失败。
     pub sync_failed: bool,
+    /// reflog（最近的在前）。
+    pub reflog: Vec<git::ReflogEntry>,
     /// 提交说明的两段文本。
     pub summary: String,
     pub description: String,
@@ -167,6 +169,7 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let authors = repo.authors().unwrap_or_default();
     let changes = load_changes(&repo);
     let operation = repo.operation();
+    let reflog = repo.reflog(100).unwrap_or_default();
     let conflicts = repo.conflicts().unwrap_or_default();
     let changelists = store::load_changelists(&store::default_dir(crate::brand::STORAGE_DIR), path);
     let mut tab = Tab {
@@ -182,6 +185,7 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         changes,
         operation,
         conflicts,
+        reflog,
         changelists,
         filter: filter.clone(),
         ..Tab::default()
@@ -343,6 +347,33 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
         repo.file_diff(entry.path.as_str(), entry.staged)
             .unwrap_or_default()
     };
+}
+
+/// 把当前分支重置到某条 reflog 记录（不可撤销，调用方需确认）。
+pub fn undo_to_reflog(tab: &mut Tab, index: usize) {
+    let Some(entry) = tab.reflog.get(index).cloned() else {
+        return;
+    };
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.reset_hard(entry.sha.as_str()) {
+        Ok(()) => {
+            refresh_changes(tab);
+            let filter = tab.filter.clone();
+            let refreshed = load_tab(tab.path.as_str(), &filter);
+            tab.commits = refreshed.commits;
+            tab.branch = refreshed.branch;
+            tab.ahead = refreshed.ahead;
+            tab.behind = refreshed.behind;
+            tab.reflog = refreshed.reflog;
+        }
+        Err(error) => tab.error = Some(error.detail()),
+    }
 }
 
 /// 同步操作。
@@ -878,6 +909,38 @@ mod tests {
         assert!(!tab.sync_failed);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn reflog_is_loaded_and_undo_resets_the_branch() {
+        let repo = TempRepo::new("reflog");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("a.txt"), "two\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        stage_all_or_none(&mut tab, true);
+        tab.summary = "second".to_string();
+        commit_staged(&mut tab);
+
+        // 提交后 reflog 顶部应是这次 commit。
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert!(!tab.reflog.is_empty());
+        assert_eq!(tab.reflog[0].action, "commit");
+        let newest = tab.commits[0].sha.clone();
+
+        // 撤销到 reflog 里第一条之外的记录（即上一个提交）。
+        let target = tab
+            .reflog
+            .iter()
+            .position(|entry| entry.sha != newest)
+            .expect("older entry");
+        let target_sha = tab.reflog[target].sha.clone();
+        undo_to_reflog(&mut tab, target);
+
+        assert_eq!(tab.commits[0].sha, target_sha, "分支应回到目标提交");
+        assert!(
+            !tab.reflog.is_empty() && tab.reflog[0].action == "reset",
+            "撤销本身也应留下 reflog 记录"
+        );
     }
 
     #[test]

@@ -37,6 +37,21 @@ impl Operation {
     }
 }
 
+/// 一条 reflog 记录。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReflogEntry {
+    /// 短 SHA（`HEAD@{2}` 里的位置由列表顺序体现）。
+    pub short: String,
+    /// 完整 SHA。
+    pub sha: String,
+    /// 动作：`commit`、`reset`、`checkout`、`merge` 等。
+    pub action: String,
+    /// 说明（`commit: fix composer`）。
+    pub summary: String,
+    /// UTC 秒。
+    pub timestamp: i64,
+}
+
 /// 一次提交的结果。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommitOutcome {
@@ -325,6 +340,52 @@ impl Repo {
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
         let output = run_git(&self.root, &["status", "--porcelain=v1", "-z"])?;
         return parse_status(&output);
+    }
+
+    /// 读取当前分支的 reflog（最近的在前）。
+    pub fn reflog(&self, limit: usize) -> Result<Vec<ReflogEntry>, GitError> {
+        let limit_arg = format!("-{}", limit.max(1));
+        let output = run_git(
+            &self.root,
+            &[
+                "reflog",
+                limit_arg.as_str(),
+                "--date=unix",
+                "--format=%H%x1f%h%x1f%gs%x1f%ct",
+            ],
+        )?;
+        let mut entries = Vec::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let mut fields = line.split('\u{1f}');
+            let sha = fields.next().unwrap_or("").to_string();
+            if sha.is_empty() {
+                continue;
+            }
+            let short = fields.next().unwrap_or("").to_string();
+            let subject = fields.next().unwrap_or("").to_string();
+            let timestamp = fields.next().and_then(|value| value.parse().ok()).unwrap_or(0);
+            // `%gs` 形如 `commit: message`、`reset: moving to HEAD~1`。
+            let (action, summary) = match subject.split_once(portable_separator()) {
+                Some((action, summary)) => (action.trim().to_string(), summary.trim().to_string()),
+                None => (subject.clone(), String::new()),
+            };
+            entries.push(ReflogEntry {
+                short,
+                sha,
+                action,
+                summary,
+                timestamp,
+            });
+        }
+        return Ok(entries);
+    }
+
+    /// 把当前分支重置到某个提交（`git reset --hard <sha>`）。
+    ///
+    /// 用于 reflog 的撤销；调用方必须先确认，未提交的改动会被丢弃。
+    pub fn reset_hard(&self, sha: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["reset", "--hard", sha])?;
+        return Ok(());
     }
 
     /// 当前仓库是否处于合并/变基/拣选/回滚中。
@@ -788,6 +849,11 @@ fn run_git_combined(directory: &Path, args: &[&str]) -> Result<String, GitError>
         });
     }
     return Ok(text);
+}
+
+/// reflog 主题里动作与说明之间的分隔符（`": "`）。
+fn portable_separator() -> &'static str {
+    return ": ";
 }
 
 fn truncate(text: &str, limit: usize) -> String {
@@ -1369,6 +1435,35 @@ mod tests {
             "推送拒绝的原因应在详情里：{}",
             detail
         );
+    }
+
+    #[test]
+    fn reflog_lists_recent_movements_and_can_reset() {
+        let (_guard, path) = fixture("reflog", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("second", "").expect("commit");
+        let head = repo.log(2, "").expect("log").remove(0);
+
+        let entries = repo.reflog(10).expect("reflog");
+        assert!(entries.len() >= 2);
+        assert_eq!(entries[0].sha.len(), 40);
+        assert_eq!(entries[0].action, "commit");
+        assert!(entries[0].summary.contains("second"));
+
+        // 回到上一个提交，reflog 记录这次 reset。
+        let previous = repo.log(2, "").expect("log").remove(1);
+        repo.reset_hard(&previous.sha).expect("reset");
+        assert_eq!(
+            repo.log(1, "").expect("log").remove(0).sha,
+            previous.sha,
+            "reset 后 HEAD 应回到前一个提交"
+        );
+        let after = repo.reflog(3).expect("reflog");
+        assert_eq!(after[0].action, "reset");
+        assert_eq!(after[0].sha, previous.sha);
+        assert_ne!(head.sha, previous.sha);
     }
 
     #[test]

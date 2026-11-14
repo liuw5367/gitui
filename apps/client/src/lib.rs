@@ -44,6 +44,7 @@ pub(crate) enum Screen {
 pub(crate) enum Mode {
     History,
     Changes,
+    Refs,
 }
 
 /// 仓库管理页的三种入口（设计板 03 的分段控件）。
@@ -81,6 +82,8 @@ pub(crate) struct Actions {
     pub(crate) set_file_tree: Arc<dyn Fn(bool)>,
     pub(crate) set_restore_session: Arc<dyn Fn(bool)>,
     pub(crate) go_settings: Arc<dyn Fn()>,
+    pub(crate) undo_reflog: Arc<dyn Fn(usize)>,
+    pub(crate) set_mode_refs: Arc<dyn Fn()>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -695,6 +698,52 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let undo_reflog: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        let language = language;
+        Arc::new(move |index: usize| {
+            let list = tabs.get_untracked();
+            let current = active.get_untracked();
+            let Some(tab) = list.get(current).cloned() else {
+                return;
+            };
+            let Some(entry) = tab.reflog.get(index).cloned() else {
+                return;
+            };
+            let language_now = language.get_untracked();
+            let pending = nsh_base::alert_dialog()
+                .title(i18n::t(language_now.as_str(), "reflog.undoTitle"))
+                .description(i18n::with_arguments(
+                    language_now.as_str(),
+                    "reflog.undoMessage",
+                    &[("short", entry.short.clone())],
+                ))
+                .destructive("undo", i18n::t(language_now.as_str(), "reflog.undoAction"))
+                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
+                .show();
+            let tabs = tabs;
+            spawn(async move {
+                if let Ok(result) = pending.await {
+                    if result.action.as_deref() != Some("undo") {
+                        return;
+                    }
+                    let current = active.get_untracked();
+                    let mut list = tabs.get_untracked();
+                    if let Some(tab) = list.get_mut(current) {
+                        model::undo_to_reflog(tab, index);
+                        tabs.set(list);
+                    }
+                }
+            });
+        })
+    };
+
+    let set_mode_refs: Arc<dyn Fn()> = {
+        let mode = mode;
+        Arc::new(move || mode.set(Mode::Refs))
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -719,6 +768,8 @@ pub fn App() -> impl IntoElement {
         set_file_tree,
         set_restore_session,
         go_settings,
+        undo_reflog,
+        set_mode_refs,
         apply_filter,
         clear_filter,
         clone_repository,
