@@ -1,0 +1,19 @@
+[package]
+name = "nsh-app"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+nsh-core = "=0.5.0"
+nsh-base = "=0.5.0"
+env_logger = "0.11"
+serde_json = "1"
+domain = { path = "../../crates/domain" }
+git = { path = "../../crates/git" }
+store = { path = "../../crates/store" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsh-platform-macos = { version = "=0.5.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }

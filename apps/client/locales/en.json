@@ -1,0 +1,107 @@
+{
+  "app": {
+    "name": "gitui",
+    "tagline": "A native Git client for macOS."
+  },
+  "welcome": {
+    "repositories": "Repositories",
+    "recentCount": "%{count} recent",
+    "search": "Search repositories",
+    "groupToday": "Today",
+    "groupWeek": "Previous 7 days",
+    "checkUpdates": "Check for Updates",
+    "cloneTitle": "Clone a repository",
+    "cloneSub": "Paste an HTTPS or SSH URL. gitui creates the folder and fetches all branches and tags.",
+    "url": "Repository URL",
+    "destination": "Destination",
+    "choose": "Choose…",
+    "clone": "Clone Repository",
+    "cloneHint": "Fetches all branches and tags.",
+    "tipTitle": "Tip",
+    "tipBody": "Press ⌘O to open a repository, ⌘P for the command palette.",
+    "noRecent": "No recent repositories",
+    "openFolder": "Open…",
+    "cloneWorking": "Cloning…"
+  },
+  "shell": {
+    "history": "History",
+    "changes": "Changes",
+    "commit": "Commit",
+    "agent": "Agent",
+    "settings": "Settings",
+    "openRepo": "Open",
+    "closeTab": "Close tab",
+    "addTab": "Open repository",
+    "sidebar": "Toggle sidebar",
+    "search": "Search",
+    "fetch": "Fetch",
+    "pull": "Pull",
+    "push": "Push",
+    "branch": "Branch",
+    "stash": "Stash"
+  },
+  "sidebar": {
+    "branches": "Branches",
+    "remotes": "Remotes",
+    "tags": "Tags",
+    "stashes": "Stashes",
+    "submodules": "Submodules",
+    "worktrees": "Worktrees",
+    "empty": "None"
+  },
+  "history": {
+    "commits": "%{count} commits",
+    "filter": "Filter commits",
+    "allAuthors": "All authors",
+    "clear": "Clear",
+    "description": "Description",
+    "author": "Author",
+    "date": "Date",
+    "empty": "No commits yet",
+    "noMatch": "No commits match",
+    "loading": "Loading history…",
+    "selectCommit": "Select a commit to read its changes",
+    "diffEmpty": "No changes in this commit",
+    "split": "Split",
+    "unified": "Unified",
+    "copySha": "Copy SHA"
+  },
+  "status": {
+    "clean": "Working tree clean",
+    "ahead": "↑%{count}",
+    "behind": "↓%{count}",
+    "detached": "detached"
+  },
+  "time": {
+    "now": "now",
+    "minutes": "%{count}m",
+    "hours": "%{count}h",
+    "yesterday": "Yesterday",
+    "days": "%{count}d",
+    "months": [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ],
+    "weekdays": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "monthDay": "%{month} %{day}",
+    "monthDayYear": "%{month} %{day}, %{year}"
+  },
+  "error": {
+    "title": "Something went wrong",
+    "notRepository": "That folder is not a Git repository",
+    "unreadable": "That folder cannot be read",
+    "gitMissing": "Git was not found on this Mac",
+    "commandFailed": "Git returned an error",
+    "retry": "Retry",
+    "details": "Details",
+    "close": "Close",
+    "cloneFailed": "Clone failed"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "open": "Open",
+    "done": "Done",
+    "search": "Search",
+    "loading": "Loading…"
+  }
+}

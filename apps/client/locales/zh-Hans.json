@@ -1,0 +1,107 @@
+{
+  "app": {
+    "name": "gitui",
+    "tagline": "面向 macOS 的原生 Git 客户端。"
+  },
+  "welcome": {
+    "repositories": "仓库",
+    "recentCount": "最近 %{count} 个",
+    "search": "搜索仓库",
+    "groupToday": "今天",
+    "groupWeek": "最近 7 天",
+    "checkUpdates": "检查更新",
+    "cloneTitle": "克隆仓库",
+    "cloneSub": "粘贴 HTTPS 或 SSH 地址。gitui 会创建目录并获取所有分支与标签。",
+    "url": "仓库地址",
+    "destination": "目标位置",
+    "choose": "选择…",
+    "clone": "克隆仓库",
+    "cloneHint": "获取所有分支与标签。",
+    "tipTitle": "提示",
+    "tipBody": "按 ⌘O 打开仓库，按 ⌘P 打开命令面板。",
+    "noRecent": "还没有最近打开的仓库",
+    "openFolder": "打开…",
+    "cloneWorking": "正在克隆…"
+  },
+  "shell": {
+    "history": "历史",
+    "changes": "变更",
+    "commit": "提交",
+    "agent": "助手",
+    "settings": "设置",
+    "openRepo": "打开",
+    "closeTab": "关闭标签页",
+    "addTab": "打开仓库",
+    "sidebar": "显示侧栏",
+    "search": "搜索",
+    "fetch": "获取",
+    "pull": "拉取",
+    "push": "推送",
+    "branch": "分支",
+    "stash": "贮藏"
+  },
+  "sidebar": {
+    "branches": "分支",
+    "remotes": "远程",
+    "tags": "标签",
+    "stashes": "贮藏",
+    "submodules": "子模块",
+    "worktrees": "工作树",
+    "empty": "无"
+  },
+  "history": {
+    "commits": "%{count} 次提交",
+    "filter": "筛选提交",
+    "allAuthors": "所有作者",
+    "clear": "清除",
+    "description": "说明",
+    "author": "作者",
+    "date": "时间",
+    "empty": "还没有提交",
+    "noMatch": "没有匹配的提交",
+    "loading": "正在读取历史…",
+    "selectCommit": "选择一个提交查看改动",
+    "diffEmpty": "该提交没有改动",
+    "split": "并排",
+    "unified": "合并",
+    "copySha": "复制 SHA"
+  },
+  "status": {
+    "clean": "工作区干净",
+    "ahead": "↑%{count}",
+    "behind": "↓%{count}",
+    "detached": "游离头指针"
+  },
+  "time": {
+    "now": "刚刚",
+    "minutes": "%{count} 分钟",
+    "hours": "%{count} 小时",
+    "yesterday": "昨天",
+    "days": "%{count} 天",
+    "months": [
+      "1 月", "2 月", "3 月", "4 月", "5 月", "6 月",
+      "7 月", "8 月", "9 月", "10 月", "11 月", "12 月"
+    ],
+    "weekdays": ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+    "monthDay": "%{month}%{day} 日",
+    "monthDayYear": "%{year} 年 %{month}%{day} 日"
+  },
+  "error": {
+    "title": "出错了",
+    "notRepository": "该目录不是 Git 仓库",
+    "unreadable": "无法读取该目录",
+    "gitMissing": "在这台 Mac 上找不到 Git",
+    "commandFailed": "Git 返回了错误",
+    "retry": "重试",
+    "details": "详情",
+    "close": "关闭",
+    "cloneFailed": "克隆失败"
+  },
+  "common": {
+    "cancel": "取消",
+    "open": "打开",
+    "done": "完成",
+    "search": "搜索",
+    "loading": "加载中…"
+  }
+}

@@ -75,30 +75,20 @@
 ## 3. Crate / module layout
 
 ```
-apps/gitui-macos/          NSH app entry, windows, menus, routes
-crates/gitui-ui/           NSH Rust views, components, view models
-crates/gitui-app/          AppState, tabs, session, command routing
-crates/gitui-core/         domain types, error taxonomy, IDs, events
-crates/gitui-git/          process runner, parsers, status/log/diff/show
-crates/gitui-index/        stage/unstage/discard, patch generation
-crates/gitui-ops/          merge/rebase/cherry-pick/revert state machine
-crates/gitui-hooks/        hook run, stream, timeout, redaction
-crates/gitui-sync/         fetch/pull/push, progress, error classification
-crates/gitui-auth/         credential helper, askpass, SSH, Keychain
-crates/gitui-refs/         branches/tags/remotes/stashes/worktrees
-crates/gitui-watch/        FSEvents, debounce, invalidation
-crates/gitui-store/        SQLite, settings, session, audit, changelists
-crates/gitui-agent/        v0.2: planner, tools, permissions, audit
-crates/gitui-testkit/      fixtures, fake Git, fake remote, golden helpers
+apps/client/                NSH 应用入口、窗口、标题栏、屏幕与工作区视图、locales（同一 crate 供各平台构建）
+crates/core/                领域类型、错误分类、补丁解析（无 UI/进程依赖）
+crates/git/                 进程执行与输出解析：status/log/show/diff/refs；后续写路径、同步、操作状态机
+crates/store/               会话、最近仓库、界面语言（本地 JSON/文本文件）
 ```
+
 
 Rules:
 
-- `gitui-ui` depends on `gitui-app`/`gitui-core` view models; never on `gitui-git` process details.
-- `gitui-app` owns per-tab state; `gitui-core` has no UI/AppKit dependencies.
-- `gitui-git` is the only crate that constructs Git commands.
-- `gitui-auth` is the only crate that reads Keychain/credentials.
-- `gitui-agent` can only call a `ToolApi` trait implemented by `gitui-app`; it never gets `std::process` or Keychain directly.
+- 应用 crate 拥有每个标签页的界面状态；`core` 不依赖 UI、AppKit 或进程。
+- `git` 是唯一构造 Git 命令的 crate；写路径、同步与冲突状态机在后续阶段加入同一 crate。
+- 凭据只经系统 Git 的 credential helper 与 Keychain，应用不自行读取；`store` 不保存秘密。
+- Agent（v0.2）接入时只能调用应用实现的能力接口，不直接获得 `std::process` 或 Keychain。
+- 13 个 crate 的早期拆分对 v0.1 属于过度设计，按实测需要再拆。
 
 ---
 

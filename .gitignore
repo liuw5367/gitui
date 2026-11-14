@@ -63,3 +63,7 @@ public/workbox-*.js.map
 
 *.local.*
 dev-dist
+
+# Rust build output (the app's Cargo.lock is kept)
+target/
+crates/*/Cargo.lock

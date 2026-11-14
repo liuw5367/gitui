@@ -50,15 +50,15 @@
 | Window title | 13 | semibold | titlebar |
 | Body / labels | 13 | regular | native default |
 | Secondary | 11 | regular | help/description |
-| Metadata | 10.5 | regular | dates/counts |
-| Table header | 10.5–11 | medium | **sentence case**, no uppercase/letter-spacing |
+| Metadata | 9.5–10.5 | regular | 设计稿实测：`.wglabel` 9.5、`.statusbar` 10.5、`.wrepo .wt` 9 |
+| Table header | 9.5–10.5 | semibold | 设计稿实测：`.commit-cols` 9.5/600、`.refs-cols` 10/500（sentence case） |
 | Section header | 11–12 | semibold | sentence case |
 | Code/diff | 11–12 | regular | SF Mono; 10.5 minimum |
 | Button | 12–13 | medium | 22/24 px height |
 | Badge | 9.5–10.5 | medium | no all-caps except known acronyms |
 
 - Font: system SF Pro Text; code SF Mono. No custom display font.
-- Avoid 8–9 px app labels; minimum 10.5 for metadata.
+- 设计稿在徽章、元数据与菜单项使用 8.5–9.5px；按“完全还原”实现，不在实现侧抬高字号（见 `plans.local/2026-11-14-design-parity-build.md` D-E）。
 - Line height: 1.3–1.5; diff 1.5.
 
 ### 2.3 Spacing / shape
@@ -67,14 +67,14 @@
 |---|---|
 | Base unit | 4 |
 | Gaps | 4 / 6 / 8 / 12 / 16 |
-| Row height (tables/lists) | 28–30 |
-| Sidebar row | 28 |
+| Row height (tables/lists) | 25（侧栏）/ 28（提交行） |
+| Sidebar row | 25 |
 | Button height | 22 small / 24 regular / 28 large |
-| Field height | 26 |
+| Field height | 26（`.field` 实测覆盖为 26） |
 | Segmented height | 23–24 |
 | Menu item | 24 |
-| Toolbar | 52 |
-| Titlebar | 38 (44 with tabs) |
+| Toolbar | 44（`.toolbar.v2` 实测） |
+| Titlebar | 38（无 tabs）/ 44（with-tabs） |
 | Radius | 6 controls / 8 panels / 10 window |
 | Hairline | 1 px (0.5 pt on Retina) |
 

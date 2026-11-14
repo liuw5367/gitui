@@ -2,7 +2,8 @@
 
 **Status**: v1, 2026-11-14  
 **Product spec**: [../SPEC.md](../SPEC.md)  
-**Stack**: **NSH (Native Shell) + Rust only** — no TSX, no JS runtime, no HTML UI. NSH's Rust API + AppKit interop.
+**Stack**: **NSH (Native Shell) + Rust only** — no TSX, no JS runtime, no HTML UI. NSH 0.5.0 的 Rust API + AppKit 后端。
+**Positioning**: 跨平台的原生 Git 客户端；当前接入 macOS，其他平台在 macOS 版本完成后接入。默认界面语言为英文。
 
 ## Reading order
 
@@ -35,7 +36,8 @@
 | S-4 performance | **Partial** (20k commits micro-benchmark); 100k/1GB not yet run |
 | S-5 auth/network | **Pending** (needs remote/token/SSH harness) |
 | S-6 NSH Rust editor/bridge | **Pending, blocking** for M2/M4 |
-| v0.1 implementation | **Not started**; do not start M2 until S-5/S-6 close |
+| v0.1 implementation | **P1 done**: welcome page, open repository, workspace shell, read-only history/diff (see `plans.local/2026-11-14-design-parity-build.md`) |
+| P1 verification | `cargo test --workspace` 通过（几何断言比对设计 CSS）；截图 `docs/verify/p1-welcome.png` |
 
 ## Document ownership
 

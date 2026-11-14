@@ -1,0 +1,9 @@
+{
+  "name": "Git Client",
+  "id": "dev.example.gitclient",
+  "version": "0.1.0",
+  "build": 1,
+  "rust": ".",
+  "root": "App",
+  "appearance": "system"
+}
