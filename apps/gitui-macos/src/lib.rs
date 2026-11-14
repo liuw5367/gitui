@@ -10,9 +10,9 @@ mod sections;
 mod widgets;
 
 use gitui_agent::{AgentPermissions, AgentPlan, LocalPlanner, PlanStep, Planner};
-use gitui_git::{BlameLine, ChangedFile, Commit, CommitDetails, ReflogEntry, Repo, StatusEntry};
+use gitui_git::{BlameLine, ChangedFile, Commit, CommitDetails, PushPreview, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{agent_panel, audit_panel, changes_list, commit_info_panel, diff_view, history, inspect_panel, inspector, palette_panel, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, CommitInfoActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{agent_panel, audit_panel, changes_list, commit_info_panel, diff_view, history, inspect_panel, inspector, palette_panel, push_panel, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, CommitInfoActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, PushActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -138,6 +138,9 @@ pub fn App() -> impl IntoElement {
     let commit_info_open = signal(false);
     let commit_info = signal(None::<CommitDetails>);
     let commit_files = signal(Vec::<ChangedFile>::new());
+    let push_open = signal(false);
+    let push_preview = signal(None::<PushPreview>);
+    let push_commits = signal(Vec::<Commit>::new());
     let inspect_open = signal(false);
     let inspect_tab = signal(InspectTab::Compare);
     let inspect_from = signal(String::from("HEAD~1"));
@@ -440,9 +443,34 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let open_push: Arc<dyn Fn()> = Arc::new(move || {
+        error.set(SharedString::from(""));
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.push_preview())
+        {
+            Ok(preview) => {
+                push_commits.set(preview.commits.clone());
+                push_preview.set(Some(preview));
+                push_open.set(true);
+            }
+            Err(err) => {
+                push_commits.set(Vec::new());
+                push_preview.set(None);
+                error.set(SharedString::from(err.to_string()));
+                push_open.set(true);
+            }
+        }
+    });
+    let confirm_push: Arc<dyn Fn()> = Arc::new({
+        let push = push_action.clone();
+        move || {
+            push();
+            push_open.set(false);
+        }
+    });
+
     let palette_fetch = fetch_action.clone();
     let palette_pull = pull_action.clone();
-    let palette_push = push_action.clone();
     let toolbar = toolbar(
         path_input,
         branch,
@@ -453,7 +481,7 @@ pub fn App() -> impl IntoElement {
             close: close_action,
             fetch: fetch_action,
             pull: pull_action,
-            push: push_action,
+            push: open_push.clone(),
         },
         mode,
         set_mode.clone(),
@@ -1656,8 +1684,8 @@ pub fn App() -> impl IntoElement {
         },
         PaletteCommand {
             label: "Push",
-            hint: "configured upstream",
-            action: palette_push.clone(),
+            hint: "review commits to push",
+            action: open_push.clone(),
         },
         PaletteCommand {
             label: "Sync",
@@ -1713,6 +1741,16 @@ pub fn App() -> impl IntoElement {
         commit_files,
         CommitInfoActions {
             close: Arc::new(move || commit_info_open.set(false)),
+        },
+    );
+    let push_panel = push_panel(
+        push_open,
+        push_preview,
+        push_commits,
+        error,
+        PushActions {
+            close: Arc::new(move || push_open.set(false)),
+            confirm: confirm_push,
         },
     );
     let reflog_panel = reflog_panel(
@@ -1775,6 +1813,7 @@ pub fn App() -> impl IntoElement {
         .child(inspect_panel)
         .child(refs_panel)
         .child(commit_info_panel)
+        .child(push_panel)
         .child(agent_panel)
         .child(audit_panel)
         .child(palette_panel)

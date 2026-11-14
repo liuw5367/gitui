@@ -119,6 +119,12 @@ pub struct Commit {
     pub refs: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct PushPreview {
+    pub upstream: String,
+    pub commits: Vec<Commit>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChangedFile {
     pub status: String,
@@ -739,6 +745,38 @@ impl Repo {
     }
 
     /// Fetch and prune `origin`; no working-tree changes.
+    pub fn push_preview(&self) -> Result<PushPreview, GitError> {
+        let upstream = self
+            .git(&[
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{u}",
+            ])?
+            .trim()
+            .to_string();
+        let output = self.git(&[
+            "log",
+            "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%D",
+            "@{u}..HEAD",
+        ])?;
+        let mut commits = Vec::new();
+        for line in output.lines().filter(|line| !line.trim().is_empty()) {
+            let fields: Vec<&str> = line.split('\x1f').collect();
+            if fields.len() == 6 {
+                commits.push(Commit {
+                    sha: fields[0].to_string(),
+                    short: fields[1].to_string(),
+                    author: fields[2].to_string(),
+                    date: fields[3].to_string(),
+                    summary: fields[4].to_string(),
+                    refs: parse_refs(fields[5]),
+                });
+            }
+        }
+        Ok(PushPreview { upstream, commits })
+    }
+
     pub fn fetch(&self) -> Result<String, GitError> {
         self.git(&["fetch", "--prune", "origin"])
     }
@@ -1600,6 +1638,13 @@ mod tests {
         assert_eq!(details.files.len(), 1);
         assert_eq!(details.files[0].path, "a.txt");
         assert_eq!(details.files[0].status, "A");
+    }
+
+    #[test]
+    fn push_preview_requires_an_upstream() {
+        let temp = TempRepo::new();
+        let repo = Repo::open(temp.path()).unwrap();
+        assert!(repo.push_preview().is_err());
     }
 
 }
