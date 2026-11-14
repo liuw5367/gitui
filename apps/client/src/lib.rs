@@ -83,6 +83,8 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
+    /// 切换 diff 的并排/合并视图。
+    pub(crate) set_diff_split: Arc<dyn Fn(bool)>,
     /// 按 hunk / 单行暂存或取消暂存。
     pub(crate) apply_piece: Arc<dyn Fn(usize, Option<usize>, bool)>,
     /// 切换 diff 显示开关（`fold` / `wrap` / `whitespace`）。
@@ -253,6 +255,8 @@ pub fn App() -> impl IntoElement {
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
+    // diff 的并排/合并切换（设计板 04）。
+    let diff_split = signal(false);
     // diff 的三个显示开关（设计板 04）。
     let diff_options = signal(crate::workspace::diff::DiffOptions::default());
     // 历史改写弹窗（改写说明 / 合并提交）。
@@ -2517,6 +2521,11 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let set_diff_split: Arc<dyn Fn(bool)> = {
+        let diff_split = diff_split;
+        Arc::new(move |split: bool| diff_split.set(split))
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2537,6 +2546,7 @@ pub fn App() -> impl IntoElement {
         set_commit_option,
         toggle_hook_log,
         checkout_default_branch,
+        set_diff_split,
         apply_piece,
         toggle_diff_option,
         export_patch,
@@ -3018,6 +3028,7 @@ pub fn App() -> impl IntoElement {
                             notice,
                             reflog_query,
                             diff_options,
+                            diff_split,
                             actions_for_view.clone(),
                         )
                         .into_element(),

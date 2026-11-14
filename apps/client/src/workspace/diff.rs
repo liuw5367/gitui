@@ -36,6 +36,8 @@ pub(crate) fn diff(
     options: DiffOptions,
     toggle_option: std::sync::Arc<dyn Fn(&'static str)>,
     export_patch: std::sync::Arc<dyn Fn()>,
+    split_view: bool,
+    set_split_mode: std::sync::Arc<dyn Fn(bool)>,
 ) -> impl IntoElement {
     let patch = Patch::parse(patch_text.as_str());
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
@@ -92,7 +94,7 @@ pub(crate) fn diff(
                     },
                     move || export_patch(),
                 ))
-                .child(mode_toggle(language))
+                .child(mode_toggle(language, split_view, set_split_mode.clone()))
                 .child(crate::widgets::icon_button(
                     "copy",
                     12.0,
@@ -109,6 +111,16 @@ pub(crate) fn diff(
                         .child(dynamic(move || -> AnyElement {
                             if patch.lines.is_empty() {
                                 return empty_state(language).into_element();
+                            }
+                            // 并排：左右两栏、按行对齐（设计稿无规格，推断实现）。
+                            if split_view {
+                                let rows: Vec<AnyElement> = domain::diff::split_rows(
+                                    &patch.lines,
+                                )
+                                .into_iter()
+                                .map(|row| split_row(row, options))
+                                .collect();
+                                return view().w_full().flex_col().child(rows).into_element();
                             }
                             if options.fold {
                                 let rows: Vec<AnyElement> = fold_lines(&patch.lines)
@@ -263,8 +275,15 @@ fn empty_state(language: Signal<SharedString>) -> impl IntoElement {
         );
 }
 
-/// 合并/并排切换：P1 只有合并视图，并排标为未实现（灰显，不响应）。
-fn mode_toggle(language: Signal<SharedString>) -> impl IntoElement {
+/// 合并 / 并排切换（设计板 04 的 Split / Unified）。
+///
+/// 设计稿没有并排 diff 的排版规格，这里按通用做法实现左右两栏、按行对齐，
+/// 属于推断而非像素还原。
+fn mode_toggle(
+    language: Signal<SharedString>,
+    split: bool,
+    set_split: std::sync::Arc<dyn Fn(bool)>,
+) -> impl IntoElement {
     return view()
         .h(px(20.0))
         .flex_row()
@@ -275,34 +294,121 @@ fn mode_toggle(language: Signal<SharedString>) -> impl IntoElement {
         .border_1()
         .border_color(move || design::line_soft())
         .bg(move || design::panel2())
+        .child(mode_button(
+            language,
+            "history.unified",
+            !split,
+            {
+                let set_split = set_split.clone();
+                move || set_split(false)
+            },
+        ))
+        .child(mode_button(language, "history.split", split, move || set_split(true)));
+}
+
+fn mode_button(
+    language: Signal<SharedString>,
+    key: &'static str,
+    active: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return view()
+        .h(px(16.0))
+        .px(px(6.0))
+        .items_center()
+        .rounded(px(4.0))
+        .bg(move || {
+            if active {
+                design::content()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press(on_press)
         .child(
-            view()
-                .h(px(16.0))
-                .px(px(6.0))
-                .items_center()
-                .rounded(px(4.0))
-                .bg(move || design::content())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "history.unified"))
-                        .text_size(px(9.5))
-                        .text_color(move || design::text()),
-                ),
-        )
-        .child(
-            view()
-                .h(px(16.0))
-                .px(px(6.0))
-                .items_center()
-                .opacity(0.5)
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "history.split"))
-                        .text_size(px(9.5))
-                        .text_color(move || design::text3()),
-                ),
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(9.5))
+                .text_color(move || {
+                    if active {
+                        design::text()
+                    } else {
+                        design::text3()
+                    }
+                }),
         );
 }
 
 /// 一行补丁的界面元素。
+/// 并排视图的一行：左（旧）与右（新）各占一半，空侧留白。
+fn split_row(row: domain::diff::SplitRow, options: DiffOptions) -> AnyElement {
+    return view()
+        .w_full()
+        .h(px(metrics::DIFF_LINE_H))
+        .flex_row()
+        .items_center()
+        .child(split_cell(row.left, options))
+        .child(split_cell(row.right, options))
+        .into_element();
+}
+
+fn split_cell(line: Option<DiffLine>, options: DiffOptions) -> AnyElement {
+    let Some(line) = line else {
+        // 空侧用更淡的底色，让「这一侧没有对应行」一眼可见。
+        return view()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .bg(move || design::panel2())
+            .into_element();
+    };
+    let (background, foreground) = match line.kind {
+        DiffLineKind::Add => (design::add_bg(), design::add_fg()),
+        DiffLineKind::Remove => (design::del_bg(), design::del_fg()),
+        DiffLineKind::Hunk => (design::panel2(), design::text2()),
+        DiffLineKind::Meta => (design::content(), design::text3()),
+        DiffLineKind::Context => (design::content(), design::text()),
+    };
+    let number = line
+        .old
+        .or(line.new)
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    let content = if options.whitespace {
+        reveal_whitespace(line.text.as_str())
+    } else {
+        line.text.clone()
+    };
+    return view()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .flex_row()
+        .items_center()
+        .bg(move || background)
+        .child(
+            text(number)
+                .w(px(GUTTER_W))
+                .flex_shrink_0()
+                .pl(px(6.0))
+                .text_size(px(metrics::DIFF_FONT))
+                .line_height(px(metrics::DIFF_LINE_H))
+                .font_family("SF Mono")
+                .text_color(move || design::text3()),
+        )
+        .child(
+            text(content)
+                .flex_1()
+                .text_size(px(metrics::DIFF_FONT))
+                .line_height(px(metrics::DIFF_LINE_H))
+                .font_family("SF Mono")
+                .text_color(move || foreground)
+                .when(!options.wrap, |this| {
+                    this.text_overflow(nsh_core::EllipsizeMode::Clip)
+                }),
+        )
+        .into_element();
+}
+
 fn gap_row(language: Signal<SharedString>, count: usize) -> AnyElement {
     return view()
         .w_full()

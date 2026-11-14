@@ -36,6 +36,7 @@ pub(crate) fn workspace(
     notice: Signal<Option<String>>,
     reflog_query: Signal<String>,
     diff_options: Signal<crate::workspace::diff::DiffOptions>,
+    diff_split: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -106,6 +107,7 @@ pub(crate) fn workspace(
                     reset_request,
                     reflog_query,
                     diff_options,
+                    diff_split,
                     actions_for_body,
                 )),
         )
@@ -135,6 +137,7 @@ fn match_body(
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     reflog_query: Signal<String>,
     diff_options: Signal<crate::workspace::diff::DiffOptions>,
+    diff_split: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -186,6 +189,7 @@ fn match_body(
                 reset_request,
                 reflog_query,
                 diff_options,
+                diff_split,
                 actions,
             )
             .into_element();
@@ -216,6 +220,7 @@ fn body(
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     reflog_query: Signal<String>,
     diff_options: Signal<crate::workspace::diff::DiffOptions>,
+    diff_split: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -306,6 +311,8 @@ fn body(
                                 diff_options.get(),
                                 history_actions.toggle_diff_option.clone(),
                                 history_actions.export_patch.clone(),
+                                diff_split.get(),
+                                history_actions.set_diff_split.clone(),
                             ))
                             .into_element(),
                         crate::Mode::Agent => view()

@@ -176,6 +176,64 @@ fn parse_hunk_header(line: &str) -> (u32, u32) {
     return (old_start, new_start);
 }
 
+/// 并排视图的一行：左右各一个单元格，可能为空（表示该侧没有对应的行）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SplitRow {
+    pub left: Option<DiffLine>,
+    pub right: Option<DiffLine>,
+}
+
+/// 把按行排列的补丁配成并排行。
+///
+/// 对齐规则（主流 git 客户端的最小形态）：连续的一段删除与紧跟的一段新增按位置
+/// 一一配对，多出来的行留空；上下文行左右相同；`Hunk`/`Meta` 行只放左侧，右空。
+///
+/// 注意：设计稿没有并排 diff 的规格，这是按通用做法的推断实现。
+pub fn split_rows(lines: &[DiffLine]) -> Vec<SplitRow> {
+    let mut rows: Vec<SplitRow> = Vec::new();
+    let mut index = 0usize;
+    while index < lines.len() {
+        let line = &lines[index];
+        match line.kind {
+            DiffLineKind::Context => {
+                rows.push(SplitRow {
+                    left: Some(line.clone()),
+                    right: Some(line.clone()),
+                });
+                index += 1;
+            }
+            DiffLineKind::Remove | DiffLineKind::Add => {
+                // 收集连续的删除，再收集紧跟的新增，两组按顺序配对。
+                let mut removed: Vec<DiffLine> = Vec::new();
+                while index < lines.len() && lines[index].kind == DiffLineKind::Remove {
+                    removed.push(lines[index].clone());
+                    index += 1;
+                }
+                let mut added: Vec<DiffLine> = Vec::new();
+                while index < lines.len() && lines[index].kind == DiffLineKind::Add {
+                    added.push(lines[index].clone());
+                    index += 1;
+                }
+                let pairs = removed.len().max(added.len());
+                for slot in 0..pairs {
+                    rows.push(SplitRow {
+                        left: removed.get(slot).cloned(),
+                        right: added.get(slot).cloned(),
+                    });
+                }
+            }
+            DiffLineKind::Hunk | DiffLineKind::Meta => {
+                rows.push(SplitRow {
+                    left: Some(line.clone()),
+                    right: None,
+                });
+                index += 1;
+            }
+        }
+    }
+    return rows;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +305,73 @@ index 111..222 100644
     fn hunk_headers_set_the_starting_lines() {
         assert_eq!(parse_hunk_header("@@ -12,7 +12,9 @@ fn main()"), (12, 12));
         assert_eq!(parse_hunk_header("@@ -0,0 +1,3 @@"), (0, 1));
+    }
+
+
+    #[test]
+    fn split_pairs_removed_and_added_lines() {
+        let lines = vec![
+            DiffLine {
+                kind: DiffLineKind::Hunk,
+                old: None,
+                new: None,
+                text: "@@ -1,3 +1,3 @@".to_string(),
+            },
+            DiffLine {
+                kind: DiffLineKind::Context,
+                old: Some(1),
+                new: Some(1),
+                text: "keep".to_string(),
+            },
+            DiffLine {
+                kind: DiffLineKind::Remove,
+                old: Some(2),
+                new: None,
+                text: "old".to_string(),
+            },
+            DiffLine {
+                kind: DiffLineKind::Add,
+                old: None,
+                new: Some(2),
+                text: "new".to_string(),
+            },
+        ];
+        let rows = split_rows(&lines);
+        assert_eq!(rows.len(), 3);
+        // hunk 行只在左侧。
+        assert!(rows[0].left.is_some() && rows[0].right.is_none());
+        // 上下文行两侧相同。
+        assert_eq!(rows[1].left, rows[1].right);
+        // 删除与新增配对成同一行。
+        assert_eq!(rows[2].left.as_ref().map(|line| line.text.as_str()), Some("old"));
+        assert_eq!(rows[2].right.as_ref().map(|line| line.text.as_str()), Some("new"));
+    }
+
+    #[test]
+    fn split_leaves_the_shorter_side_empty() {
+        let lines = vec![
+            DiffLine {
+                kind: DiffLineKind::Remove,
+                old: Some(1),
+                new: None,
+                text: "a".to_string(),
+            },
+            DiffLine {
+                kind: DiffLineKind::Remove,
+                old: Some(2),
+                new: None,
+                text: "b".to_string(),
+            },
+            DiffLine {
+                kind: DiffLineKind::Add,
+                old: None,
+                new: Some(1),
+                text: "only".to_string(),
+            },
+        ];
+        let rows = split_rows(&lines);
+        assert_eq!(rows.len(), 2, "两删一增应配成两行");
+        assert_eq!(rows[0].right.as_ref().map(|line| line.text.as_str()), Some("only"));
+        assert!(rows[1].right.is_none(), "多出来的删除行右侧为空");
     }
 }
