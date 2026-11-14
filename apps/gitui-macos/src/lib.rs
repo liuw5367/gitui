@@ -10,7 +10,7 @@ mod widgets;
 
 use gitui_git::{Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{changes_list, diff_view, history, inspector, statusbar, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
+use sections::{changes_list, diff_view, history, inspector, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions, SyncActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -21,6 +21,23 @@ use std::sync::Arc;
 pub(crate) enum Mode {
     History,
     Changes,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SyncKind {
+    Fetch,
+    Pull,
+    Push,
+}
+
+impl SyncKind {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            SyncKind::Fetch => "Fetch",
+            SyncKind::Pull => "Pull",
+            SyncKind::Push => "Push",
+        }
+    }
 }
 
 fn split_entries(entries: &[StatusEntry]) -> (Vec<StatusEntry>, Vec<StatusEntry>) {
@@ -119,6 +136,14 @@ pub fn App() -> impl IntoElement {
     let unstaged_entries = signal(initial_unstaged_entries);
     let mode = signal(Mode::History);
     let set_mode: Arc<dyn Fn(Mode)> = Arc::new(move |next| mode.set(next));
+    let sync_open = signal(false);
+    let sync_kind = signal(SyncKind::Fetch);
+    let sync_log = signal(SharedString::from(""));
+    let open_sync: Arc<dyn Fn()> = Arc::new(move || {
+        sync_kind.set(SyncKind::Fetch);
+        sync_log.set(SharedString::from(""));
+        sync_open.set(true);
+    });
     let commits = signal(active_tab.commits.clone());
     let selected = signal(active_tab.selected.clone());
     let diff = signal(active_tab.diff.clone());
@@ -320,7 +345,71 @@ pub fn App() -> impl IntoElement {
         },
         mode,
         set_mode,
+        open_sync.clone(),
     );
+
+    let sync_close: Arc<dyn Fn()> = Arc::new(move || sync_open.set(false));
+    let sync_select: Arc<dyn Fn(SyncKind)> = Arc::new(move |next| {
+        sync_kind.set(next);
+        sync_log.set(SharedString::from(""));
+    });
+    let sync_fetch_action = Arc::new({
+        let reload = reload_for_sync.clone();
+        move || {
+            sync_log.set(SharedString::from("Fetching origin…"));
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.fetch())
+            {
+                Ok(output) => {
+                    sync_log.set(SharedString::from(output));
+                    error.set(SharedString::from(""));
+                    reload();
+                }
+                Err(err) => {
+                    sync_log.set(SharedString::from(err.to_string()));
+                    error.set(SharedString::from(err.to_string()));
+                }
+            }
+        }
+    });
+    let sync_pull_action = Arc::new({
+        let reload = reload_for_sync.clone();
+        move || {
+            sync_log.set(SharedString::from("Pulling origin…"));
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.pull_ff_only())
+            {
+                Ok(output) => {
+                    sync_log.set(SharedString::from(output));
+                    error.set(SharedString::from(""));
+                    reload();
+                }
+                Err(err) => {
+                    sync_log.set(SharedString::from(err.to_string()));
+                    error.set(SharedString::from(err.to_string()));
+                }
+            }
+        }
+    });
+    let sync_push_action = Arc::new({
+        let reload = reload_for_sync.clone();
+        move || {
+            sync_log.set(SharedString::from("Pushing origin…"));
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.push())
+            {
+                Ok(output) => {
+                    sync_log.set(SharedString::from(output));
+                    error.set(SharedString::from(""));
+                    reload();
+                }
+                Err(err) => {
+                    sync_log.set(SharedString::from(err.to_string()));
+                    error.set(SharedString::from(err.to_string()));
+                }
+            }
+        }
+    });
 
     let continue_action = Arc::new({
         let reload_merge = reload_for_merge.clone();
@@ -1055,6 +1144,22 @@ pub fn App() -> impl IntoElement {
         commit_log,
         commit_actions,
     );
+    let sync_panel = sync_panel(
+        sync_open,
+        sync_kind,
+        branch,
+        ahead,
+        behind,
+        sync_log,
+        error,
+        SyncActions {
+            select: sync_select,
+            fetch: sync_fetch_action,
+            pull: sync_pull_action,
+            push: sync_push_action,
+            close: sync_close,
+        },
+    );
     let content = view()
         .flex_1()
         .min_w_0()
@@ -1087,5 +1192,6 @@ pub fn App() -> impl IntoElement {
         .child(identity_bar)
         .child(conflict_panel)
         .child(main)
+        .child(sync_panel)
         .child(statusbar)
 }

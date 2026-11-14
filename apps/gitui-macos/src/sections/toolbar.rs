@@ -41,6 +41,7 @@ pub(crate) fn toolbar(
     actions: HeaderActions,
     mode: Signal<Mode>,
     on_mode: Arc<dyn Fn(Mode)>,
+    on_sync: Arc<dyn Fn()>,
 ) -> impl IntoElement {
     view()
         .h(px(44.0))
@@ -85,6 +86,7 @@ pub(crate) fn toolbar(
             let action = actions.push.clone();
             move || action()
         }))
+        .child(header_button("Sync", true, move || on_sync()))
         .child(view().flex_1())
         .child(
             view()
