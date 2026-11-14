@@ -62,6 +62,11 @@ impl Operation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tag {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Branch {
     pub name: String,
     pub current: bool,
@@ -198,6 +203,27 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// Local tags.
+    pub fn tags(&self) -> Result<Vec<Tag>, GitError> {
+        let output = self.git(&["tag", "--list"])?;
+        Ok(output
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|name| Tag { name: name.to_string() })
+            .collect())
+    }
+
+    /// Create a lightweight tag at HEAD.
+    pub fn create_tag(&self, name: &str) -> Result<String, GitError> {
+        self.git(&["tag", name])
+    }
+
+    /// Delete a local tag.
+    pub fn delete_tag(&self, name: &str) -> Result<String, GitError> {
+        self.git(&["tag", "-d", name])
     }
 
     /// Local branches.
@@ -816,6 +842,17 @@ mod tests {
         let error = repo.delete_branch("main").unwrap_err();
         assert!(!error.to_string().is_empty());
         assert!(repo.branches().unwrap().iter().any(|branch| branch.name == "main"));
+    }
+
+    #[test]
+    fn lists_creates_and_deletes_tags() {
+        let fixture = TempRepo::new();
+        let repo = Repo::open(fixture.path()).unwrap();
+        assert!(repo.tags().unwrap().is_empty());
+        repo.create_tag("v1.0.0").unwrap();
+        assert_eq!(repo.tags().unwrap(), vec![Tag { name: "v1.0.0".to_string() }]);
+        repo.delete_tag("v1.0.0").unwrap();
+        assert!(repo.tags().unwrap().is_empty());
     }
 
     #[test]
