@@ -1297,17 +1297,7 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let history = history(
-        branch,
-        commits,
-        selected,
-        select_commit,
-        open_reflog.clone(),
-        open_compare.clone(),
-        open_file_history.clone(),
-        open_commit_info.clone(),
-        mode,
-    );
+    let history = history(branch, commits, selected, select_commit, open_compare.clone(), mode);
 
     let cherry_pick_action = Arc::new({
         let reload_pick = reload_for_branch.clone();

@@ -4,6 +4,7 @@ use crate::design;
 use crate::widgets::header_button;
 use crate::Mode;
 use gitui_git::Commit;
+use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -12,12 +13,10 @@ pub(crate) fn history(
     commits: Signal<Vec<Commit>>,
     selected: Signal<SharedString>,
     on_select: Arc<dyn Fn(String)>,
-    on_reflog: Arc<dyn Fn()>,
     on_compare: Arc<dyn Fn()>,
-    on_file_history: Arc<dyn Fn()>,
-    on_info: Arc<dyn Fn()>,
     mode: Signal<Mode>,
 ) -> impl IntoElement {
+    let filter = signal(String::new());
     view()
         .h(move || {
             if mode.get() == Mode::History {
@@ -58,20 +57,36 @@ pub(crate) fn history(
                         ),
                 )
                 .child(
-                    text(move || format!("{} commits", commits.get().len()))
+                    text(move || {
+                        let query = filter.get().to_lowercase();
+                        let count = if query.is_empty() {
+                            commits.get().len()
+                        } else {
+                            commits
+                                .get()
+                                .iter()
+                                .filter(|commit| {
+                                    commit.summary.to_lowercase().contains(&query)
+                                        || commit.author.to_lowercase().contains(&query)
+                                        || commit.short.contains(&query)
+                                })
+                                .count()
+                        };
+                        format!("{} commits", count)
+                    })
                         .text_size(px(10.5))
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
                 .child(
-                    text("All authors")
+                    input()
+                        .value(filter)
+                        .on_change(move |text: &str| filter.set(text.to_string()))
+                        .placeholder("Filter commits")
                         .text_size(px(10.5))
-                        .text_color(move || design::text3()),
+                        .w(px(150.0)),
                 )
-                .child(header_button("Reflog", false, move || on_reflog()))
-                .child(header_button("Compare", false, move || on_compare()))
-                .child(header_button("Files", false, move || on_file_history()))
-                .child(header_button("Info", false, move || on_info())),
+                .child(header_button("Compare", false, move || on_compare())),
         )
         .child(
             view()
@@ -114,7 +129,14 @@ pub(crate) fn history(
                         let sha = commit.get().sha.clone();
                         let on_select = on_select.clone();
                         view()
-                            .h(px(38.0))
+                            .h(move || {
+                                let query = filter.get().to_lowercase();
+                                let visible = query.is_empty()
+                                    || commit.get().summary.to_lowercase().contains(&query)
+                                    || commit.get().author.to_lowercase().contains(&query)
+                                    || commit.get().short.contains(&query);
+                                if visible { px(38.0) } else { px(0.0) }
+                            })
                             .flex_row()
                             .items_center()
                             .gap_2()
