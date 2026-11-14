@@ -280,6 +280,13 @@ impl Repo {
     }
 
     /// Effective local Git identity. Missing values come back empty.
+    pub fn credential_helper(&self) -> Option<String> {
+        self.git(&["config", "--get", "credential.helper"])
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
     pub fn identity(&self) -> Identity {
         Identity {
             name: self
@@ -1653,6 +1660,14 @@ mod tests {
         let temp = TempRepo::new();
         let repo = Repo::open(temp.path()).unwrap();
         assert!(repo.push_preview().is_err());
+    }
+
+    #[test]
+    fn reads_configured_credential_helper() {
+        let temp = TempRepo::new();
+        run(&temp.path, &["config", "credential.helper", "osxkeychain"]);
+        let repo = Repo::open(temp.path()).unwrap();
+        assert_eq!(repo.credential_helper().as_deref(), Some("osxkeychain"));
     }
 
 }

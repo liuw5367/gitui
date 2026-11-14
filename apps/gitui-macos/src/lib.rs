@@ -141,6 +141,13 @@ pub fn App() -> impl IntoElement {
     let push_open = signal(false);
     let push_preview = signal(None::<PushPreview>);
     let push_commits = signal(Vec::<Commit>::new());
+    let credential_helper = signal(
+        Repo::open(active_tab.path.as_str())
+            .ok()
+            .and_then(|repo| repo.credential_helper())
+            .unwrap_or_default(),
+    );
+    let ssh_agent = signal(std::env::var_os("SSH_AUTH_SOCK").is_some());
     let inspect_open = signal(false);
     let inspect_tab = signal(InspectTab::Compare);
     let inspect_from = signal(String::from("HEAD~1"));
@@ -1105,6 +1112,8 @@ pub fn App() -> impl IntoElement {
         identity_email,
         recent,
         agent_permissions,
+        credential_helper,
+        ssh_agent,
         SettingsActions {
             close: close_settings,
             save_identity: save_identity_action,

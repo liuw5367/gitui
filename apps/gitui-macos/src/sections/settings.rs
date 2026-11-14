@@ -65,6 +65,27 @@ fn section(title: &'static str, subtitle: &'static str) -> impl IntoElement {
         )
 }
 
+fn shortcut_row(key: &'static str, label: &'static str) -> impl IntoElement {
+    view()
+        .h(px(30.0))
+        .flex_row()
+        .items_center()
+        .gap_3()
+        .border_b_1()
+        .border_color(move || design::line_soft())
+        .child(
+            text(key)
+                .w(px(90.0))
+                .text_size(px(10.5))
+                .text_color(move || design::text()),
+        )
+        .child(
+            text(label)
+                .text_size(px(10.5))
+                .text_color(move || design::text2()),
+        )
+}
+
 fn permission_row(
     label: &'static str,
     detail: &'static str,
@@ -163,6 +184,8 @@ pub(crate) fn settings_panel(
     identity_email: Signal<String>,
     recent: Signal<Vec<SharedString>>,
     permissions: Signal<AgentPermissions>,
+    credential_helper: Signal<String>,
+    ssh_agent: Signal<bool>,
     actions: SettingsActions,
 ) -> impl IntoElement {
     view()
@@ -490,9 +513,15 @@ pub(crate) fn settings_panel(
                                                 .text_color(move || design::text()),
                                         )
                                         .child(
-                                            text("HTTPS credentials are resolved by Git's configured helper.")
-                                                .text_size(px(10.5))
-                                                .text_color(move || design::text2()),
+                                            text(move || {
+                                                if credential_helper.get().is_empty() {
+                                                    "credential.helper: not configured".to_string()
+                                                } else {
+                                                    format!("credential.helper: {}", credential_helper.get())
+                                                }
+                                            })
+                                            .text_size(px(10.5))
+                                            .text_color(move || design::text2()),
                                         )
                                         .child(
                                             text("SSH")
@@ -500,9 +529,17 @@ pub(crate) fn settings_panel(
                                                 .text_color(move || design::text()),
                                         )
                                         .child(
-                                            text("SSH keys and agent are resolved by the system; gitui does not store them.")
-                                                .text_size(px(10.5))
-                                                .text_color(move || design::text2()),
+                                            text(move || {
+                                                if ssh_agent.get() {
+                                                    "SSH_AUTH_SOCK: available · keys stay in the system agent"
+                                                        .to_string()
+                                                } else {
+                                                    "SSH_AUTH_SOCK: not set · SSH may prompt"
+                                                        .to_string()
+                                                }
+                                            })
+                                            .text_size(px(10.5))
+                                            .text_color(move || design::text2()),
                                         ),
                                 )
                                 .child(
@@ -517,6 +554,10 @@ pub(crate) fn settings_panel(
                                         .flex_col()
                                         .gap_2()
                                         .child(section("Shortcuts", "Keyboard navigation."))
+                                        .child(shortcut_row("⌘K", "Open command palette"))
+                                        .child(shortcut_row("Esc", "Close command palette"))
+                                        .child(shortcut_row("↑ / ↓", "Move through commands"))
+                                        .child(shortcut_row("Enter", "Run selected command"))
                                         .child(
                                             text("Shortcut customization is not available yet.")
                                                 .text_size(px(10.5))
