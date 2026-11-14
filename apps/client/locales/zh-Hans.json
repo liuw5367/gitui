@@ -292,7 +292,19 @@
     "title": "冲突",
     "ours": "当前分支",
     "theirs": "对方分支",
-    "resolved": "标记已解决"
+    "resolved": "标记已解决",
+    "unresolved": "%{count} 个未解决",
+    "base": "基线",
+    "basePane": "基线（共同祖先）",
+    "result": "结果",
+    "acceptOurs": "采用当前分支",
+    "acceptTheirs": "采用对方分支",
+    "acceptBoth": "两边都保留",
+    "markResolved": "标记已解决",
+    "applyContinue": "应用并继续 %{operation}",
+    "abort": "放弃 %{operation}",
+    "resolve": "解决…",
+    "marked": "文件已标记为解决"
   },
   "palette": {
     "placeholder": "输入命令",

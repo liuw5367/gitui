@@ -3,6 +3,7 @@
 //! 这里只放与界面、进程都无关的数据结构与失败类别；命令拼装和输出解析在
 //! `gitui-git`，UI 状态在应用 crate。
 
+pub mod conflict;
 pub mod diff;
 
 /// 失败类别。UI 按类别选择呈现方式（内联错误、banner、表单错误），

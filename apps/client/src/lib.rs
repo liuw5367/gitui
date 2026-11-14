@@ -82,6 +82,20 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
+    /// 打开冲突视图。
+    pub(crate) open_conflict: Arc<dyn Fn()>,
+    /// 切换冲突文件。
+    pub(crate) select_conflict: Arc<dyn Fn(usize)>,
+    /// 前/后一个冲突文件。
+    pub(crate) step_conflict: Arc<dyn Fn(bool)>,
+    /// 用某一侧填充结果区。
+    pub(crate) apply_side: Arc<dyn Fn(domain::conflict::Side)>,
+    /// 标记当前冲突文件已解决。
+    pub(crate) mark_resolved: Arc<dyn Fn()>,
+    /// 继续被冲突打断的操作。
+    pub(crate) continue_op: Arc<dyn Fn()>,
+    /// 关闭冲突视图。
+    pub(crate) close_conflict: Arc<dyn Fn()>,
     pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
     pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
@@ -177,6 +191,9 @@ pub fn App() -> impl IntoElement {
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
+    // 冲突视图：可编辑的结果区与 base 显隐。
+    let conflict_result = signal(String::new());
+    let conflict_base_open = signal(false);
     let sync_state = signal(Option::<screens::SyncDialogState>::None);
     let agent_plan = signal(Option::<agent::Plan>::None);
     let agent_policies = signal({
@@ -1668,6 +1685,131 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 冲突视图（设计板 14）。
+    let open_conflict: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let conflict_result = conflict_result;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::open_conflict(tab);
+                conflict_result.set(tab.conflict_text.clone());
+                tabs.set(list);
+            }
+        })
+    };
+
+    let select_conflict: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        let conflict_result = conflict_result;
+        Arc::new(move |index: usize| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::select_conflict(tab, index);
+                conflict_result.set(tab.conflict_text.clone());
+                tabs.set(list);
+            }
+        })
+    };
+
+    let step_conflict: Arc<dyn Fn(bool)> = {
+        let tabs = tabs;
+        let active = active;
+        let conflict_result = conflict_result;
+        Arc::new(move |forward: bool| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::step_conflict(tab, forward);
+                conflict_result.set(tab.conflict_text.clone());
+                tabs.set(list);
+            }
+        })
+    };
+
+    let apply_side: Arc<dyn Fn(domain::conflict::Side)> = {
+        let tabs = tabs;
+        let active = active;
+        let conflict_result = conflict_result;
+        Arc::new(move |side: domain::conflict::Side| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let merged = model::conflict_take_side(tab, side);
+                conflict_result.set(merged);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let mark_resolved: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let conflict_result = conflict_result;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let resolved = conflict_result.get_untracked();
+                match model::mark_conflict_resolved(tab, resolved.as_str()) {
+                    Ok(()) => {
+                        conflict_result.set(tab.conflict_text.clone());
+                        let lang = language.get_untracked();
+                        interactions::notify(
+                            notice,
+                            i18n::t(lang.as_str(), "conflicts.marked"),
+                        );
+                    }
+                    Err(detail) => tab.error = Some(detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let continue_op: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                match model::continue_operation(tab) {
+                    Ok(_) => {
+                        let lang = language.get_untracked();
+                        interactions::notify(
+                            notice,
+                            i18n::t(lang.as_str(), "toast.historyDone"),
+                        );
+                    }
+                    Err(detail) => tab.error = Some(detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let close_conflict: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                tab.conflict_open = false;
+                tabs.set(list);
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1687,6 +1829,13 @@ pub fn App() -> impl IntoElement {
         commit_without_hooks,
         set_commit_option,
         toggle_hook_log,
+        open_conflict,
+        select_conflict,
+        step_conflict,
+        apply_side,
+        mark_resolved,
+        continue_op,
+        close_conflict,
         resolve_conflict,
         abort_operation,
         run_command,
@@ -2007,6 +2156,13 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(screens::conflict_view(
+            language,
+            current_tab,
+            conflict_result,
+            conflict_base_open,
+            actions.clone(),
+        ))
         .child(screens::hook_sheet(
             language,
             current_tab,

@@ -405,7 +405,9 @@ fn changes_list(
                         .w_full()
                         .h(px(24.0))
                         .px(px(8.0))
+                        .flex_row()
                         .items_center()
+                        .gap(px(6.0))
                         .child(
                             text(move || {
                                 i18n::t(language.get().as_str(), "conflicts.title")
@@ -413,7 +415,15 @@ fn changes_list(
                             .text_size(px(10.5))
                             .font_weight(FontWeight(600))
                             .text_color(move || design::danger()),
-                        ),
+                        )
+                        .child(view().flex_1())
+                        .child(widgets::small_button(
+                            move || i18n::t(language.get().as_str(), "conflicts.resolve"),
+                            {
+                                let open_conflict = actions.open_conflict.clone();
+                                move || open_conflict()
+                            },
+                        )),
                 )
                 .child(rows)
                 .into_element(),

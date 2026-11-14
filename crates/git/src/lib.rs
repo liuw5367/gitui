@@ -837,7 +837,13 @@ impl Repo {
             Operation::Revert => &["revert", "--continue"],
             Operation::None => return Ok(String::new()),
         };
-        let output = run_git_combined(&self.root, args)?;
+        // `--continue` 默认会打开编辑器写合并提交信息；界面不接管编辑器，
+        // 因此把编辑器设为 true（保留默认信息）并禁止交互提示。
+        let output = run_git_combined_with_env(
+            &self.root,
+            args,
+            &[("GIT_EDITOR", "true"), ("GIT_TERMINAL_PROMPT", "0")],
+        )?;
         return Ok(summarise(&output));
     }
 
@@ -861,6 +867,27 @@ impl Repo {
             return Operation::Revert;
         }
         return Operation::None;
+    }
+
+    /// 读取冲突文件当前内容（含冲突标记）。
+    ///
+    /// 只读工作区文件；文件不存在时返回空串，交给界面提示而不是报错。
+    pub fn conflict_content(&self, path: &str) -> String {
+        let target = self.root.join(path);
+        return std::fs::read_to_string(target).unwrap_or_default();
+    }
+
+    /// 写入解决后的内容并标记为已解决（`git add`）。
+    ///
+    /// 写盘失败直接把原因当错误返回，避免「看起来已解决但文件没变」。
+    pub fn resolve_conflict(&self, path: &str, content: &str) -> Result<(), GitError> {
+        let target = self.root.join(path);
+        std::fs::write(&target, content).map_err(|error| GitError::Unreadable {
+            path: target.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        run_git(&self.root, &["add", "--", path])?;
+        return Ok(());
     }
 
     /// 冲突文件（暂存区与工作区都为改动的 `U` 状态）。
@@ -1376,6 +1403,41 @@ pub fn run_git(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
 /// 运行 Git 并把 stdout 与 stderr 合并返回。
 ///
 /// 同步命令（fetch/pull/push）的进度与结果都写在 stderr，只读 stdout 会得到空串。
+/// 带额外环境变量的合并输出版本（继续操作要关掉编辑器）。
+fn run_git_combined_with_env(
+    directory: &Path,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<String, GitError> {
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(directory)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().map_err(|error| GitError::Spawn {
+        program: "git".to_string(),
+        reason: error.to_string(),
+    })?;
+    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !stderr.trim().is_empty() {
+        text.push_str(stderr.as_str());
+    }
+    if !output.status.success() {
+        return Err(GitError::CommandFailed {
+            program: "git".to_string(),
+            args: args.join(" "),
+            code: output.status.code(),
+            detail: truncate(text.trim(), MAX_DETAIL),
+        });
+    }
+    return Ok(text);
+}
+
 fn run_git_combined(directory: &Path, args: &[&str]) -> Result<String, GitError> {
     let mut command = Command::new("git");
     command

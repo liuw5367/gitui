@@ -292,7 +292,19 @@
     "title": "Conflicted",
     "ours": "Ours",
     "theirs": "Theirs",
-    "resolved": "Mark Resolved"
+    "resolved": "Mark Resolved",
+    "unresolved": "%{count} unresolved",
+    "base": "Base",
+    "basePane": "Base (common ancestor)",
+    "result": "Result",
+    "acceptOurs": "Accept Ours",
+    "acceptTheirs": "Accept Theirs",
+    "acceptBoth": "Accept Both",
+    "markResolved": "Mark Resolved",
+    "applyContinue": "Apply & Continue %{operation}",
+    "abort": "Abort %{operation}",
+    "resolve": "Resolve…",
+    "marked": "File marked resolved"
   },
   "palette": {
     "placeholder": "Type a command",
