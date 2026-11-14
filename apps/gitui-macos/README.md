@@ -4,31 +4,30 @@
 
 ## Works
 
-- repository path input + Open
-- recent repositories (persisted)
-- repository tabs (open / activate / close, session persisted)
-- status + 15 commits + read-only diff
-- Stage All / Unstage All
-- per-file Stage / Unstage
-- commit message + Commit / No hooks / Amend
-- commit and hook output panel
+- repository path input + Open; recent repositories and tabs (session persisted)
+- status + 15 commits + read-only diff; ahead/behind (`main ↑N ↓M`)
+- Stage All / Unstage All; per-file Stage / Unstage
+- per-hunk Stage / Unstage with unstaged/staged diff preview
+- commit message + Commit / No hooks / Amend; hook output panel
 - fetch / pull (ff-only) / push against `origin`
-- ahead / behind (`main ↑N ↓M`)
-- branch list + checkout
-- new branch / delete branch (two-step inline confirmation)
-- merge / rebase operation banner
-- merge Continue / Abort
-- conflict list + three-way editor (Base / Ours / Theirs / Result)
+- branches: list, checkout, create, delete (two-step), rename, merge, rebase
+- tags: list, create, delete (two-step)
+- remotes: list, add, remove (two-step)
+- stashes: push, apply, pop, drop
+- merge/rebase/cherry-pick/revert operation banner with Continue / Skip / Abort
+- cherry-pick / revert selected commit
+- conflicts: list, three-way editor (Base / Ours / Theirs / Result)
 - Accept Ours / Theirs / Both; Mark Resolved
+- repository-local identity (`user.name` / `user.email`)
 
 ## Not yet
 
-- tags / remotes / stashes UI
-- settings / credentials
-- per-hunk staging
+- auth UI / Keychain / SSH host-key verification
 - hook step list / retry UI
-- SSH/Keychain auth integration
-- rebase/cherry-pick continue/abort (merge only)
+- commit graph, reflog/undo, blame, compare (M5)
+- agent workflows (M6)
+- signing / notarize / Sparkle (M7)
+- interactive rebase (deferred by ADR)
 - conflict editor polish (Base/Ours/Theirs insertion, not only accept)
 
 ## Run
