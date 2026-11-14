@@ -6,6 +6,7 @@
 use gitui_git::{Commit, Repo};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
+use std::path::PathBuf;
 
 struct Loaded {
     path: String,
@@ -60,6 +61,41 @@ fn short_name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
+fn recent_file() -> Option<PathBuf> {
+    let home = std::env::var_os("GITUI_HOME").or_else(|| std::env::var_os("HOME"))?;
+    Some(PathBuf::from(home).join(".gitui").join("recent"))
+}
+
+fn load_recent() -> Vec<String> {
+    let Some(file) = recent_file() else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(5)
+        .map(str::to_string)
+        .collect()
+}
+
+fn save_recent(paths: &[SharedString]) {
+    let Some(file) = recent_file() else {
+        return;
+    };
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let text = paths
+        .iter()
+        .map(|path| path.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let _ = std::fs::write(file, text);
+}
+
 fn header_button(
     label: &'static str,
     primary: bool,
@@ -105,7 +141,18 @@ pub fn App() -> impl IntoElement {
         .unwrap_or_default();
 
     let path_input = signal(initial.path.clone());
-    let recent = signal(vec![SharedString::from(initial.path.clone())]);
+    let mut saved_recent = load_recent();
+    if !saved_recent.iter().any(|path| path == &initial.path) {
+        saved_recent.insert(0, initial.path.clone());
+    }
+    saved_recent.truncate(5);
+    let recent = signal(
+        saved_recent
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>(),
+    );
+    save_recent(recent.get_untracked().as_slice());
     let repo_path = signal(SharedString::from(initial.path));
     let branch = signal(SharedString::from(initial.branch));
     let staged = signal(initial.staged);
@@ -140,6 +187,7 @@ pub fn App() -> impl IntoElement {
             }
             list.insert(0, SharedString::from(loaded.path));
             list.truncate(5);
+            save_recent(list.as_slice());
         });
     };
 
