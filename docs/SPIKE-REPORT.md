@@ -17,15 +17,15 @@
 | **S-3** | merge conflict stages, editable result, abort; rebase conflict/abort | **PASS** (cherry-pick/revert not tested) |
 | **S-4** | performance micro-benchmark | **PARTIAL** (20k commits, not 100k; no 10k diff / 1 GB) |
 | **S-5** | HTTPS/SSH auth, credential helper, failure classes | **PENDING** |
-| **S-6** | NSH Rust view + 3-pane editor + 10k-line rendering | **PENDING — BLOCKING** |
+| **S-6** | NSH Rust view + 3-pane editor + 10k-line rendering | **PARTIAL — 10k headless mount passes; interactive pending** |
 | **S-7** | CLI vs `gix` read path (optional) | **NOT RUN** |
 
 **Go/No-Go**
 
 - S-1/S-2/S-3 prove the **Git CLI write path is viable**.
 - S-4 is promising but does **not** prove the 100k/1 GB budget.
-- S-5 and S-6 are **not closed**. M1 shell work may begin only after a basic S-6 pass. **M2/M4 must not begin until S-5 and S-6 pass.**
-- No result below is fabricated; S-5/S-6 are explicitly pending.
+- S-6 now has a **basic headless pass**: 3 editors × 10k lines mount with virtualization, `nsh check` passes, and the test mounts successfully. Interactive typing/scroll/FPS is still pending, so M1 may begin only after that manual pass. **M2/M4 must not begin until S-5 and S-6 are fully closed.**
+- No result below is fabricated; S-5 is pending, S-6 is partially closed.
 
 ---
 
@@ -134,30 +134,32 @@
 
 ---
 
-## 7. S-6 — NSH Rust editor / bridge (PENDING, BLOCKING)
+## 7. S-6 — NSH Rust editor / bridge (PARTIAL)
 
-**Not run.** There is no NSH Rust app harness in this workspace yet, and the final stack is **Rust-only NSH**, not TSX.
+**Harness**: `spikes/s6-nsh` — Rust-only NSH app, no TSX/JS/HTML. NSH 0.5.0, Rust 1.100.0, macOS 15.7.7, M1 Pro.
 
-**Required before M2/M4**
+**Passed**
 
-1. Build a minimal **NSH Rust** window with:
-   - a 3-pane `NSTextView` (or NSH wrapper) editor;
-   - 10k-line file load, scroll, input, undo/redo;
-   - a Rust view model driving the panes;
-   - save from result pane to disk.
-2. Verify Rust ↔ AppKit interop for:
-   - `NSTextView`, `NSScrollView`, `NSSplitView`;
-   - menu commands, sheets, focus, keyboard;
-   - large text without UI stalls.
-3. Verify NSH Rust can host:
-   - long-running Git operations off the main thread;
-   - event/notification delivery to views;
-   - cancellation and progress updates.
-4. If S-6 fails: fallback to AppKit `NSTextView`/native editor, or reduce the merge editor to a single result pane. **Do not** fall back to a WebView/HTML editor without a new ADR.
+- `nsh check` passes.
+- Headless mount with `S6_LOAD_10K=1 nsh test nsh.json --trace`: **3 editors × 10,000 lines**; only **100 visible text rows per editor** (300 text nodes) → virtualization is working.
+- Test result: `1 passed`; app test 1.7 s; 6,725 nodes; `perf commit: 0 ops, 204 µs`; `perf turn: 7,380 µs` (timers/tasks 7,160 µs).
+- Rust-only UI compiles and mounts; `#[native_module]` is required by NSH's test/describe host even without TSX (it is Rust, not TSX).
+- The harness loads 10k in Base/Result/Theirs, has an editable Result, save, and a cooperative task/cancel control.
+- **Task bug found and fixed**: `spawn` directly inside an `on_press` handler had no reactive owner and did not run. It is now started by an `effect` with `cleanup(task.cancel())`; the header shows `Task N%` so progress is visible.
+- **AppKit warning observed**: `-[NSTextView layout] failed to converge after 5 iterations` at 10k with three panes. Input still works, but this is an open layout/performance risk and must be rechecked after the interactive retest.
 
-**Decision**: M2 (write path) and M4 (merge/rebase) are blocked until S-6 passes or a documented fallback is accepted.
+**Still pending**
 
----
+- Interactive typing latency while the 10k editor is focused.
+- 60 fps scrolling on all three panes at 1280×820.
+- Undo/redo and save round-trip on the result.
+- Task cancel responsiveness and main-thread stalls.
+- The `NSTextView layout` convergence warning at 10k with three panes.
+- Visual alignment/legibility at the target window size.
+
+**Decision**: S-6 is **not fully closed**. M1 shell work is allowed after the manual interactive pass; M2/M4 remain blocked until S-5 and S-6 are fully closed. No TSX/WebView fallback has been used.
+
+**Next**: rebuild/re-run `S6_LOAD_10K=1 nsh run --fps --trace` in `spikes/s6-nsh`; press **Start task** and confirm the header advances `Task N%`; exercise scroll/type/undo/save/cancel; watch for the `NSTextView layout` warning. Record the result.
 
 ## 8. S-7 — CLI vs `gix` read path (optional)
 
@@ -178,7 +180,7 @@ Not run. Revisit only if S-4 fails the 100k/1 GB budget. Write path remains syst
 
 ## 10. Next actions
 
-1. Build the NSH Rust harness (S-6) — highest priority.
+1. Run the S-6 harness interactively — highest priority.
 2. Build a local Git HTTP/SSH fixture and close S-5.
 3. Re-run S-4 at 100k commits, 10k-line diff, 1 GB repo.
 4. Add timeout/cancel test for S-2.

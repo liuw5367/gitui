@@ -30,4 +30,4 @@ The client is a native macOS app. NSH supports Rust directly; the product needs 
 
 ## Verification
 
-S-6 in [../SPIKE-REPORT.md](../SPIKE-REPORT.md) — pending.
+S-6: harness built (`spikes/s6-nsh`), `nsh check` passes, 10k-line headless mount passes; interactive performance pending.

@@ -34,7 +34,7 @@
 | CLI spikes S-1/S-2/S-3 | **Pass** on macOS 15.7.7 / Git 2.56.0 |
 | S-4 performance | **Partial** (20k commits micro-benchmark); 100k/1GB not yet run |
 | S-5 auth/network | **Pending** (needs remote/token/SSH harness) |
-| S-6 NSH Rust editor/bridge | **Pending, blocking** for M2/M4 |
+| S-6 NSH Rust editor/bridge | **Partial** — 10k headless mount passes; interactive pending |
 | v0.1 implementation | **Not started**; do not start M2 until S-5/S-6 close |
 
 ## Document ownership

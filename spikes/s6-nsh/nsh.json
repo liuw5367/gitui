@@ -1,0 +1,8 @@
+{
+  "name": "gitui S6",
+  "id": "com.example.gituis6",
+  "version": "1.0.0",
+  "build": 1,
+  "rust": ".",
+  "root": "App"
+}

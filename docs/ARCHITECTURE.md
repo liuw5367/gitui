@@ -24,6 +24,7 @@
 - **No TypeScript/JS bridge.** NSH is used from Rust directly.
 - **System Git CLI** for write path and hooks; no reimplementation of Git protocol.
 - macOS 14+; Apple Silicon primary; Intel not v0.1.
+- Pin NSH 0.5.0 for the S-6 harness; revisit after interactive validation.
 - Direct signed/notarized distribution; no Mac App Store v0.1.
 - Exact NSH Rust API names must be pinned to the NSH version used by the app; this document uses role names, not invented method names.
 
