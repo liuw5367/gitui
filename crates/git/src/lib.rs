@@ -12,6 +12,31 @@ const MAX_OUTPUT: usize = 8 * 1024 * 1024;
 /// 展示在错误里的 stderr 长度上限。
 const MAX_DETAIL: usize = 4096;
 
+/// 仓库处于哪种多步操作中（决定顶部的操作条与可用动作）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Operation {
+    /// 没有进行中的操作。
+    #[default]
+    None,
+    Merge,
+    Rebase,
+    CherryPick,
+    Revert,
+}
+
+impl Operation {
+    /// 存储/日志里的短标识。
+    pub fn id(self) -> &'static str {
+        return match self {
+            Operation::None => "none",
+            Operation::Merge => "merge",
+            Operation::Rebase => "rebase",
+            Operation::CherryPick => "cherry-pick",
+            Operation::Revert => "revert",
+        };
+    }
+}
+
 /// 一次提交的结果。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommitOutcome {
@@ -283,6 +308,69 @@ impl Repo {
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
         let output = run_git(&self.root, &["status", "--porcelain=v1", "-z"])?;
         return parse_status(&output);
+    }
+
+    /// 当前仓库是否处于合并/变基/拣选/回滚中。
+    ///
+    /// 通过 `.git` 下的标记文件判断：`MERGE_HEAD`、`rebase-merge`/`rebase-apply`、
+    /// `CHERRY_PICK_HEAD`、`REVERT_HEAD`。顺序上合并优先于拣选，因为合并也可以由
+    /// 拣选触发。
+    pub fn operation(&self) -> Operation {
+        let git_dir = self.root.join(".git");
+        if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() {
+            return Operation::Rebase;
+        }
+        if git_dir.join("MERGE_HEAD").exists() {
+            return Operation::Merge;
+        }
+        if git_dir.join("CHERRY_PICK_HEAD").exists() {
+            return Operation::CherryPick;
+        }
+        if git_dir.join("REVERT_HEAD").exists() {
+            return Operation::Revert;
+        }
+        return Operation::None;
+    }
+
+    /// 冲突文件（暂存区与工作区都为改动的 `U` 状态）。
+    pub fn conflicts(&self) -> Result<Vec<String>, GitError> {
+        let entries = self.status()?;
+        return Ok(entries
+            .into_iter()
+            .filter(|entry| {
+                const UNMERGED: [char; 3] = ['D', 'A', 'U'];
+                // porcelain v1 的冲突标记：DD、AU、UD、UA、DU、AA、UU。
+                let combined = [entry.index, entry.worktree];
+                (entry.index == 'U' || entry.worktree == 'U')
+                    || (combined[0] != combined[1]
+                        && UNMERGED.contains(&combined[0])
+                        && UNMERGED.contains(&combined[1]))
+                    || (entry.index == 'A' && entry.worktree == 'A')
+                    || (entry.index == 'D' && entry.worktree == 'D')
+            })
+            .map(|entry| entry.path)
+            .collect());
+    }
+
+    /// 用一侧的内容解决冲突：`ours` 为真取当前分支，否则取对方。
+    pub fn resolve_with(&self, path: &str, ours: bool) -> Result<(), GitError> {
+        let flag = if ours { "--ours" } else { "--theirs" };
+        run_git(&self.root, &["checkout", flag, "--", path])?;
+        run_git(&self.root, &["add", "--", path])?;
+        return Ok(());
+    }
+
+    /// 放弃进行中的操作（`git merge --abort` 等）。
+    pub fn abort_operation(&self, operation: Operation) -> Result<(), GitError> {
+        let args: &[&str] = match operation {
+            Operation::Merge => &["merge", "--abort"],
+            Operation::Rebase => &["rebase", "--abort"],
+            Operation::CherryPick => &["cherry-pick", "--abort"],
+            Operation::Revert => &["revert", "--abort"],
+            Operation::None => return Ok(()),
+        };
+        run_git(&self.root, args)?;
+        return Ok(());
     }
 
     /// 把工作区的改动加入暂存区（`git add -- <paths>`）。
@@ -1072,6 +1160,49 @@ mod tests {
         let staged = repo.file_diff("a.txt", true).expect("index diff");
         assert!(staged.contains("+two"));
         assert!(repo.file_diff("a.txt", false).expect("worktree diff").is_empty());
+    }
+
+    #[test]
+    fn operation_reports_conflicting_merge() {
+        let (_guard, path) = fixture("mergeop", &[("a.txt", "base\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        assert_eq!(repo.operation(), Operation::None);
+
+        run_git(repo.root(), &["checkout", "-q", "-b", "side"]).expect("checkout");
+        std::fs::write(repo.root().join("a.txt"), "side\n").expect("write");
+        run_git(repo.root(), &["commit", "-q", "-am", "side"]).expect("commit");
+        run_git(repo.root(), &["checkout", "-q", "main"]).expect("checkout");
+        std::fs::write(repo.root().join("a.txt"), "main\n").expect("write");
+        run_git(repo.root(), &["commit", "-q", "-am", "main"]).expect("commit");
+        // 合并冲突是预期结果，命令会失败。
+        let _ = run_git(repo.root(), &["merge", "side"]);
+
+        assert_eq!(repo.operation(), Operation::Merge);
+        let conflicts = repo.conflicts().expect("conflicts");
+        assert_eq!(conflicts, vec!["a.txt".to_string()]);
+
+        // 取当前分支一侧并标记为已解决，冲突清单清空。
+        repo.resolve_with("a.txt", true).expect("resolve ours");
+        assert!(repo.conflicts().expect("conflicts").is_empty());
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
+            "main\n"
+        );
+
+        // 放弃合并回到干净状态。
+        repo.abort_operation(Operation::Merge).expect("abort");
+        assert_eq!(repo.operation(), Operation::None);
+        assert!(repo.status().expect("status").is_empty());
+    }
+
+    #[test]
+    fn operation_detects_rebase_directory() {
+        let (_guard, path) = fixture("rebaseop", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::create_dir_all(repo.root().join(".git/rebase-merge")).expect("mkdir");
+        assert_eq!(repo.operation(), Operation::Rebase);
+        std::fs::remove_dir_all(repo.root().join(".git/rebase-merge")).expect("rmdir");
+        assert_eq!(repo.operation(), Operation::None);
     }
 
     #[test]

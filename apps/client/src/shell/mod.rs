@@ -269,6 +269,53 @@ pub(crate) fn toolbar(
         .child(widgets::icon("gear", 14.0, design::text2));
 }
 
+/// 操作条（设计板 14 / 16 的 `.op-banner`）：合并/变基/拣选/回滚进行中时的提示
+/// 与放弃入口。没有进行中的操作时高度为 0。
+pub(crate) fn op_banner(
+    language: Signal<SharedString>,
+    tab: Memo<Option<Tab>>,
+    actions: Actions,
+) -> impl IntoElement {
+    let abort = actions.abort_operation.clone();
+    return view()
+        .w_full()
+        .h(move || {
+            match tab.get().map(|tab| tab.operation) {
+                Some(git::Operation::None) | None => px(0.0),
+                _ => px(28.0),
+            }
+        })
+        .px(px(12.0))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .bg(move || design::token("tag-bg"))
+        .border_b_1()
+        .border_color(move || design::line())
+        .child(widgets::icon("info", 12.0, design::warn))
+        .child(
+            text(move || {
+                let operation = tab
+                    .get()
+                    .map(|tab| tab.operation.id().to_string())
+                    .unwrap_or_default();
+                let conflicts = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "operation.banner",
+                    &[("operation", operation), ("conflicts", conflicts.to_string())],
+                )
+            })
+            .text_size(px(11.0))
+            .text_color(move || design::text()),
+        )
+        .child(view().flex_1())
+        .child(widgets::small_button(
+            move || i18n::t(language.get().as_str(), "operation.abort"),
+            move || abort(),
+        ));
+}
+
 /// 状态栏：分支、操作状态、变更数量与编码信息。
 pub(crate) fn statusbar(language: Signal<SharedString>, tab: Memo<Option<Tab>>) -> impl IntoElement {
     return view()

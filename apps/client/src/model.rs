@@ -46,6 +46,10 @@ pub struct Tab {
     pub change_diff: String,
     /// 变更清单（本地存储，按仓库分组）。
     pub changelists: Vec<store::Changelist>,
+    /// 进行中的多步操作（合并/变基/拣选/回滚）。
+    pub operation: git::Operation,
+    /// 冲突文件路径。
+    pub conflicts: Vec<String>,
     /// 提交说明的两段文本。
     pub summary: String,
     pub description: String,
@@ -158,6 +162,8 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let status = repo.status().unwrap_or_default();
     let authors = repo.authors().unwrap_or_default();
     let changes = load_changes(&repo);
+    let operation = repo.operation();
+    let conflicts = repo.conflicts().unwrap_or_default();
     let changelists = store::load_changelists(&store::default_dir(crate::brand::STORAGE_DIR), path);
     let mut tab = Tab {
         path: repo.root().display().to_string(),
@@ -170,6 +176,8 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         status,
         authors,
         changes,
+        operation,
+        conflicts,
         changelists,
         filter: filter.clone(),
         ..Tab::default()
@@ -298,6 +306,8 @@ pub fn refresh_changes(tab: &mut Tab) {
         .map(|entry| entry.path.clone());
     tab.changes = load_changes(&repo);
     tab.status = repo.status().unwrap_or_default();
+    tab.operation = repo.operation();
+    tab.conflicts = repo.conflicts().unwrap_or_default();
     tab.selected_change = previous
         .and_then(|path| tab.changes.iter().position(|entry| entry.path == path))
         .or(if tab.changes.is_empty() { None } else { Some(0) });
@@ -329,6 +339,36 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
         repo.file_diff(entry.path.as_str(), entry.staged)
             .unwrap_or_default()
     };
+}
+
+/// 用一侧内容解决冲突（`ours` 为真取当前分支）。
+pub fn resolve_conflict(tab: &mut Tab, path: &str, ours: bool) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.resolve_with(path, ours) {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
+}
+
+/// 放弃进行中的操作，回到干净工作区。
+pub fn abort_operation(tab: &mut Tab) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.abort_operation(tab.operation) {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
 }
 
 /// 暂存或取消暂存一条变更。
@@ -671,6 +711,43 @@ mod tests {
             std::fs::read_to_string(repo.path.join("a.txt")).expect("read"),
             "one\n"
         );
+        assert!(tab.changes.is_empty());
+    }
+
+    #[test]
+    fn merge_conflict_is_reported_and_resolvable() {
+        let repo = TempRepo::new("conflict");
+        let path = repo.path.display().to_string();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(args)
+                .status()
+                .expect("git");
+            return status.success();
+        };
+        run(&["checkout", "-q", "-b", "side"]);
+        std::fs::write(repo.path.join("a.txt"), "side\n").expect("write");
+        run(&["commit", "-q", "-am", "side"]);
+        run(&["checkout", "-q", "main"]);
+        std::fs::write(repo.path.join("a.txt"), "main\n").expect("write");
+        run(&["commit", "-q", "-am", "main"]);
+        assert!(!run(&["merge", "side"]), "合并应产生冲突");
+
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert_eq!(tab.operation, git::Operation::Merge);
+        assert_eq!(tab.conflicts, vec!["a.txt".to_string()]);
+
+        resolve_conflict(&mut tab, "a.txt", true);
+        assert!(tab.conflicts.is_empty(), "解决后不应再有冲突");
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("a.txt")).expect("read"),
+            "main\n"
+        );
+
+        abort_operation(&mut tab);
+        assert_eq!(tab.operation, git::Operation::None);
         assert!(tab.changes.is_empty());
     }
 

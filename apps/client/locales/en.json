@@ -208,5 +208,15 @@
     "moveSelected": "Move 3 selected files to…",
     "rename": "Rename Changelist…",
     "footHint": "Filters only — staging commits"
+  },
+  "operation": {
+    "banner": "%{operation} in progress · %{conflicts} conflicts",
+    "abort": "Abort"
+  },
+  "conflicts": {
+    "title": "Conflicted",
+    "ours": "Ours",
+    "theirs": "Theirs",
+    "resolved": "Mark Resolved"
   }
 }

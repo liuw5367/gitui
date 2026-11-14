@@ -208,5 +208,15 @@
     "moveSelected": "移动 3 个选中文件到…",
     "rename": "重命名清单…",
     "footHint": "仅筛选 — 暂存后提交"
+  },
+  "operation": {
+    "banner": "正在进行 %{operation} · %{conflicts} 个冲突",
+    "abort": "放弃"
+  },
+  "conflicts": {
+    "title": "冲突",
+    "ours": "当前分支",
+    "theirs": "对方分支",
+    "resolved": "标记已解决"
   }
 }

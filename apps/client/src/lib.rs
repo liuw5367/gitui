@@ -71,6 +71,8 @@ pub(crate) struct Actions {
     pub(crate) stage_all: Arc<dyn Fn()>,
     pub(crate) unstage_all: Arc<dyn Fn()>,
     pub(crate) commit: Arc<dyn Fn()>,
+    pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
+    pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -544,6 +546,32 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let resolve_conflict: Arc<dyn Fn(String, bool)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |path: String, ours: bool| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::resolve_conflict(tab, path.as_str(), ours);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let abort_operation: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::abort_operation(tab);
+                tabs.set(list);
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -560,6 +588,8 @@ pub fn App() -> impl IntoElement {
         stage_all,
         unstage_all,
         commit,
+        resolve_conflict,
+        abort_operation,
         apply_filter,
         clear_filter,
         clone_repository,

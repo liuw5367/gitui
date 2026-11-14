@@ -314,6 +314,69 @@ fn changes_list(
         );
     }
 
+    if !tab.conflicts.is_empty() {
+        let resolve = actions.resolve_conflict.clone();
+        let conflicts = tab.conflicts.clone();
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for path in conflicts {
+            let ours = resolve.clone();
+            let theirs = resolve.clone();
+            let ours_path = path.clone();
+            let theirs_path = path.clone();
+            rows.push(
+                view()
+                    .w_full()
+                    .h(px(24.0))
+                    .pl(px(20.0))
+                    .pr(px(8.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .bg(move || design::del_bg())
+                    .child(
+                        text(path)
+                            .flex_1()
+                            .text_size(px(10.5))
+                            .font_family("SF Mono")
+                            .text_color(move || design::text())
+                            .text_overflow(nsh_core::EllipsizeMode::Tail),
+                    )
+                    .child(widgets::small_button(
+                        move || i18n::t(language.get().as_str(), "conflicts.ours"),
+                        move || ours(ours_path.clone(), true),
+                    ))
+                    .child(widgets::small_button(
+                        move || i18n::t(language.get().as_str(), "conflicts.theirs"),
+                        move || theirs(theirs_path.clone(), false),
+                    ))
+                    .into_element(),
+            );
+        }
+        sections.insert(
+            0,
+            view()
+                .w_full()
+                .flex_col()
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(24.0))
+                        .px(px(8.0))
+                        .items_center()
+                        .child(
+                            text(move || {
+                                i18n::t(language.get().as_str(), "conflicts.title")
+                            })
+                            .text_size(px(10.5))
+                            .font_weight(FontWeight(600))
+                            .text_color(move || design::danger()),
+                        ),
+                )
+                .child(rows)
+                .into_element(),
+        );
+    }
+
     return view()
         .w_full()
         .h(px(LIST_H))

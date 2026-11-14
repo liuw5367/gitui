@@ -56,6 +56,11 @@ pub(crate) fn workspace(
             mode,
             actions.set_mode.clone(),
         ))
+        .child(shell::op_banner(
+            language,
+            current,
+            actions.clone(),
+        ))
         .child(
             view()
                 .w_full()
