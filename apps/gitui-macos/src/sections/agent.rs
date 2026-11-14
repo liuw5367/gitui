@@ -13,6 +13,7 @@ pub(crate) struct AgentActions {
     pub(crate) add_commit: Arc<dyn Fn()>,
     pub(crate) add_push: Arc<dyn Fn()>,
     pub(crate) clear: Arc<dyn Fn()>,
+    pub(crate) confirm_protected: Arc<dyn Fn()>,
     pub(crate) approve: Arc<dyn Fn()>,
 }
 
@@ -30,6 +31,7 @@ pub(crate) fn agent_panel(
     branch: Signal<SharedString>,
     staged: Signal<usize>,
     steps: Signal<Vec<PlanStep>>,
+    protected_ok: Signal<bool>,
     log: Signal<SharedString>,
     error: Signal<SharedString>,
     actions: AgentActions,
@@ -140,6 +142,55 @@ pub(crate) fn agent_panel(
                                         )
                                     },
                                 )),
+                        )
+                        .child(
+                            view()
+                                .h(px(28.0))
+                                .flex_row()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    text(move || {
+                                        if matches!(branch.get().as_str(), "main" | "master") {
+                                            "Protected branch · extra confirmation"
+                                        } else {
+                                            "Current branch is not protected"
+                                        }
+                                    })
+                                    .flex_1()
+                                    .text_size(px(9.5))
+                                    .text_color(move || design::text3()),
+                                )
+                                .child(
+                                    view()
+                                        .h(px(22.0))
+                                        .px_2()
+                                        .rounded(px(4.0))
+                                        .bg(move || {
+                                            if protected_ok.get() {
+                                                design::primary()
+                                            } else {
+                                                design::panel2()
+                                            }
+                                        })
+                                        .on_press({
+                                            let action = actions.confirm_protected.clone();
+                                            move || action()
+                                        })
+                                        .child(
+                                            text(move || {
+                                                if protected_ok.get() { "Confirmed" } else { "Confirm" }
+                                            })
+                                            .text_size(px(9.5))
+                                            .text_color(move || {
+                                                if protected_ok.get() {
+                                                    design::primary_foreground()
+                                                } else {
+                                                    design::text2()
+                                                }
+                                            }),
+                                        ),
+                                ),
                         )
                         .child(
                             text(move || {

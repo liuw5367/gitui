@@ -149,10 +149,12 @@ pub fn App() -> impl IntoElement {
     let agent_steps = signal(Vec::<PlanStep>::new());
     let agent_log = signal(SharedString::from(""));
     let agent_error = signal(SharedString::from(""));
+    let agent_protected_ok = signal(false);
     let open_agent: Arc<dyn Fn()> = Arc::new(move || {
         agent_steps.set(Vec::new());
         agent_log.set(SharedString::from(""));
         agent_error.set(SharedString::from(""));
+        agent_protected_ok.set(false);
         agent_open.set(true);
     });
     let open_compare: Arc<dyn Fn()> = Arc::new(move || {
@@ -1483,6 +1485,19 @@ pub fn App() -> impl IntoElement {
                     return;
                 }
             };
+            let has_push = plan.steps.iter().any(|step| matches!(step, PlanStep::Push));
+            let protected = matches!(branch.get_untracked().as_str(), "main" | "master");
+            if has_push
+                && protected
+                && permissions.protected_requires_approval
+                && !agent_protected_ok.get_untracked()
+            {
+                audit::append("agent push denied: protected branch not confirmed", false);
+                agent_error.set(SharedString::from(
+                    "Protected branch push needs extra confirmation",
+                ));
+                return;
+            }
             for step in plan.steps {
                 let step_name = match &step {
                     PlanStep::StageAll => "stage-all",
@@ -1514,6 +1529,7 @@ pub fn App() -> impl IntoElement {
                 }
             }
             agent_steps.set(Vec::new());
+            agent_protected_ok.set(false);
             agent_open.set(false);
             agent_error.set(SharedString::from(""));
             reload();
@@ -1525,6 +1541,7 @@ pub fn App() -> impl IntoElement {
         branch,
         staged,
         agent_steps,
+        agent_protected_ok,
         agent_log,
         agent_error,
         AgentActions {
@@ -1533,6 +1550,9 @@ pub fn App() -> impl IntoElement {
             add_commit,
             add_push,
             clear: clear_agent,
+            confirm_protected: Arc::new(move || {
+                agent_protected_ok.set(!agent_protected_ok.get_untracked())
+            }),
             approve: approve_agent,
         },
     );
