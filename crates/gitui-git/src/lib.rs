@@ -294,6 +294,11 @@ impl Repo {
             .collect())
     }
 
+    /// Rename a local branch.
+    pub fn rename_branch(&self, old: &str, new: &str) -> Result<String, GitError> {
+        self.git(&["branch", "-m", old, new])
+    }
+
     /// Delete a local branch. Git refuses the currently checked-out branch.
     pub fn delete_branch(&self, name: &str) -> Result<String, GitError> {
         self.git(&["branch", "-d", name])
@@ -915,6 +920,17 @@ mod tests {
         assert_eq!(repo.status().unwrap().unstaged, 1);
         repo.stash_drop(&stashes[0].selector).unwrap();
         assert!(repo.stashes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn renames_a_local_branch() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["branch", "feature"]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.rename_branch("feature", "renamed").unwrap();
+        let branches = repo.branches().unwrap();
+        assert!(!branches.iter().any(|branch| branch.name == "feature"));
+        assert!(branches.iter().any(|branch| branch.name == "renamed"));
     }
 
     #[test]
