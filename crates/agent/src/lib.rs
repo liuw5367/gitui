@@ -26,6 +26,10 @@ pub enum Action {
     Push,
     /// 丢弃工作区改动（`git restore --worktree`）。
     Discard,
+    /// 读取仓库文件内容（只读）。
+    ReadFiles,
+    /// 强制推送（`--force-with-lease`）。
+    ForcePush,
 }
 
 impl Action {
@@ -39,20 +43,137 @@ impl Action {
             Action::Pull => "pull",
             Action::Push => "push",
             Action::Discard => "discard",
+            Action::ReadFiles => "read-files",
+            Action::ForcePush => "force-push",
         };
     }
 
     /// 默认权限：只读动作可以自动执行，写动作必须询问。
     pub fn default_permission(self) -> Permission {
         return match self {
-            Action::Fetch => Permission::Allow,
+            Action::Fetch | Action::ReadFiles => Permission::Allow,
             _ => Permission::Ask,
         };
     }
 
+    /// 是否为只读动作（读文件、取回）。
+    pub fn is_read_only(self) -> bool {
+        return matches!(self, Action::ReadFiles | Action::Fetch);
+    }
+
     /// 是否会改变仓库（用于在 UI 上区分危险动作）。
     pub fn is_destructive(self) -> bool {
-        return matches!(self, Action::Discard | Action::Push | Action::Commit);
+        return matches!(
+            self,
+            Action::Discard | Action::Push | Action::Commit | Action::ForcePush
+        );
+    }
+}
+
+/// 自动化程度（设计板 13 的 Automation）：Agent 能自己走多远。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Automation {
+    /// 每步都等确认。
+    #[default]
+    Off,
+    /// 可以自动提交，推送仍需确认。
+    Commit,
+    /// 提交并推送。
+    CommitAndPush,
+}
+
+impl Automation {
+    pub fn id(self) -> &'static str {
+        return match self {
+            Automation::Off => "off",
+            Automation::Commit => "commit",
+            Automation::CommitAndPush => "commit-and-push",
+        };
+    }
+
+    pub fn from_id(id: &str) -> Automation {
+        return match id {
+            "commit" => Automation::Commit,
+            "commit-and-push" => Automation::CommitAndPush,
+            _ => Automation::Off,
+        };
+    }
+
+    /// 该自动化程度是否允许直接推送。只有「提交并推送」允许。
+    pub fn may_push(self) -> bool {
+        return self == Automation::CommitAndPush;
+    }
+}
+
+/// Agent 的运行设置：自动化程度、执行前预览时长、受保护分支。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Settings {
+    pub automation: Automation,
+    /// 自动执行前的预览毫秒数（0 表示不预览）。
+    pub review_millis: u32,
+    /// 受保护分支：Agent 不直接在这些分支上提交或推送。
+    pub protected: Vec<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        return Settings {
+            automation: Automation::Off,
+            review_millis: 8000,
+            protected: vec!["main".to_string()],
+        };
+    }
+}
+
+impl Settings {
+    /// 预览时长的可选项（设计板 13）。
+    pub const REVIEW_CHOICES: [u32; 4] = [0, 3000, 5000, 8000];
+
+    /// 分支是否受保护；空列表表示不保护任何分支。
+    pub fn is_protected(&self, branch: &str) -> bool {
+        return self.protected.iter().any(|name| name == branch);
+    }
+
+    /// 这个动作在当前设置下是否被挡住（受保护分支 + 写动作）。
+    ///
+    /// 返回 `Some(原因)` 表示拒绝执行，由界面提示而不是静默跳过。
+    pub fn blocks(&self, action: Action, branch: &str) -> Option<String> {
+        if action.is_read_only() || !self.is_protected(branch) {
+            return None;
+        }
+        return Some(format!("{branch} 是受保护分支，Agent 不会在上面执行 {}", action.id()));
+    }
+
+    /// 从 `key=value` 行读取（与策略共用同一个文件）。
+    pub fn read_pair(&mut self, key: &str, value: &str) -> bool {
+        return match key {
+            "automation" => {
+                self.automation = Automation::from_id(value);
+                true
+            }
+            "review-millis" => {
+                self.review_millis = value.parse().unwrap_or(self.review_millis);
+                true
+            }
+            "protected" => {
+                self.protected = value
+                    .split(',')
+                    .map(|name| name.trim().to_string())
+                    .filter(|name| !name.is_empty())
+                    .collect();
+                true
+            }
+            _ => false,
+        };
+    }
+
+    /// 写回成 `key=value` 行。
+    pub fn write_pairs(&self) -> Vec<(String, String)> {
+        return vec![
+            ("automation".to_string(), self.automation.id().to_string()),
+            ("review-millis".to_string(), self.review_millis.to_string()),
+            ("protected".to_string(), self.protected.join(",")),
+        ];
     }
 }
 
@@ -254,6 +375,53 @@ pub fn propose(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automation_gates_push_and_round_trips_through_ids() {
+        assert!(!Automation::Off.may_push());
+        assert!(!Automation::Commit.may_push());
+        assert!(Automation::CommitAndPush.may_push());
+        for automation in [Automation::Off, Automation::Commit, Automation::CommitAndPush] {
+            assert_eq!(Automation::from_id(automation.id()), automation);
+        }
+        assert_eq!(Automation::from_id("nonsense"), Automation::Off);
+    }
+
+    #[test]
+    fn protected_branches_block_writes_but_not_reads() {
+        let settings = Settings::default();
+        assert!(settings.is_protected("main"), "main 默认受保护");
+        assert!(!settings.is_protected("feature/x"));
+        // 写动作被挡住，并带可读原因。
+        let blocked = settings.blocks(Action::Commit, "main").expect("应被挡");
+        assert!(blocked.contains("main"), "{blocked}");
+        assert!(settings.blocks(Action::ForcePush, "main").is_some());
+        // 只读动作不受保护影响。
+        assert!(settings.blocks(Action::ReadFiles, "main").is_none());
+        assert!(settings.blocks(Action::Fetch, "main").is_none());
+        // 非保护分支不挡。
+        assert!(settings.blocks(Action::Commit, "feature/x").is_none());
+    }
+
+    #[test]
+    fn settings_pairs_round_trip() {
+        let mut settings = Settings::default();
+        let pairs = settings.write_pairs();
+        assert_eq!(pairs.len(), 3);
+
+        let mut parsed = Settings {
+            automation: Automation::Off,
+            review_millis: 0,
+            protected: Vec::new(),
+        };
+        for (key, value) in &pairs {
+            assert!(parsed.read_pair(key, value), "应认识 {key}");
+        }
+        assert_eq!(parsed.automation, settings.automation);
+        assert_eq!(parsed.review_millis, settings.review_millis);
+        assert_eq!(parsed.protected, settings.protected);
+        assert!(!parsed.read_pair("unknown-key", "1"), "未知键应返回 false");
+    }
 
     #[test]
     fn write_actions_ask_by_default_and_fetch_is_allowed() {

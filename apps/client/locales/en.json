@@ -426,7 +426,9 @@
       "pull": "Pull",
       "push": "Push",
       "discard": "Discard changes"
-    }
+    },
+    "action.readFiles": "Read files",
+    "action.forcePush": "Force push"
   },
   "branch": {
     "checkout": "Check Out",
@@ -521,7 +523,17 @@
   "agentPage": {
     "hint": "Each repository action the agent may propose asks first unless you change it here.",
     "boundary": "The agent never gets a shell or credentials; every step runs through the same app actions you use by hand.",
-    "destructive": "changes the repo"
+    "destructive": "changes the repo",
+    "automation": "Automation",
+    "automationHint": "How far the Agent may go without asking each step.",
+    "autoOff": "Off",
+    "autoCommit": "Commit",
+    "autoCommitPush": "Commit & Push",
+    "review": "Review window",
+    "reviewHint": "How long the plan is shown before it runs automatically.",
+    "reviewNone": "None",
+    "protected": "Protected branches",
+    "protectedHint": "The Agent never commits or pushes to a protected branch."
   },
   "menu": {
     "openDiff": "Open Diff",

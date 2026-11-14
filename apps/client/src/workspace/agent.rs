@@ -378,5 +378,7 @@ fn action_key(action: AgentAction) -> &'static str {
         AgentAction::Pull => "agent.action.pull",
         AgentAction::Push => "agent.action.push",
         AgentAction::Discard => "agent.action.discard",
+        AgentAction::ReadFiles => "agent.action.readFiles",
+        AgentAction::ForcePush => "agent.action.forcePush",
     };
 }

@@ -426,7 +426,9 @@
       "pull": "拉取",
       "push": "推送",
       "discard": "丢弃改动"
-    }
+    },
+    "action.readFiles": "读取文件",
+    "action.forcePush": "强制推送"
   },
   "branch": {
     "checkout": "切换到此分支",
@@ -521,7 +523,17 @@
   "agentPage": {
     "hint": "助手提议的每个仓库动作默认都要先询问，可在这里逐项调整。",
     "boundary": "助手不会拿到 shell 或凭据；每一步都走与你手动操作相同的应用动作。",
-    "destructive": "会改动仓库"
+    "destructive": "会改动仓库",
+    "automation": "自动化",
+    "automationHint": "Agent 不必每步确认时能走多远。",
+    "autoOff": "关闭",
+    "autoCommit": "自动提交",
+    "autoCommitPush": "提交并推送",
+    "review": "预览时长",
+    "reviewHint": "自动执行前先展示计划的时间。",
+    "reviewNone": "不预览",
+    "protected": "受保护分支",
+    "protectedHint": "Agent 不会在受保护分支上提交或推送。"
   },
   "menu": {
     "openDiff": "打开 Diff",

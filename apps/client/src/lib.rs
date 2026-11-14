@@ -131,6 +131,12 @@ pub(crate) struct Actions {
     pub(crate) propose_plan: Arc<dyn Fn()>,
     pub(crate) run_agent_step: Arc<dyn Fn(usize)>,
     pub(crate) set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)>,
+    /// 设置 Agent 的自动化程度。
+    pub(crate) set_automation: Arc<dyn Fn(agent::Automation)>,
+    /// 设置自动执行前的预览时长。
+    pub(crate) set_review_millis: Arc<dyn Fn(u32)>,
+    /// 切换某个分支的受保护状态。
+    pub(crate) toggle_protected_branch: Arc<dyn Fn(String)>,
     pub(crate) set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)>,
     pub(crate) checkout_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
@@ -253,6 +259,8 @@ pub fn App() -> impl IntoElement {
                 agent::Action::Pull,
                 agent::Action::Push,
                 agent::Action::Discard,
+                agent::Action::ReadFiles,
+                agent::Action::ForcePush,
             ]
             .into_iter()
             .find(|candidate| candidate.id() == action);
@@ -261,6 +269,13 @@ pub fn App() -> impl IntoElement {
             }
         }
         policies
+    });
+    let agent_settings = signal({
+        let mut settings = agent::Settings::default();
+        for (key, value) in store::load_agent_policies(&store_dir) {
+            settings.read_pair(key.as_str(), value.as_str());
+        }
+        settings
     });
     let agent_audit = signal(
         store::load_agent_audit(&store_dir)
@@ -1211,6 +1226,7 @@ pub fn App() -> impl IntoElement {
         let agent_plan = agent_plan;
         let agent_audit = agent_audit;
         let agent_policies = agent_policies;
+        let agent_settings = agent_settings;
         let commit_summary = commit_summary;
         let persist_audit = persist_audit.clone();
         Arc::new(move |index: usize| {
@@ -1221,6 +1237,28 @@ pub fn App() -> impl IntoElement {
                 return;
             };
             let now = store::now_unix();
+            // 受保护分支：写动作一律不执行，记审计并说明原因。
+            let branch_now = {
+                let list = tabs.get_untracked();
+                list.get(active.get_untracked())
+                    .map(|tab| tab.branch.clone())
+                    .unwrap_or_default()
+            };
+            if let Some(reason) =
+                agent_settings
+                    .get_untracked()
+                    .blocks(step.action, branch_now.as_str())
+            {
+                let mut audit = agent_audit.get_untracked();
+                audit.insert(
+                    0,
+                    agent::AuditEntry::new(now, step.action, false, reason.as_str()),
+                );
+                audit.truncate(agent::Audit::LIMIT);
+                agent_audit.set(audit);
+                persist_audit();
+                return;
+            }
             // 权限：Deny 直接记审计并跳过；Ask 在界面上就是用户按了这一行。
             if agent_policies.get_untracked().is_denied(step.action) {
                 let mut audit = agent_audit.get_untracked();
@@ -1246,6 +1284,11 @@ pub fn App() -> impl IntoElement {
                 agent::Action::UnstageAll => {
                     model::stage_all_or_none(tab, false);
                     "unstaged all".to_string()
+                }
+                // 只读动作与强推不是 plan 的步骤：前者不产生副作用，后者必须由人
+                // 在同步面板里勾选确认，不交给 Agent 自动执行。
+                agent::Action::ReadFiles | agent::Action::ForcePush => {
+                    "skipped".to_string()
                 }
                 agent::Action::Commit => {
                     tab.summary = step
@@ -2283,6 +2326,59 @@ pub fn App() -> impl IntoElement {
         )
     };
 
+    // Agent 的三项运行设置：自动化、预览时长、受保护分支。改动即持久化。
+    let persist_agent = {
+        let store_dir = store_dir.clone();
+        let agent_policies = agent_policies;
+        Arc::new(move |settings: &agent::Settings| {
+            let pairs = settings.write_pairs();
+            let mut lines: Vec<(String, String)> = store::load_agent_policies(&store_dir);
+            for (key, value) in pairs {
+                lines.retain(|(existing, _)| existing != &key);
+                lines.push((key, value));
+            }
+            let _ = agent_policies;
+            store::save_agent_policies(&store_dir, &lines);
+        })
+    };
+
+    let set_automation: Arc<dyn Fn(agent::Automation)> = {
+        let agent_settings = agent_settings;
+        let persist = persist_agent.clone();
+        Arc::new(move |mode: agent::Automation| {
+            let mut next = agent_settings.get_untracked();
+            next.automation = mode;
+            agent_settings.set(next.clone());
+            persist(&next);
+        })
+    };
+
+    let set_review_millis: Arc<dyn Fn(u32)> = {
+        let agent_settings = agent_settings;
+        let persist = persist_agent.clone();
+        Arc::new(move |millis: u32| {
+            let mut next = agent_settings.get_untracked();
+            next.review_millis = millis;
+            agent_settings.set(next.clone());
+            persist(&next);
+        })
+    };
+
+    let toggle_protected_branch: Arc<dyn Fn(String)> = {
+        let agent_settings = agent_settings;
+        let persist = persist_agent.clone();
+        Arc::new(move |branch: String| {
+            let mut next = agent_settings.get_untracked();
+            if next.is_protected(branch.as_str()) {
+                next.protected.retain(|name| name != &branch);
+            } else {
+                next.protected.push(branch);
+            }
+            agent_settings.set(next.clone());
+            persist(&next);
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2308,6 +2404,9 @@ pub fn App() -> impl IntoElement {
         export_patch,
         create_initial_commit,
         clear_sync_fault,
+        set_automation,
+        set_review_millis,
+        toggle_protected_branch,
         open_reword,
         open_squash,
         set_rewrite_message,
@@ -2645,6 +2744,21 @@ pub fn App() -> impl IntoElement {
 
     // 身份按当前仓库读（仓库级 config），没有打开仓库时回落到全局配置。
     // 用计算值而不是一次性读取：编辑身份或切换标签后设置页会跟着变。
+    // 设置页的受保护分支列表：取当前仓库的本地分支名。
+    let branches_for_settings = {
+        let tabs = tabs;
+        let active = active;
+        tabs.get_untracked()
+            .get(active.get_untracked())
+            .map(|tab| {
+                tab.refs
+                    .branches
+                    .iter()
+                    .map(|branch| branch.name.clone())
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default()
+    };
     let identity_for_view = {
         let tabs = tabs;
         let active = active;
@@ -2721,6 +2835,11 @@ pub fn App() -> impl IntoElement {
                             git_info_for_view.clone(),
                             agent_policies,
                             actions_for_view.set_agent_permission.clone(),
+                            agent_settings,
+                            branches_for_settings.clone(),
+                            actions_for_view.set_automation.clone(),
+                            actions_for_view.set_review_millis.clone(),
+                            actions_for_view.toggle_protected_branch.clone(),
                             actions_for_view.clone(),
                         )
                         .into_element(),

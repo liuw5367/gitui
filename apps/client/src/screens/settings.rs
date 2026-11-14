@@ -57,6 +57,11 @@ pub(crate) fn settings(
     git_info: (String, String, String),
     policies: Signal<agent::Policies>,
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
+    agent_settings: Signal<agent::Settings>,
+    branches_for_agent: Vec<String>,
+    set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
+    set_review: std::sync::Arc<dyn Fn(u32)>,
+    toggle_protected: std::sync::Arc<dyn Fn(String)>,
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -83,6 +88,11 @@ pub(crate) fn settings(
                     git_info,
                     policies,
                     set_permission,
+                    agent_settings,
+                    branches_for_agent,
+                    set_automation,
+                    set_review,
+                    toggle_protected,
                     actions,
                 )),
         )
@@ -212,6 +222,7 @@ fn side(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn main(
     language: Signal<SharedString>,
     theme_mode: Signal<ThemeMode>,
@@ -221,6 +232,11 @@ fn main(
     git_info: (String, String, String),
     policies: Signal<agent::Policies>,
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
+    agent_settings: Signal<agent::Settings>,
+    branches_for_agent: Vec<String>,
+    set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
+    set_review: std::sync::Arc<dyn Fn(u32)>,
+    toggle_protected: std::sync::Arc<dyn Fn(String)>,
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
@@ -278,8 +294,17 @@ fn main(
                         Section::Credentials => {
                             credentials_page(language, git_info.clone()).into_element()
                         }
-                        Section::Agent => agent_page(language, policies, set_permission.clone())
-                            .into_element(),
+                        Section::Agent => agent_page(
+                            language,
+                            policies,
+                            set_permission.clone(),
+                            agent_settings,
+                            branches_for_agent.clone(),
+                            set_automation.clone(),
+                            set_review.clone(),
+                            toggle_protected.clone(),
+                        )
+                        .into_element(),
                     }
                 })),
         ));
@@ -925,6 +950,11 @@ fn agent_page(
     language: Signal<SharedString>,
     policies: Signal<agent::Policies>,
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
+    settings: Signal<agent::Settings>,
+    branches: Vec<String>,
+    set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
+    set_review: std::sync::Arc<dyn Fn(u32)>,
+    toggle_protected: std::sync::Arc<dyn Fn(String)>,
 ) -> AnyElement {
     let mut rows: Vec<AnyElement> = Vec::new();
     for action in [
@@ -935,6 +965,8 @@ fn agent_page(
         agent::Action::Pull,
         agent::Action::Push,
         agent::Action::Discard,
+        agent::Action::ReadFiles,
+        agent::Action::ForcePush,
     ] {
         let set_permission = set_permission.clone();
         rows.push(
@@ -1003,7 +1035,147 @@ fn agent_page(
                 .into_element(),
         );
     }
-    return view()
+        // 自动化程度：Off / Commit / Commit & Push。
+    let automation_rows: Vec<AnyElement> = [
+        agent::Automation::Off,
+        agent::Automation::Commit,
+        agent::Automation::CommitAndPush,
+    ]
+    .iter()
+    .map(|mode| {
+        let mode = *mode;
+        let active = settings.get_untracked().automation == mode;
+        let set_automation = set_automation.clone();
+        let language = language;
+        return view()
+            .h(px(22.0))
+            .px(px(8.0))
+            .items_center()
+            .rounded(px(5.0))
+            .bg(move || {
+                if active {
+                    design::content()
+                } else {
+                    AdaptiveColor::TRANSPARENT
+                }
+            })
+            .on_press(move || set_automation(mode))
+            .child(
+                text(move || i18n::t(language.get().as_str(), automation_key(mode)))
+                    .text_size(px(10.5))
+                    .line_height(px(14.0))
+                    .text_color(move || {
+                        if active {
+                            design::text()
+                        } else {
+                            design::text2()
+                        }
+                    }),
+            )
+            .into_element();
+    })
+    .collect();
+
+    // 预览时长：0 / 3 / 5 / 8 秒。
+    let review_rows: Vec<AnyElement> = agent::Settings::REVIEW_CHOICES
+        .iter()
+        .map(|millis| {
+            let millis = *millis;
+            let active = settings.get_untracked().review_millis == millis;
+            let set_review = set_review.clone();
+            let language = language;
+            let label = if millis == 0 {
+                i18n::t(language.get_untracked().as_str(), "agentPage.reviewNone")
+            } else {
+                format!("{}s", millis / 1000)
+            };
+            return view()
+                .h(px(20.0))
+                .px(px(7.0))
+                .items_center()
+                .rounded(px(4.0))
+                .bg(move || {
+                    if active {
+                        design::content()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .on_press(move || set_review(millis))
+                .child(
+                    text(label)
+                        .text_size(px(10.0))
+                        .line_height(px(13.0))
+                        .text_color(move || {
+                            if active {
+                                design::text()
+                            } else {
+                                design::text3()
+                            }
+                        }),
+                )
+                .into_element();
+        })
+        .collect();
+
+    // 受保护分支：列出本地分支，点一下切换保护状态。
+    let protected_rows: Vec<AnyElement> = branches
+        .iter()
+        .map(|branch| {
+            let name = branch.clone();
+            let checked = settings.get_untracked().is_protected(name.as_str());
+            let toggle = toggle_protected.clone();
+            let language = language;
+            let label = name.clone();
+            return view()
+                .h(px(20.0))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .on_press(move || toggle(name.clone()))
+                .child(
+                    view()
+                        .w(px(12.0))
+                        .h(px(12.0))
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .border_1()
+                        .border_color(move || design::line_strong())
+                        .bg(move || {
+                            if checked {
+                                design::accent()
+                            } else {
+                                AdaptiveColor::TRANSPARENT
+                            }
+                        })
+                        .child(
+                            text(move || {
+                                if checked {
+                                    "✓".to_string()
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .text_size(px(8.0))
+                            .text_color(move || design::content()),
+                        ),
+                )
+                .child(
+                    text(label)
+                        .text_size(px(10.0))
+                        .line_height(px(13.0))
+                        .font_family("SF Mono")
+                        .text_color(move || {
+                            let _ = language;
+                            design::text2()
+                        }),
+                )
+                .into_element();
+        })
+        .collect();
+
+    let mut block = view()
         .w_full()
         .flex_col()
         .gap(px(10.0))
@@ -1014,6 +1186,27 @@ fn agent_page(
                 .text_color(move || design::text3()),
         )
         .child(rows)
+        .child(section_block(
+            language,
+            "agentPage.automation",
+            "agentPage.automationHint",
+            view().w_full().flex_row().gap(px(2.0)).child(automation_rows).into_element(),
+        ))
+        .child(section_block(
+            language,
+            "agentPage.review",
+            "agentPage.reviewHint",
+            view().w_full().flex_row().gap(px(2.0)).child(review_rows).into_element(),
+        ));
+    if !protected_rows.is_empty() {
+        block = block.child(section_block(
+            language,
+            "agentPage.protected",
+            "agentPage.protectedHint",
+            view().w_full().flex_col().gap(px(2.0)).child(protected_rows).into_element(),
+        ));
+    }
+    return block
         .child(
             text(move || i18n::t(language.get().as_str(), "agentPage.boundary"))
                 .text_size(px(10.0))
@@ -1021,6 +1214,15 @@ fn agent_page(
                 .text_color(move || design::text3()),
         )
         .into_element();
+}
+
+/// 自动化程度的文案键。
+fn automation_key(mode: agent::Automation) -> &'static str {
+    return match mode {
+        agent::Automation::Off => "agentPage.autoOff",
+        agent::Automation::Commit => "agentPage.autoCommit",
+        agent::Automation::CommitAndPush => "agentPage.autoCommitPush",
+    };
 }
 
 fn agent_action_key(action: agent::Action) -> &'static str {
@@ -1032,5 +1234,7 @@ fn agent_action_key(action: agent::Action) -> &'static str {
         agent::Action::Pull => "agent.action.pull",
         agent::Action::Push => "agent.action.push",
         agent::Action::Discard => "agent.action.discard",
+        agent::Action::ReadFiles => "agent.action.readFiles",
+        agent::Action::ForcePush => "agent.action.forcePush",
     };
 }
