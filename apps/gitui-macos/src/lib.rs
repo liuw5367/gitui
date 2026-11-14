@@ -366,8 +366,12 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let operation_banner =
-        crate::sections::operation_banner(operation, continue_action, skip_action, abort_action);
+    let operation_banner = crate::sections::operation_banner(
+        operation,
+        continue_action.clone(),
+        skip_action.clone(),
+        abort_action.clone(),
+    );
 
     let open_recent = Arc::new(move |path: String| {
         path_input.set(path);
@@ -485,19 +489,6 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
-    let conflict_panel = crate::sections::conflict_panel(
-        conflicts,
-        conflict_path,
-        conflict_stages,
-        conflict_result,
-        ConflictActions {
-            accept_ours: accept_ours_action,
-            accept_theirs: accept_theirs_action,
-            accept_both: accept_both_action,
-            mark_resolved: mark_resolved_action,
-        },
-    );
-
     let stage_all_action = Arc::new({
         let reload_stage = reload_for_stage.clone();
         move || match Repo::open(repo_path.get_untracked().to_string().as_str())
@@ -921,6 +912,22 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
+    let conflict_panel = crate::sections::conflict_panel(
+        conflicts,
+        conflict_path,
+        conflict_stages,
+        conflict_result,
+        ConflictActions {
+            accept_ours: accept_ours_action,
+            accept_theirs: accept_theirs_action,
+            accept_both: accept_both_action,
+            mark_resolved: mark_resolved_action,
+            select: select_conflict_action.clone(),
+            continue_op: continue_action.clone(),
+            abort: abort_action.clone(),
+        },
+    );
+
     let changes_actions = ChangesActions {
         stage_all: stage_all_action.clone(),
         unstage_all: unstage_all_action.clone(),
