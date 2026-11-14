@@ -219,7 +219,12 @@
     "stage": "Stage File",
     "unstage": "Unstage File",
     "discard": "Discard Changes…",
-    "revert": "Revert Changes…"
+    "revert": "Revert Changes…",
+    "stageHunk": "Stage Hunk",
+    "unstageHunk": "Unstage Hunk",
+    "stageLine": "Stage Line",
+    "unstageLine": "Unstage Line",
+    "pieceApplied": "Applied"
   },
   "commit": {
     "tab": "Commit",

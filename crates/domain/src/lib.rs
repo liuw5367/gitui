@@ -5,6 +5,7 @@
 
 pub mod conflict;
 pub mod diff;
+pub mod stage;
 
 /// 失败类别。UI 按类别选择呈现方式（内联错误、banner、表单错误），
 /// 不解析错误文案。

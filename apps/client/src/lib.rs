@@ -82,6 +82,8 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
+    /// 按 hunk / 单行暂存或取消暂存。
+    pub(crate) apply_piece: Arc<dyn Fn(usize, Option<usize>, bool)>,
     /// 切换 diff 显示开关（`fold` / `wrap` / `whitespace`）。
     pub(crate) toggle_diff_option: Arc<dyn Fn(&'static str)>,
     /// 把当前 diff 导出成 patch 文件。
@@ -2255,6 +2257,32 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let apply_piece: Arc<dyn Fn(usize, Option<usize>, bool)> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(
+            move |hunk: usize, line: Option<usize>, reverse: bool| {
+                let current = active.get_untracked();
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    match model::apply_piece(tab, hunk, line, reverse) {
+                        Ok(()) => {
+                            let lang = language.get_untracked();
+                            interactions::notify(
+                                notice,
+                                i18n::t(lang.as_str(), "changes.pieceApplied"),
+                            );
+                        }
+                        Err(detail) => tab.error = Some(detail),
+                    }
+                    tabs.set(list);
+                }
+            },
+        )
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2275,6 +2303,7 @@ pub fn App() -> impl IntoElement {
         set_commit_option,
         toggle_hook_log,
         checkout_default_branch,
+        apply_piece,
         toggle_diff_option,
         export_patch,
         create_initial_commit,

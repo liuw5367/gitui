@@ -584,6 +584,44 @@ fn reload_after_history_change(tab: &mut Tab) -> Result<String, String> {
     return Ok(refreshed.branch);
 }
 
+/// 按 hunk 或单行暂存/取消暂存当前选中的变更。
+///
+/// `line_index` 为 `None` 时整段 hunk；`reverse` 为真表示从暂存区取回。
+/// 补丁来源是 `tab.change_diff`（当前文件相对暂存区的 diff）。
+pub fn apply_piece(
+    tab: &mut Tab,
+    hunk_index: usize,
+    line_index: Option<usize>,
+    reverse: bool,
+) -> Result<(), String> {
+    let sections = domain::stage::Sections::parse(tab.change_diff.as_str());
+    let patch = match line_index {
+        Some(line) => sections.line_patch(0, hunk_index, line),
+        None => sections.hunk_patch(0, hunk_index),
+    }
+    .ok_or_else(|| "这一段没有可暂存的内容".to_string())?;
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.apply_cached(patch.as_str(), reverse)
+        .map_err(|error| error.detail())?;
+    refresh_changes(tab);
+    // 重新装载当前选中文件的 diff，让刚改的片段立刻反映出来。
+    let selected = tab.selected_change;
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.commits = refreshed.commits;
+    tab.changes = refreshed.changes;
+    tab.status = refreshed.status;
+    if let Some(index) = selected {
+        if index < tab.changes.len() {
+            load_change_diff(tab, index);
+        } else {
+            tab.selected_change = None;
+            tab.change_diff.clear();
+        }
+    }
+    return Ok(());
+}
+
 /// 空仓库里创建第一个提交（`--allow-empty`，只为了让分支有起点）。
 pub fn create_initial_commit(tab: &mut Tab, summary: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
@@ -1563,6 +1601,65 @@ mod tests {
 
         // 不存在的 SHA 返回 false，不改变选中。
         assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn apply_piece_stages_one_hunk_of_the_selected_file() {
+        let repo = TempRepo::new("piece");
+        let lines: String = (1..=30).map(|index| format!("line{index}\n")).collect();
+        std::fs::write(repo.path.join("f.txt"), lines).expect("write");
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["add", "-A"])
+            .status()
+            .expect("git");
+        assert!(status.success());
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["commit", "-q", "-m", "base"])
+            .status()
+            .expect("git");
+        assert!(status.success());
+
+        // 两处远端改动，形成两个 hunk。
+        let mut changed: Vec<String> = (1..=30).map(|index| format!("line{index}")).collect();
+        changed[1] = "line2-changed".to_string();
+        changed[27] = "line28-changed".to_string();
+        std::fs::write(
+            repo.path.join("f.txt"),
+            format!("{}\n", changed.join("\n")),
+        )
+        .expect("write");
+
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "f.txt")
+            .expect("f.txt");
+        load_change_diff(&mut tab, index);
+        let sections = domain::stage::Sections::parse(tab.change_diff.as_str());
+        assert_eq!(sections.files[0].hunks.len(), 2, "应有两个 hunk");
+
+        // 只暂存第二个 hunk。
+        apply_piece(&mut tab, 1, None, false).expect("stage hunk");
+        assert!(
+            tab.changes
+                .iter()
+                .any(|entry| entry.path == "f.txt" && entry.staged),
+            "文件应有一部分进了暂存区"
+        );
+        // 工作区仍保留第一个 hunk 的改动。
+        let diff = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["diff", "--", "f.txt"])
+            .output()
+            .expect("git");
+        let diff = String::from_utf8_lossy(&diff.stdout).to_string();
+        assert!(diff.contains("line2-changed"), "第一个 hunk 还在工作区");
     }
 
     #[test]

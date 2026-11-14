@@ -219,7 +219,12 @@
     "stage": "暂存文件",
     "unstage": "取消暂存",
     "discard": "丢弃改动…",
-    "revert": "撤销修改…"
+    "revert": "撤销修改…",
+    "stageHunk": "暂存此段",
+    "unstageHunk": "取消暂存此段",
+    "stageLine": "暂存此行",
+    "unstageLine": "取消暂存此行",
+    "pieceApplied": "已应用"
   },
   "commit": {
     "tab": "提交",

@@ -33,7 +33,52 @@ pub(crate) fn changes_view(
         .unwrap_or_default();
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
     let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
-    let rows: Vec<AnyElement> = patch.lines.iter().map(diff_row).collect();
+    // 逐行走一遍，记住当前在第几个 hunk、hunk 内第几行，供行级操作定位。
+    let staged_selection = tab
+        .selected_change
+        .and_then(|index| tab.changes.get(index))
+        .map(|entry| entry.staged)
+        .unwrap_or(false);
+    let piece_actions = actions.clone();
+    let mut rows: Vec<AnyElement> = Vec::new();
+    let mut hunk_index = 0usize;
+    let mut line_index = 0usize;
+    for line in patch.lines.iter() {
+        match line.kind {
+            DiffLineKind::Hunk => {
+                if hunk_index > 0 || !rows.is_empty() {
+                    // 第一个 hunk 之前可能已有 Meta 行，不算 hunk。
+                }
+                let apply = piece_actions.apply_piece.clone();
+                let language = language;
+                rows.push(hunk_header_row(
+                    language,
+                    line.text.clone(),
+                    hunk_index,
+                    staged_selection,
+                    apply,
+                ));
+                hunk_index += 1;
+                line_index = 0;
+            }
+            DiffLineKind::Add | DiffLineKind::Remove => {
+                let apply = piece_actions.apply_piece.clone();
+                let language = language;
+                rows.push(line_row_with_piece(
+                    line,
+                    hunk_index.saturating_sub(1),
+                    line_index,
+                    staged_selection,
+                    language,
+                    apply,
+                ));
+                line_index += 1;
+            }
+            _ => {
+                rows.push(diff_row(line));
+            }
+        }
+    }
     return view()
         .w_full()
         .h_full()
@@ -698,6 +743,112 @@ fn diff_row(line: &domain::diff::DiffLine) -> AnyElement {
                 .text_color(move || foreground)
                 .text_overflow(nsh_core::EllipsizeMode::Clip),
         )
+        .into_element();
+}
+
+/// hunk 头：右侧一个「暂存/取消暂存此段」按钮。
+fn hunk_header_row(
+    language: Signal<SharedString>,
+    header: String,
+    hunk_index: usize,
+    staged: bool,
+    apply: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
+) -> AnyElement {
+    let label_key = if staged {
+        "changes.unstageHunk"
+    } else {
+        "changes.stageHunk"
+    };
+    return view()
+        .w_full()
+        .h(px(metrics::DIFF_LINE_H))
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .px(px(6.0))
+        .bg(move || design::panel2())
+        .child(
+            text(header)
+                .flex_1()
+                .text_size(px(metrics::DIFF_FONT))
+                .line_height(px(metrics::DIFF_LINE_H))
+                .font_family("SF Mono")
+                .text_color(move || design::text2())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(crate::widgets::small_button(
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), label_key)
+            },
+            move || apply(hunk_index, None, staged),
+        ))
+        .into_element();
+}
+
+/// 增删行：行尾一个「暂存/取消暂存此行」的小按钮。
+fn line_row_with_piece(
+    line: &domain::diff::DiffLine,
+    hunk_index: usize,
+    line_index: usize,
+    staged: bool,
+    language: Signal<SharedString>,
+    apply: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
+) -> AnyElement {
+    let (background, foreground) = match line.kind {
+        DiffLineKind::Add => (design::add_bg(), design::add_fg()),
+        _ => (design::del_bg(), design::del_fg()),
+    };
+    let old = line.old.map(|value| value.to_string()).unwrap_or_default();
+    let new = line.new.map(|value| value.to_string()).unwrap_or_default();
+    let content = line.text.clone();
+    let label_key = if staged {
+        "changes.unstageLine"
+    } else {
+        "changes.stageLine"
+    };
+    return view()
+        .w_full()
+        .h(px(metrics::DIFF_LINE_H))
+        .flex_row()
+        .items_center()
+        .bg(move || background)
+        .child(
+            text(old)
+                .w(px(34.0))
+                .flex_shrink_0()
+                .pl(px(6.0))
+                .text_size(px(metrics::DIFF_FONT))
+                .line_height(px(metrics::DIFF_LINE_H))
+                .font_family("SF Mono")
+                .text_color(move || design::text3()),
+        )
+        .child(
+            text(new)
+                .w(px(34.0))
+                .flex_shrink_0()
+                .pl(px(6.0))
+                .text_size(px(metrics::DIFF_FONT))
+                .line_height(px(metrics::DIFF_LINE_H))
+                .font_family("SF Mono")
+                .text_color(move || design::text3()),
+        )
+        .child(
+            text(content)
+                .flex_1()
+                .text_size(px(metrics::DIFF_FONT))
+                .line_height(px(metrics::DIFF_LINE_H))
+                .font_family("SF Mono")
+                .text_color(move || foreground)
+                .text_overflow(nsh_core::EllipsizeMode::Clip),
+        )
+        .child(crate::widgets::small_button(
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), label_key)
+            },
+            move || apply(hunk_index, Some(line_index), staged),
+        ))
         .into_element();
 }
 

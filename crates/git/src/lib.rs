@@ -1368,6 +1368,44 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    /// 把一段补丁应用到暂存区（`git apply --cached`），用于 hunk / 行级暂存。
+    ///
+    /// `reverse` 为真时反向应用，即「取消暂存」。补丁不合法时 `git apply` 会拒绝，
+    /// 这里把它的原始输出带回去，不做静默重试。
+    pub fn apply_cached(&self, patch: &str, reverse: bool) -> Result<(), GitError> {
+        if patch.trim().is_empty() {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: "apply --cached".to_string(),
+                code: None,
+                detail: "补丁为空".to_string(),
+            });
+        }
+        let directory = std::env::temp_dir();
+        let stamp = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        );
+        let path = directory.join(format!("gitclient-apply-{stamp}.patch"));
+        std::fs::write(&path, patch.as_bytes()).map_err(|error| GitError::Unreadable {
+            path: path.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        let mut args: Vec<&str> = vec!["apply", "--cached", "--unidiff-zero"];
+        if reverse {
+            args.push("--reverse");
+        }
+        args.push(path.to_str().unwrap_or_default());
+        let result = run_git(&self.root, &args);
+        let _ = std::fs::remove_file(&path);
+        result?;
+        return Ok(());
+    }
+
     /// 把工作区的改动加入暂存区（`git add -- <paths>`）。
     pub fn stage(&self, paths: &[String]) -> Result<(), GitError> {
         if paths.is_empty() {
@@ -2852,6 +2890,96 @@ mod tests {
 
         repo.rename_branch("main", "renamed").expect("rename");
         assert_eq!(repo.abbrev_branch().expect("branch"), "renamed");
+    }
+
+    #[test]
+    fn staging_a_single_hunk_leaves_the_other_hunks_unstaged() {
+        // 造一个文件，两处改动间隔足够远，形成两个 hunk。
+        let lines: String = (1..=30).map(|index| format!("line{index}\n")).collect();
+        let (_guard, path) = fixture("hunk-stage", &[("f.txt", lines.as_str())], "base");
+        let repo = Repo::open(&path).expect("open");
+        let mut changed: Vec<String> = (1..=30).map(|index| format!("line{index}")).collect();
+        changed[1] = "line2-changed".to_string();
+        changed[27] = "line28-changed".to_string();
+        std::fs::write(repo.root().join("f.txt"), format!("{}\n", changed.join("\n")))
+            .expect("write");
+        let patch = run_git(repo.root(), &["diff", "--", "f.txt"]).expect("diff");
+        let patch = String::from_utf8_lossy(&patch).to_string();
+
+        let sections = domain::stage::Sections::parse(patch.as_str());
+        assert_eq!(sections.files.len(), 1);
+        assert_eq!(sections.files[0].hunks.len(), 2, "应形成两个 hunk");
+
+        // 只应用第二个 hunk。
+        let only_second = sections.hunk_patch(0, 1).expect("第二个 hunk");
+        repo.apply_cached(only_second.as_str(), false).expect("apply");
+
+        let staged = run_git(repo.root(), &["diff", "--cached"]).expect("cached");
+        let staged = String::from_utf8_lossy(&staged).to_string();
+        assert!(staged.contains("line28-changed"), "第二个 hunk 应在暂存区");
+        assert!(!staged.contains("line2-changed"), "第一个 hunk 不应被暂存");
+
+        let unstaged = run_git(repo.root(), &["diff"]).expect("diff");
+        let unstaged = String::from_utf8_lossy(&unstaged).to_string();
+        assert!(unstaged.contains("line2-changed"), "第一个 hunk 仍在工作区");
+    }
+
+    #[test]
+    fn staging_a_single_line_adds_only_that_line() {
+        let lines: String = (1..=10).map(|index| format!("line{index}\n")).collect();
+        let (_guard, path) = fixture("line-stage", &[("f.txt", lines.as_str())], "base");
+        let repo = Repo::open(&path).expect("open");
+        let mut changed: Vec<String> = (1..=10).map(|index| format!("line{index}")).collect();
+        // 在 5 和 6 之间插入一行。
+        changed.insert(5, "inserted".to_string());
+        std::fs::write(repo.root().join("f.txt"), format!("{}\n", changed.join("\n")))
+            .expect("write");
+        let patch = run_git(repo.root(), &["diff", "--", "f.txt"]).expect("diff");
+        let patch = String::from_utf8_lossy(&patch).to_string();
+        let sections = domain::stage::Sections::parse(patch.as_str());
+        let hunk = &sections.files[0].hunks[0];
+        let index = hunk
+            .lines
+            .iter()
+            .position(|line| line == "+inserted")
+            .expect("新增行");
+        let single = sections.line_patch(0, 0, index).expect("单行补丁");
+        repo.apply_cached(single.as_str(), false).expect("apply");
+
+        let staged = run_git(repo.root(), &["diff", "--cached"]).expect("cached");
+        let staged = String::from_utf8_lossy(&staged).to_string();
+        assert!(staged.contains("+inserted"), "只有这一行被暂存");
+        assert_eq!(
+            run_git(repo.root(), &["diff", "--cached", "--numstat"])
+                .map(|out| String::from_utf8_lossy(&out).trim().to_string())
+                .expect("numstat"),
+            "1\t0\tf.txt",
+            "暂存区应只有一个新增"
+        );
+    }
+
+    #[test]
+    fn reverse_apply_removes_a_staged_hunk() {
+        let lines: String = (1..=10).map(|index| format!("line{index}\n")).collect();
+        let (_guard, path) = fixture("unstage-hunk", &[("f.txt", lines.as_str())], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(
+            repo.root().join("f.txt"),
+            format!("{}\n", {
+                let mut all: Vec<String> = (1..=10).map(|index| format!("line{index}")).collect();
+                all[4] = "line5-changed".to_string();
+                all.join("\n")
+            }),
+        )
+        .expect("write");
+        repo.stage_all().expect("stage");
+        let staged = run_git(repo.root(), &["diff", "--cached", "--", "f.txt"]).expect("diff");
+        let staged = String::from_utf8_lossy(&staged).to_string();
+        let sections = domain::stage::Sections::parse(staged.as_str());
+        let only = sections.hunk_patch(0, 0).expect("hunk");
+        repo.apply_cached(only.as_str(), true).expect("reverse");
+        let after = run_git(repo.root(), &["diff", "--cached", "--", "f.txt"]).expect("diff");
+        assert!(String::from_utf8_lossy(&after).trim().is_empty(), "应已取消暂存");
     }
 
     #[test]
