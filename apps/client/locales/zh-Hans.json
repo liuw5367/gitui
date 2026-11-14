@@ -200,7 +200,10 @@
     "empty": "工作区干净",
     "discardTitle": "丢弃改动？",
     "discardMessage": "%{path} 的工作区副本将恢复为暂存区内容，且无法撤销。",
-    "discardAction": "丢弃"
+    "discardAction": "丢弃",
+    "stage": "暂存文件",
+    "unstage": "取消暂存",
+    "discard": "丢弃改动…"
   },
   "commit": {
     "tab": "提交",
@@ -326,5 +329,12 @@
       "push": "推送",
       "discard": "丢弃改动"
     }
+  },
+  "branch": {
+    "checkout": "切换到此分支",
+    "delete": "删除分支…",
+    "deleteTitle": "删除这个分支？",
+    "deleteMessage": "%{name} 将被删除；未合并的提交仍可从 reflog 恢复。",
+    "deleteAction": "删除"
   }
 }

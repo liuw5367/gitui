@@ -251,7 +251,7 @@ fn body(
         .w_full()
         .h_full()
         .flex_row()
-        .child(sidebar::sidebar(language, tab_for_sidebar))
+        .child(sidebar::sidebar(language, tab_for_sidebar, actions.clone()))
         .child(
             view()
                 .flex_1()

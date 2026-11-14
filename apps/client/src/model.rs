@@ -367,6 +367,56 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
     };
 }
 
+/// 切换分支并刷新标签页（历史、引用、变更都要跟着变）。
+pub fn checkout_branch(tab: &mut Tab, branch: &str) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    if let Err(error) = repo.checkout_branch(branch) {
+        tab.error = Some(error.detail());
+        return;
+    }
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.branch = refreshed.branch;
+    tab.ahead = refreshed.ahead;
+    tab.behind = refreshed.behind;
+    tab.commits = refreshed.commits;
+    tab.refs = refreshed.refs;
+    tab.status = refreshed.status;
+    tab.changes = refreshed.changes;
+    tab.conflicts = refreshed.conflicts;
+    tab.operation = refreshed.operation;
+    tab.reflog = refreshed.reflog;
+    tab.selected = refreshed.selected;
+    tab.patch = refreshed.patch;
+    tab.files = refreshed.files;
+    tab.details = refreshed.details;
+    tab.error = None;
+}
+
+/// 删除本地分支；失败（例如未合并或当前分支）时把原因写进错误。
+pub fn delete_branch(tab: &mut Tab, branch: &str) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.delete_branch(branch) {
+        Ok(()) => {
+            tab.refs = repo.refs().unwrap_or_default();
+            tab.error = None;
+        }
+        Err(error) => tab.error = Some(error.detail()),
+    }
+}
+
 /// 设置对比引用的两端；任一端为空表示关闭对比。
 pub fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Option<String>) {
     let (Some(base), Some(target)) = (base.clone(), target.clone()) else {
@@ -1046,6 +1096,43 @@ mod tests {
         assert!(!tab.blame.is_empty(), "选中文件后应有 blame 行");
         assert_eq!(tab.blame[0].text, "one");
         assert!(!tab.file_history.is_empty(), "选中文件后应有文件历史");
+    }
+
+    #[test]
+    fn checkout_switches_branch_and_refreshes_history() {
+        let repo = TempRepo::new("checkout");
+        let path = repo.path.display().to_string();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {:?}", args);
+        };
+        run(&["branch", "feature"]);
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert_eq!(tab.branch, "main");
+
+        checkout_branch(&mut tab, "feature");
+        assert_eq!(tab.branch, "feature");
+        assert!(tab.error.is_none());
+        assert!(tab
+            .refs
+            .branches
+            .iter()
+            .any(|branch| branch.name == "feature" && branch.current));
+    }
+
+    #[test]
+    fn deleting_the_current_branch_is_refused() {
+        let repo = TempRepo::new("deletecurrent");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert_eq!(tab.branch, "main");
+        delete_branch(&mut tab, "main");
+        assert!(tab.error.is_some(), "应报告不能删除当前分支");
+        assert!(tab.refs.branches.iter().any(|branch| branch.name == "main"));
     }
 
     #[test]

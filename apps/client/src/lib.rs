@@ -90,6 +90,8 @@ pub(crate) struct Actions {
     pub(crate) run_agent_step: Arc<dyn Fn(usize)>,
     pub(crate) set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)>,
     pub(crate) set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)>,
+    pub(crate) checkout_branch: Arc<dyn Fn(String)>,
+    pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -940,6 +942,57 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let checkout_branch: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |branch: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::checkout_branch(tab, branch.as_str());
+                tabs.set(list);
+            }
+        })
+    };
+
+    // 删除分支不可撤销：先确认。
+    let delete_branch: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        let language = language;
+        Arc::new(move |branch: String| {
+            let language_now = language.get_untracked();
+            let pending = nsh_base::alert_dialog()
+                .title(i18n::t(language_now.as_str(), "branch.deleteTitle"))
+                .description(i18n::with_arguments(
+                    language_now.as_str(),
+                    "branch.deleteMessage",
+                    &[("name", branch.clone())],
+                ))
+                .destructive(
+                    "delete",
+                    i18n::t(language_now.as_str(), "branch.deleteAction"),
+                )
+                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
+                .show();
+            let tabs = tabs;
+            let active = active;
+            spawn(async move {
+                if let Ok(result) = pending.await {
+                    if result.action.as_deref() != Some("delete") {
+                        return;
+                    }
+                    let current = active.get_untracked();
+                    let mut list = tabs.get_untracked();
+                    if let Some(tab) = list.get_mut(current) {
+                        model::delete_branch(tab, branch.as_str());
+                        tabs.set(list);
+                    }
+                }
+            });
+        })
+    };
+
     let set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)> = {
         let tabs = tabs;
         let active = active;
@@ -994,6 +1047,8 @@ pub fn App() -> impl IntoElement {
         run_agent_step,
         set_agent_permission,
         set_compare_refs,
+        checkout_branch,
+        delete_branch,
         apply_filter,
         clear_filter,
         clone_repository,

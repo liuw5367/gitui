@@ -200,7 +200,10 @@
     "empty": "Working tree clean",
     "discardTitle": "Discard changes?",
     "discardMessage": "The working tree copy of %{path} will be restored. This cannot be undone.",
-    "discardAction": "Discard"
+    "discardAction": "Discard",
+    "stage": "Stage File",
+    "unstage": "Unstage File",
+    "discard": "Discard Changes…"
   },
   "commit": {
     "tab": "Commit",
@@ -326,5 +329,12 @@
       "push": "Push",
       "discard": "Discard changes"
     }
+  },
+  "branch": {
+    "checkout": "Check Out",
+    "delete": "Delete Branch…",
+    "deleteTitle": "Delete this branch?",
+    "deleteMessage": "%{name} will be deleted. Unmerged commits are kept in the reflog.",
+    "deleteAction": "Delete"
   }
 }

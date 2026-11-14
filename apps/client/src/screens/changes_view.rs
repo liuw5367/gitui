@@ -9,6 +9,7 @@ use crate::model::Tab;
 use crate::widgets;
 use crate::Actions;
 use domain::diff::{DiffLineKind, Patch};
+use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
 /// 变更列表高度（设计板 `.changeslist`）。
@@ -193,6 +194,33 @@ fn changes_list(
                     })
                     .hover(|style| style.bg(move || design::hover()))
                     .on_press(move || select_change(index))
+                    // 右键：暂存/取消暂存、丢弃（未跟踪文件不能丢弃）。
+                    .on_context_menu({
+                        let toggle_stage = toggle_stage.clone();
+                        let discard_change = discard_change.clone();
+                        move |event: &nsh_core::ContextMenuEvent| {
+                            let toggle_stage = toggle_stage.clone();
+                            let discard_change = discard_change.clone();
+                            let items = vec![
+                                MenuItem::new(i18n::t(
+                                    language.get().as_str(),
+                                    if is_staged { "changes.unstage" } else { "changes.stage" },
+                                ))
+                                .on_select(move || toggle_stage(index)),
+                                MenuItem::separator(),
+                                MenuItem::new(i18n::t(
+                                    language.get().as_str(),
+                                    "changes.discard",
+                                ))
+                                .disabled(is_staged || is_untracked)
+                                .on_select(move || discard_change(index)),
+                            ];
+                            let _ = nsh_core::element::desktop::popup_menu_at(
+                                items,
+                                event.page_position,
+                            );
+                        }
+                    })
                     .child(
                         view()
                             .w(px(12.0))

@@ -375,6 +375,28 @@ impl Repo {
         return parse_status(&output);
     }
 
+    /// 切换到 `branch`（`git checkout <branch>`）。
+    pub fn checkout_branch(&self, branch: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["checkout", branch])?;
+        return Ok(());
+    }
+
+    /// 删除本地分支；删除当前分支会被拒绝（`git branch -d` 本身也会拒绝，这里先
+    /// 给出明确错误，避免把 Git 的英文提示直接抛给用户）。
+    pub fn delete_branch(&self, branch: &str) -> Result<(), GitError> {
+        let current = self.abbrev_branch()?;
+        if current == branch {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: format!("branch -d {}", branch),
+                code: None,
+                detail: "不能删除当前分支".to_string(),
+            });
+        }
+        run_git(&self.root, &["branch", "-d", branch])?;
+        return Ok(());
+    }
+
     /// 一个提交的完整元信息。
     pub fn commit_details(&self, sha: &str) -> Result<CommitDetails, GitError> {
         let format = "--pretty=format:%H%x1f%h%x1f%T%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b%x1f%D";
@@ -1680,6 +1702,36 @@ mod tests {
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].summary, "touch both");
         assert_eq!(history[1].summary, "first");
+    }
+
+    #[test]
+    fn checkout_and_delete_branches_refuse_the_current_one() {
+        let (_guard, path) = fixture("branchops", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        run_git(repo.root(), &["branch", "feature"]).expect("branch");
+
+        repo.checkout_branch("feature").expect("checkout");
+        assert_eq!(repo.abbrev_branch().expect("branch"), "feature");
+
+        // 当前分支不能删除。
+        let error = repo.delete_branch("feature").expect_err("refuse current");
+        assert!(error.detail().contains("当前分支"), "{}", error.detail());
+        assert!(repo
+            .refs()
+            .expect("refs")
+            .branches
+            .iter()
+            .any(|branch| branch.name == "feature"));
+
+        // 切回去之后可以删。
+        repo.checkout_branch("main").expect("checkout main");
+        repo.delete_branch("feature").expect("delete");
+        assert!(!repo
+            .refs()
+            .expect("refs")
+            .branches
+            .iter()
+            .any(|branch| branch.name == "feature"));
     }
 
     #[test]

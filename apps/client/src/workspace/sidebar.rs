@@ -9,21 +9,31 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
 use crate::widgets;
+use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
-pub(crate) fn sidebar(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
+pub(crate) fn sidebar(
+    language: Signal<SharedString>,
+    tab: Tab,
+    actions: crate::Actions,
+) -> impl IntoElement {
     let refs = tab.refs;
     let mut groups: Vec<AnyElement> = Vec::new();
 
+    let checkout = actions.checkout_branch.clone();
+    let delete = actions.delete_branch.clone();
     let branch_rows: Vec<AnyElement> = refs
         .branches
         .iter()
         .map(|branch| {
             branch_row(
+                language,
                 branch.name.clone(),
                 branch.current,
                 branch.ahead,
                 branch.behind,
+                checkout.clone(),
+                delete.clone(),
             )
         })
         .collect();
@@ -147,7 +157,18 @@ fn group(
         .into_element();
 }
 
-fn branch_row(name: String, current: bool, ahead: u32, behind: u32) -> AnyElement {
+fn branch_row(
+    language: Signal<SharedString>,
+    name: String,
+    current: bool,
+    ahead: u32,
+    behind: u32,
+    checkout: std::sync::Arc<dyn Fn(String)>,
+    delete: std::sync::Arc<dyn Fn(String)>,
+) -> AnyElement {
+    let checkout_name = name.clone();
+    let delete_name = name.clone();
+    let is_current = current;
     return view()
         .w_full()
         .h(px(metrics::SIDE_ROW_H))
@@ -164,6 +185,23 @@ fn branch_row(name: String, current: bool, ahead: u32, behind: u32) -> AnyElemen
             }
         })
         .hover(|style| style.bg(move || design::hover()))
+        // 右键：切换分支 / 删除分支（当前分支的两项都禁用）。
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let checkout = checkout.clone();
+            let delete = delete.clone();
+            let checkout_name = checkout_name.clone();
+            let delete_name = delete_name.clone();
+            let items = vec![
+                MenuItem::new(i18n::t(language.get().as_str(), "branch.checkout"))
+                    .disabled(is_current)
+                    .on_select(move || checkout(checkout_name.clone())),
+                MenuItem::separator(),
+                MenuItem::new(i18n::t(language.get().as_str(), "branch.delete"))
+                    .disabled(is_current)
+                    .on_select(move || delete(delete_name.clone())),
+            ];
+            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+        })
         .child(widgets::icon(
             "branch",
             12.0,
