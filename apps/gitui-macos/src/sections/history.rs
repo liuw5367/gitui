@@ -8,6 +8,18 @@ use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
+fn commit_matches(commit: &Commit, query: &str) -> bool {
+    let query = query.to_lowercase();
+    query.is_empty()
+        || commit.summary.to_lowercase().contains(&query)
+        || commit.author.to_lowercase().contains(&query)
+        || commit.short.contains(&query)
+        || commit
+            .refs
+            .iter()
+            .any(|reference| reference.to_lowercase().contains(&query))
+}
+
 fn ref_chip(label: String) -> impl IntoElement {
     let is_tag = label.starts_with("tag: ");
     let is_remote = label.contains('/');
@@ -89,20 +101,12 @@ pub(crate) fn history(
                 )
                 .child(
                     text(move || {
-                        let query = filter.get().to_lowercase();
-                        let count = if query.is_empty() {
-                            commits.get().len()
-                        } else {
-                            commits
-                                .get()
-                                .iter()
-                                .filter(|commit| {
-                                    commit.summary.to_lowercase().contains(&query)
-                                        || commit.author.to_lowercase().contains(&query)
-                                        || commit.short.contains(&query)
-                                })
-                                .count()
-                        };
+                        let query = filter.get();
+                        let count = commits
+                            .get()
+                            .iter()
+                            .filter(|commit| commit_matches(commit, &query))
+                            .count();
                         format!("{} commits", count)
                     })
                         .text_size(px(10.5))
@@ -153,6 +157,27 @@ pub(crate) fn history(
                 .flex_1()
                 .min_h_0()
                 .flex_col()
+                .child(
+                    view()
+                        .h(move || {
+                            if commits
+                                .get()
+                                .iter()
+                                .any(|commit| commit_matches(commit, &filter.get()))
+                            {
+                                px(0.0)
+                            } else {
+                                px(40.0)
+                            }
+                        })
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            text("No commits match")
+                                .text_size(px(10.5))
+                                .text_color(move || design::text3()),
+                        ),
+                )
                 .child(each(
                     commits,
                     |commit: &Commit| commit.sha.clone(),
@@ -161,12 +186,11 @@ pub(crate) fn history(
                         let on_select = on_select.clone();
                         view()
                             .h(move || {
-                                let query = filter.get().to_lowercase();
-                                let visible = query.is_empty()
-                                    || commit.get().summary.to_lowercase().contains(&query)
-                                    || commit.get().author.to_lowercase().contains(&query)
-                                    || commit.get().short.contains(&query);
-                                if visible { px(38.0) } else { px(0.0) }
+                                if commit_matches(&commit.get(), &filter.get()) {
+                                    px(38.0)
+                                } else {
+                                    px(0.0)
+                                }
                             })
                             .flex_row()
                             .items_center()
