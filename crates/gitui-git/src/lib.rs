@@ -62,6 +62,12 @@ impl Operation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stash {
+    pub selector: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
     pub name: String,
 }
@@ -203,6 +209,45 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// Stash entries, newest first.
+    pub fn stashes(&self) -> Result<Vec<Stash>, GitError> {
+        let output = self.git(&["stash", "list", "--format=%gd%x1f%s"])?;
+        Ok(output
+            .lines()
+            .filter_map(|line| {
+                let (selector, message) = line.split_once('\u{1f}')?;
+                Some(Stash {
+                    selector: selector.to_string(),
+                    message: message.to_string(),
+                })
+            })
+            .collect())
+    }
+
+    /// Stash the working tree and index.
+    pub fn stash_push(&self, message: &str) -> Result<String, GitError> {
+        if message.is_empty() {
+            self.git(&["stash", "push"])
+        } else {
+            self.git(&["stash", "push", "-m", message])
+        }
+    }
+
+    /// Apply a stash without removing it.
+    pub fn stash_apply(&self, selector: &str) -> Result<String, GitError> {
+        self.git(&["stash", "apply", selector])
+    }
+
+    /// Apply a stash and remove it.
+    pub fn stash_pop(&self, selector: &str) -> Result<String, GitError> {
+        self.git(&["stash", "pop", selector])
+    }
+
+    /// Drop a stash.
+    pub fn stash_drop(&self, selector: &str) -> Result<String, GitError> {
+        self.git(&["stash", "drop", selector])
     }
 
     /// Local tags.
@@ -853,6 +898,23 @@ mod tests {
         assert_eq!(repo.tags().unwrap(), vec![Tag { name: "v1.0.0".to_string() }]);
         repo.delete_tag("v1.0.0").unwrap();
         assert!(repo.tags().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stashes_applies_and_drops() {
+        let fixture = TempRepo::new();
+        fs::write(fixture.path.join("a.txt"), "one\nSTASHED\n").unwrap();
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.stash_push("test stash").unwrap();
+        let stashes = repo.stashes().unwrap();
+        assert_eq!(stashes.len(), 1);
+        assert!(stashes[0].message.contains("test stash"));
+        assert_eq!(repo.status().unwrap().unstaged, 0);
+
+        repo.stash_apply(&stashes[0].selector).unwrap();
+        assert_eq!(repo.status().unwrap().unstaged, 1);
+        repo.stash_drop(&stashes[0].selector).unwrap();
+        assert!(repo.stashes().unwrap().is_empty());
     }
 
     #[test]
