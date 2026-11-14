@@ -10,7 +10,7 @@ mod widgets;
 
 use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{changes_list, diff_view, history, inspect_panel, inspector, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -50,6 +50,12 @@ fn split_entries(entries: &[StatusEntry]) -> (Vec<StatusEntry>, Vec<StatusEntry>
 #[native_module("gitui/native")]
 fn native(registry: &mut Registry) {
     registry.register::<App>();
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RefsTab {
+    Branches,
+    Tags,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -183,6 +189,12 @@ pub fn App() -> impl IntoElement {
     let sync_log = signal(SharedString::from(""));
     let settings_open = signal(false);
     let settings_tab = signal(SettingsTab::General);
+    let refs_open = signal(false);
+    let refs_tab = signal(RefsTab::Branches);
+    let open_refs: Arc<dyn Fn()> = Arc::new(move || {
+        refs_tab.set(RefsTab::Branches);
+        refs_open.set(true);
+    });
     let open_settings: Arc<dyn Fn()> = Arc::new(move || {
         settings_tab.set(SettingsTab::General);
         settings_open.set(true);
@@ -395,6 +407,7 @@ pub fn App() -> impl IntoElement {
         set_mode,
         open_sync.clone(),
         open_settings.clone(),
+        open_refs.clone(),
     );
 
     let sync_close: Arc<dyn Fn()> = Arc::new(move || sync_open.set(false));
@@ -1112,6 +1125,32 @@ pub fn App() -> impl IntoElement {
         },
     );
 
+    let close_refs: Arc<dyn Fn()> = Arc::new(move || refs_open.set(false));
+    let refs_panel = refs_panel(
+        refs_open,
+        refs_tab,
+        branches,
+        tags,
+        branch_name,
+        tag_name,
+        RefsActions {
+            close: close_refs,
+            checkout: checkout_action.clone(),
+            delete_branch: delete_branch_action.clone(),
+            branch_name: Arc::new({
+                let action = create_branch_action.clone();
+                move || action(branch_name.get_untracked().trim().to_string())
+            }),
+            create_tag: Arc::new({
+                let action = create_tag_action.clone();
+                move || action(tag_name.get_untracked().trim().to_string())
+            }),
+            delete_tag: Arc::new({
+                let action = delete_tag_action.clone();
+                move || action(tag_name.get_untracked().trim().to_string())
+            }),
+        },
+    );
     let changes_actions = ChangesActions {
         stage_all: stage_all_action.clone(),
         unstage_all: unstage_all_action.clone(),
@@ -1408,6 +1447,7 @@ pub fn App() -> impl IntoElement {
         .child(sync_panel)
         .child(reflog_panel)
         .child(inspect_panel)
+        .child(refs_panel)
         .child(settings_panel)
         .child(statusbar)
 }
