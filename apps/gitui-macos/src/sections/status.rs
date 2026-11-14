@@ -17,6 +17,8 @@ pub(crate) struct StatusActions {
     pub(crate) checkout: Arc<dyn Fn(String)>,
     pub(crate) create_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
+    pub(crate) add_remote: Arc<dyn Fn(String, String)>,
+    pub(crate) remove_remote: Arc<dyn Fn(String)>,
     pub(crate) rename_branch: Arc<dyn Fn(String)>,
     pub(crate) create_tag: Arc<dyn Fn(String)>,
     pub(crate) delete_tag: Arc<dyn Fn(String)>,
@@ -36,10 +38,13 @@ pub(crate) fn status_pane(
     error: Signal<SharedString>,
     branch_name: Signal<String>,
     tag_name: Signal<String>,
+    remote_name: Signal<String>,
+    remote_url: Signal<String>,
     actions: StatusActions,
 ) -> impl IntoElement {
     let delete_armed = signal(false);
     let tag_delete_armed = signal(false);
+    let remote_delete_armed = signal(false);
     view()
         .w(px(250.0))
         .flex_col()
@@ -236,14 +241,73 @@ pub(crate) fn status_pane(
         .child(each(
             remotes,
             |remote: &Remote| remote.name.clone(),
-            |remote, _| {
+            move |remote, _| {
+                let name = remote.get().name.clone();
+                let action = actions.remove_remote.clone();
                 view().h(px(18.0)).child(
-                    text(move || format!("{} · {}", remote.get().name, remote.get().url))
-                        .text_size(px(8.5))
-                        .text_color(move || theme().foreground),
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap_1()
+                        .child(
+                            text(move || format!("{} · {}", remote.get().name, remote.get().url))
+                                .text_size(px(8.5))
+                                .text_color(move || theme().foreground)
+                                .flex_1(),
+                        )
+                        .child(mini_button("Remove", false, move || {
+                            if remote_delete_armed.get_untracked() {
+                                remote_delete_armed.set(false);
+                                action(name.clone());
+                            } else {
+                                remote_delete_armed.set(true);
+                            }
+                        })),
                 )
             },
         ))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .child(
+                    input()
+                        .value(remote_name)
+                        .on_change(move |text: &str| remote_name.set(text.to_string()))
+                        .placeholder("remote")
+                        .text_size(px(9.0))
+                        .w(px(70.0)),
+                )
+                .child(
+                    input()
+                        .value(remote_url)
+                        .on_change(move |text: &str| remote_url.set(text.to_string()))
+                        .placeholder("url")
+                        .text_size(px(9.0))
+                        .flex_1(),
+                )
+                .child(mini_button("Add", true, {
+                    let action = actions.add_remote.clone();
+                    move || {
+                        action(
+                            remote_name.get_untracked().trim().to_string(),
+                            remote_url.get_untracked().trim().to_string(),
+                        )
+                    }
+                })),
+        )
+        .child(
+            text(move || {
+                if remote_delete_armed.get() {
+                    "Remove again to confirm".to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .text_size(px(8.5))
+            .text_color(|| rgb(0xff3b30)),
+        )
         .child(
             text(move || {
                 if conflicts.get().is_empty() {
