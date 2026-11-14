@@ -27,6 +27,7 @@ pub(crate) fn palette_panel(
 ) -> impl IntoElement {
     let selected = signal(0usize);
     let key_commands = commands.clone();
+    let filter_commands = commands.clone();
     let key_query = query;
     let key_open = open;
     let key_selected = selected;
@@ -119,7 +120,10 @@ pub(crate) fn palette_panel(
                         .value(query)
                         .on_change(move |text: &str| {
                             query.set(text.to_string());
-                            selected.set(0);
+                            let first = filter_commands
+                                .iter()
+                                .position(|command| command_matches(command, text));
+                            selected.set(first.unwrap_or(0));
                         })
                         .placeholder("Type a command…")
                         .text_size(px(12.0)),
