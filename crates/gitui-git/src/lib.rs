@@ -340,6 +340,16 @@ impl Repo {
         self.git(&["push", "origin", "HEAD"])
     }
 
+    /// Continue a resolved merge.
+    pub fn merge_continue(&self) -> Result<String, GitError> {
+        self.git(&["merge", "--continue"])
+    }
+
+    /// Abort the current merge.
+    pub fn merge_abort(&self) -> Result<String, GitError> {
+        self.git(&["merge", "--abort"])
+    }
+
     /// Amend the last commit with the staged content and `message`.
     pub fn amend(&self, message: &str) -> Result<String, GitError> {
         self.commit_with(message, false, true)
@@ -404,6 +414,8 @@ impl Repo {
             .args(args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_PAGER", "cat")
+            .env("GIT_EDITOR", "true")
+            .env("GIT_MERGE_AUTOEDIT", "no")
             .env("GIT_OPTIONAL_LOCKS", "0");
 
         let output = command
@@ -693,6 +705,31 @@ mod tests {
         assert!(stages.theirs.contains("FEATURE"));
 
         repo.resolve("a.txt", "one\nMERGED\n").unwrap();
+        assert!(repo.conflicts().unwrap().is_empty());
+        repo.merge_continue().unwrap();
+        assert_eq!(repo.operation(), None);
+    }
+
+    #[test]
+    fn aborts_a_merge() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["checkout", "-qb", "feature"]);
+        fs::write(fixture.path.join("a.txt"), "one\nFEATURE\n").unwrap();
+        run(&fixture.path, &["commit", "-qam", "feature"]);
+        run(&fixture.path, &["checkout", "-q", "main"]);
+        fs::write(fixture.path.join("a.txt"), "one\nMAIN\n").unwrap();
+        run(&fixture.path, &["commit", "-qam", "main"]);
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&fixture.path)
+            .args(["merge", "feature"])
+            .status()
+            .unwrap();
+        assert!(!status.success());
+        let repo = Repo::open(fixture.path()).unwrap();
+        assert_eq!(repo.operation(), Some(Operation::Merge));
+        repo.merge_abort().unwrap();
+        assert_eq!(repo.operation(), None);
         assert!(repo.conflicts().unwrap().is_empty());
     }
 
