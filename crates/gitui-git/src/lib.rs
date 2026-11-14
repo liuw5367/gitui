@@ -5,8 +5,9 @@
 
 use std::error::Error;
 use std::fmt;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone)]
 pub struct GitError(pub String);
@@ -166,6 +167,46 @@ impl Repo {
         Ok(())
     }
 
+    /// Commit the staged changes with `git commit -F -` (hooks run).
+    /// On failure the error carries the hook stdout/stderr.
+    pub fn commit(&self, message: &str) -> Result<String, GitError> {
+        let mut command = Command::new("git");
+        command
+            .arg("--no-pager")
+            .arg("-C")
+            .arg(&self.root)
+            .args(["commit", "-F", "-"])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_PAGER", "cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = command
+            .spawn()
+            .map_err(|error| GitError(format!("could not run git: {error}")))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(message.as_bytes())
+                .map_err(|error| GitError(format!("could not write commit message: {error}")))?;
+        }
+        let output = child
+            .wait_with_output()
+            .map_err(|error| GitError(format!("could not wait for git: {error}")))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            return Err(GitError(format!(
+                "git commit failed (hooks may have failed)
+{}
+{}",
+                stdout.trim(),
+                stderr.trim()
+            )));
+        }
+        Ok(stdout)
+    }
+
     fn git(&self, args: &[&str]) -> Result<String, GitError> {
         let mut command = Command::new("git");
         command
@@ -306,6 +347,31 @@ mod tests {
         let unstaged = repo.status().unwrap();
         assert_eq!(unstaged.staged, 0);
         assert_eq!(unstaged.unstaged, 2);
+    }
+
+    #[test]
+    fn commits_staged_changes_and_reports_hook_failure() {
+        let fixture = TempRepo::new();
+        fs::write(fixture.path.join("a.txt"), "one\nTWO\n").unwrap();
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.stage_all().unwrap();
+        repo.commit("update file").unwrap();
+        assert_eq!(repo.log(1).unwrap()[0].summary, "update file");
+
+        fs::write(fixture.path.join("a.txt"), "one\nTHREE\n").unwrap();
+        repo.stage_all().unwrap();
+        let hook = fixture.path.join(".git/hooks/pre-commit");
+        fs::write(&hook, "#!/bin/sh\necho hook failed >&2\nexit 1\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&hook).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&hook, permissions).unwrap();
+        }
+        let error = repo.commit("should fail").unwrap_err();
+        assert!(error.to_string().contains("hook failed"));
+        assert_eq!(repo.log(1).unwrap()[0].summary, "update file");
     }
 
     #[test]

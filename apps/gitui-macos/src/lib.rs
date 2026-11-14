@@ -216,6 +216,7 @@ pub fn App() -> impl IntoElement {
     let selected = signal(active_tab.selected.clone());
     let diff = signal(active_tab.diff.clone());
     let error = signal(active_tab.error.clone());
+    let message = signal(String::new());
     let tabs = signal(initial_tabs);
     let active = signal(initial_active);
     save_session(active.get_untracked(), tabs.get_untracked().as_slice());
@@ -262,6 +263,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_recent = reload.clone();
     let reload_for_stage = reload.clone();
     let reload_for_unstage = reload.clone();
+    let reload_for_commit = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -414,6 +416,41 @@ pub fn App() -> impl IntoElement {
                     )
             },
         ));
+
+    let commit_bar = view()
+        .h(px(38.0))
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .px_3()
+        .bg(move || theme().background)
+        .child(
+            input()
+                .value(message)
+                .on_change(move |text: &str| message.set(text.to_string()))
+                .placeholder("Commit message")
+                .flex_1(),
+        )
+        .child(header_button("Commit", true, {
+            let reload_commit = reload_for_commit.clone();
+            move || {
+                let text = message.get_untracked().trim().to_string();
+                if text.is_empty() {
+                    error.set(SharedString::from("Commit message is empty"));
+                    return;
+                }
+                match Repo::open(repo_path.get_untracked().to_string().as_str())
+                    .and_then(|repo| repo.commit(&text))
+                {
+                    Ok(_) => {
+                        message.set(String::new());
+                        error.set(SharedString::from(""));
+                        reload_commit();
+                    }
+                    Err(err) => error.set(SharedString::from(err.to_string())),
+                }
+            }
+        }));
 
     let status_pane = view()
         .w(px(250.0))
@@ -631,6 +668,7 @@ pub fn App() -> impl IntoElement {
         .child(header)
         .child(tab_bar)
         .child(recent_bar)
+        .child(commit_bar)
         .child(main)
         .child(statusbar)
 }
