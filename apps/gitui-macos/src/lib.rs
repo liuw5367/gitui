@@ -8,6 +8,7 @@ use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 
+#[derive(Clone, PartialEq)]
 struct Loaded {
     path: String,
     branch: String,
@@ -15,6 +16,7 @@ struct Loaded {
     unstaged: usize,
     status_lines: Vec<SharedString>,
     commits: Vec<Commit>,
+    selected: SharedString,
     diff: SharedString,
     error: SharedString,
 }
@@ -33,6 +35,10 @@ fn load(path: &str) -> Loaded {
             } else {
                 status.branch
             };
+            let selected = commits
+                .first()
+                .map(|commit| commit.sha.clone())
+                .unwrap_or_default();
             Loaded {
                 path: repo.root().display().to_string(),
                 branch,
@@ -40,6 +46,7 @@ fn load(path: &str) -> Loaded {
                 unstaged: status.unstaged,
                 status_lines: status.lines.into_iter().map(SharedString::from).collect(),
                 commits,
+                selected: SharedString::from(selected),
                 diff: SharedString::from(diff),
                 error: SharedString::from(""),
             }
@@ -47,6 +54,7 @@ fn load(path: &str) -> Loaded {
         Err(error) => Loaded {
             path: path.to_string(),
             branch: "—".to_string(),
+            selected: SharedString::from(""),
             staged: 0,
             unstaged: 0,
             status_lines: Vec::new(),
@@ -141,6 +149,8 @@ pub fn App() -> impl IntoElement {
         .unwrap_or_default();
 
     let path_input = signal(initial.path.clone());
+    let tabs = signal(vec![initial.clone()]);
+    let active = signal(0_usize);
     let mut saved_recent = load_recent();
     if !saved_recent.iter().any(|path| path == &initial.path) {
         saved_recent.insert(0, initial.path.clone());
@@ -166,11 +176,21 @@ pub fn App() -> impl IntoElement {
     let reload = move || {
         let requested = path_input.get_untracked();
         let loaded = load(&requested);
-        let first = loaded
-            .commits
-            .first()
-            .map(|commit| commit.sha.clone())
-            .unwrap_or_default();
+        let first = loaded.selected.clone();
+        let target = tabs
+            .get_untracked()
+            .iter()
+            .position(|tab| tab.path == loaded.path);
+        match target {
+            Some(index) => {
+                tabs.update(|list| list[index] = loaded.clone());
+                active.set(index);
+            }
+            None => {
+                tabs.update(|list| list.push(loaded.clone()));
+                active.set(tabs.get_untracked().len() - 1);
+            }
+        }
         repo_path.set(SharedString::from(loaded.path.clone()));
         path_input.set(loaded.path.clone());
         branch.set(SharedString::from(loaded.branch));
@@ -178,7 +198,7 @@ pub fn App() -> impl IntoElement {
         unstaged.set(loaded.unstaged);
         status_lines.set(loaded.status_lines);
         commits.set(loaded.commits);
-        selected.set(SharedString::from(first));
+        selected.set(first);
         diff.set(loaded.diff);
         error.set(loaded.error);
         recent.update(|list| {
@@ -192,6 +212,23 @@ pub fn App() -> impl IntoElement {
     };
 
     let reload_for_recent = reload.clone();
+    let activate = move |index: usize| {
+        let Some(tab) = tabs.get_untracked().get(index).cloned() else {
+            return;
+        };
+        active.set(index);
+        repo_path.set(SharedString::from(tab.path.clone()));
+        path_input.set(tab.path.clone());
+        branch.set(SharedString::from(tab.branch));
+        staged.set(tab.staged);
+        unstaged.set(tab.unstaged);
+        status_lines.set(tab.status_lines);
+        commits.set(tab.commits);
+        selected.set(tab.selected);
+        diff.set(tab.diff);
+        error.set(tab.error);
+    };
+    let activate_for_tabs = activate.clone();
 
     let header = view()
         .h(px(46.0))
@@ -220,6 +257,64 @@ pub fn App() -> impl IntoElement {
         )
         .child(view().flex_1())
         .child(header_button("Open", true, reload));
+
+    let tab_bar = view()
+        .h(px(30.0))
+        .flex_row()
+        .items_center()
+        .gap_1()
+        .px_3()
+        .bg(move || theme().background)
+        .child(each(
+            tabs,
+            |tab: &Loaded| tab.path.clone(),
+            move |tab, _| {
+                let index = tab.get().path.clone();
+                let activate = activate_for_tabs.clone();
+                view()
+                    .h(px(24.0))
+                    .px_2()
+                    .rounded(px(4.0))
+                    .bg(move || {
+                        let path = tab.get().path;
+                        if active.get()
+                            == tabs
+                                .get_untracked()
+                                .iter()
+                                .position(|item| item.path == path)
+                                .unwrap_or(usize::MAX)
+                        {
+                            theme().primary
+                        } else {
+                            theme().background
+                        }
+                    })
+                    .on_press(move || {
+                        let index = tabs
+                            .get_untracked()
+                            .iter()
+                            .position(|item| item.path == index)
+                            .unwrap_or(0);
+                        activate(index);
+                    })
+                    .child(
+                        text(move || short_name(&tab.get().path))
+                            .text_size(px(10.0))
+                            .text_color(move || {
+                                let index = tabs
+                                    .get_untracked()
+                                    .iter()
+                                    .position(|item| item.path == tab.get().path)
+                                    .unwrap_or(usize::MAX);
+                                if active.get() == index {
+                                    theme().primary_foreground
+                                } else {
+                                    theme().foreground
+                                }
+                            }),
+                    )
+            },
+        ));
 
     let recent_bar = view()
         .h(px(28.0))
@@ -334,8 +429,15 @@ pub fn App() -> impl IntoElement {
                         match Repo::open(repo_path.get_untracked().to_string().as_str()) {
                             Ok(repo) => match repo.diff(&sha) {
                                 Ok(patch) => {
-                                    diff.set(SharedString::from(patch));
+                                    diff.set(SharedString::from(patch.clone()));
                                     error.set(SharedString::from(""));
+                                    let index = active.get_untracked();
+                                    tabs.update(|list| {
+                                        if let Some(tab) = list.get_mut(index) {
+                                            tab.selected = SharedString::from(sha.clone());
+                                            tab.diff = SharedString::from(patch);
+                                        }
+                                    });
                                 }
                                 Err(err) => error.set(SharedString::from(err.to_string())),
                             },
@@ -433,6 +535,7 @@ pub fn App() -> impl IntoElement {
         .bg(move || theme().background)
         .text_color(move || theme().foreground)
         .child(header)
+        .child(tab_bar)
         .child(recent_bar)
         .child(main)
         .child(statusbar)
