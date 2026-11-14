@@ -242,6 +242,11 @@ impl Repo {
         self.git(&["fetch", "--prune", "origin"])
     }
 
+    /// Fast-forward pull from the configured upstream.
+    pub fn pull_ff_only(&self) -> Result<String, GitError> {
+        self.git(&["pull", "--ff-only"])
+    }
+
     /// Push the current HEAD to `origin`.
     pub fn push(&self) -> Result<String, GitError> {
         self.git(&["push", "origin", "HEAD"])
@@ -537,6 +542,39 @@ mod tests {
         assert!(has_main.status.success());
         repo.fetch().unwrap();
         let _ = fs::remove_dir_all(remote);
+    }
+
+    #[test]
+    fn pulls_fast_forward_from_origin() {
+        let fixture = TempRepo::new();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let remote = std::env::temp_dir().join(format!(
+            "gitui-git-pull-{}-{unique}.git",
+            std::process::id()
+        ));
+        let clone = std::env::temp_dir().join(format!(
+            "gitui-git-pull-clone-{}-{unique}",
+            std::process::id()
+        ));
+        subprocess_git(&["init", "--bare", "-q", remote.to_str().unwrap()]);
+        run(&fixture.path, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        run(&fixture.path, &["push", "-u", "origin", "main"]);
+        subprocess_git(&["clone", "-q", remote.to_str().unwrap(), clone.to_str().unwrap()]);
+        run(&clone, &["config", "user.name", "S5"]);
+        run(&clone, &["config", "user.email", "s5@example.com"]);
+        fs::write(clone.join("remote.txt"), "remote\n").unwrap();
+        run(&clone, &["add", "remote.txt"]);
+        run(&clone, &["commit", "-qm", "remote commit"]);
+        run(&clone, &["push", "-q", "origin", "main"]);
+
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.pull_ff_only().unwrap();
+        assert_eq!(repo.log(1).unwrap()[0].summary, "remote commit");
+        let _ = fs::remove_dir_all(remote);
+        let _ = fs::remove_dir_all(clone);
     }
 
     #[test]

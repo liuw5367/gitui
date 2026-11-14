@@ -373,6 +373,22 @@ pub fn App() -> impl IntoElement {
                 }
             }
         }))
+        .child(header_button("Pull", false, {
+            let reload_sync = reload_for_sync.clone();
+            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.pull_ff_only())
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_sync();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
+                }
+            }
+        }))
         .child(header_button("Push", false, {
             let reload_sync = reload_for_sync.clone();
             move || match Repo::open(repo_path.get_untracked().to_string().as_str())
