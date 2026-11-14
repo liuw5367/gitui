@@ -62,6 +62,7 @@ pub fn App() -> impl IntoElement {
     let branches = signal(active_tab.branches.clone());
     let tags = signal(active_tab.tags.clone());
     let stashes = signal(active_tab.stashes.clone());
+    let remotes = signal(active_tab.remotes.clone());
     let tag_name = signal(String::new());
     let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
@@ -115,6 +116,7 @@ pub fn App() -> impl IntoElement {
         branches.set(loaded.branches);
         tags.set(loaded.tags);
         stashes.set(loaded.stashes);
+        remotes.set(loaded.remotes);
         conflict_path.set(loaded.conflict_path);
         conflict_stages.set(loaded.conflict_stages.clone());
         conflict_result.set(
@@ -168,6 +170,7 @@ pub fn App() -> impl IntoElement {
         branches.set(tab.branches);
         tags.set(tab.tags);
         stashes.set(tab.stashes);
+        remotes.set(tab.remotes);
         conflict_path.set(tab.conflict_path);
         conflict_stages.set(tab.conflict_stages.clone());
         conflict_result.set(
@@ -670,6 +673,7 @@ pub fn App() -> impl IntoElement {
         status_entries,
         branches,
         tags,
+        remotes,
         conflicts,
         conflict_path,
         error,
