@@ -1,6 +1,6 @@
 //! Working tree, branches and conflicts sidebar.
 
-use gitui_git::{Branch, StatusEntry};
+use gitui_git::{Branch, StatusEntry, Tag};
 use nsh_base::{input, theme};
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -26,6 +26,7 @@ pub(crate) fn status_pane(
     unstaged: Signal<usize>,
     status_entries: Signal<Vec<StatusEntry>>,
     branches: Signal<Vec<Branch>>,
+    tags: Signal<Vec<Tag>>,
     conflicts: Signal<Vec<String>>,
     conflict_path: Signal<String>,
     error: Signal<SharedString>,
@@ -146,6 +147,28 @@ pub(crate) fn status_pane(
                                 }
                             }),
                     )
+            },
+        ))
+        .child(
+            text(move || {
+                if tags.get().is_empty() {
+                    String::new()
+                } else {
+                    "Tags".to_string()
+                }
+            })
+            .text_size(px(9.0))
+            .text_color(move || theme().foreground),
+        )
+        .child(each(
+            tags,
+            |tag: &Tag| tag.name.clone(),
+            |tag, _| {
+                view().h(px(18.0)).child(
+                    text(move || tag.get().name)
+                        .text_size(px(9.0))
+                        .text_color(move || theme().primary),
+                )
             },
         ))
         .child(

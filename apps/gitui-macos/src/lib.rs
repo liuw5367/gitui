@@ -60,6 +60,7 @@ pub fn App() -> impl IntoElement {
     let operation = signal(active_tab.operation);
     let conflicts = signal(active_tab.conflicts.clone());
     let branches = signal(active_tab.branches.clone());
+    let tags = signal(active_tab.tags.clone());
     let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
     let conflict_stages = signal(active_tab.conflict_stages.clone());
@@ -110,6 +111,7 @@ pub fn App() -> impl IntoElement {
         operation.set(loaded.operation);
         conflicts.set(loaded.conflicts);
         branches.set(loaded.branches);
+        tags.set(loaded.tags);
         conflict_path.set(loaded.conflict_path);
         conflict_stages.set(loaded.conflict_stages.clone());
         conflict_result.set(
@@ -160,6 +162,7 @@ pub fn App() -> impl IntoElement {
         operation.set(tab.operation);
         conflicts.set(tab.conflicts);
         branches.set(tab.branches);
+        tags.set(tab.tags);
         conflict_path.set(tab.conflict_path);
         conflict_stages.set(tab.conflict_stages.clone());
         conflict_result.set(
@@ -545,6 +548,7 @@ pub fn App() -> impl IntoElement {
         unstaged,
         status_entries,
         branches,
+        tags,
         conflicts,
         conflict_path,
         error,
