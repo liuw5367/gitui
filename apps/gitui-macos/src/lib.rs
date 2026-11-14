@@ -4,13 +4,16 @@
 //! selected commit's patch. No staging, commit, push or settings.
 
 mod model;
+mod sections;
 mod widgets;
 
-use gitui_git::{Branch, Commit, Repo, StatusEntry};
+use gitui_git::{Branch, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session, short_name, Loaded};
+use sections::{diff_view, history, statusbar};
 use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
+use std::sync::Arc;
 
 #[native_module("gitui/native")]
 fn native(registry: &mut Registry) {
@@ -879,103 +882,29 @@ pub fn App() -> impl IntoElement {
             },
         ));
 
-    let history = view()
-        .w(px(360.0))
-        .flex_col()
-        .gap_2()
-        .p_2()
-        .child(
-            text("History")
-                .text_size(px(11.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(each(
-            commits,
-            |commit: &Commit| commit.sha.clone(),
-            move |commit, _| {
-                let sha = commit.get().sha.clone();
-                view()
-                    .h(px(40.0))
-                    .px_2()
-                    .rounded(px(4.0))
-                    .bg(move || {
-                        if selected.get().to_string() == commit.get().sha {
-                            theme().primary
-                        } else {
-                            theme().background
+    let select_commit = Arc::new(move |sha: String| {
+        selected.set(SharedString::from(sha.clone()));
+        match Repo::open(repo_path.get_untracked().to_string().as_str()) {
+            Ok(repo) => match repo.diff(&sha) {
+                Ok(patch) => {
+                    diff.set(SharedString::from(patch.clone()));
+                    error.set(SharedString::from(""));
+                    let index = active.get_untracked();
+                    tabs.update(|list| {
+                        if let Some(tab) = list.get_mut(index) {
+                            tab.selected = SharedString::from(sha.clone());
+                            tab.diff = SharedString::from(patch);
                         }
-                    })
-                    .on_press(move || {
-                        selected.set(SharedString::from(sha.clone()));
-                        match Repo::open(repo_path.get_untracked().to_string().as_str()) {
-                            Ok(repo) => match repo.diff(&sha) {
-                                Ok(patch) => {
-                                    diff.set(SharedString::from(patch.clone()));
-                                    error.set(SharedString::from(""));
-                                    let index = active.get_untracked();
-                                    tabs.update(|list| {
-                                        if let Some(tab) = list.get_mut(index) {
-                                            tab.selected = SharedString::from(sha.clone());
-                                            tab.diff = SharedString::from(patch);
-                                        }
-                                    });
-                                }
-                                Err(err) => error.set(SharedString::from(err.to_string())),
-                            },
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    })
-                    .child(
-                        text(move || commit.get().summary.clone())
-                            .text_size(px(11.0))
-                            .text_color(move || {
-                                if selected.get().to_string() == commit.get().sha {
-                                    theme().primary_foreground
-                                } else {
-                                    theme().foreground
-                                }
-                            }),
-                    )
-                    .child(
-                        text(move || {
-                            format!(
-                                "{} · {} · {}",
-                                commit.get().short,
-                                commit.get().author,
-                                commit.get().date
-                            )
-                        })
-                        .text_size(px(9.0))
-                        .text_color(move || {
-                            if selected.get().to_string() == commit.get().sha {
-                                theme().primary_foreground
-                            } else {
-                                theme().foreground
-                            }
-                        }),
-                    )
+                    });
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
             },
-        ));
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let history = history(commits, selected, select_commit);
 
-    let diff_pane = view()
-        .flex_1()
-        .flex_col()
-        .gap_2()
-        .p_2()
-        .child(
-            text(move || format!("Diff · {}", selected.get()))
-                .text_size(px(10.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            editor()
-                .value(move || Some(diff.get()))
-                .read_only(true)
-                .language("diff")
-                .font_size(11.0)
-                .line_height(17.0)
-                .flex_1(),
-        );
+    let diff_pane = diff_view(selected, diff);
 
     let main = view()
         .flex_1()
@@ -987,29 +916,7 @@ pub fn App() -> impl IntoElement {
         .child(history)
         .child(diff_pane);
 
-    let statusbar = view()
-        .h(px(24.0))
-        .flex_row()
-        .items_center()
-        .gap_3()
-        .px_3()
-        .bg(move || theme().background)
-        .child(
-            text("NSH + Rust · local")
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            text(move || format!("{} commits", commits.get().len()))
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(view().flex_1())
-        .child(
-            text("M1/M2")
-                .text_size(px(9.0))
-                .text_color(move || theme().primary),
-        );
+    let statusbar = statusbar(commits);
 
     let commit_log_panel = view()
         .h(move || {
