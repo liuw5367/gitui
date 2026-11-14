@@ -3,6 +3,7 @@
 use crate::design;
 use crate::widgets::header_button;
 use gitui_git::{Commit, PushPreview};
+use nsh_base::editor;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -124,6 +125,21 @@ pub(crate) fn push_panel(
                                             )
                                     },
                                 )),
+                        )
+                        .child(
+                            editor()
+                                .value(move || {
+                                    Some(SharedString::from(
+                                        preview
+                                            .get()
+                                            .map(|preview| preview.stat)
+                                            .unwrap_or_default(),
+                                    ))
+                                })
+                                .read_only(true)
+                                .font_size(9.0)
+                                .line_height(14.0)
+                                .h(px(88.0)),
                         )
                         .child(
                             text(move || error.get())

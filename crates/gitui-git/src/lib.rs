@@ -123,6 +123,7 @@ pub struct Commit {
 pub struct PushPreview {
     pub upstream: String,
     pub commits: Vec<Commit>,
+    pub stat: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -774,7 +775,14 @@ impl Repo {
                 });
             }
         }
-        Ok(PushPreview { upstream, commits })
+        let stat = self
+            .git(&["diff", "--stat", "--no-color", "@{u}..HEAD"])
+            .unwrap_or_default();
+        Ok(PushPreview {
+            upstream,
+            commits,
+            stat,
+        })
     }
 
     pub fn fetch(&self) -> Result<String, GitError> {
