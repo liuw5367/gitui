@@ -52,6 +52,7 @@ pub(crate) fn inspector(
     message: Signal<String>,
     commit_log: Signal<SharedString>,
     actions: CommitActions,
+    on_open_agent: Arc<dyn Fn()>,
 ) -> impl IntoElement {
     view()
         .w(move || {
@@ -258,11 +259,7 @@ pub(crate) fn inspector(
                             .text_size(px(9.0))
                             .text_color(move || design::text3()),
                         )
-                        .child(
-                            text("Approve & Run is disabled until the agent runtime is wired.")
-                                .text_size(px(9.0))
-                                .text_color(move || design::text3()),
-                        )
+                        .child(header_button("Review plan", true, move || on_open_agent()))
                         .child(view().flex_1())
                         .child(
                             text("The agent never uses --no-verify or reads Keychain.")

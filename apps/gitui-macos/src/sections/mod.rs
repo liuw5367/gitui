@@ -1,3 +1,4 @@
+mod agent;
 mod changes;
 mod commit;
 mod conflict;
@@ -19,6 +20,7 @@ mod tabs;
 mod titlebar;
 mod toolbar;
 
+pub(crate) use agent::{agent_panel, AgentActions};
 pub(crate) use changes::{changes_list, ChangesActions};
 pub(crate) use commit::CommitActions;
 pub(crate) use conflict::{conflict_panel, ConflictActions};

@@ -8,10 +8,10 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_agent::AgentPermissions;
+use gitui_agent::{AgentPermissions, AgentPlan, PlanStep};
 use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{agent_panel, changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -144,6 +144,16 @@ pub fn App() -> impl IntoElement {
     let inspect_blame = signal(Vec::<BlameLine>::new());
     let inspect_selected = signal(SharedString::from(""));
     let inspect_error = signal(SharedString::from(""));
+    let agent_open = signal(false);
+    let agent_steps = signal(Vec::<PlanStep>::new());
+    let agent_log = signal(SharedString::from(""));
+    let agent_error = signal(SharedString::from(""));
+    let open_agent: Arc<dyn Fn()> = Arc::new(move || {
+        agent_steps.set(Vec::new());
+        agent_log.set(SharedString::from(""));
+        agent_error.set(SharedString::from(""));
+        agent_open.set(true);
+    });
     let open_compare: Arc<dyn Fn()> = Arc::new(move || {
         inspect_tab.set(InspectTab::Compare);
         inspect_diff.set(SharedString::from(""));
@@ -1320,6 +1330,7 @@ pub fn App() -> impl IntoElement {
         message,
         commit_log,
         commit_actions,
+        open_agent.clone(),
     );
     let close_inspect: Arc<dyn Fn()> = Arc::new(move || inspect_open.set(false));
     let run_compare: Arc<dyn Fn()> = Arc::new(move || {
@@ -1416,6 +1427,100 @@ pub fn App() -> impl IntoElement {
         },
     );
 
+    let close_agent: Arc<dyn Fn()> = Arc::new(move || agent_open.set(false));
+    let add_stage: Arc<dyn Fn()> = Arc::new(move || {
+        let mut steps = agent_steps.get_untracked();
+        if !steps.iter().any(|step| matches!(step, PlanStep::StageAll)) {
+            steps.push(PlanStep::StageAll);
+            agent_steps.set(steps);
+        }
+    });
+    let add_commit: Arc<dyn Fn()> = Arc::new(move || {
+        let text = message.get_untracked().trim().to_string();
+        if text.is_empty() {
+            agent_error.set(SharedString::from("Commit message is empty"));
+            return;
+        }
+        if staged.get_untracked() == 0 {
+            agent_error.set(SharedString::from("No staged files"));
+            return;
+        }
+        let mut steps = agent_steps.get_untracked();
+        steps.push(PlanStep::Commit { message: text });
+        agent_steps.set(steps);
+        agent_error.set(SharedString::from(""));
+    });
+    let add_push: Arc<dyn Fn()> = Arc::new(move || {
+        let mut steps = agent_steps.get_untracked();
+        if !steps.iter().any(|step| matches!(step, PlanStep::Push)) {
+            steps.push(PlanStep::Push);
+            agent_steps.set(steps);
+        }
+    });
+    let clear_agent: Arc<dyn Fn()> = Arc::new(move || {
+        agent_steps.set(Vec::new());
+        agent_error.set(SharedString::from(""));
+        agent_log.set(SharedString::from(""));
+    });
+    let approve_agent: Arc<dyn Fn()> = Arc::new({
+        let reload = reload_for_branch.clone();
+        move || {
+            let plan = AgentPlan {
+                steps: agent_steps.get_untracked(),
+            };
+            let permissions = agent_permissions.get_untracked();
+            if let Err(err) = plan.validate(&permissions) {
+                agent_error.set(SharedString::from(err.to_string()));
+                return;
+            }
+            let repo = match Repo::open(repo_path.get_untracked().to_string().as_str()) {
+                Ok(repo) => repo,
+                Err(err) => {
+                    agent_error.set(SharedString::from(err.to_string()));
+                    return;
+                }
+            };
+            for step in plan.steps {
+                let result = match step {
+                    PlanStep::StageAll => repo.stage_all().map(|_| "staged all".to_string()),
+                    PlanStep::Commit { message } => repo.commit(&message),
+                    PlanStep::Push => repo.push(),
+                };
+                match result {
+                    Ok(output) => {
+                        let line = format!("• {output}");
+                        agent_log.set(SharedString::from(line));
+                    }
+                    Err(err) => {
+                        agent_error.set(SharedString::from(err.to_string()));
+                        return;
+                    }
+                }
+            }
+            agent_steps.set(Vec::new());
+            agent_open.set(false);
+            agent_error.set(SharedString::from(""));
+            reload();
+        }
+    });
+    let agent_panel = agent_panel(
+        agent_open,
+        agent_permissions,
+        branch,
+        staged,
+        agent_steps,
+        agent_log,
+        agent_error,
+        AgentActions {
+            close: close_agent,
+            add_stage,
+            add_commit,
+            add_push,
+            clear: clear_agent,
+            approve: approve_agent,
+        },
+    );
+
     let reflog_panel = reflog_panel(
         reflog_open,
         reflog_entries,
@@ -1475,6 +1580,7 @@ pub fn App() -> impl IntoElement {
         .child(reflog_panel)
         .child(inspect_panel)
         .child(refs_panel)
+        .child(agent_panel)
         .child(settings_panel)
         .child(statusbar)
 }
