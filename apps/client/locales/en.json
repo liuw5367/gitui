@@ -547,5 +547,18 @@
     "placeholder": "Commit message",
     "squashRange": "%{range} · %{count} commits will become one",
     "done": "History rewritten"
+  },
+  "state": {
+    "detached": "Detached at %{short} — commits here belong to no branch",
+    "unborn": "%{branch} has no commits yet",
+    "createBranch": "Create Branch…",
+    "checkoutMain": "Checkout main",
+    "createInitialCommit": "Create Initial Commit",
+    "initialCommitMessage": "Initial commit",
+    "authRequired": "The remote requires signing in",
+    "offline": "Cannot reach the remote",
+    "rejected": "The remote rejected the push — pull first",
+    "openCredentials": "Credentials…",
+    "dismiss": "Dismiss"
   }
 }

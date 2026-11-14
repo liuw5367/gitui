@@ -547,5 +547,18 @@
     "placeholder": "提交说明",
     "squashRange": "%{range} · %{count} 个提交将合并成一个",
     "done": "历史已改写"
+  },
+  "state": {
+    "detached": "游离头在 %{short} —— 这里的提交不属于任何分支",
+    "unborn": "%{branch} 还没有任何提交",
+    "createBranch": "新建分支…",
+    "checkoutMain": "切回 main",
+    "createInitialCommit": "创建初始提交",
+    "initialCommitMessage": "Initial commit",
+    "authRequired": "远端需要登录",
+    "offline": "连不上远端",
+    "rejected": "远端拒绝了推送 —— 先拉取",
+    "openCredentials": "凭据…",
+    "dismiss": "忽略"
   }
 }

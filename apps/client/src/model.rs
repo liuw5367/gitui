@@ -81,6 +81,10 @@ pub struct Tab {
     pub push_after_commit: bool,
     /// 钩子完整日志弹层是否打开。
     pub hook_open: bool,
+    /// HEAD 形态：分支 / 游离 / 尚未提交（设计板 16）。
+    pub head: git::HeadState,
+    /// 最近一次同步失败的归类（offline / auth / rejected），猜不出来时为空。
+    pub sync_fault: Option<domain::NetworkFault>,
     /// 各远端的 URL（`remote -v`），用于展示与「复制 URL」。
     pub remote_urls: Vec<(String, String)>,
     /// 冲突视图：当前查看的冲突文件下标与是否打开。
@@ -197,6 +201,7 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let reflog = repo.reflog(100).unwrap_or_default();
     let conflicts = repo.conflicts().unwrap_or_default();
     let remote_urls = repo.remote_urls().unwrap_or_default();
+    let head = repo.head_state();
     // 存储键统一用仓库根路径：入参可能是符号链接形式（macOS 的 /tmp → /private/tmp），
     // 与写入时用的 `repo.root()` 不一致会读不到清单。
     let changelists = store::load_changelists(
@@ -216,6 +221,7 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         changes,
         operation,
         conflicts,
+        head,
         remote_urls,
         reflog,
         changelists,
@@ -576,6 +582,58 @@ fn reload_after_history_change(tab: &mut Tab) -> Result<String, String> {
         select_commit(tab, 0);
     }
     return Ok(refreshed.branch);
+}
+
+/// 空仓库里创建第一个提交（`--allow-empty`，只为了让分支有起点）。
+pub fn create_initial_commit(tab: &mut Tab, summary: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let options = git::CommitOptions {
+        allow_empty: true,
+        ..git::CommitOptions::default()
+    };
+    repo.commit_with(summary, "", &options)
+        .map_err(|error| error.detail())?;
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.commits = refreshed.commits;
+    tab.head = refreshed.head;
+    tab.branch = refreshed.branch;
+    tab.refs = refreshed.refs;
+    tab.remote_urls = refreshed.remote_urls;
+    tab.status = refreshed.status;
+    tab.changes = refreshed.changes;
+    return Ok(());
+}
+
+/// 游离头时回到默认分支（本地没有就用远端同名分支建一个）。
+pub fn checkout_default_branch(tab: &mut Tab) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let branches = repo.refs().map_err(|error| error.detail())?.branches;
+    let target = if branches.iter().any(|branch| branch.name == "main") {
+        "main".to_string()
+    } else if branches.iter().any(|branch| branch.name == "master") {
+        "master".to_string()
+    } else {
+        return Err("没有可回到的本地分支".to_string());
+    };
+    repo.checkout_branch(target.as_str())
+        .map_err(|error| error.detail())?;
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.commits = refreshed.commits;
+    tab.head = refreshed.head;
+    tab.branch = refreshed.branch;
+    tab.refs = refreshed.refs;
+    tab.status = refreshed.status;
+    tab.changes = refreshed.changes;
+    tab.conflicts = refreshed.conflicts;
+    tab.operation = refreshed.operation;
+    return Ok(());
+}
+
+/// 清掉同步失败的状态（重试或用户主动关闭横幅）。
+pub fn clear_sync_fault(tab: &mut Tab) {
+    tab.sync_fault = None;
 }
 
 /// 改写提交说明。
@@ -998,6 +1056,7 @@ pub fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
     match result {
         Ok(message) => {
             tab.sync_failed = false;
+            tab.sync_fault = None;
             tab.sync_message = Some(if message.trim().is_empty() {
                 format!("{} 完成", kind.id())
             } else {
@@ -1016,6 +1075,7 @@ pub fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
         }
         Err(error) => {
             tab.sync_failed = true;
+            tab.sync_fault = domain::classify_network_error(error.detail().as_str());
             tab.sync_message = Some(error.detail());
             refresh_changes(tab);
         }
@@ -1134,6 +1194,7 @@ pub fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
         amend: tab.amend,
         signoff: tab.signoff,
         no_verify,
+        allow_empty: false,
     };
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
@@ -1502,6 +1563,93 @@ mod tests {
 
         // 不存在的 SHA 返回 false，不改变选中。
         assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn empty_repository_is_detected_and_can_get_a_first_commit() {
+        let dir = std::env::temp_dir().join(format!(
+            "nsh-app-unborn-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(["init", "-q", "-b", "main"])
+            .status()
+            .expect("git init");
+        assert!(status.success());
+
+        let mut tab = load_tab(&dir.display().to_string(), &LogFilter::default());
+        assert!(
+            matches!(tab.head, git::HeadState::Unborn { ref branch } if branch == "main"),
+            "新仓库应识别为未提交状态：{:?}",
+            tab.head
+        );
+        assert!(tab.commits.is_empty());
+
+        create_initial_commit(&mut tab, "Initial commit").expect("initial commit");
+        assert_eq!(
+            tab.head,
+            git::HeadState::Branch("main".to_string()),
+            "提交后应回到分支状态"
+        );
+        assert_eq!(tab.commits.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detached_head_can_return_to_the_default_branch() {
+        let repo = TempRepo::new("detached");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("b.txt"), "x\n").expect("write");
+        for args in [vec!["add", "-A"], vec!["commit", "-q", "-m", "second"]] {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(&args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {args:?}");
+        }
+
+        let tab = load_tab(&path, &LogFilter::default());
+        let target = tab.commits[1].sha.clone();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["checkout", "-q", target.as_str()])
+            .status()
+            .expect("git");
+        assert!(status.success());
+
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert!(
+            matches!(tab.head, git::HeadState::Detached { .. }),
+            "检出提交后应是游离头：{:?}",
+            tab.head
+        );
+
+        checkout_default_branch(&mut tab).expect("back to main");
+        assert_eq!(tab.head, git::HeadState::Branch("main".to_string()));
+    }
+
+    #[test]
+    fn sync_failures_are_classified_for_the_banner() {
+        // 直接验证归类函数接到界面上用的那条路径。
+        assert_eq!(
+            domain::classify_network_error("fatal: Authentication failed for 'https://x/'"),
+            Some(domain::NetworkFault::AuthRequired)
+        );
+        let mut tab = Tab::default();
+        assert_eq!(tab.sync_fault, None);
+        tab.sync_fault = Some(domain::NetworkFault::Offline);
+        clear_sync_fault(&mut tab);
+        assert_eq!(tab.sync_fault, None);
     }
 
     #[test]

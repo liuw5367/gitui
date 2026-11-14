@@ -40,6 +40,13 @@ pub(crate) fn history(
     let toggle_compare = actions.toggle_compare.clone();
     let row_actions = actions.clone();
     let bar_actions = actions.clone();
+    // 空仓库与「筛选后无结果」要区分：前者要给创建初始提交的入口。
+    let unborn = matches!(tab.head, git::HeadState::Unborn { .. });
+    let branch_for_empty = match &tab.head {
+        git::HeadState::Unborn { branch } => branch.clone(),
+        _ => tab.branch.clone(),
+    };
+    let initial_commit = actions.create_initial_commit.clone();
     // 合并提交的范围：取对比选区（至少两个），从旧到新列出来。
     let squash_range: Option<(String, String, Vec<(String, String)>)> =
         tab.compare_range().map(|(newest, oldest)| {
@@ -164,24 +171,51 @@ pub(crate) fn history(
                         .flex_col()
                         .child(dynamic(move || -> AnyElement {
                             if visible.get().is_empty() {
-                                return view()
+                                let branch_for_empty = branch_for_empty.clone();
+                                let mut empty = view()
                                     .w_full()
-                                    .h(px(72.0))
+                                    .h(px(96.0))
                                     .items_center()
                                     .justify_center()
+                                    .flex_col()
+                                    .gap(px(8.0))
                                     .child(
                                         text(move || {
+                                            let lang = language_value.get();
+                                            let lang = lang.as_str();
+                                            if unborn {
+                                                return i18n::with_arguments(
+                                                    lang,
+                                                    "state.unborn",
+                                                    &[("branch", branch_for_empty.clone())],
+                                                );
+                                            }
                                             let key = if total == 0 {
                                                 "history.empty"
                                             } else {
                                                 "history.noMatch"
                                             };
-                                            i18n::t(language_value.get().as_str(), key)
+                                            return i18n::t(lang, key);
                                         })
                                         .text_size(px(11.0))
                                         .text_color(move || design::text3()),
-                                    )
-                                    .into_element();
+                                    );
+                                if unborn {
+                                    let initial_commit = initial_commit.clone();
+                                    empty = empty.child(crate::widgets::small_button(
+                                        {
+                                            let language_value = language_value;
+                                            move || {
+                                                i18n::t(
+                                                    language_value.get().as_str(),
+                                                    "state.createInitialCommit",
+                                                )
+                                            }
+                                        },
+                                        move || initial_commit(),
+                                    ));
+                                }
+                                return empty.into_element();
                             }
                             let select = select.clone();
                             let toggle_compare = toggle_compare.clone();

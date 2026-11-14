@@ -67,6 +67,11 @@ pub(crate) fn workspace(
             actions.set_mode_agent.clone(),
             inspector_open,
         ))
+        .child(shell::state_banner(
+            language,
+            current,
+            actions.clone(),
+        ))
         .child(shell::op_banner(
             language,
             current,

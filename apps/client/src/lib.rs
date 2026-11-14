@@ -82,6 +82,12 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
+    /// 游离头时回到 main/master。
+    pub(crate) checkout_default_branch: Arc<dyn Fn()>,
+    /// 空仓库里创建第一个提交。
+    pub(crate) create_initial_commit: Arc<dyn Fn()>,
+    /// 清掉同步失败状态。
+    pub(crate) clear_sync_fault: Arc<dyn Fn()>,
     /// 打开「改写提交说明」弹窗。
     pub(crate) open_reword: Arc<dyn Fn(String, String, String)>,
     /// 打开「合并提交」弹窗（from, to, 提交列表）。
@@ -2137,6 +2143,61 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || rewrite_state.set(None))
     };
 
+    // 状态横幅上的三个动作（设计板 16）。
+    let checkout_default_branch: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                match model::checkout_default_branch(tab) {
+                    Ok(()) => {
+                        let lang = language.get_untracked();
+                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.historyDone"));
+                    }
+                    Err(detail) => interactions::notify(notice, detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let create_initial_commit: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let lang = language.get_untracked();
+                let message = i18n::t(lang.as_str(), "state.initialCommitMessage");
+                match model::create_initial_commit(tab, message.as_str()) {
+                    Ok(()) => interactions::notify(notice, i18n::t(lang.as_str(), "toast.historyDone")),
+                    Err(detail) => interactions::notify(notice, detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let clear_sync_fault: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::clear_sync_fault(tab);
+                tabs.set(list);
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2156,6 +2217,9 @@ pub fn App() -> impl IntoElement {
         commit_without_hooks,
         set_commit_option,
         toggle_hook_log,
+        checkout_default_branch,
+        create_initial_commit,
+        clear_sync_fault,
         open_reword,
         open_squash,
         set_rewrite_message,

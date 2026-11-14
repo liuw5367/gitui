@@ -103,6 +103,8 @@ pub struct CommitOptions {
     pub signoff: bool,
     /// 跳过 pre-commit / commit-msg 钩子（`--no-verify`）。
     pub no_verify: bool,
+    /// 允许空提交（`--allow-empty`），空仓库的第一次提交需要它。
+    pub allow_empty: bool,
 }
 
 impl CommitOptions {
@@ -117,6 +119,9 @@ impl CommitOptions {
         }
         if self.no_verify {
             flags.push("--no-verify");
+        }
+        if self.allow_empty {
+            flags.push("--allow-empty");
         }
         return flags;
     }
@@ -190,6 +195,26 @@ pub struct PushOptions {
     pub force_with_lease: bool,
     /// 推送所有分支。
     pub all_branches: bool,
+}
+
+/// HEAD 的三种形态。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HeadState {
+    /// 在某个分支上，且分支已有提交。
+    Branch(String),
+    /// 游离头（检出了某个提交）。
+    Detached { sha: String },
+    /// 分支还没有任何提交（空仓库 / 刚初始化的仓库）。
+    Unborn { branch: String },
+}
+
+impl Default for HeadState {
+    /// 没读到任何信息时按「空仓库的 main」处理，与 `load_tab` 的默认分支一致。
+    fn default() -> Self {
+        return HeadState::Unborn {
+            branch: "main".to_string(),
+        };
+    }
 }
 
 /// 改写历史时一行的动作。
@@ -384,6 +409,30 @@ impl Repo {
         } else {
             branch
         });
+    }
+
+    /// HEAD 当前指向什么（设计板 16 的 detached / 空仓库状态）。
+    pub fn head_state(&self) -> HeadState {
+        // 有符号引用 → 在某个分支上；否则是游离头。仓库还没有提交时两者都不是。
+        if let Ok(output) = run_git(&self.root, &["symbolic-ref", "--quiet", "--short", "HEAD"]) {
+            let name = String::from_utf8_lossy(&output).trim().to_string();
+            if !name.is_empty() {
+                // 分支存在但还没有提交：`rev-parse HEAD` 会失败。
+                if run_git(&self.root, &["rev-parse", "--verify", "HEAD"]).is_err() {
+                    return HeadState::Unborn { branch: name };
+                }
+                return HeadState::Branch(name);
+            }
+        }
+        if let Ok(output) = run_git(&self.root, &["rev-parse", "--verify", "HEAD"]) {
+            let sha = String::from_utf8_lossy(&output).trim().to_string();
+            if !sha.is_empty() {
+                return HeadState::Detached { sha };
+            }
+        }
+        return HeadState::Unborn {
+            branch: "main".to_string(),
+        };
     }
 
     /// 与上游的 `(ahead, behind)`；没有上游时返回 `(0, 0)`。
@@ -2690,8 +2739,12 @@ mod tests {
             amend: true,
             signoff: true,
             no_verify: true,
+            allow_empty: true,
         };
-        assert_eq!(all.flags(), vec!["--amend", "--signoff", "--no-verify"]);
+        assert_eq!(
+            all.flags(),
+            vec!["--amend", "--signoff", "--no-verify", "--allow-empty"]
+        );
     }
 
     #[test]

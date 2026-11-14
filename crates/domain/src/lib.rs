@@ -31,6 +31,55 @@ pub enum GitError {
     Parse { context: String, detail: String },
 }
 
+/// 网络类失败的细分原因（设计板 15/16 的 offline 与 auth 状态）。
+///
+/// 只在 Git 的输出里出现已知特征串时才归类，猜不出来就返回 `None`，由界面显示
+/// 原始输出，不做假判断。
+pub fn classify_network_error(detail: &str) -> Option<NetworkFault> {
+    let lowered = detail.to_lowercase();
+    let auth_markers = [
+        "authentication failed",
+        "could not read username",
+        "could not read password",
+        "permission denied (publickey)",
+        "invalid username or password",
+        "terminal prompts disabled",
+        "403 forbidden",
+        "401 unauthorized",
+    ];
+    if auth_markers.iter().any(|marker| lowered.contains(marker)) {
+        return Some(NetworkFault::AuthRequired);
+    }
+    let offline_markers = [
+        "could not resolve host",
+        "network is unreachable",
+        "connection timed out",
+        "connection refused",
+        "operation timed out",
+        "failed to connect",
+        "no route to host",
+    ];
+    if offline_markers.iter().any(|marker| lowered.contains(marker)) {
+        return Some(NetworkFault::Offline);
+    }
+    let rejection_markers = ["non-fast-forward", "rejected", "fetch first"];
+    if rejection_markers.iter().any(|marker| lowered.contains(marker)) {
+        return Some(NetworkFault::Rejected);
+    }
+    return None;
+}
+
+/// 网络类失败的三种可恢复形态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkFault {
+    /// 需要登录或换 SSH。
+    AuthRequired,
+    /// 连不上远端。
+    Offline,
+    /// 远端拒绝了这次推送（需要先拉取）。
+    Rejected,
+}
+
 impl GitError {
     /// 面向用户的一句话说明；具体命令与 stderr 由界面放在详情里。
     pub fn summary(&self) -> String {
@@ -138,6 +187,52 @@ pub struct RepoSummary {
     pub branch: String,
     pub ahead: u32,
     pub behind: u32,
+}
+
+#[cfg(test)]
+mod network_tests {
+    use super::*;
+
+    #[test]
+    fn auth_failures_are_classified() {
+        for detail in [
+            "fatal: Authentication failed for 'https://example.com/a.git/'",
+            "fatal: could not read Username for 'https://example.com': terminal prompts disabled",
+            "git@example.com: Permission denied (publickey).",
+            "remote: Invalid username or password.",
+        ] {
+            assert_eq!(
+                classify_network_error(detail),
+                Some(NetworkFault::AuthRequired),
+                "{detail}"
+            );
+        }
+    }
+
+    #[test]
+    fn offline_failures_are_classified() {
+        for detail in [
+            "fatal: unable to access 'https://example.com/': Could not resolve host: example.com",
+            "ssh: connect to host example.com port 22: Connection refused",
+            "fatal: Connection timed out",
+        ] {
+            assert_eq!(
+                classify_network_error(detail),
+                Some(NetworkFault::Offline),
+                "{detail}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejections_are_classified_and_unknowns_stay_unknown() {
+        assert_eq!(
+            classify_network_error("! [rejected]        main -> main (non-fast-forward)"),
+            Some(NetworkFault::Rejected)
+        );
+        assert_eq!(classify_network_error("fatal: 不是 git 仓库"), None);
+        assert_eq!(classify_network_error(""), None);
+    }
 }
 
 #[cfg(test)]
