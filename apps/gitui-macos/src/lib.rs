@@ -316,6 +316,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_commit = reload.clone();
     let reload_for_entry = reload.clone();
     let reload_for_sync = reload.clone();
+    let reload_for_merge = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -452,7 +453,40 @@ pub fn App() -> impl IntoElement {
             })
             .text_size(px(10.0))
             .text_color(move || theme().primary_foreground),
-        );
+        )
+        .child(view().flex_1())
+        .child(header_button("Continue", true, {
+            let reload_merge = reload_for_merge.clone();
+            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.merge_continue())
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_merge();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
+                }
+            }
+        }))
+        .child(header_button("Abort", false, {
+            let reload_merge = reload_for_merge.clone();
+            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.merge_abort())
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_merge();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
+                }
+            }
+        }));
 
     let tab_bar = view()
         .h(px(30.0))
