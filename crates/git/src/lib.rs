@@ -94,6 +94,34 @@ pub struct CommitOutcome {
     pub log: String,
 }
 
+/// 提交开关。默认是普通提交。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommitOptions {
+    /// 改写上一条提交（`--amend`）。
+    pub amend: bool,
+    /// 追加 `Signed-off-by`（`--signoff`）。
+    pub signoff: bool,
+    /// 跳过 pre-commit / commit-msg 钩子（`--no-verify`）。
+    pub no_verify: bool,
+}
+
+impl CommitOptions {
+    /// 转成 `git commit` 的开关参数，顺序固定便于测试。
+    pub fn flags(&self) -> Vec<&'static str> {
+        let mut flags: Vec<&'static str> = Vec::new();
+        if self.amend {
+            flags.push("--amend");
+        }
+        if self.signoff {
+            flags.push("--signoff");
+        }
+        if self.no_verify {
+            flags.push("--no-verify");
+        }
+        return flags;
+    }
+}
+
 /// 历史筛选条件。空字段表示不限制。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LogFilter {
@@ -487,6 +515,26 @@ impl Repo {
         return Ok(());
     }
 
+    /// 改写远程的 URL（`git remote set-url <name> <url>`）。
+    pub fn set_remote_url(&self, name: &str, url: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["remote", "set-url", name, url])?;
+        return Ok(());
+    }
+
+    /// 重命名分支（`git branch -m <old> <new>`）。
+    pub fn rename_branch(&self, old: &str, new: &str) -> Result<(), GitError> {
+        if new.trim().is_empty() {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: "branch -m".to_string(),
+                code: None,
+                detail: "分支名不能为空".to_string(),
+            });
+        }
+        run_git(&self.root, &["branch", "-m", old, new])?;
+        return Ok(());
+    }
+
     /// 贮藏当前改动（`git stash push -u`）；`message` 为空时不带说明。
     pub fn stash_push(&self, message: &str) -> Result<(), GitError> {
         let args: Vec<&str> = if message.trim().is_empty() {
@@ -501,6 +549,12 @@ impl Repo {
     /// 取出最近一条贮藏（`git stash pop`）。
     pub fn stash_pop(&self) -> Result<(), GitError> {
         run_git(&self.root, &["stash", "pop"])?;
+        return Ok(());
+    }
+
+    /// 应用某条贮藏但保留它（`git stash apply <reference>`）。
+    pub fn stash_apply(&self, reference: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["stash", "apply", reference])?;
         return Ok(());
     }
 
@@ -687,6 +741,36 @@ impl Repo {
         return Ok(());
     }
 
+    /// 拣选一个提交到当前分支（`git cherry-pick <sha>`）。
+    ///
+    /// 冲突时命令失败，但仓库已经进入冲突状态；调用方据 [`Repo::operation`]
+    /// 判断该走解决还是放弃。
+    pub fn cherry_pick(&self, sha: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["cherry-pick", sha])?;
+        return Ok(());
+    }
+
+    /// 反向提交一个提交（`git revert --no-edit <sha>`）。
+    pub fn revert(&self, sha: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["revert", "--no-edit", sha])?;
+        return Ok(());
+    }
+
+    /// 继续被冲突打断的合并/变基/拣选/回滚。
+    ///
+    /// 变基用 `--continue`，其余三种命令同名；执行前调用方应确认冲突都已标记解决。
+    pub fn continue_operation(&self, operation: Operation) -> Result<String, GitError> {
+        let args: &[&str] = match operation {
+            Operation::Merge => &["merge", "--continue"],
+            Operation::Rebase => &["rebase", "--continue"],
+            Operation::CherryPick => &["cherry-pick", "--continue"],
+            Operation::Revert => &["revert", "--continue"],
+            Operation::None => return Ok(String::new()),
+        };
+        let output = run_git_combined(&self.root, args)?;
+        return Ok(summarise(&output));
+    }
+
     /// 当前仓库是否处于合并/变基/拣选/回滚中。
     ///
     /// 通过 `.git` 下的标记文件判断：`MERGE_HEAD`、`rebase-merge`/`rebase-apply`、
@@ -797,6 +881,13 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    /// 推送一个标签（`git push <remote> <tag>`）。
+    pub fn push_tag(&self, tag: &str, remote: Option<&str>) -> Result<String, GitError> {
+        let remote = remote.unwrap_or("origin");
+        let output = run_git_combined(&self.root, &["push", remote, tag])?;
+        return Ok(summarise(&output));
+    }
+
     /// 把工作区的改动加入暂存区（`git add -- <paths>`）。
     pub fn stage(&self, paths: &[String]) -> Result<(), GitError> {
         if paths.is_empty() {
@@ -886,15 +977,29 @@ impl Repo {
     /// 钩子的 stdout/stderr 由 `git commit` 合并返回；失败时错误里带有同样的
     /// 输出，界面据此显示钩子日志（设计板的 `hook-box`）。
     pub fn commit(&self, summary: &str, description: &str) -> Result<CommitOutcome, GitError> {
+        return self.commit_with(summary, description, &CommitOptions::default());
+    }
+
+    /// 带开关的提交：改写上一条、追加 sign-off、跳过钩子。
+    pub fn commit_with(
+        &self,
+        summary: &str,
+        description: &str,
+        options: &CommitOptions,
+    ) -> Result<CommitOutcome, GitError> {
         let message = if description.trim().is_empty() {
             summary.to_string()
         } else {
             format!("{}\n\n{}", summary, description)
         };
+        let mut args: Vec<&str> = vec!["commit"];
+        args.extend(options.flags());
+        args.push("-m");
+        args.push(message.as_str());
         let output = std::process::Command::new("git")
             .arg("-C")
             .arg(&self.root)
-            .args(["commit", "-m", message.as_str()])
+            .args(&args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(|error| GitError::Spawn {
@@ -2019,5 +2124,135 @@ mod tests {
         let expected = String::from_utf8_lossy(&expected.stdout).trim().to_string();
         let commits = repo.log(1, "").expect("log");
         assert_eq!(commits[0].sha, expected);
+    }
+
+    #[test]
+    fn commit_options_map_to_flags_in_fixed_order() {
+        assert!(CommitOptions::default().flags().is_empty());
+        let all = CommitOptions {
+            amend: true,
+            signoff: true,
+            no_verify: true,
+        };
+        assert_eq!(all.flags(), vec!["--amend", "--signoff", "--no-verify"]);
+    }
+
+    #[test]
+    fn amend_replaces_the_last_commit_and_signoff_adds_a_trailer() {
+        let (_guard, path) = fixture("amend", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        let before = repo.log(1, "").expect("log").remove(0).sha;
+
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit_with(
+            "second",
+            "",
+            &CommitOptions {
+                signoff: true,
+                ..CommitOptions::default()
+            },
+        )
+        .expect("commit with signoff");
+        let message = run_git(repo.root(), &["log", "-1", "--format=%B"]).expect("log");
+        let message = String::from_utf8_lossy(&message).to_string();
+        assert!(message.contains("Signed-off-by:"), "缺 sign-off：{message}");
+
+        // amend 不新增提交，只改写最后一条。
+        let count_before = repo.log(100, "").expect("log").len();
+        repo.commit_with(
+            "amended",
+            "",
+            &CommitOptions {
+                amend: true,
+                ..CommitOptions::default()
+            },
+        )
+        .expect("amend");
+        let commits = repo.log(100, "").expect("log");
+        assert_eq!(commits.len(), count_before);
+        assert_eq!(commits[0].summary, "amended");
+        assert_ne!(commits[0].sha, before);
+    }
+
+    #[test]
+    fn no_verify_skips_a_failing_hook() {
+        let (_guard, path) = fixture("noverify", &[("a.txt", "one\n")], "first");
+        let hooks = Path::new(&path).join(".git/hooks");
+        std::fs::create_dir_all(&hooks).expect("hooks dir");
+        let pre_commit = hooks.join("pre-commit");
+        std::fs::write(&pre_commit, "#!/bin/sh\nexit 1\n").expect("write hook");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&pre_commit, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+
+        assert!(repo.commit("blocked", "").is_err(), "钩子应阻止提交");
+        repo.commit_with(
+            "bypass",
+            "",
+            &CommitOptions {
+                no_verify: true,
+                ..CommitOptions::default()
+            },
+        )
+        .expect("--no-verify 应跳过钩子");
+        assert_eq!(repo.log(1, "").expect("log")[0].summary, "bypass");
+    }
+
+    #[test]
+    fn cherry_pick_copies_a_commit_and_revert_undoes_one() {
+        let (_guard, path) = fixture("pick", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        let base = repo.log(1, "").expect("log")[0].sha.clone();
+        std::fs::write(repo.root().join("b.txt"), "bee\n").expect("write");
+        repo.stage_all().expect("stage");
+        let picked = repo.commit("add b", "").expect("commit").sha;
+
+        repo.checkout_new_branch("side", base.as_str()).expect("branch");
+        repo.cherry_pick(&picked).expect("cherry-pick");
+        assert!(repo.root().join("b.txt").exists(), "拣选应带过来文件");
+        assert_eq!(repo.log(1, "").expect("log")[0].summary, "add b");
+
+        repo.revert(&picked).expect("revert");
+        assert!(!repo.root().join("b.txt").exists(), "回滚应删掉文件");
+        assert!(repo.log(1, "").expect("log")[0].summary.contains("Revert"));
+    }
+
+    #[test]
+    fn stash_apply_keeps_the_entry_and_rename_moves_the_branch() {
+        let (_guard, path) = fixture("stashapply", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stash_push("wip").expect("stash");
+
+        let entries = repo.refs().expect("refs").stashes;
+        assert_eq!(entries.len(), 1);
+        repo.stash_apply(entries[0].reference.as_str()).expect("apply");
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
+            "two\n"
+        );
+        assert_eq!(repo.refs().expect("refs").stashes.len(), 1, "apply 不删除贮藏");
+
+        repo.rename_branch("main", "renamed").expect("rename");
+        assert_eq!(repo.abbrev_branch().expect("branch"), "renamed");
+    }
+
+    #[test]
+    fn set_remote_url_rewrites_the_target() {
+        let (_guard, path) = fixture("seturl", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        repo.add_remote("origin", "https://example.com/a.git")
+            .expect("add");
+        repo.set_remote_url("origin", "git@example.com:b.git")
+            .expect("set-url");
+        let url = run_git(repo.root(), &["remote", "get-url", "origin"]).expect("get-url");
+        assert_eq!(String::from_utf8_lossy(&url).trim(), "git@example.com:b.git");
     }
 }
