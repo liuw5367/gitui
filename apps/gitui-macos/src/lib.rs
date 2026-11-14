@@ -3,6 +3,7 @@
 //! Slice 1: open the current repository, show status, recent history and the
 //! selected commit's patch. No staging, commit, push or settings.
 
+mod audit;
 mod design;
 mod model;
 mod sections;
@@ -1470,9 +1471,11 @@ pub fn App() -> impl IntoElement {
             };
             let permissions = agent_permissions.get_untracked();
             if let Err(err) = plan.validate(&permissions) {
+                audit::append(&format!("agent plan denied: {err}"), false);
                 agent_error.set(SharedString::from(err.to_string()));
                 return;
             }
+            audit::append("agent plan approved", true);
             let repo = match Repo::open(repo_path.get_untracked().to_string().as_str()) {
                 Ok(repo) => repo,
                 Err(err) => {
@@ -1481,6 +1484,11 @@ pub fn App() -> impl IntoElement {
                 }
             };
             for step in plan.steps {
+                let step_name = match &step {
+                    PlanStep::StageAll => "stage-all",
+                    PlanStep::Commit { .. } => "commit",
+                    PlanStep::Push => "push",
+                };
                 let result = match step {
                     PlanStep::StageAll => repo.stage_all().map(|_| "staged all".to_string()),
                     PlanStep::Commit { message } => repo.commit(&message),
@@ -1488,10 +1496,18 @@ pub fn App() -> impl IntoElement {
                 };
                 match result {
                     Ok(output) => {
+                        audit::append(
+                            &format!("agent step {}: ok", step_name),
+                            true,
+                        );
                         let line = format!("• {output}");
                         agent_log.set(SharedString::from(line));
                     }
                     Err(err) => {
+                        audit::append(
+                            &format!("agent step {}: failed", step_name),
+                            false,
+                        );
                         agent_error.set(SharedString::from(err.to_string()));
                         return;
                     }

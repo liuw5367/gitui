@@ -373,6 +373,11 @@ pub(crate) fn settings_panel(
                                                 .text_color(move || design::text3()),
                                         )
                                         .child(
+                                            text("Audit: ~/Library/Application Support/gitui/agent-audit.log")
+                                                .text_size(px(9.5))
+                                                .text_color(move || design::text3()),
+                                        )
+                                        .child(
                                             view()
                                                 .h(px(38.0))
                                                 .flex_row()
