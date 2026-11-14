@@ -223,6 +223,11 @@ impl Repo {
             .collect())
     }
 
+    /// Delete a local branch. Git refuses the currently checked-out branch.
+    pub fn delete_branch(&self, name: &str) -> Result<String, GitError> {
+        self.git(&["branch", "-d", name])
+    }
+
     /// Create a branch at HEAD and switch to it.
     pub fn create_branch(&self, name: &str) -> Result<String, GitError> {
         self.git(&["switch", "-c", name])
@@ -798,6 +803,19 @@ mod tests {
             .unwrap()
             .iter()
             .any(|branch| branch.name == "created" && branch.current));
+    }
+
+    #[test]
+    fn deletes_a_merged_branch_and_refuses_current() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["branch", "feature"]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.delete_branch("feature").unwrap();
+        assert!(!repo.branches().unwrap().iter().any(|branch| branch.name == "feature"));
+
+        let error = repo.delete_branch("main").unwrap_err();
+        assert!(!error.to_string().is_empty());
+        assert!(repo.branches().unwrap().iter().any(|branch| branch.name == "main"));
     }
 
     #[test]
