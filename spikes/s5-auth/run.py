@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -74,6 +75,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if self.command == "POST" else b""
         path, _, query = self.path.partition("?")
+        if "slow=1" in query:
+            time.sleep(4)
         env = os.environ.copy()
         env.update(
             {
@@ -170,6 +173,29 @@ esac
 
     good_env = base_env.copy()
     good_env.update({"S5_USER": USER, "S5_PASS": PASSWORD})
+
+    slow = run(
+        [
+            "git",
+            "-c",
+            "http.lowSpeedLimit=1",
+            "-c",
+            "http.lowSpeedTime=1",
+            "ls-remote",
+            url + "?slow=1",
+        ],
+        env=good_env,
+    )
+    results.append(
+        {
+            "case": "timeout",
+            "expected_ok": False,
+            "ok": slow.returncode == 0,
+            "exit": slow.returncode,
+            "stderr": slow.stderr.strip().splitlines()[-1] if slow.stderr.strip() else "",
+            "refs": 0,
+        }
+    )
 
     # non-fast-forward: clone, push ahead, then push from the original worktree.
     shutil.rmtree(CLONE2, ignore_errors=True)

@@ -132,14 +132,15 @@
 | no credentials | exit 128; `could not read Username ... terminal prompts disabled` |
 | wrong password | exit 128; authentication failed |
 | correct password | exit 0; **2 refs** returned |
+| slow server, lowSpeedLimit=1 / lowSpeedTime=1 | exit 128; `Operation too slow` |
 | non-fast-forward push | exit 1; push rejected |
 | server stopped | exit 128; connection refused |
 | credentials in argv | **no** (askpass only) |
 
-**Conclusion**: HTTP basic auth, non-fast-forward rejection and a stopped server are distinguishable. This does not yet validate:
+**Conclusion**: HTTP basic auth, timeout, non-fast-forward rejection and a stopped server are distinguishable. This does not yet validate:
 - SSH + host-key change
 - proxy / TLS certificate errors
-- timeout and cancellation
+- process cancellation
 - Keychain / credential-helper integration in the Rust app
 
 **Risk**: the app-level auth service is still unbuilt; the CLI path is proven, the UI/error classification is not.
