@@ -125,6 +125,56 @@ pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
     let _ = write_lines(&changelists_file(dir), &lines);
 }
 
+/// 应用设置（除语言与外观外的偏好）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Settings {
+    /// 变更列表按目录分组（关闭时为平铺路径）。
+    pub file_tree: bool,
+    /// 启动时恢复上次打开的仓库；关闭则显示欢迎页。
+    pub restore_session: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        return Settings {
+            file_tree: true,
+            restore_session: true,
+        };
+    }
+}
+
+fn settings_file(dir: &Path) -> PathBuf {
+    return dir.join("settings.txt");
+}
+
+/// 读取设置；文件缺失时返回默认值。
+pub fn load_settings(dir: &Path) -> Settings {
+    let mut settings = Settings::default();
+    let Ok(text) = std::fs::read_to_string(settings_file(dir)) else {
+        return settings;
+    };
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "file_tree" => settings.file_tree = value.trim() != "false",
+            "restore_session" => settings.restore_session = value.trim() != "false",
+            _ => {}
+        }
+    }
+    return settings;
+}
+
+/// 保存设置。
+pub fn save_settings(dir: &Path, settings: &Settings) {
+    let lines = vec![
+        format!("file_tree={}", settings.file_tree),
+        format!("restore_session={}", settings.restore_session),
+    ];
+    let _ = write_lines(&settings_file(dir), &lines);
+}
+
 fn appearance_file(dir: &Path) -> PathBuf {
     return dir.join("appearance.txt");
 }
@@ -332,6 +382,22 @@ mod tests {
         let paths = load_recent(dir.path());
         assert_eq!(paths.len(), MAX_RECENT);
         assert_eq!(paths[0].path, "/repo-19");
+    }
+
+    #[test]
+    fn settings_round_trip_with_defaults() {
+        let dir = TempDir::new("settings");
+        assert_eq!(load_settings(dir.path()), Settings::default());
+        save_settings(
+            dir.path(),
+            &Settings {
+                file_tree: false,
+                restore_session: false,
+            },
+        );
+        let loaded = load_settings(dir.path());
+        assert!(!loaded.file_tree);
+        assert!(!loaded.restore_session);
     }
 
     #[test]

@@ -239,11 +239,39 @@
     "pull": "拉取",
     "push": "推送",
     "openPalette": "命令面板",
-    "openRepo": "打开仓库…"
+    "openRepo": "打开仓库…",
+    "settings": "设置"
   },
   "theme": {
     "system": "外观：跟随系统",
     "light": "外观：浅色",
     "dark": "外观：深色"
+  },
+  "settings": {
+    "title": "设置",
+    "general": "通用",
+    "git": "Git",
+    "shortcuts": "快捷键",
+    "about": "关于",
+    "credentials": "凭据",
+    "appearance": "外观",
+    "appearanceHint": "自动即跟随 macOS 外观。",
+    "language": "语言与地区",
+    "languageHint": "默认英文；菜单文案可能需要重启后生效。",
+    "switchLanguage": "切换",
+    "fileTree": "文件树",
+    "fileTreeHint": "变更与仓库内容的展示方式。",
+    "fileTreeToggle": "按目录分组显示改动",
+    "onLaunch": "启动时",
+    "onLaunchHint": "选择应用启动时打开什么。",
+    "restoreSession": "恢复上次会话的标签页",
+    "updates": "更新",
+    "updatesHint": "启动时或按需检查新版本。",
+    "checkNow": "立即检查",
+    "notImplemented": "尚未实现",
+    "savedAutomatically": "改动会自动保存",
+    "aboutHint": "原生 Git 客户端，优先 macOS，其他平台后续接入。",
+    "identity": "提交身份",
+    "identityHint": "提交时使用，读自 git config。"
   }
 }

@@ -4,12 +4,14 @@
 
 mod changes_view;
 mod palette;
+mod settings;
 mod repo_manager;
 mod welcome;
 mod workspace;
 
 pub(crate) use changes_view::changes_view;
 pub(crate) use palette::palette;
+pub(crate) use settings::{settings, Section as SettingsSection};
 
 /// 命令面板的命令列表（供根组件与测试共用）。
 pub(crate) fn palette_commands() -> Vec<palette::Command> {

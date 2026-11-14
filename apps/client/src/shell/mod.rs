@@ -177,7 +177,15 @@ pub(crate) fn titlebar(
                             .text_color(move || design::text2()),
                         ),
                 )
-                .child(widgets::icon("gear", 14.0, design::text2)),
+                .child(widgets::icon_button(
+                    "gear",
+                    14.0,
+                    design::text2,
+                    {
+                        let go_settings = actions.go_settings.clone();
+                        move || go_settings()
+                    },
+                )),
         );
 }
 

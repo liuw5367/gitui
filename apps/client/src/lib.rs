@@ -38,6 +38,7 @@ pub(crate) enum Screen {
     Welcome,
     RepoManager,
     Workspace,
+    Settings,
 }
 
 /// 工作区主区的两种模式（工具栏的 History / Changes 分段）。
@@ -78,6 +79,10 @@ pub(crate) struct Actions {
     pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) sync: Arc<dyn Fn(model::Sync)>,
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
+    pub(crate) set_theme: Arc<dyn Fn(ThemeMode)>,
+    pub(crate) set_file_tree: Arc<dyn Fn(bool)>,
+    pub(crate) set_restore_session: Arc<dyn Fn(bool)>,
+    pub(crate) go_settings: Arc<dyn Fn()>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -123,6 +128,8 @@ pub fn App() -> impl IntoElement {
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
     let palette_open = signal(false);
+    let settings_state = signal(store::load_settings(&store_dir));
+    let settings_section = signal(screens::SettingsSection::General);
     let palette_query = signal(String::new());
     let theme_mode = signal(ThemeMode::from_id(
         store::load_appearance(&store_dir)
@@ -133,6 +140,7 @@ pub fn App() -> impl IntoElement {
     let now = store::now_unix();
 
     let session = store::load_session(&store_dir);
+    let initial_settings = settings_state.get_untracked();
     let initial_filter = LogFilter::default();
     let mut initial_tabs: Vec<Tab> = session
         .paths
@@ -140,6 +148,9 @@ pub fn App() -> impl IntoElement {
         .map(|path| model::load_tab(path, &initial_filter))
         .filter(|tab| tab.error.is_none())
         .collect();
+    if !initial_settings.restore_session {
+        initial_tabs.clear();
+    }
     let screen = signal(if initial_tabs.is_empty() {
         Screen::Welcome
     } else {
@@ -430,6 +441,11 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || screen.set(Screen::RepoManager))
     };
 
+    let go_settings: Arc<dyn Fn()> = {
+        let screen = screen;
+        Arc::new(move || screen.set(Screen::Settings))
+    };
+
     let set_repo_form: Arc<dyn Fn(RepoForm)> = {
         let repo_form = repo_form;
         Arc::new(move |form: RepoForm| repo_form.set(form))
@@ -609,6 +625,7 @@ pub fn App() -> impl IntoElement {
         let sync = sync.clone();
         let go_welcome = go_welcome.clone();
         let go_repo_manager = go_repo_manager.clone();
+        let go_settings = go_settings.clone();
         let toggle_language = toggle_language.clone();
         let palette_open = palette_open;
         let theme_mode = theme_mode;
@@ -628,6 +645,7 @@ pub fn App() -> impl IntoElement {
                 "push" => sync(model::Sync::Push),
                 "welcome" => go_welcome(),
                 "repoManager" => go_repo_manager(),
+                "settings" => go_settings(),
                 "toggleLanguage" => toggle_language(),
                 "toggleTheme" => {
                     let next = theme_mode.get_untracked().next();
@@ -637,6 +655,38 @@ pub fn App() -> impl IntoElement {
                 }
                 _ => {}
             }
+        })
+    };
+
+    let set_theme: Arc<dyn Fn(ThemeMode)> = {
+        let theme_mode = theme_mode;
+        let store_dir = store_dir.clone();
+        Arc::new(move |mode: ThemeMode| {
+            theme_mode.set(mode);
+            nsh_core::element::set_color_scheme(mode.appearance());
+            store::save_appearance(&store_dir, mode.id());
+        })
+    };
+
+    let set_file_tree: Arc<dyn Fn(bool)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |enabled: bool| {
+            let mut next = settings_state.get_untracked();
+            next.file_tree = enabled;
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
+    let set_restore_session: Arc<dyn Fn(bool)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |enabled: bool| {
+            let mut next = settings_state.get_untracked();
+            next.restore_session = enabled;
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
         })
     };
 
@@ -660,6 +710,10 @@ pub fn App() -> impl IntoElement {
         abort_operation,
         sync,
         run_command,
+        set_theme,
+        set_file_tree,
+        set_restore_session,
+        go_settings,
         apply_filter,
         clear_filter,
         clone_repository,
@@ -732,6 +786,8 @@ pub fn App() -> impl IntoElement {
                     MenuItem::separator(),
                     MenuItem::new("Refresh").shortcut("mod+r").on_select(menu_run("refresh")),
                     MenuItem::new("Repository Manager").on_select(menu_run("repoManager")),
+                    MenuItem::separator(),
+                    MenuItem::new("Settings…").shortcut("mod+,").on_select(menu_run("settings")),
                 ],
             ),
             MenuItem::submenu(
@@ -768,6 +824,10 @@ pub fn App() -> impl IntoElement {
         let refresh = actions.refresh.clone();
         move |_| refresh()
     });
+    on_key("mod+,", {
+        let go_settings = actions.go_settings.clone();
+        move |_| go_settings()
+    });
     on_key("mod+p", {
         let palette_open = palette_open;
         move |_| palette_open.set(!palette_open.get_untracked())
@@ -791,6 +851,22 @@ pub fn App() -> impl IntoElement {
         move |_| filter_open.set(false)
     });
 
+    let identity_cmd = std::process::Command::new("git")
+        .args(["config", "--get", "user.name"])
+        .output();
+    let identity_name = identity_cmd
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_default();
+    let identity_email = std::process::Command::new("git")
+        .args(["config", "--get", "user.email"])
+        .output()
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|email| !email.is_empty())
+        .unwrap_or_default();
+    let identity_for_view = (identity_name, identity_email);
     let language_value = language;
     let screen_value = screen;
     let actions_for_view = actions.clone();
@@ -833,6 +909,15 @@ pub fn App() -> impl IntoElement {
                             actions_for_view.clone(),
                         )
                         .into_element(),
+                        Screen::Settings => screens::settings(
+                            language_value,
+                            theme_mode,
+                            settings_state,
+                            settings_section,
+                            identity_for_view.clone(),
+                            actions_for_view.clone(),
+                        )
+                        .into_element(),
                         Screen::Workspace => screens::workspace(
                             language_value,
                             tabs,
@@ -848,6 +933,7 @@ pub fn App() -> impl IntoElement {
                             commit_summary,
                             commit_description,
                             changelist_open,
+                            settings_state,
                             actions_for_view.clone(),
                         )
                         .into_element(),

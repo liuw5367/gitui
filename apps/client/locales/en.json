@@ -239,11 +239,39 @@
     "pull": "Pull",
     "push": "Push",
     "openPalette": "Command Palette",
-    "openRepo": "Open Repository…"
+    "openRepo": "Open Repository…",
+    "settings": "Settings"
   },
   "theme": {
     "system": "Appearance: System",
     "light": "Appearance: Light",
     "dark": "Appearance: Dark"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "git": "Git",
+    "shortcuts": "Shortcuts",
+    "about": "About",
+    "credentials": "Credentials",
+    "appearance": "Appearance",
+    "appearanceHint": "Auto follows the macOS appearance.",
+    "language": "Language & region",
+    "languageHint": "Default is English. A restart may be required for menus.",
+    "switchLanguage": "Switch",
+    "fileTree": "File tree",
+    "fileTreeHint": "How changed files and repository contents are grouped.",
+    "fileTreeToggle": "Group changes by directory",
+    "onLaunch": "On launch",
+    "onLaunchHint": "Choose what opens when the app starts.",
+    "restoreSession": "Reopen tabs from the last session",
+    "updates": "Updates",
+    "updatesHint": "Check for a new release at launch or on demand.",
+    "checkNow": "Check Now",
+    "notImplemented": "Not implemented yet",
+    "savedAutomatically": "Changes are saved automatically",
+    "aboutHint": "A native Git client. macOS first; other platforms follow.",
+    "identity": "Commit identity",
+    "identityHint": "Used for commits you create; read from git config."
   }
 }

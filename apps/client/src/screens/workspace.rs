@@ -28,6 +28,7 @@ pub(crate) fn workspace(
     commit_summary: Signal<String>,
     commit_description: Signal<String>,
     changelist_open: Signal<bool>,
+    settings_state: Signal<store::Settings>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -83,6 +84,7 @@ pub(crate) fn workspace(
                     commit_summary,
                     commit_description,
                     changelist_open,
+                    settings_state,
                     actions_for_body,
                 )),
         )
@@ -105,6 +107,7 @@ fn match_body(
     commit_summary: Signal<String>,
     commit_description: Signal<String>,
     changelist_open: Signal<bool>,
+    settings_state: Signal<store::Settings>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -149,6 +152,7 @@ fn match_body(
                 commit_summary,
                 commit_description,
                 changelist_open,
+                settings_state,
                 actions,
             )
             .into_element();
@@ -172,6 +176,7 @@ fn body(
     commit_summary: Signal<String>,
     commit_description: Signal<String>,
     changelist_open: Signal<bool>,
+    settings_state: Signal<store::Settings>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -212,6 +217,7 @@ fn body(
     };
     let inspector_visible = inspector_open.get_untracked();
     let tab_for_changes = tab.clone();
+    let group_by_directory = settings_state.get_untracked().file_tree;
     let changes_actions = actions.clone();
     let history_actions = actions.clone();
     let inspector_actions = actions.clone();
@@ -251,6 +257,7 @@ fn body(
                             language,
                             tab_for_changes.clone(),
                             changelist_open,
+                            group_by_directory,
                             changes_actions.clone(),
                         )
                         .into_element(),

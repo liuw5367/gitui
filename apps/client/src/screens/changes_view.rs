@@ -19,6 +19,7 @@ pub(crate) fn changes_view(
     language: Signal<SharedString>,
     tab: Tab,
     changelist_open: Signal<bool>,
+    group_by_directory: bool,
     actions: Actions,
 ) -> impl IntoElement {
     let total = tab.changes.len();
@@ -42,6 +43,7 @@ pub(crate) fn changes_view(
             staged,
             total,
             changelist_open,
+            group_by_directory,
             actions,
         ))
         .child(
@@ -112,6 +114,7 @@ fn changes_list(
     staged_count: usize,
     total: usize,
     changelist_open: Signal<bool>,
+    group_by_directory: bool,
     actions: Actions,
 ) -> impl IntoElement {
     let select_change = actions.select_change.clone();
@@ -139,7 +142,7 @@ fn changes_list(
         let mut current_directory = String::new();
         for (index, entry) in entries {
             let directory = entry.directory().to_string();
-            if directory != current_directory {
+            if group_by_directory && directory != current_directory {
                 current_directory = directory.clone();
                 rows.push(
                     view()

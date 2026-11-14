@@ -13,7 +13,7 @@ const MAX_ROWS: usize = 9;
 
 /// 面板里的命令（顺序即显示顺序）。每条的 `id` 由 `Actions::run_command` 处理；
 /// 未接入的动作不列在这里。
-pub(crate) const COMMANDS: [(&str, &str, &str); 14] = [
+pub(crate) const COMMANDS: [(&str, &str, &str); 15] = [
     ("open", "command.openRepo", "⌘O"),
     ("openPalette", "command.openPalette", "⌘P"),
     ("closeTab", "command.closeTab", "⌘W"),
@@ -28,6 +28,7 @@ pub(crate) const COMMANDS: [(&str, &str, &str); 14] = [
     ("repoManager", "command.repoManager", ""),
     ("toggleLanguage", "command.toggleLanguage", ""),
     ("toggleTheme", "command.toggleTheme", "⇧⌘A"),
+    ("settings", "command.settings", "⌘,"),
 ];
 
 /// 命令列表：`COMMANDS` 的 [`Command`] 视图。
