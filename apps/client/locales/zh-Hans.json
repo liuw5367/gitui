@@ -161,18 +161,34 @@
     "hint": "选择两个提交进行对比",
     "clear": "清除",
     "range": "%{from} → %{to}",
-    "withWorkingTree": "与工作区对比"
+    "withWorkingTree": "与工作区对比",
+    "pick": "选择两个引用",
+    "swap": "交换"
   },
   "files": {
     "title": "文件",
     "changes": "改动",
-    "info": "信息",
+    "info": {
+      "sha": "提交",
+      "tree": "树",
+      "parents": "父提交",
+      "author": "作者",
+      "authored": "创作时间",
+      "committer": "提交者",
+      "committed": "提交时间",
+      "refs": "引用"
+    },
     "atCommit": "提交 %{short}",
     "empty": "没有文件",
     "copyPath": "复制路径",
     "openInEditor": "在编辑器中打开",
     "source": "源码",
-    "blame": "追溯"
+    "blame": "追溯",
+    "blameHint": "选择一个文件查看逐行归属",
+    "history": "文件历史",
+    "copySha": "复制 SHA",
+    "cherryPick": "拣选",
+    "revert": "回滚"
   },
   "changes": {
     "staged": "已暂存",

@@ -37,6 +37,39 @@ impl Operation {
     }
 }
 
+/// 一个提交的完整元信息（设计板 08 的 Info 页）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CommitDetails {
+    pub sha: String,
+    pub short: String,
+    pub tree: String,
+    pub parents: Vec<String>,
+    pub author: String,
+    pub author_email: String,
+    /// UTC 秒。
+    pub authored_at: i64,
+    pub committer: String,
+    pub committer_email: String,
+    pub committed_at: i64,
+    pub subject: String,
+    /// 说明正文（不含首行）。
+    pub body: String,
+    pub refs: Vec<String>,
+}
+
+/// blame 的一行。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BlameLine {
+    pub sha: String,
+    pub short: String,
+    pub author: String,
+    /// UTC 秒。
+    pub timestamp: i64,
+    /// 行号（从 1 开始）。
+    pub line: u32,
+    pub text: String,
+}
+
 /// 一条 reflog 记录。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReflogEntry {
@@ -340,6 +373,115 @@ impl Repo {
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
         let output = run_git(&self.root, &["status", "--porcelain=v1", "-z"])?;
         return parse_status(&output);
+    }
+
+    /// 一个提交的完整元信息。
+    pub fn commit_details(&self, sha: &str) -> Result<CommitDetails, GitError> {
+        let format = "--pretty=format:%H%x1f%h%x1f%T%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b%x1f%D";
+        let output = run_git(&self.root, &["show", "-s", "--date=unix", format, sha])?;
+        let text = String::from_utf8_lossy(&output);
+        let mut fields = text.split('\u{1f}');
+        let mut next = || fields.next().unwrap_or("").to_string();
+        let details = CommitDetails {
+            sha: next(),
+            short: next(),
+            tree: next(),
+            parents: next()
+                .split_whitespace()
+                .map(|parent| parent.to_string())
+                .collect(),
+            author: next(),
+            author_email: next(),
+            authored_at: next().parse().unwrap_or(0),
+            committer: next(),
+            committer_email: next(),
+            committed_at: next().parse().unwrap_or(0),
+            subject: next(),
+            body: next().trim().to_string(),
+            refs: next()
+                .split(',')
+                .map(|reference| reference.trim().to_string())
+                .filter(|reference| !reference.is_empty())
+                .collect(),
+        };
+        return Ok(details);
+    }
+
+    /// 两个引用之间的提交列表（`base..target`，包含 target 一侧）。
+    pub fn commits_between(&self, base: &str, target: &str) -> Result<Vec<Commit>, GitError> {
+        let range = format!("{}..{}", base, target);
+        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
+        let output = run_git(
+            &self.root,
+            &["log", "--date=unix", format, range.as_str()],
+        )?;
+        return parse_log(&String::from_utf8_lossy(&output));
+    }
+
+    /// 一个文件的逐行归属（`git blame --line-porcelain`）。
+    pub fn blame(&self, path: &str) -> Result<Vec<BlameLine>, GitError> {
+        let output = run_git(
+            &self.root,
+            &["blame", "--line-porcelain", "--", path],
+        )?;
+        let text = String::from_utf8_lossy(&output);
+        let mut lines: Vec<BlameLine> = Vec::new();
+        let mut sha = String::new();
+        let mut author = String::new();
+        let mut timestamp = 0;
+        let mut line_number = 0;
+        for raw in text.lines() {
+            if raw.starts_with('\t') {
+                lines.push(BlameLine {
+                    sha: sha.clone(),
+                    short: sha.chars().take(7).collect(),
+                    author: author.clone(),
+                    timestamp,
+                    line: line_number,
+                    text: raw.get(1..).unwrap_or("").to_string(),
+                });
+                continue;
+            }
+            if let Some(value) = raw.strip_prefix("author ") {
+                author = value.to_string();
+                continue;
+            }
+            if let Some(value) = raw.strip_prefix("author-time ") {
+                timestamp = value.parse().unwrap_or(0);
+                continue;
+            }
+            // 头部行：`<sha> <orig-line> <final-line> [<group-size>]`。
+            let mut parts = raw.split(' ');
+            let maybe_sha = parts.next().unwrap_or("");
+            if maybe_sha.len() == 40 && maybe_sha.chars().all(|c| c.is_ascii_hexdigit()) {
+                sha = maybe_sha.to_string();
+                let _orig = parts.next();
+                line_number = parts
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(line_number);
+            }
+        }
+        return Ok(lines);
+    }
+
+    /// 一个文件的历史（跟随重命名）。
+    pub fn file_history(&self, path: &str, limit: usize) -> Result<Vec<Commit>, GitError> {
+        let limit_arg = format!("-{}", limit.max(1));
+        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
+        let output = run_git(
+            &self.root,
+            &[
+                "log",
+                "--follow",
+                "--date=unix",
+                limit_arg.as_str(),
+                format,
+                "--",
+                path,
+            ],
+        )?;
+        return parse_log(&String::from_utf8_lossy(&output));
     }
 
     /// 读取当前分支的 reflog（最近的在前）。
@@ -1464,6 +1606,80 @@ mod tests {
         assert_eq!(after[0].action, "reset");
         assert_eq!(after[0].sha, previous.sha);
         assert_ne!(head.sha, previous.sha);
+    }
+
+    #[test]
+    fn commit_details_expose_metadata_and_parents() {
+        let (_guard, path) = fixture("details", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("second", "More detail here.").expect("commit");
+
+        let head = repo.log(1, "").expect("log").remove(0);
+        let details = repo.commit_details(&head.sha).expect("details");
+        assert_eq!(details.sha, head.sha);
+        assert_eq!(details.short.len(), 7);
+        assert_eq!(details.tree.len(), 40);
+        assert_eq!(details.parents.len(), 1);
+        assert_eq!(details.parents[0].len(), 40);
+        assert_eq!(details.subject, "second");
+        assert!(details.body.contains("More detail here."));
+        assert!(!details.author.is_empty());
+        assert!(details.authored_at > 0);
+        assert!(details.committed_at > 0);
+    }
+
+    #[test]
+    fn commits_between_lists_only_the_range() {
+        let (_guard, path) = fixture("range", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        let first = repo.log(1, "").expect("log").remove(0).sha;
+        for message in ["second", "third"] {
+            std::fs::write(repo.root().join("a.txt"), format!("{message}\n")).expect("write");
+            repo.stage_all().expect("stage");
+            repo.commit(message, "").expect("commit");
+        }
+        let head = repo.log(1, "").expect("log").remove(0).sha;
+        let range = repo.commits_between(&first, &head).expect("range");
+        let summaries: Vec<&str> = range.iter().map(|commit| commit.summary.as_str()).collect();
+        assert_eq!(summaries, vec!["third", "second"]);
+    }
+
+    #[test]
+    fn blame_reports_lines_and_authors() {
+        let (_guard, path) = fixture("blame", &[("a.txt", "one\ntwo\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "one\ntwo\nthree\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("add third", "").expect("commit");
+
+        let lines = repo.blame("a.txt").expect("blame");
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].text, "one");
+        assert_eq!(lines[2].text, "three");
+        assert_eq!(lines[0].line, 1);
+        assert_eq!(lines[2].line, 3);
+        assert_eq!(lines[0].short.len(), 7);
+        assert!(!lines[0].author.is_empty());
+        assert!(lines[0].timestamp > 0);
+        // 第三行来自后一次提交，SHA 应与前两行不同。
+        assert_ne!(lines[0].sha, lines[2].sha);
+    }
+
+    #[test]
+    fn file_history_follows_the_path() {
+        let (_guard, path) = fixture("filehist", &[("a.txt", "one\n"), ("b.txt", "b\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "one\ntwo\n").expect("write");
+        std::fs::write(repo.root().join("b.txt"), "b\nc\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("touch both", "").expect("commit");
+
+        let history = repo.file_history("a.txt", 10).expect("history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].summary, "touch both");
+        assert_eq!(history[1].summary, "first");
     }
 
     #[test]

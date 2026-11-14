@@ -1,8 +1,11 @@
-//! 提交文件面板（设计板 18 右侧 `.insp`）：列出选中提交改动的文件，点一行看该文件
-//! 在提交里的补丁。
+//! 提交检查器（设计板 08 / 18 / 19）：Files / Info / Blame 三个页签。
 //!
-//! 宽度 320；顶部是提交摘要与元信息，中间是文件列表，底部是复制路径与在编辑器打开
-//! （P2 只有复制路径可用）。
+//! - Files：选中提交改动的文件（numstat，含 +/−），点一行看该文件的补丁；
+//! - Info：提交元信息（SHA、tree、父提交、作者/提交者与时间、引用）与动作入口
+//!   （当前只有复制 SHA 之外的入口标注未实现）；
+//! - Blame：选中文件的逐行归属，同时列出该文件的历史。
+//!
+//! 宽度 320，与设计稿 `.insp` 一致。
 
 use crate::design::{self, metrics};
 use crate::i18n;
@@ -14,15 +17,33 @@ use nsh_core::prelude::*;
 /// 面板宽度（设计板 `.insp`）。
 pub(crate) const WIDTH: f32 = 320.0;
 
+/// 检查器的页签（设计板 08 / 18 / 19）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum InspectorTab {
+    Files,
+    Info,
+    Blame,
+}
+
+impl InspectorTab {
+    fn key(self) -> &'static str {
+        return match self {
+            InspectorTab::Files => "files.title",
+            InspectorTab::Info => "files.info",
+            InspectorTab::Blame => "files.blame",
+        };
+    }
+}
+
 pub(crate) fn inspector(
     language: Signal<SharedString>,
     tab: Tab,
+    selected_tab: Signal<InspectorTab>,
+    set_tab: std::sync::Arc<dyn Fn(InspectorTab)>,
     actions: Actions,
 ) -> impl IntoElement {
     let select_file = actions.select_file.clone();
     let commit = tab.selected_commit().cloned();
-    let files = tab.files.clone();
-    let selected = tab.selected_file;
     let now = store::now_unix();
     let summary = commit
         .as_ref()
@@ -40,6 +61,7 @@ pub(crate) fn inspector(
         .as_ref()
         .and_then(|commit| commit.date.parse::<i64>().ok())
         .unwrap_or(0);
+    let tab_for_body = tab.clone();
     return view()
         .w(px(WIDTH))
         .h_full()
@@ -61,6 +83,7 @@ pub(crate) fn inspector(
                     text(summary)
                         .text_size(px(13.0))
                         .font_weight(FontWeight(600))
+                        .line_height(px(17.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
@@ -73,10 +96,12 @@ pub(crate) fn inspector(
                     ))
                     .text_size(px(9.5))
                     .font_family("SF Mono")
+                    .line_height(px(13.0))
                     .text_color(move || design::text3()),
                 )
                 .child(
                     view()
+                        .mt(px(2.0))
                         .h(px(18.0))
                         .px(px(5.0))
                         .items_center()
@@ -91,6 +116,7 @@ pub(crate) fn inspector(
                                 )
                             })
                             .text_size(px(9.5))
+                            .line_height(px(12.0))
                             .text_color(move || design::accent()),
                         ),
                 ),
@@ -105,98 +131,34 @@ pub(crate) fn inspector(
                 .px(px(12.0))
                 .border_b_1()
                 .border_color(move || design::line_soft())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "files.changes"))
-                        .text_size(px(10.5))
-                        .font_weight(FontWeight(600))
-                        .text_color(move || design::text()),
-                )
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "files.title"))
-                        .text_size(px(10.5))
-                        .text_color(move || design::text3()),
-                )
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "files.info"))
-                        .text_size(px(10.5))
-                        .text_color(move || design::text3()),
-                ),
+                .child(inspector_tab(
+                    language,
+                    InspectorTab::Files,
+                    selected_tab,
+                    set_tab.clone(),
+                ))
+                .child(inspector_tab(
+                    language,
+                    InspectorTab::Info,
+                    selected_tab,
+                    set_tab.clone(),
+                ))
+                .child(inspector_tab(
+                    language,
+                    InspectorTab::Blame,
+                    selected_tab,
+                    set_tab.clone(),
+                )),
         )
-        .child(
-            view().w_full().flex_1().min_h_0().child(
-                scroll().w_full().h_full().child(
-                    view()
-                        .w_full()
-                        .py(px(4.0))
-                        .px(px(6.0))
-                        .flex_col()
-                        .child(if files.is_empty() {
-                            view()
-                                .w_full()
-                                .h(px(40.0))
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    text(move || {
-                                        i18n::t(language.get().as_str(), "files.empty")
-                                    })
-                                    .text_size(px(10.5))
-                                    .text_color(move || design::text3()),
-                                )
-                                .into_element()
-                        } else {
-                            let mut rows: Vec<AnyElement> = Vec::new();
-                            for (index, file) in files.iter().enumerate() {
-                                let select_file = select_file.clone();
-                                let path = file.path.clone();
-                                let additions = file.additions;
-                                let deletions = file.deletions;
-                                let is_selected = selected == Some(index);
-                                rows.push(
-                                    view()
-                                        .w_full()
-                                        .h(px(24.0))
-                                        .px(px(6.0))
-                                        .flex_row()
-                                        .items_center()
-                                        .gap(px(6.0))
-                                        .rounded(px(4.0))
-                                        .bg(move || {
-                                            if is_selected {
-                                                design::selected()
-                                            } else {
-                                                AdaptiveColor::TRANSPARENT
-                                            }
-                                        })
-                                        .hover(|style| style.bg(move || design::hover()))
-                                        .on_press(move || select_file(index))
-                                        .child(widgets::icon("file", 11.0, design::text3))
-                                        .child(
-                                            text(path)
-                                                .flex_1()
-                                                .text_size(px(10.5))
-                                                .font_family("SF Mono")
-                                                .text_color(move || design::text())
-                                                .text_overflow(nsh_core::EllipsizeMode::Tail),
-                                        )
-                                        .child(
-                                            text(format!("+{}", additions))
-                                                .text_size(px(9.5))
-                                                .text_color(move || design::add_fg()),
-                                        )
-                                        .child(
-                                            text(format!("−{}", deletions))
-                                                .text_size(px(9.5))
-                                                .text_color(move || design::del_fg()),
-                                        )
-                                        .into_element(),
-                                );
-                            }
-                            view().w_full().flex_col().child(rows).into_element()
-                        }),
-                ),
-            ),
-        )
+        .child(dynamic(move || -> AnyElement {
+            match selected_tab.get() {
+                InspectorTab::Files => {
+                    files_body(language, tab_for_body.clone(), select_file.clone()).into_element()
+                }
+                InspectorTab::Info => info_body(language, tab_for_body.clone()).into_element(),
+                InspectorTab::Blame => blame_body(language, tab_for_body.clone()).into_element(),
+            }
+        }))
         .child(
             view()
                 .w_full()
@@ -220,6 +182,7 @@ pub(crate) fn inspector(
                         .child(
                             text(move || i18n::t(language.get().as_str(), "files.copyPath"))
                                 .text_size(px(11.0))
+                                .line_height(px(14.0))
                                 .text_color(move || design::text()),
                         ),
                 )
@@ -227,7 +190,359 @@ pub(crate) fn inspector(
                 .child(
                     text(move || i18n::t(language.get().as_str(), "files.openInEditor"))
                         .text_size(px(10.0))
+                        .line_height(px(13.0))
                         .text_color(move || design::text3()),
                 ),
         );
+}
+
+fn inspector_tab(
+    language: Signal<SharedString>,
+    which: InspectorTab,
+    selected: Signal<InspectorTab>,
+    set_selected: std::sync::Arc<dyn Fn(InspectorTab)>,
+) -> impl IntoElement {
+    return view()
+        .h(px(20.0))
+        .items_center()
+        .rounded(px(4.0))
+        .on_press(move || set_selected(which))
+        .child(
+            text(move || i18n::t(language.get().as_str(), which.key()))
+                .text_size(px(10.5))
+                .line_height(px(13.0))
+                .text_color(move || {
+                    if selected.get() == which {
+                        design::text()
+                    } else {
+                        design::text3()
+                    }
+                }),
+        );
+}
+
+fn files_body(
+    language: Signal<SharedString>,
+    tab: Tab,
+    select_file: std::sync::Arc<dyn Fn(usize)>,
+) -> AnyElement {
+    let files = tab.files.clone();
+    let selected = tab.selected_file;
+    return scroll().w_full().h_full().child(
+        view()
+            .w_full()
+            .py(px(4.0))
+            .px(px(6.0))
+            .flex_col()
+            .child(if files.is_empty() {
+                view()
+                    .w_full()
+                    .h(px(40.0))
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "files.empty"))
+                            .text_size(px(10.5))
+                            .text_color(move || design::text3()),
+                    )
+                    .into_element()
+            } else {
+                let mut rows: Vec<AnyElement> = Vec::new();
+                for (index, file) in files.iter().enumerate() {
+                    let select_file = select_file.clone();
+                    let path = file.path.clone();
+                    let additions = file.additions;
+                    let deletions = file.deletions;
+                    let is_selected = selected == Some(index);
+                    rows.push(
+                        view()
+                            .w_full()
+                            .h(px(24.0))
+                            .px(px(6.0))
+                            .flex_row()
+                            .items_center()
+                            .gap(px(6.0))
+                            .rounded(px(4.0))
+                            .bg(move || {
+                                if is_selected {
+                                    design::selected()
+                                } else {
+                                    AdaptiveColor::TRANSPARENT
+                                }
+                            })
+                            .hover(|style| style.bg(move || design::hover()))
+                            .on_press(move || select_file(index))
+                            .child(widgets::icon("file", 11.0, design::text3))
+                            .child(
+                                text(path)
+                                    .flex_1()
+                                    .text_size(px(10.5))
+                                    .font_family("SF Mono")
+                                    .line_height(px(14.0))
+                                    .text_color(move || design::text())
+                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+                            )
+                            .child(
+                                text(format!("+{}", additions))
+                                    .text_size(px(9.5))
+                                    .text_color(move || design::add_fg()),
+                            )
+                            .child(
+                                text(format!("−{}", deletions))
+                                    .text_size(px(9.5))
+                                    .text_color(move || design::del_fg()),
+                            )
+                            .into_element(),
+                    );
+                }
+                view().w_full().flex_col().child(rows).into_element()
+            }),
+    )
+    .into_element();
+}
+
+fn info_body(language: Signal<SharedString>, tab: Tab) -> AnyElement {
+    let Some(details) = tab.details.clone() else {
+        return view()
+            .w_full()
+            .h(px(40.0))
+            .items_center()
+            .justify_center()
+            .child(
+                text(move || i18n::t(language.get().as_str(), "files.empty"))
+                    .text_size(px(10.5))
+                    .text_color(move || design::text3()),
+            )
+            .into_element();
+    };
+    let now = store::now_unix();
+    let mut rows: Vec<AnyElement> = Vec::new();
+    let parents = if details.parents.is_empty() {
+        "—".to_string()
+    } else {
+        details
+            .parents
+            .iter()
+            .map(|parent| parent.chars().take(7).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let refs = if details.refs.is_empty() {
+        "—".to_string()
+    } else {
+        details.refs.join(", ")
+    };
+    for (key, value) in [
+        ("files.info.sha", details.sha.clone()),
+        ("files.info.tree", details.tree.chars().take(7).collect()),
+        ("files.info.parents", parents),
+        (
+            "files.info.author",
+            format!("{} <{}>", details.author, details.author_email),
+        ),
+        (
+            "files.info.authored",
+            i18n::relative_time(language.get_untracked().as_str(), details.authored_at, now),
+        ),
+        (
+            "files.info.committer",
+            format!("{} <{}>", details.committer, details.committer_email),
+        ),
+        (
+            "files.info.committed",
+            i18n::relative_time(language.get_untracked().as_str(), details.committed_at, now),
+        ),
+        ("files.info.refs", refs),
+    ] {
+        rows.push(
+            view()
+                .w_full()
+                .py(px(3.0))
+                .flex_col()
+                .gap(px(1.0))
+                .child(
+                    text(move || i18n::t(language.get_untracked().as_str(), key))
+                        .text_size(px(9.0))
+                        .line_height(px(12.0))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text(value)
+                        .text_size(px(10.0))
+                        .font_family("SF Mono")
+                        .line_height(px(14.0))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .into_element(),
+        );
+    }
+    return scroll()
+        .w_full()
+        .h_full()
+        .child(
+            view()
+                .w_full()
+                .px(px(12.0))
+                .py(px(8.0))
+                .flex_col()
+                .child(rows)
+                .child(
+                    view()
+                        .w_full()
+                        .mt(px(6.0))
+                        .pt(px(6.0))
+                        .flex_wrap()
+                        .gap(px(6.0))
+                        .border_t_1()
+                        .border_color(move || design::line())
+                        .child(disabled_action(language, "files.copySha"))
+                        .child(disabled_action(language, "files.cherryPick"))
+                        .child(disabled_action(language, "files.revert")),
+                ),
+        )
+        .into_element();
+}
+
+fn disabled_action(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
+    return view()
+        .h(px(metrics::BUTTON_SMALL_H))
+        .px(px(8.0))
+        .items_center()
+        .rounded(px(5.0))
+        .border_1()
+        .border_color(move || design::btn_border())
+        .bg(move || design::btn())
+        .opacity(0.45)
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(10.5))
+                .line_height(px(13.0))
+                .text_color(move || design::text()),
+        );
+}
+
+fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
+    let now = store::now_unix();
+    let lines = tab.blame.clone();
+    let history = tab.file_history.clone();
+    let mut rows: Vec<AnyElement> = Vec::new();
+    for line in &lines {
+        let short = line.short.clone();
+        let author = line.author.clone();
+        let timestamp = line.timestamp;
+        let number = line.line;
+        let text_value = line.text.clone();
+        rows.push(
+            view()
+                .w_full()
+                .h(px(18.0))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    text(short)
+                        .w(px(52.0))
+                        .text_size(px(9.0))
+                        .font_family("SF Mono")
+                        .line_height(px(12.0))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text(number.to_string())
+                        .w(px(26.0))
+                        .text_size(px(9.0))
+                        .font_family("SF Mono")
+                        .line_height(px(12.0))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text(text_value)
+                        .flex_1()
+                        .text_size(px(10.0))
+                        .font_family("SF Mono")
+                        .line_height(px(13.0))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Clip),
+                )
+                .into_element(),
+        );
+        let _ = (author, timestamp);
+    }
+    let mut history_rows: Vec<AnyElement> = Vec::new();
+    for commit in history.iter().take(12) {
+        let summary = commit.summary.clone();
+        let short = commit.short.clone();
+        let timestamp = commit.date.parse::<i64>().unwrap_or(0);
+        history_rows.push(
+            view()
+                .w_full()
+                .h(px(20.0))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    text(short)
+                        .text_size(px(9.0))
+                        .font_family("SF Mono")
+                        .line_height(px(12.0))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text(summary)
+                        .flex_1()
+                        .text_size(px(10.0))
+                        .line_height(px(13.0))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(move || {
+                        i18n::relative_time(language.get().as_str(), timestamp, now)
+                    })
+                    .text_size(px(9.0))
+                    .text_color(move || design::text3()),
+                )
+                .into_element(),
+        );
+    }
+    if lines.is_empty() {
+        return scroll().w_full().h_full().child(
+            view()
+                .w_full()
+                .h(px(40.0))
+                .items_center()
+                .justify_center()
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "files.blameHint"))
+                        .text_size(px(10.5))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text3()),
+                ),
+        );
+    }
+    return scroll().w_full().h_full().child(
+        view()
+            .w_full()
+            .px(px(6.0))
+            .py(px(4.0))
+            .flex_col()
+            .child(rows)
+            .child(
+                view()
+                    .w_full()
+                    .mt(px(6.0))
+                    .pt(px(4.0))
+                    .border_t_1()
+                    .border_color(move || design::line())
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "files.history"))
+                            .text_size(px(9.5))
+                            .font_weight(FontWeight(600))
+                            .line_height(px(13.0))
+                            .text_color(move || design::text3()),
+                    )
+                    .child(history_rows),
+            ),
+    );
 }

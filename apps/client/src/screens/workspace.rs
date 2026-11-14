@@ -235,6 +235,11 @@ fn body(
     };
     let inspector_visible = inspector_open.get_untracked();
     let tab_for_changes = tab.clone();
+    let inspector_tab = signal(inspector::InspectorTab::Files);
+    let set_inspector_tab = {
+        let inspector_tab = inspector_tab;
+        std::sync::Arc::new(move |next: inspector::InspectorTab| inspector_tab.set(next))
+    };
     let refs_tab = signal(crate::screens::RefsTab::Refs);
     let set_refs_tab = std::sync::Arc::new(move |next: crate::screens::RefsTab| refs_tab.set(next));
     let group_by_directory = settings_state.get_untracked().file_tree;
@@ -302,6 +307,8 @@ fn body(
                 crate::Mode::History if inspector_visible => inspector::inspector(
                     language,
                     tab_for_inspector.clone(),
+                    inspector_tab,
+                    set_inspector_tab.clone(),
                     inspector_actions.clone(),
                 )
                 .into_element(),

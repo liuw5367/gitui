@@ -89,6 +89,7 @@ pub(crate) struct Actions {
     pub(crate) propose_plan: Arc<dyn Fn()>,
     pub(crate) run_agent_step: Arc<dyn Fn(usize)>,
     pub(crate) set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)>,
+    pub(crate) set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -939,6 +940,19 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |base: Option<String>, target: Option<String>| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::set_compare_refs(tab, base, target);
+                tabs.set(list);
+            }
+        })
+    };
+
     let set_mode_agent: Arc<dyn Fn()> = {
         let mode = mode;
         Arc::new(move || mode.set(Mode::Agent))
@@ -979,6 +993,7 @@ pub fn App() -> impl IntoElement {
         propose_plan,
         run_agent_step,
         set_agent_permission,
+        set_compare_refs,
         apply_filter,
         clear_filter,
         clone_repository,

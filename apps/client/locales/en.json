@@ -161,18 +161,34 @@
     "hint": "Select two commits to compare",
     "clear": "Clear",
     "range": "%{from} → %{to}",
-    "withWorkingTree": "Compare with Working Tree"
+    "withWorkingTree": "Compare with Working Tree",
+    "pick": "Pick two refs",
+    "swap": "Swap"
   },
   "files": {
     "title": "Files",
     "changes": "Changes",
-    "info": "Info",
+    "info": {
+      "sha": "Commit",
+      "tree": "Tree",
+      "parents": "Parents",
+      "author": "Author",
+      "authored": "Authored",
+      "committer": "Committer",
+      "committed": "Committed",
+      "refs": "Refs"
+    },
     "atCommit": "At commit %{short}",
     "empty": "No files",
     "copyPath": "Copy Path",
     "openInEditor": "Open in Editor",
     "source": "Source",
-    "blame": "Blame"
+    "blame": "Blame",
+    "blameHint": "Select a file to see its blame",
+    "history": "File history",
+    "copySha": "Copy SHA",
+    "cherryPick": "Cherry-pick",
+    "revert": "Revert"
   },
   "changes": {
     "staged": "Staged",

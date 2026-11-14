@@ -56,6 +56,16 @@ pub struct Tab {
     pub sync_failed: bool,
     /// reflog（最近的在前）。
     pub reflog: Vec<git::ReflogEntry>,
+    /// 选中提交的完整元信息（Info 页）。
+    pub details: Option<git::CommitDetails>,
+    /// 选中文件的 blame 行。
+    pub blame: Vec<git::BlameLine>,
+    /// 选中文件的历史。
+    pub file_history: Vec<Commit>,
+    /// 对比引用的起点（`None` 表示未开启 Compare refs）。
+    pub compare_base: Option<String>,
+    /// 对比引用的终点。
+    pub compare_target: Option<String>,
     /// 提交说明的两段文本。
     pub summary: String,
     pub description: String,
@@ -214,6 +224,9 @@ pub fn select_commit(tab: &mut Tab, index: usize) {
     };
     tab.patch = repo.patch(&sha).unwrap_or_default();
     tab.files = repo.numstat(&sha).unwrap_or_default();
+    tab.details = repo.commit_details(&sha).ok();
+    tab.blame.clear();
+    tab.file_history.clear();
     tab.error = None;
 }
 
@@ -239,6 +252,11 @@ pub fn select_file(tab: &mut Tab, index: usize) {
         Ok(patch) => {
             tab.selected_file = Some(index);
             tab.file_patch = Some((file.path.clone(), patch));
+            // blame 与文件历史只读，失败时留空而不是报错（例如文件在新提交里不存在）。
+            tab.blame = repo.blame(file.path.as_str()).unwrap_or_default();
+            tab.file_history = repo
+                .file_history(file.path.as_str(), 50)
+                .unwrap_or_default();
         }
         Err(error) => tab.error = Some(error.detail()),
     }
@@ -347,6 +365,45 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
         repo.file_diff(entry.path.as_str(), entry.staged)
             .unwrap_or_default()
     };
+}
+
+/// 设置对比引用的两端；任一端为空表示关闭对比。
+pub fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Option<String>) {
+    let (Some(base), Some(target)) = (base.clone(), target.clone()) else {
+        // 任一端为空表示退出对比：把历史恢复到当前分支的完整列表。
+        tab.compare_base = None;
+        tab.compare_target = None;
+        let filter = tab.filter.clone();
+        let refreshed = load_tab(tab.path.as_str(), &filter);
+        tab.commits = refreshed.commits;
+        tab.selected = refreshed.selected;
+        tab.patch = refreshed.patch;
+        tab.files = refreshed.files;
+        tab.details = refreshed.details;
+        tab.blame = refreshed.blame;
+        tab.file_history = refreshed.file_history;
+        return;
+    };
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.commits_between(base.as_str(), target.as_str()) {
+        Ok(commits) => {
+            tab.commits = commits;
+            tab.compare_base = Some(base);
+            tab.compare_target = Some(target);
+            tab.selected = if tab.commits.is_empty() { None } else { Some(0) };
+            if let Some(index) = tab.selected {
+                select_commit(tab, index);
+            }
+            tab.error = None;
+        }
+        Err(error) => tab.error = Some(error.detail()),
+    }
 }
 
 /// 把当前分支重置到某条 reflog 记录（不可撤销，调用方需确认）。
@@ -941,6 +998,54 @@ mod tests {
             !tab.reflog.is_empty() && tab.reflog[0].action == "reset",
             "撤销本身也应留下 reflog 记录"
         );
+    }
+
+    #[test]
+    fn compare_refs_narrows_history_to_the_range() {
+        let repo = TempRepo::new("cmp");
+        let path = repo.path.display().to_string();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {:?}", args);
+        };
+        run(&["branch", "base"]);
+        std::fs::write(repo.path.join("a.txt"), "two\n").expect("write");
+        run(&["commit", "-q", "-am", "second"]);
+        std::fs::write(repo.path.join("a.txt"), "three\n").expect("write");
+        run(&["commit", "-q", "-am", "third"]);
+
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert_eq!(tab.commits.len(), 3);
+        set_compare_refs(&mut tab, Some("base".to_string()), Some("main".to_string()));
+        assert_eq!(tab.compare_base.as_deref(), Some("base"));
+        assert_eq!(tab.compare_target.as_deref(), Some("main"));
+        assert_eq!(tab.commits.len(), 2, "base..main 应只含两个提交");
+        assert_eq!(tab.commits[0].summary, "third");
+        // 选中项随之更新，详情与文件列表跟着刷新。
+        assert!(tab.details.is_some());
+        assert!(!tab.files.is_empty());
+
+        // 传空表示退出对比，历史恢复。
+        set_compare_refs(&mut tab, None, None);
+        assert!(tab.compare_base.is_none());
+        assert_eq!(tab.commits.len(), 3);
+    }
+
+    #[test]
+    fn selecting_a_file_fills_blame_and_history() {
+        let repo = TempRepo::new("blame");
+        let path = repo.path.display().to_string();
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert!(!tab.files.is_empty());
+        select_file(&mut tab, 0);
+        assert!(!tab.blame.is_empty(), "选中文件后应有 blame 行");
+        assert_eq!(tab.blame[0].text, "one");
+        assert!(!tab.file_history.is_empty(), "选中文件后应有文件历史");
     }
 
     #[test]

@@ -68,6 +68,19 @@ pub(crate) fn history(
     let authors = tab.authors.clone();
     let branch_value = tab.branch.clone();
     let language_value = language;
+    // Compare refs 的可选项：当前分支 + 本地分支 + 远程 + 标签。
+    let mut refs_for_compare: Vec<String> = Vec::new();
+    for branch in &tab.refs.branches {
+        refs_for_compare.push(branch.name.clone());
+    }
+    for remote in &tab.refs.remotes {
+        refs_for_compare.push(remote.clone());
+    }
+    for tag in &tab.refs.tags {
+        refs_for_compare.push(tag.clone());
+    }
+    let compare_pair = (tab.compare_base.clone(), tab.compare_target.clone());
+    let set_compare_refs = actions.set_compare_refs.clone();
 
     return view()
         .w_full()
@@ -86,6 +99,9 @@ pub(crate) fn history(
             filter_when,
             filter_open,
             compare_mode,
+            refs_for_compare,
+            compare_pair,
+            set_compare_refs,
             actions.clone(),
         ))
         .child(
@@ -263,6 +279,9 @@ fn hist_bar(
     filter_when: Signal<SharedString>,
     filter_open: Signal<bool>,
     compare_mode: Signal<bool>,
+    refs_list: Vec<String>,
+    compare_pair: (Option<String>, Option<String>),
+    set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
     actions: Actions,
 ) -> impl IntoElement {
     let clear = actions.clear_filter.clone();
@@ -356,6 +375,7 @@ fn hist_bar(
                         }),
                 ),
         )
+        .child(compare_refs(language, refs_list, compare_pair, set_compare_refs))
         .child(
             view()
                 .h(px(20.0))
@@ -651,4 +671,149 @@ fn ref_chips(refs: Vec<String>) -> impl IntoElement {
         );
     }
     return view().flex_row().items_center().gap(px(4.0)).child(chips);
+}
+
+/// Compare refs 控件（设计板 07）：起点、终点与交换；未选择时提示从哪些引用里挑。
+fn compare_refs(
+    language: Signal<SharedString>,
+    refs: Vec<String>,
+    pair: (Option<String>, Option<String>),
+    set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
+) -> impl IntoElement {
+    let (base, target) = pair;
+    let base_value = base.clone();
+    let target_value = target.clone();
+    let has_pair = base.is_some() && target.is_some();
+    let swap_base = base.clone();
+    let swap_target = target.clone();
+    let clear_refs = set_compare_refs.clone();
+
+    // 起点、终点各用一个横向的引用列表选择：点一下循环到下一个（引用数量通常不多）。
+    let mut base_picker: Vec<AnyElement> = Vec::new();
+    let mut target_picker: Vec<AnyElement> = Vec::new();
+    for reference in refs.iter().take(6) {
+        let pick_base = set_compare_refs.clone();
+        let pick_target = set_compare_refs.clone();
+        let base_name = reference.clone();
+        let target_name = reference.clone();
+        let base_target = target_value.clone();
+        let target_base = base_value.clone();
+        let is_base = base_value.as_deref() == Some(reference.as_str());
+        let is_target = target_value.as_deref() == Some(reference.as_str());
+        base_picker.push(
+            view()
+                .h(px(16.0))
+                .px(px(4.0))
+                .items_center()
+                .rounded(px(3.0))
+                .bg(move || {
+                    if is_base {
+                        design::accent_soft()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .on_press(move || pick_base(Some(base_name.clone()), base_target.clone()))
+                .child(
+                    text(reference.clone())
+                        .text_size(px(9.0))
+                        .line_height(px(11.0))
+                        .text_color(move || design::text2()),
+                )
+                .into_element(),
+        );
+        target_picker.push(
+            view()
+                .h(px(16.0))
+                .px(px(4.0))
+                .items_center()
+                .rounded(px(3.0))
+                .bg(move || {
+                    if is_target {
+                        design::accent_soft()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .on_press(move || pick_target(target_base.clone(), Some(target_name.clone())))
+                .child(
+                    text(reference.clone())
+                        .text_size(px(9.0))
+                        .line_height(px(11.0))
+                        .text_color(move || design::text2()),
+                )
+                .into_element(),
+        );
+    }
+
+    return view()
+        .flex_row()
+        .items_center()
+        .gap(px(4.0))
+        .child(
+            text(move || {
+                i18n::t(language.get().as_str(), if has_pair { "compare.range" } else { "compare.pick" })
+            })
+            .text_size(px(9.5))
+            .text_color(move || design::text3()),
+        )
+        .child(
+            view()
+                .h(px(18.0))
+                .px(px(4.0))
+                .flex_row()
+                .items_center()
+                .gap(px(2.0))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(move || design::line_soft())
+                .child(base_picker),
+        )
+        .child(
+            text("→")
+                .text_size(px(9.5))
+                .text_color(move || design::text3()),
+        )
+        .child(
+            view()
+                .h(px(18.0))
+                .px(px(4.0))
+                .flex_row()
+                .items_center()
+                .gap(px(2.0))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(move || design::line_soft())
+                .child(target_picker),
+        )
+        .child(
+            view()
+                .h(px(16.0))
+                .px(px(4.0))
+                .items_center()
+                .rounded(px(3.0))
+                .hover(|style| style.bg(move || design::hover()))
+                .on_press(move || set_compare_refs(swap_target.clone(), swap_base.clone()))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "compare.swap"))
+                        .text_size(px(9.0))
+                        .line_height(px(11.0))
+                        .text_color(move || design::text2()),
+                ),
+        )
+        .child(
+            view()
+                .h(px(16.0))
+                .px(px(4.0))
+                .items_center()
+                .rounded(px(3.0))
+                .hover(|style| style.bg(move || design::hover()))
+                .on_press(move || clear_refs(None, None))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "compare.clear"))
+                        .text_size(px(9.0))
+                        .line_height(px(11.0))
+                        .text_color(move || design::text3()),
+                ),
+        );
 }
