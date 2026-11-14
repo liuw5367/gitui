@@ -182,9 +182,20 @@ pub(crate) fn history(
                                             .text_color(move || design::text()),
                                     )
                                     .child(
-                                        text(move || commit.get().short.clone())
-                                            .text_size(px(10.0))
-                                            .text_color(move || design::text3()),
+                                        view()
+                                            .flex_row()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                text(move || commit.get().short.clone())
+                                                    .text_size(px(9.5))
+                                                    .text_color(move || design::text3()),
+                                            )
+                                            .child(
+                                                text(move || commit.get().refs.join(" · "))
+                                                    .text_size(px(9.0))
+                                                    .text_color(move || design::primary()),
+                                            ),
                                     ),
                             )
                             .child(

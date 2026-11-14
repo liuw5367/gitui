@@ -116,6 +116,7 @@ pub struct Commit {
     pub author: String,
     pub date: String,
     pub summary: String,
+    pub refs: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,6 +156,15 @@ pub struct ReflogEntry {
     pub action: String,
     pub message: String,
     pub date: String,
+}
+
+fn parse_refs(field: &str) -> Vec<String> {
+    field
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| part.trim_start_matches("HEAD -> ").to_string())
+        .collect()
 }
 
 fn status_path(line: &str) -> Option<String> {
@@ -626,7 +636,7 @@ impl Repo {
             "log",
             "--follow",
             "--date=short",
-            "--format=%H%x1f%h%x1f%an%x1f%cd%x1f%s",
+            "--format=%H%x1f%h%x1f%an%x1f%cd%x1f%s%x1f%D",
             "-n",
             &limit.to_string(),
             "--",
@@ -634,14 +644,15 @@ impl Repo {
         ])?;
         let mut commits = Vec::new();
         for line in output.lines() {
-            let fields: Vec<&str> = line.splitn(5, '\x1f').collect();
-            if fields.len() == 5 {
+            let fields: Vec<&str> = line.splitn(6, '\x1f').collect();
+            if fields.len() == 6 {
                 commits.push(Commit {
                     sha: fields[0].to_string(),
                     short: fields[1].to_string(),
                     author: fields[2].to_string(),
                     date: fields[3].to_string(),
                     summary: fields[4].to_string(),
+                    refs: parse_refs(fields[5]),
                 });
             }
         }
@@ -654,14 +665,14 @@ impl Repo {
             "log",
             "-n",
             &limit,
-            "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s",
+            "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%D",
         ])?;
 
         Ok(output
             .lines()
             .filter_map(|line| {
                 let fields: Vec<&str> = line.split('\u{1f}').collect();
-                if fields.len() < 5 {
+                if fields.len() < 6 {
                     return None;
                 }
                 Some(Commit {
@@ -670,6 +681,7 @@ impl Repo {
                     author: fields[2].to_string(),
                     date: fields[3].to_string(),
                     summary: fields[4].to_string(),
+                    refs: parse_refs(fields[5]),
                 })
             })
             .collect())
