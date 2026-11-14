@@ -440,6 +440,9 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let palette_fetch = fetch_action.clone();
+    let palette_pull = pull_action.clone();
+    let palette_push = push_action.clone();
     let toolbar = toolbar(
         path_input,
         branch,
@@ -692,6 +695,7 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let palette_commit = commit_action.clone();
     let commit_actions = CommitActions {
         commit: commit_action,
         no_hooks: no_hooks_action,
@@ -1215,6 +1219,7 @@ pub fn App() -> impl IntoElement {
             }),
         },
     );
+    let palette_stage_all = stage_all_action.clone();
     let changes_actions = ChangesActions {
         stage_all: stage_all_action.clone(),
         unstage_all: unstage_all_action.clone(),
@@ -1628,6 +1633,31 @@ pub fn App() -> impl IntoElement {
                 let set = set_mode.clone();
                 Arc::new(move || set(Mode::Changes))
             },
+        },
+        PaletteCommand {
+            label: "Stage all",
+            hint: "git add -A",
+            action: palette_stage_all.clone(),
+        },
+        PaletteCommand {
+            label: "Commit staged",
+            hint: "commit with current summary",
+            action: palette_commit.clone(),
+        },
+        PaletteCommand {
+            label: "Fetch",
+            hint: "origin",
+            action: palette_fetch.clone(),
+        },
+        PaletteCommand {
+            label: "Pull",
+            hint: "fast-forward only",
+            action: palette_pull.clone(),
+        },
+        PaletteCommand {
+            label: "Push",
+            hint: "configured upstream",
+            action: palette_push.clone(),
         },
         PaletteCommand {
             label: "Sync",

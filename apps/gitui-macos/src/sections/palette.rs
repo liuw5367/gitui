@@ -108,7 +108,7 @@ pub(crate) fn palette_panel(
         .child(
             view()
                 .w(px(560.0))
-                .h(px(420.0))
+                .h(px(520.0))
                 .flex_col()
                 .rounded(px(10.0))
                 .bg(move || design::content())
