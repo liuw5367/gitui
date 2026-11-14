@@ -444,6 +444,7 @@ pub fn App() -> impl IntoElement {
         }
     });
     let open_push: Arc<dyn Fn()> = Arc::new(move || {
+        sync_open.set(false);
         error.set(SharedString::from(""));
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.push_preview())
@@ -534,26 +535,6 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
-    let sync_push_action = Arc::new({
-        let reload = reload_for_sync.clone();
-        move || {
-            sync_log.set(SharedString::from("Pushing origin…"));
-            match Repo::open(repo_path.get_untracked().to_string().as_str())
-                .and_then(|repo| repo.push())
-            {
-                Ok(output) => {
-                    sync_log.set(SharedString::from(output));
-                    error.set(SharedString::from(""));
-                    reload();
-                }
-                Err(err) => {
-                    sync_log.set(SharedString::from(err.to_string()));
-                    error.set(SharedString::from(err.to_string()));
-                }
-            }
-        }
-    });
-
     let open_reflog: Arc<dyn Fn()> = Arc::new({
         let repo_path = repo_path;
         let reflog_open = reflog_open;
@@ -1775,7 +1756,7 @@ pub fn App() -> impl IntoElement {
             select: sync_select,
             fetch: sync_fetch_action,
             pull: sync_pull_action,
-            push: sync_push_action,
+            push: open_push.clone(),
             close: sync_close,
         },
     );
