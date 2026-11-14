@@ -12,6 +12,8 @@ use gitui_git::Repo;
 use model::{load, load_recent, load_session, save_recent, save_session};
 use sections::{diff_view, history, statusbar, titlebar, toolbar, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
 use nsh_base::theme;
+use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
+use nsh_core::element::desktop;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -25,6 +27,12 @@ pub fn App() -> impl IntoElement {
     let tokens = nsh_base::theme_overrides(design::THEME_JSON)
         .expect("the design tokens parse");
     nsh_core::element::set_tokens(tokens);
+    let mut title_bar = TitleBarOptions::default();
+    title_bar.style = TitleBarStyle::Hidden;
+    title_bar.height = Some(Points(44.0));
+    let mut window = WindowAttributes::default();
+    window.title_bar = Some(title_bar);
+    desktop::main_window().set(window);
     let initial_path = std::env::var("GITUI_REPO").unwrap_or_else(|_| {
         std::env::current_dir()
             .unwrap_or_default()

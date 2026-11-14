@@ -1,7 +1,8 @@
 //! Window titlebar: repository tabs and local status.
 
-use crate::model::Loaded;
 use crate::design;
+use crate::model::Loaded;
+use nsh_core::element::desktop;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -19,10 +20,11 @@ pub(crate) fn titlebar(
         .bg(move || design::titlebar())
         .border_b_1()
         .border_color(move || design::line())
+        .window_drag(true)
         .child(
-            text("gitui")
-                .text_size(px(13.0))
-                .text_color(move || design::text()),
+            view()
+                .w(move || px(desktop::title_bar().left.0 + 8.0))
+                .h(px(1.0)),
         )
         .child(
             view()
