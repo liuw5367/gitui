@@ -567,7 +567,7 @@ fn reflog_list(
                 )
                 .child(
                     text(move || {
-                        i18n::relative_time(language.get().as_str(), timestamp, now)
+                        crate::dates::format(language.get().as_str(), timestamp, now)
                     })
                     .text_size(px(9.5))
                     .text_color(move || design::text3()),

@@ -59,6 +59,10 @@ pub(crate) fn settings(
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
     agent_settings: Signal<agent::Settings>,
     branches_for_agent: Vec<String>,
+    use_system_git: bool,
+    scan_folders: Vec<String>,
+    found_repos: usize,
+    add_found: std::sync::Arc<dyn Fn()>,
     set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
     set_review: std::sync::Arc<dyn Fn(u32)>,
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
@@ -90,6 +94,10 @@ pub(crate) fn settings(
                     set_permission,
                     agent_settings,
                     branches_for_agent,
+                    use_system_git,
+                    scan_folders,
+                    found_repos,
+                    add_found,
                     set_automation,
                     set_review,
                     toggle_protected,
@@ -234,6 +242,10 @@ fn main(
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
     agent_settings: Signal<agent::Settings>,
     branches_for_agent: Vec<String>,
+    use_system_git: bool,
+    scan_folders: Vec<String>,
+    found_repos: usize,
+    add_found: std::sync::Arc<dyn Fn()>,
     set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
     set_review: std::sync::Arc<dyn Fn(u32)>,
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
@@ -280,6 +292,8 @@ fn main(
                             set_file_tree.clone(),
                             set_restore.clone(),
                             actions.set_update_mode.clone(),
+                            actions.set_date_style.clone(),
+                            actions.set_date_pattern.clone(),
                             identity_text.clone(),
                             actions.open_identity.clone(),
                             actions.clear_identity.clone(),
@@ -289,7 +303,16 @@ fn main(
                             about(language, name.clone(), email.clone(), actions.clone())
                                 .into_element()
                         }
-                        Section::Git => git_page(language, git_info.clone()).into_element(),
+                        Section::Git => git_page(
+                            language,
+                            git_info.clone(),
+                            actions.clone(),
+                            use_system_git,
+                            scan_folders.clone(),
+                            found_repos,
+                            add_found.clone(),
+                        )
+                        .into_element(),
                         Section::Shortcuts => shortcuts_page(language).into_element(),
                         Section::Credentials => {
                             credentials_page(language, git_info.clone()).into_element()
@@ -320,6 +343,8 @@ fn general(
     set_file_tree: std::sync::Arc<dyn Fn(bool)>,
     set_restore_session: std::sync::Arc<dyn Fn(bool)>,
     set_update_mode: std::sync::Arc<dyn Fn(String)>,
+    set_date_style: std::sync::Arc<dyn Fn(crate::i18n::DateStyle)>,
+    set_date_pattern: std::sync::Arc<dyn Fn(String)>,
     identity_line: String,
     open_identity: std::sync::Arc<dyn Fn()>,
     clear_identity: std::sync::Arc<dyn Fn()>,
@@ -396,6 +421,123 @@ fn general(
                         move || toggle_language()
                     },
                 ))
+                .into_element(),
+        ))
+        // 日期格式：四种预设 + 自定义 pattern + 实时预览（设计板 23）。
+        .child(section_block(
+            language,
+            "settings.dates",
+            "settings.datesHint",
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(6.0))
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .gap(px(2.0))
+                        .child(
+                            DATE_STYLES
+                                .iter()
+                                .map(|style| {
+                                    let style = *style;
+                                    let active = settings_state.get_untracked().date_format
+                                        == style.id();
+                                    let set_date_style = set_date_style.clone();
+                                    let language = language;
+                                    return view()
+                                        .h(px(22.0))
+                                        .px(px(8.0))
+                                        .items_center()
+                                        .rounded(px(5.0))
+                                        .border_1()
+                                        .border_color(move || {
+                                            if active {
+                                                design::line_soft()
+                                            } else {
+                                                AdaptiveColor::TRANSPARENT
+                                            }
+                                        })
+                                        .bg(move || {
+                                            if active {
+                                                design::content()
+                                            } else {
+                                                AdaptiveColor::TRANSPARENT
+                                            }
+                                        })
+                                        .on_press(move || set_date_style(style))
+                                        .child(
+                                            text(move || {
+                                                i18n::t(
+                                                    language.get().as_str(),
+                                                    style.key(),
+                                                )
+                                            })
+                                            .text_size(px(10.0))
+                                            .line_height(px(13.0))
+                                            .text_color(move || {
+                                                if active {
+                                                    design::text()
+                                                } else {
+                                                    design::text3()
+                                                }
+                                            }),
+                                        )
+                                        .into_element();
+                                })
+                                .collect::<Vec<AnyElement>>(),
+                        ),
+                )
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(metrics::FIELD_H))
+                        .px(px(8.0))
+                        .items_center()
+                        .rounded(px(metrics::RADIUS_CONTROL))
+                        .border_1()
+                        .border_color(move || design::field_border())
+                        .bg(move || design::field())
+                        .child(
+                            nsh_base::input()
+                                .value({
+                                    let settings_state = settings_state;
+                                    move || settings_state.get().date_pattern
+                                })
+                                .on_change({
+                                    let set_date_pattern = set_date_pattern.clone();
+                                    move |text: &str| set_date_pattern(text.to_string())
+                                })
+                                .placeholder(move || {
+                                    i18n::t(language.get().as_str(), "settings.datePatternHint")
+                                })
+                                .text_size(px(11.0))
+                                .font_family("SF Mono")
+                                .flex_1(),
+                        ),
+                )
+                .child(
+                    text(move || {
+                        // 预览用当前设置格式化「现在」，用户改 pattern 立刻能看到效果。
+                        let now = store::now_unix();
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "settings.datePreview",
+                            &[(
+                                "value",
+                                crate::dates::format(
+                                    language.get().as_str(),
+                                    now,
+                                    now,
+                                ),
+                            )],
+                        )
+                    })
+                    .text_size(px(9.5))
+                    .line_height(px(13.0))
+                    .text_color(move || design::text3()),
+                )
                 .into_element(),
         ))
         .child(section_block(
@@ -520,6 +662,26 @@ fn general(
                 )
                 .into_element(),
         ));
+}
+
+/// 日期格式的四种预设。
+const DATE_STYLES: [crate::i18n::DateStyle; 4] = [
+    crate::i18n::DateStyle::Relative,
+    crate::i18n::DateStyle::Absolute,
+    crate::i18n::DateStyle::System,
+    crate::i18n::DateStyle::Custom,
+];
+
+impl crate::i18n::DateStyle {
+    /// 设置页上的文案键。
+    fn key(self) -> &'static str {
+        return match self {
+            crate::i18n::DateStyle::Relative => "settings.dateRelative",
+            crate::i18n::DateStyle::Absolute => "settings.dateAbsolute",
+            crate::i18n::DateStyle::System => "settings.dateSystem",
+            crate::i18n::DateStyle::Custom => "settings.dateCustom",
+        };
+    }
 }
 
 /// 更新检查的三种方式（设计板 23）。
@@ -722,8 +884,19 @@ fn link_button(
 }
 
 /// Git 分区（24）：本机 Git 版本与执行路径、凭据助手（只读）、仓库发现（未实现）。
-fn git_page(language: Signal<SharedString>, info: (String, String, String)) -> AnyElement {
+fn git_page(
+    language: Signal<SharedString>,
+    info: (String, String, String),
+    actions: Actions,
+    use_path: bool,
+    scan_folders: Vec<String>,
+    found: usize,
+    add_found: std::sync::Arc<dyn Fn()>,
+) -> AnyElement {
     let (version, exec_path, helper) = info;
+    let detect = actions.detect_git.clone();
+    let choose = actions.choose_git.clone();
+    let toggle_path = actions.toggle_git_path.clone();
     let helper_text = if helper.trim().is_empty() {
         i18n::t(language.get_untracked().as_str(), "settings.gitHelperNone")
     } else {
@@ -755,7 +928,112 @@ fn git_page(language: Signal<SharedString>, info: (String, String, String)) -> A
                         .text_color(move || design::text3())
                         .text_overflow(nsh_core::EllipsizeMode::Middle),
                 )
-                .child(disabled_row(language, "settings.choose"))
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(widgets::small_button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "settings.choose")
+                            },
+                            {
+                                let choose = choose.clone();
+                                move || choose()
+                            },
+                        ))
+                        .child(widgets::small_button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "settings.detect")
+                            },
+                            {
+                                let detect = detect.clone();
+                                move || detect()
+                            },
+                        ))
+                        .child(toggle_row(
+                            language,
+                            "settings.usePath",
+                            std::sync::Arc::new(move || use_path),
+                            {
+                                let toggle_path = toggle_path.clone();
+                                move || toggle_path()
+                            },
+                        )),
+                )
+                .into_element(),
+        ))
+        .child(section_block(
+            language,
+            "settings.discovery2",
+            "settings.discovery2Hint",
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(6.0))
+                .child(
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .gap(px(2.0))
+                        .child(
+                            scan_folders
+                                .iter()
+                                .map(|folder| {
+                                    let label = folder.clone();
+                                    return view()
+                                        .w_full()
+                                        .h(px(22.0))
+                                        .px(px(7.0))
+                                        .items_center()
+                                        .rounded(px(4.0))
+                                        .bg(move || design::panel2())
+                                        .child(
+                                            text(label)
+                                                .text_size(px(10.0))
+                                                .line_height(px(13.0))
+                                                .font_family("SF Mono")
+                                                .text_color(move || design::text2())
+                                                .text_overflow(nsh_core::EllipsizeMode::Middle),
+                                        )
+                                        .into_element();
+                                })
+                                .collect::<Vec<AnyElement>>(),
+                        ),
+                )
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            text(move || {
+                                i18n::with_arguments(
+                                    language.get().as_str(),
+                                    "settings.scanFound",
+                                    &[("count", found.to_string())],
+                                )
+                            })
+                            .text_size(px(10.0))
+                            .line_height(px(13.0))
+                            .text_color(move || design::text3()),
+                        )
+                        .child(view().flex_1())
+                        .child(widgets::small_button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "settings.scanNow")
+                            },
+                            {
+                                let add = add_found.clone();
+                                move || add()
+                            },
+                        )),
+                )
                 .into_element(),
         ))
         .child(section_block(

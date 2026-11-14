@@ -398,7 +398,7 @@ fn repo_group(
                     )
                     .child(
                         text(move || {
-                            i18n::relative_time(
+                            crate::dates::format(
                                 language.get().as_str(),
                                 repo.get().opened_at,
                                 now,

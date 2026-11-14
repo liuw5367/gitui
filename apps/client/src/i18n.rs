@@ -93,6 +93,101 @@ fn flatten_into(prefix: &str, value: &serde_json::Value, out: &mut HashMap<Strin
 ///
 /// 输入是 `git log` 的 `%at`（UTC 秒）。以 `now` 为基准计算，避免依赖系统
 /// 语言；中文用“2 小时”“昨天”，英文用 `2h`、`Yesterday`。
+/// 日期显示方式（设计板 23 的 Date format）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DateStyle {
+    Relative,
+    Absolute,
+    /// 跟随系统：这里退化成「绝对」，因为读系统区域的完整格式需要平台 API。
+    System,
+    Custom,
+}
+
+impl DateStyle {
+    pub fn id(self) -> &'static str {
+        return match self {
+            DateStyle::Relative => "relative",
+            DateStyle::Absolute => "absolute",
+            DateStyle::System => "system",
+            DateStyle::Custom => "custom",
+        };
+    }
+
+    pub fn from_id(id: &str) -> DateStyle {
+        return match id {
+            "absolute" => DateStyle::Absolute,
+            "system" => DateStyle::System,
+            "custom" => DateStyle::Custom,
+            _ => DateStyle::Relative,
+        };
+    }
+}
+
+/// 按设置格式化一个时间戳。
+///
+/// `pattern` 只在 `Custom` 时使用，支持 `%Y %m %d %e %b %B %H %M`，未知占位原样
+/// 保留，方便用户看出自己写错了哪一段。
+pub fn format_date(
+    language: &str,
+    style: DateStyle,
+    pattern: &str,
+    timestamp: i64,
+    now: i64,
+) -> String {
+    return match style {
+        DateStyle::Relative => relative_time(language, timestamp, now),
+        DateStyle::Absolute => absolute_time(language, timestamp),
+        DateStyle::System => absolute_time(language, timestamp),
+        DateStyle::Custom => custom_time(language, pattern, timestamp),
+    };
+}
+
+/// 绝对时间：`2026-11-14 09:05`。
+pub fn absolute_time(language: &str, timestamp: i64) -> String {
+    let (month, day, year) = civil_from_unix(timestamp);
+    let (hour, minute) = clock_from_unix(timestamp);
+    let _ = language;
+    return format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}");
+}
+
+/// 自定义 pattern。
+pub fn custom_time(language: &str, pattern: &str, timestamp: i64) -> String {
+    let (month, day, year) = civil_from_unix(timestamp);
+    let (hour, minute) = clock_from_unix(timestamp);
+    let month_name = t(language, &format!("time.months.{}", month.saturating_sub(1)));
+    let mut out = String::new();
+    let mut chars = pattern.chars().peekable();
+    while let Some(character) = chars.next() {
+        if character != '%' {
+            out.push(character);
+            continue;
+        }
+        match chars.next() {
+            Some('Y') => out.push_str(&format!("{year:04}")),
+            Some('m') => out.push_str(&format!("{month:02}")),
+            Some('d') => out.push_str(&format!("{day:02}")),
+            Some('e') => out.push_str(&format!("{day}")),
+            Some('b') => out.push_str(month_name.as_str()),
+            Some('B') => out.push_str(month_name.as_str()),
+            Some('H') => out.push_str(&format!("{hour:02}")),
+            Some('M') => out.push_str(&format!("{minute:02}")),
+            // 不认识的占位原样留着，用户能看出写错了。
+            Some(other) => {
+                out.push('%');
+                out.push(other);
+            }
+            None => out.push('%'),
+        }
+    }
+    return out;
+}
+
+/// 一天里的时分（UTC 秒）。
+fn clock_from_unix(timestamp: i64) -> (i64, i64) {
+    let seconds = timestamp.rem_euclid(86_400);
+    return (seconds / 3_600, (seconds % 3_600) / 60);
+}
+
 pub fn relative_time(language: &str, timestamp: i64, now: i64) -> String {
     let seconds = (now - timestamp).max(0);
     let minutes = seconds / 60;
@@ -205,5 +300,46 @@ mod tests {
     fn civil_dates_are_correct_for_known_instants() {
         // 2026-11-14T00:00:00Z
         assert_eq!(civil_from_unix(1_794_614_400), (11, 14, 2026));
+    }
+
+    #[test]
+    fn date_styles_round_trip_and_format() {
+        // 2026-11-14 09:05:00 UTC
+        let stamp = 1_794_647_100;
+        for style in [
+            DateStyle::Relative,
+            DateStyle::Absolute,
+            DateStyle::System,
+            DateStyle::Custom,
+        ] {
+            assert_eq!(DateStyle::from_id(style.id()), style);
+        }
+        assert_eq!(
+            DateStyle::from_id("nonsense"),
+            DateStyle::Relative,
+            "未知值退回相对时间"
+        );
+
+        let absolute = format_date("en", DateStyle::Absolute, "", stamp, stamp + 60);
+        assert!(absolute.starts_with("2026-11-14"), "{absolute}");
+        assert!(absolute.contains(':'), "绝对时间应带时分：{absolute}");
+
+        let custom = format_date("en", DateStyle::Custom, "%Y/%m/%d %H:%M", stamp, stamp);
+        assert_eq!(custom, "2026/11/14 09:05");
+
+        let named = format_date("en", DateStyle::Custom, "%b %e, %Y", stamp, stamp);
+        assert!(named.contains("2026"), "{named}");
+        assert!(named.contains("14"), "{named}");
+    }
+
+    #[test]
+    fn unknown_pattern_placeholders_are_kept() {
+        let stamp = 1_794_647_100;
+        assert_eq!(
+            format_date("en", DateStyle::Custom, "%Y %q", stamp, stamp),
+            "2026 %q",
+            "认不出的占位应原样保留"
+        );
+        assert_eq!(format_date("en", DateStyle::Custom, "100%%", stamp, stamp), "100%%");
     }
 }

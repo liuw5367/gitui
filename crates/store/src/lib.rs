@@ -134,6 +134,14 @@ pub struct Settings {
     pub restore_session: bool,
     /// 更新检查方式：`auto` / `manual` / `never`。
     pub update_mode: String,
+    /// 使用 PATH 里的 git，而不是固定路径。
+    pub use_system_git: bool,
+    /// 手动指定的 git 路径（`use_system_git` 为假时使用）。
+    pub git_path: String,
+    /// 日期显示方式：`relative` / `absolute` / `system` / `custom`。
+    pub date_format: String,
+    /// `date_format` 为 `custom` 时使用的 pattern（`%Y-%m-%d` 风格）。
+    pub date_pattern: String,
 }
 
 impl Default for Settings {
@@ -142,6 +150,10 @@ impl Default for Settings {
             file_tree: true,
             restore_session: true,
             update_mode: "manual".to_string(),
+            use_system_git: true,
+            git_path: String::new(),
+            date_format: "relative".to_string(),
+            date_pattern: "%b %d, %Y".to_string(),
         };
     }
 }
@@ -164,6 +176,10 @@ pub fn load_settings(dir: &Path) -> Settings {
             "file_tree" => settings.file_tree = value.trim() != "false",
             "restore_session" => settings.restore_session = value.trim() != "false",
             "update_mode" => settings.update_mode = value.trim().to_string(),
+            "use_system_git" => settings.use_system_git = value.trim() != "false",
+            "git_path" => settings.git_path = value.trim().to_string(),
+            "date_format" => settings.date_format = value.trim().to_string(),
+            "date_pattern" => settings.date_pattern = value.trim().to_string(),
             _ => {}
         }
     }
@@ -176,6 +192,10 @@ pub fn save_settings(dir: &Path, settings: &Settings) {
         format!("file_tree={}", settings.file_tree),
         format!("restore_session={}", settings.restore_session),
         format!("update_mode={}", settings.update_mode),
+        format!("use_system_git={}", settings.use_system_git),
+        format!("git_path={}", settings.git_path),
+        format!("date_format={}", settings.date_format),
+        format!("date_pattern={}", settings.date_pattern),
     ];
     let _ = write_lines(&settings_file(dir), &lines);
 }
@@ -202,6 +222,76 @@ pub fn save_agent_policies(dir: &Path, policies: &[(String, String)]) {
         .map(|(action, permission)| format!("{}={}", action, permission))
         .collect();
     let _ = write_lines(&dir.join("agent-policies.txt"), &lines);
+}
+
+/// 用于扫描仓库的目录列表（`git-scan-folders.txt`，每行一个绝对路径）。
+pub fn load_git_scan_folders(dir: &Path) -> Vec<PathBuf> {
+    let Ok(text) = std::fs::read_to_string(dir.join("git-scan-folders.txt")) else {
+        return Vec::new();
+    };
+    return text
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .collect();
+}
+
+/// 保存扫描目录。
+pub fn save_git_scan_folders(dir: &Path, folders: &[PathBuf]) {
+    let lines: Vec<String> = folders
+        .iter()
+        .map(|folder| folder.display().to_string())
+        .collect();
+    let _ = write_lines(&dir.join("git-scan-folders.txt"), &lines);
+}
+
+/// 在给定目录下找 Git 仓库（含 `.git` 的目录），最多下探三层。
+///
+/// 限深是刻意的：再深会扫到 `node_modules` 之类的树里，代价大而收益小。
+/// 结果按路径排序，保证同样的输入得到同样的顺序。
+pub fn scan_git_repositories(folders: &[PathBuf]) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for folder in folders {
+        collect_repositories(folder, 0, &mut found);
+    }
+    found.sort();
+    found.dedup();
+    return found;
+}
+
+fn collect_repositories(folder: &Path, depth: usize, found: &mut Vec<String>) {
+    if !folder.is_dir() {
+        return;
+    }
+    if folder.join(".git").exists() {
+        found.push(folder.display().to_string());
+        // 仓库内部不再下探：嵌套仓库很少见，继续扫只会拖慢。
+        return;
+    }
+    if depth >= 3 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return;
+    };
+    let mut children: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect();
+    children.sort();
+    for child in children {
+        // 跳过明显的噪音目录。
+        let name = child
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if name == "node_modules" || name == "target" || name.starts_with('.') {
+            continue;
+        }
+        collect_repositories(child.as_path(), depth + 1, found);
+    }
 }
 
 /// Agent 的审计日志：每行 `时间\t动作\t结果\t详情`。
@@ -453,12 +543,20 @@ mod tests {
                 file_tree: false,
                 restore_session: false,
                 update_mode: "never".to_string(),
+                use_system_git: false,
+                git_path: "/opt/homebrew/bin/git".to_string(),
+                date_format: "custom".to_string(),
+                date_pattern: "%Y/%m/%d".to_string(),
             },
         );
         let loaded = load_settings(dir.path());
         assert!(!loaded.file_tree);
         assert!(!loaded.restore_session);
         assert_eq!(loaded.update_mode, "never", "更新方式应持久化");
+        assert_eq!(loaded.date_format, "custom");
+        assert!(!loaded.use_system_git);
+        assert_eq!(loaded.git_path, "/opt/homebrew/bin/git");
+        assert_eq!(loaded.date_pattern, "%Y/%m/%d");
         assert_eq!(Settings::default().update_mode, "manual");
     }
 
@@ -538,5 +636,44 @@ mod tests {
         assert_eq!(next.len(), 1);
         assert_eq!(next[0].path, "/b");
         assert_eq!(load_recent(dir.path())[0].path, "/b");
+    }
+
+    #[test]
+    fn scan_finds_repositories_two_levels_down() {
+        let root = TempDir::new("scan");
+        // 根目录自己就是仓库。
+        std::fs::create_dir_all(root.path().join("own/.git")).expect("own");
+        // 一层深的仓库。
+        std::fs::create_dir_all(root.path().join("one/repo/.git")).expect("one");
+        // 两层深与三层深的仓库都应找到。
+        std::fs::create_dir_all(root.path().join("a/b/repo/.git")).expect("two");
+        // 四层深：默认不扫。
+        std::fs::create_dir_all(root.path().join("x/y/z/repo/.git")).expect("three");
+        // 噪音目录不扫。
+        std::fs::create_dir_all(root.path().join("node_modules/pkg/.git")).expect("noise");
+
+        let found = scan_git_repositories(&[root.path().to_path_buf()]);
+        assert_eq!(found.len(), 3, "应找到 3 个仓库：{found:?}");
+        assert!(found.iter().any(|path| path.ends_with("/own")));
+        assert!(found.iter().any(|path| path.ends_with("/one/repo")));
+        assert!(found.iter().any(|path| path.ends_with("/a/b/repo")));
+        assert!(!found.iter().any(|path| path.contains("node_modules")));
+        assert!(!found.iter().any(|path| path.contains("/x/y/z/")));
+
+        // 顺序稳定，便于断言与截图。
+        let again = scan_git_repositories(&[root.path().to_path_buf()]);
+        assert_eq!(found, again, "同样输入应得到同样顺序");
+    }
+
+    #[test]
+    fn scan_folders_persist() {
+        let dir = TempDir::new("scan-folders");
+        assert!(load_git_scan_folders(dir.path()).is_empty());
+        let folders = vec![
+            PathBuf::from("/tmp/a"),
+            PathBuf::from("/tmp/b"),
+        ];
+        save_git_scan_folders(dir.path(), &folders);
+        assert_eq!(load_git_scan_folders(dir.path()), folders);
     }
 }

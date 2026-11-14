@@ -328,7 +328,7 @@ pub(crate) fn history(
                                                 text(move || {
                                                     let timestamp =
                                                         commit.date.parse().unwrap_or(0);
-                                                    i18n::relative_time(
+                                                    crate::dates::format(
                                                         language_value.get().as_str(),
                                                         timestamp,
                                                         now,

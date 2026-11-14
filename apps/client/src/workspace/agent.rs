@@ -353,7 +353,7 @@ fn audit_block(
                         )
                         .child(
                             text(move || {
-                                i18n::relative_time(
+                                crate::dates::format(
                                     language.get().as_str(),
                                     timestamp,
                                     now,

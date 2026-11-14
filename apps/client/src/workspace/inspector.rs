@@ -98,7 +98,7 @@ pub(crate) fn inspector(
                         "{} · {} · {}",
                         author,
                         short,
-                        i18n::relative_time(language.get_untracked().as_str(), timestamp, now)
+                        crate::dates::format(language.get_untracked().as_str(), timestamp, now)
                     ))
                     .text_size(px(9.5))
                     .font_family("SF Mono")
@@ -363,7 +363,7 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
         ),
         (
             "files.info.authored",
-            i18n::relative_time(language.get_untracked().as_str(), details.authored_at, now),
+            crate::dates::format(language.get_untracked().as_str(), details.authored_at, now),
         ),
         (
             "files.info.committer",
@@ -371,7 +371,7 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
         ),
         (
             "files.info.committed",
-            i18n::relative_time(language.get_untracked().as_str(), details.committed_at, now),
+            crate::dates::format(language.get_untracked().as_str(), details.committed_at, now),
         ),
         ("files.info.refs", refs),
     ] {
@@ -532,7 +532,7 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                 )
                 .child(
                     text(move || {
-                        i18n::relative_time(language.get().as_str(), timestamp, now)
+                        crate::dates::format(language.get().as_str(), timestamp, now)
                     })
                     .text_size(px(9.0))
                     .text_color(move || design::text3()),

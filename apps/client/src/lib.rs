@@ -5,6 +5,7 @@
 //! 写路径在后续阶段加入。
 
 pub mod brand;
+mod dates;
 mod design;
 mod filters;
 mod i18n;
@@ -192,6 +193,18 @@ pub(crate) struct Actions {
     pub(crate) open_identity: Arc<dyn Fn()>,
     /// 清掉仓库级身份，回到全局配置。
     pub(crate) clear_identity: Arc<dyn Fn()>,
+    /// 扫描已配置目录里的仓库并加入最近列表。
+    pub(crate) add_found_repos: Arc<dyn Fn()>,
+    /// 选择 Git 可执行文件。
+    pub(crate) choose_git: Arc<dyn Fn()>,
+    /// 自动探测 Git。
+    pub(crate) detect_git: Arc<dyn Fn()>,
+    /// 切换「使用 PATH 里的 git」。
+    pub(crate) toggle_git_path: Arc<dyn Fn()>,
+    /// 切换日期显示方式。
+    pub(crate) set_date_style: Arc<dyn Fn(crate::i18n::DateStyle)>,
+    /// 设置自定义日期 pattern。
+    pub(crate) set_date_pattern: Arc<dyn Fn(String)>,
     /// 设置更新检查方式（`auto` / `manual` / `never`）。
     pub(crate) set_update_mode: Arc<dyn Fn(String)>,
 }
@@ -231,6 +244,11 @@ pub fn App() -> impl IntoElement {
     let changelist_open = signal(false);
     let palette_open = signal(false);
     let settings_state = signal(store::load_settings(&store_dir));
+    {
+        // 日期格式是全局显示偏好，装进 dates 模块供各视图直接读取。
+        let loaded = settings_state.get_untracked();
+        crate::dates::load(loaded.date_format.as_str(), loaded.date_pattern.as_str());
+    }
     let form_state = signal(Option::<screens::FormState>::None);
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
@@ -2379,6 +2397,126 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 日期显示：改设置立刻生效并持久化（设置页有实时预览）。
+    let set_date_style: Arc<dyn Fn(crate::i18n::DateStyle)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |style: crate::i18n::DateStyle| {
+            crate::dates::set_style(style);
+            let mut next = settings_state.get_untracked();
+            next.date_format = style.id().to_string();
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
+    let set_date_pattern: Arc<dyn Fn(String)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |pattern: String| {
+            crate::dates::set_pattern(pattern.as_str());
+            let mut next = settings_state.get_untracked();
+            next.date_pattern = pattern;
+            // 输入 pattern 时自动切到 Custom，否则用户改了看不到效果。
+            next.date_format = crate::i18n::DateStyle::Custom.id().to_string();
+            crate::dates::set_style(crate::i18n::DateStyle::Custom);
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
+    // Git 可执行文件：探测用 `git --version`，选择用系统打开对话框。
+    let detect_git: Arc<dyn Fn()> = {
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let lang = language.get_untracked();
+            match git::info() {
+                Ok(info) => interactions::notify(
+                    notice,
+                    format!("{} · {}", info.version, info.exec_path),
+                ),
+                Err(error) => {
+                    interactions::notify(notice, i18n::t(lang.as_str(), "settings.detectFailed"))
+                }
+            }
+        })
+    };
+
+    let choose_git: Arc<dyn Fn()> = {
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            // 只让选可执行文件；选完把路径记进设置并立刻用它探测一次。
+            let pending = pick_paths(nsh_core::file_dialog::OpenDialog::files());
+            let language = language;
+            spawn(async move {
+                let Ok(Some(paths)) = pending.await else {
+                    return;
+                };
+                let Some(path) = paths.into_iter().next() else {
+                    return;
+                };
+                let lang = language.get_untracked();
+                match std::process::Command::new(&path).arg("--version").output() {
+                    Ok(output) if output.status.success() => {
+                        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        interactions::notify(notice, format!("{version} · {}", path.display()));
+                    }
+                    _ => {
+                        interactions::notify(
+                            notice,
+                            i18n::t(lang.as_str(), "settings.detectFailed"),
+                        );
+                    }
+                }
+            });
+        })
+    };
+
+    let toggle_git_path: Arc<dyn Fn()> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move || {
+            let mut next = settings_state.get_untracked();
+            let enabled = !next.use_system_git;
+            next.use_system_git = enabled;
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
+    // 扫描目录里的仓库（设计板 24 的 Add N Repositories）。
+    let add_found_repos: Arc<dyn Fn()> = {
+        let store_dir = store_dir.clone();
+        let recent = recent;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let lang = language.get_untracked();
+            let folders = store::load_git_scan_folders(&store_dir);
+            let found = store::scan_git_repositories(&folders);
+            if found.is_empty() {
+                interactions::notify(notice, i18n::t(lang.as_str(), "settings.scanEmpty"));
+                return;
+            }
+            let mut list = recent.get_untracked();
+            for path in &found {
+                store::remember_recent(&store_dir, &list, path.as_str());
+                list = store::load_recent(&store_dir);
+            }
+            recent.set(list);
+            interactions::notify(
+                notice,
+                i18n::with_arguments(
+                    lang.as_str(),
+                    "settings.scanAdded",
+                    &[("count", found.len().to_string())],
+                ),
+            );
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2471,6 +2609,12 @@ pub fn App() -> impl IntoElement {
         reveal_path,
         open_browser,
         set_update_mode,
+        add_found_repos,
+        choose_git,
+        detect_git,
+        toggle_git_path,
+        set_date_style,
+        set_date_pattern,
         open_identity,
         clear_identity,
     };
@@ -2837,6 +2981,14 @@ pub fn App() -> impl IntoElement {
                             actions_for_view.set_agent_permission.clone(),
                             agent_settings,
                             branches_for_settings.clone(),
+                            settings_state.get().use_system_git,
+                            store::load_git_scan_folders(&store_dir)
+                                .iter()
+                                .map(|folder| folder.display().to_string())
+                                .collect::<Vec<String>>(),
+                            store::scan_git_repositories(&store::load_git_scan_folders(&store_dir))
+                                .len(),
+                            actions_for_view.add_found_repos.clone(),
                             actions_for_view.set_automation.clone(),
                             actions_for_view.set_review_millis.clone(),
                             actions_for_view.toggle_protected_branch.clone(),
