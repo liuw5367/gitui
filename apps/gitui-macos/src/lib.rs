@@ -160,6 +160,11 @@ pub fn App() -> impl IntoElement {
         palette_query.set(String::new());
         palette_open.set(true);
     });
+    on_key("mod+k", {
+        let open = open_palette.clone();
+        move |_| open()
+    });
+    on_key("escape", move |_| palette_open.set(false));
     let open_audit: Arc<dyn Fn()> = Arc::new(move || {
         audit_lines.set(crate::audit::read_recent(200));
         audit_error.set(SharedString::from(""));
