@@ -15,7 +15,7 @@
 | **S-1** | hunk/line staging, partial commit, reverse unstage | **PASS** |
 | **S-2** | pre-commit / post-commit / `--no-verify` | **PASS** (timeout not tested) |
 | **S-3** | merge conflict stages, editable result, abort; rebase conflict/abort | **PASS** (cherry-pick/revert not tested) |
-| **S-4** | performance micro-benchmark | **PARTIAL** (20k commits, not 100k; no 10k diff / 1 GB) |
+| **S-4** | performance benchmark | **PARTIAL** — 100k commits and real 10k diff pass; 1 GB and UI mount pending |
 | **S-5** | HTTPS/SSH auth, credential helper, failure classes | **PENDING** |
 | **S-6** | NSH Rust view + 3-pane editor + 10k-line rendering | **PARTIAL — 10k headless mount passes; interactive pending** |
 | **S-7** | CLI vs `gix` read path (optional) | **NOT RUN** |
@@ -94,28 +94,32 @@
 
 ---
 
-## 5. S-4 — performance micro-benchmark
+## 5. S-4 — performance benchmark
 
-**Fixture**: generated **20,001 commits**, 4.6 MB `.git`; single 5-byte blob. Not the 100k/1 GB target.
+**Fixtures**
+
+- 100,001 commits, 23 MB `.git`.
+- 10,000-line file with **all 10,000 lines changed**.
 
 **Observed**
 
 | Measurement | Result |
 |---|---|
-| `git log --max-count=100` + parse | **37.8 ms** |
-| `git status --porcelain=v2 --branch` | **35.2 ms** |
-| 20k commit count | 20,001 |
-| `.git` size | 4.6 MB |
+| `git log --max-count=100` + parse | **37.1 ms** |
+| `git status --porcelain=v2 --branch` | **37.9 ms** |
+| `git diff` for 10k changed lines | **43.3 ms** |
+| diff output | **20,005 lines**, 504 KB |
+| `.git` size | 23 MB |
 
-**Conclusion**: PARTIAL. 20k log/status is fast enough to be promising; this does **not** validate 100k commits, 10k-line diffs, 1 GB repos, or UI rendering. A real S-4 run is still required.
+**Conclusion**: the CLI read path is comfortably inside the S-4 targets for 100k commits and a real 10k-line diff. This does **not** yet validate a 1 GB working tree or NSH rendering a 100k-commit repo / 10k-line diff.
 
-**Risks**
+**Still pending**
 
-- Git log parse and cross-process overhead can dominate before UI work.
-- 10k-line diff rendering is an NSH/AppKit view problem, not a Git CLI problem.
-- Large working trees and FSEvents load need separate tests.
+- ~1 GB working tree status/open.
+- NSH app mount against the 100k-commit fixture.
+- UI diff rendering at 10k lines.
 
----
+**Risk**: process/parse timings are fine; the remaining risk is UI virtualization and memory, not Git CLI.
 
 ## 6. S-5 — auth / network (PENDING)
 
