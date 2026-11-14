@@ -260,98 +260,48 @@ pub fn App() -> impl IntoElement {
         },
     );
 
-    let operation_banner = view()
-        .h(move || {
-            if operation.get().is_some() {
-                px(28.0)
-            } else {
-                px(0.0)
+    let continue_action = Arc::new({
+        let reload_merge = reload_for_merge.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.merge_continue())
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                commit_log.set(SharedString::from(""));
+                reload_merge();
             }
-        })
-        .flex_row()
-        .items_center()
-        .gap_2()
-        .px_3()
-        .bg(move || theme().primary)
-        .child(
-            text(move || {
-                operation
-                    .get()
-                    .map(|op| format!("{} in progress", op.label()))
-                    .unwrap_or_default()
-            })
-            .text_size(px(10.0))
-            .text_color(move || theme().primary_foreground),
-        )
-        .child(view().flex_1())
-        .child(header_button("Continue", true, {
-            let reload_merge = reload_for_merge.clone();
-            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                .and_then(|repo| repo.merge_continue())
-            {
-                Ok(_) => {
-                    error.set(SharedString::from(""));
-                    commit_log.set(SharedString::from(""));
-                    reload_merge();
-                }
-                Err(err) => {
-                    error.set(SharedString::from(err.to_string()));
-                    commit_log.set(SharedString::from(err.to_string()));
-                }
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                commit_log.set(SharedString::from(err.to_string()));
             }
-        }))
-        .child(header_button("Abort", false, {
-            let reload_merge = reload_for_merge.clone();
-            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                .and_then(|repo| repo.merge_abort())
-            {
-                Ok(_) => {
-                    error.set(SharedString::from(""));
-                    commit_log.set(SharedString::from(""));
-                    reload_merge();
-                }
-                Err(err) => {
-                    error.set(SharedString::from(err.to_string()));
-                    commit_log.set(SharedString::from(err.to_string()));
-                }
+        }
+    });
+    let abort_action = Arc::new({
+        let reload_merge = reload_for_merge.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.merge_abort())
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                commit_log.set(SharedString::from(""));
+                reload_merge();
             }
-        }));
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                commit_log.set(SharedString::from(err.to_string()));
+            }
+        }
+    });
+    let operation_banner =
+        crate::sections::operation_banner(operation, continue_action, abort_action);
 
     let tab_bar = crate::sections::tabs(tabs, active, activate_tabs);
 
-    let recent_bar = view()
-        .h(px(28.0))
-        .flex_row()
-        .items_center()
-        .gap_2()
-        .px_3()
-        .bg(move || theme().background)
-        .child(
-            text("Recent")
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(each(
-            recent,
-            |path: &SharedString| path.clone(),
-            move |path, _| {
-                let reload_recent = reload_for_recent.clone();
-                view()
-                    .h(px(20.0))
-                    .px_2()
-                    .rounded(px(4.0))
-                    .bg(move || theme().primary)
-                    .on_press(move || {
-                        path_input.set(path.get().to_string());
-                        reload_recent();
-                    })
-                    .child(
-                        text(move || short_name(&path.get().to_string()))
-                            .text_size(px(9.0))
-                            .text_color(move || theme().primary_foreground),
-                    )
-            },
-        ));
+    let open_recent = Arc::new(move |path: String| {
+        path_input.set(path);
+        reload_for_recent();
+    });
+    let recent_bar = crate::sections::recent_bar(recent, open_recent);
 
     let commit_bar = view()
         .h(px(38.0))
