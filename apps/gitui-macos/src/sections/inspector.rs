@@ -43,6 +43,7 @@ fn tab(
 
 pub(crate) fn inspector(
     mode: Signal<Mode>,
+    focus: Signal<bool>,
     tab_state: Signal<InspectorTab>,
     permissions: Signal<AgentPermissions>,
     branch: Signal<SharedString>,
@@ -56,7 +57,7 @@ pub(crate) fn inspector(
 ) -> impl IntoElement {
     view()
         .w(move || {
-            if mode.get() == Mode::Changes {
+            if !focus.get() && mode.get() == Mode::Changes {
                 px(360.0)
             } else {
                 px(0.0)

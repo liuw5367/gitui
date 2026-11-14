@@ -24,6 +24,8 @@ pub(crate) fn diff_view(
     staged_patch: Signal<SharedString>,
     hunk_indices: Signal<Vec<usize>>,
     staged_hunk_indices: Signal<Vec<usize>>,
+    focus: Signal<bool>,
+    on_focus: Arc<dyn Fn()>,
     actions: DiffActions,
     hunk_actions: HunkActions,
 ) -> impl IntoElement {
@@ -64,6 +66,19 @@ pub(crate) fn diff_view(
                     .text_color(move || design::text2()),
                 )
                 .child(view().flex_1())
+                .child(
+                    view()
+                        .h(px(24.0))
+                        .px_2()
+                        .rounded(px(4.0))
+                        .bg(move || design::panel2())
+                        .on_press(move || on_focus())
+                        .child(
+                            text(move || if focus.get() { "Exit focus" } else { "Focus" })
+                                .text_size(px(10.0))
+                                .text_color(move || design::text2()),
+                        ),
+                )
                 .child(
                     view()
                         .flex_row()

@@ -58,11 +58,12 @@ pub(crate) fn history(
     on_select: Arc<dyn Fn(String)>,
     on_compare: Arc<dyn Fn()>,
     mode: Signal<Mode>,
+    focus: Signal<bool>,
 ) -> impl IntoElement {
     let filter = signal(String::new());
     view()
         .h(move || {
-            if mode.get() == Mode::History {
+            if !focus.get() && mode.get() == Mode::History {
                 px(256.0)
             } else {
                 px(0.0)

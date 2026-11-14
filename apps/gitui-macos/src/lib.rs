@@ -258,6 +258,10 @@ pub fn App() -> impl IntoElement {
     let unstaged_entries = signal(initial_unstaged_entries);
     let mode = signal(Mode::History);
     let set_mode: Arc<dyn Fn(Mode)> = Arc::new(move |next| mode.set(next));
+    let focus_mode = signal(false);
+    let toggle_focus: Arc<dyn Fn()> = Arc::new(move || {
+        focus_mode.set(!focus_mode.get_untracked());
+    });
     let sync_open = signal(false);
     let sync_kind = signal(SyncKind::Fetch);
     let sync_log = signal(SharedString::from(""));
@@ -1360,7 +1364,15 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let history = history(branch, commits, selected, select_commit, open_compare.clone(), mode);
+    let history = history(
+        branch,
+        commits,
+        selected,
+        select_commit,
+        open_compare.clone(),
+        mode,
+        focus_mode,
+    );
 
     let cherry_pick_action = Arc::new({
         let reload_pick = reload_for_branch.clone();
@@ -1401,6 +1413,8 @@ pub fn App() -> impl IntoElement {
         staged_patch,
         hunk_indices,
         staged_hunk_indices,
+        focus_mode,
+        toggle_focus,
         DiffActions {
             cherry_pick: cherry_pick_action,
             revert: revert_action,
@@ -1410,6 +1424,7 @@ pub fn App() -> impl IntoElement {
 
     let changes = changes_list(
         mode,
+        focus_mode,
         staged_entries,
         unstaged_entries,
         selected_file,
@@ -1417,6 +1432,7 @@ pub fn App() -> impl IntoElement {
     );
     let inspector = inspector(
         mode,
+        focus_mode,
         inspector_tab,
         agent_permissions,
         branch,
@@ -1885,7 +1901,12 @@ pub fn App() -> impl IntoElement {
         .gap_0()
         .p_0()
         .bg(move || theme().background)
-        .child(status_pane)
+        .child(
+            view()
+                .w(move || if focus_mode.get() { px(0.0) } else { px(232.0) })
+                .h_full()
+                .child(status_pane),
+        )
         .child(content)
         .child(inspector);
 

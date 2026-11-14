@@ -110,6 +110,7 @@ fn changes_section(
 
 pub(crate) fn changes_list(
     mode: Signal<Mode>,
+    focus: Signal<bool>,
     staged_entries: Signal<Vec<StatusEntry>>,
     unstaged_entries: Signal<Vec<StatusEntry>>,
     selected_file: Signal<String>,
@@ -117,7 +118,7 @@ pub(crate) fn changes_list(
 ) -> impl IntoElement {
     view()
         .h(move || {
-            if mode.get() == Mode::Changes {
+            if !focus.get() && mode.get() == Mode::Changes {
                 px(342.0)
             } else {
                 px(0.0)
