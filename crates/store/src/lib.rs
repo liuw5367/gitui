@@ -62,6 +62,69 @@ pub fn save_language(dir: &Path, language: &str) {
     let _ = write_lines(&language_file(dir), &[language.to_string()]);
 }
 
+/// 一个变更清单：名称与其中的文件路径。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Changelist {
+    pub name: String,
+    pub paths: Vec<String>,
+}
+
+fn changelists_file(dir: &Path) -> PathBuf {
+    return dir.join("changelists.txt");
+}
+
+/// 读取某个仓库的变更清单；文件缺失时返回空列表。
+pub fn load_changelists(dir: &Path, repo: &str) -> Vec<Changelist> {
+    let text = match std::fs::read_to_string(changelists_file(dir)) {
+        Ok(text) => text,
+        Err(_) => return Vec::new(),
+    };
+    let mut lists: Vec<Changelist> = Vec::new();
+    for line in text.lines() {
+        let mut fields = line.split('\t');
+        let (Some(entry_repo), Some(name), Some(path)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        if entry_repo != repo || name.is_empty() || path.is_empty() {
+            continue;
+        }
+        match lists.iter_mut().find(|list| list.name == name) {
+            Some(list) => list.paths.push(path.to_string()),
+            None => lists.push(Changelist {
+                name: name.to_string(),
+                paths: vec![path.to_string()],
+            }),
+        }
+    }
+    return lists;
+}
+
+/// 保存某个仓库的变更清单，保留其他仓库的条目。
+pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
+    let mut lines: Vec<String> = Vec::new();
+    // 先写其他仓库的条目。
+    if let Ok(text) = std::fs::read_to_string(changelists_file(dir)) {
+        for line in text.lines() {
+            if let Some((entry_repo, _)) = line.split_once('\t') {
+                if entry_repo != repo && !line.trim().is_empty() {
+                    lines.push(line.to_string());
+                }
+            }
+        }
+    }
+    for list in lists {
+        for path in &list.paths {
+            if list.name.is_empty() || path.contains('\t') {
+                continue;
+            }
+            lines.push(format!("{}\t{}\t{}", repo, list.name, path));
+        }
+    }
+    let _ = write_lines(&changelists_file(dir), &lines);
+}
+
 fn recent_file(dir: &Path) -> PathBuf {
     return dir.join("recent.txt");
 }
@@ -258,6 +321,35 @@ mod tests {
         assert_eq!(load_language(dir.path()), None);
         save_language(dir.path(), "zh-Hans");
         assert_eq!(load_language(dir.path()), Some("zh-Hans".to_string()));
+    }
+
+    #[test]
+    fn changelists_round_trip_per_repository() {
+        let dir = TempDir::new("changelists");
+        let lists = vec![
+            Changelist {
+                name: "Commit composer".to_string(),
+                paths: vec!["src/a.ts".to_string(), "src/b.ts".to_string()],
+            },
+            Changelist {
+                name: "Agent cleanup".to_string(),
+                paths: vec!["src/agent.ts".to_string()],
+            },
+        ];
+        save_changelists(dir.path(), "/repo-one", &lists);
+        assert_eq!(load_changelists(dir.path(), "/repo-one"), lists);
+
+        // 另一个仓库有自己的清单，两者互不影响。
+        save_changelists(
+            dir.path(),
+            "/repo-two",
+            &[Changelist {
+                name: "Other".to_string(),
+                paths: vec!["README.md".to_string()],
+            }],
+        );
+        assert_eq!(load_changelists(dir.path(), "/repo-one"), lists);
+        assert_eq!(load_changelists(dir.path(), "/repo-two").len(), 1);
     }
 
     #[test]

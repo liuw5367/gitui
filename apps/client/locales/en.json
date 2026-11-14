@@ -172,5 +172,41 @@
     "openInEditor": "Open in Editor",
     "source": "Source",
     "blame": "Blame"
+  },
+  "changes": {
+    "staged": "Staged",
+    "unstaged": "Unstaged",
+    "stageAll": "Stage all",
+    "unstageAll": "Unstage all",
+    "summary": "%{staged} staged · %{unstaged} unstaged",
+    "selectFile": "Select a file to see its changes",
+    "empty": "Working tree clean",
+    "discardTitle": "Discard changes?",
+    "discardMessage": "The working tree copy of %{path} will be restored. This cannot be undone.",
+    "discardAction": "Discard"
+  },
+  "commit": {
+    "tab": "Commit",
+    "summary": "Summary",
+    "summaryPlaceholder": "Fix the composer state",
+    "description": "Description",
+    "descriptionPlaceholder": "What changed and why",
+    "required": "Required",
+    "markdown": "Markdown",
+    "stagedFiles": "%{count} files",
+    "action": "Commit %{count} Staged Files",
+    "hooksHint": "Hooks must pass before committing",
+    "nothingStaged": "Stage a change to commit",
+    "hooksPassed": "Hooks passed",
+    "hooksFailed": "Hooks failed"
+  },
+  "changelists": {
+    "default": "Default Changelist",
+    "title": "Changelists",
+    "files": "%{count} files",
+    "setActive": "Set Active",
+    "moveSelected": "Move 3 selected files to…",
+    "rename": "Rename Changelist…",
+    "footHint": "Filters only — staging commits"
   }
 }

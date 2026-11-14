@@ -24,6 +24,8 @@ pub enum GitError {
     },
     /// 无法启动 Git 进程。
     Spawn { program: String, reason: String },
+    /// 钩子拒绝了这次操作（提交、推送），`log` 是钩子与 Git 的输出。
+    HookFailed { log: String },
     /// 输出与预期格式不符。
     Parse { context: String, detail: String },
 }
@@ -37,6 +39,7 @@ impl GitError {
             GitError::Unreadable { .. } => "无法读取仓库路径".to_string(),
             GitError::CommandFailed { .. } => "Git 命令执行失败".to_string(),
             GitError::Spawn { .. } => "无法启动 Git 进程".to_string(),
+            GitError::HookFailed { .. } => "钩子拒绝了这次操作".to_string(),
             GitError::Parse { .. } => "无法解析 Git 输出".to_string(),
         };
         return summary;
@@ -65,6 +68,9 @@ impl GitError {
             }
             GitError::Spawn { program, reason } => {
                 return format!("无法启动 {}：{}", program, reason);
+            }
+            GitError::HookFailed { log } => {
+                return log.clone();
             }
             GitError::Parse { context, detail } => {
                 return format!("解析 {} 失败：{}", context, detail);

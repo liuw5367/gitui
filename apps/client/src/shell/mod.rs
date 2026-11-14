@@ -11,6 +11,7 @@ use crate::widgets;
 use crate::Actions;
 use nsh_base::input;
 use nsh_core::prelude::*;
+use std::sync::Arc;
 
 /// 标题栏：左侧留出系统窗口按钮，其后是仓库标签页与状态。
 pub(crate) fn titlebar(
@@ -185,7 +186,11 @@ pub(crate) fn toolbar(
     language: Signal<SharedString>,
     history_query: Signal<String>,
     change_count: impl Fn() -> u32 + 'static,
+    mode: Signal<crate::Mode>,
+    set_mode: std::sync::Arc<dyn Fn(crate::Mode)>,
 ) -> impl IntoElement {
+    let set_history = set_mode.clone();
+    let set_changes = set_mode.clone();
     return view()
         .w_full()
         .h(px(metrics::TOOLBAR_H))
@@ -245,37 +250,20 @@ pub(crate) fn toolbar(
                 .border_1()
                 .border_color(move || design::line_soft())
                 .bg(move || design::panel2())
-                .child(
-                    view()
-                        .h(px(22.0))
-                        .px(px(10.0))
-                        .items_center()
-                        .rounded(px(5.0))
-                        .bg(move || design::content())
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), "shell.history"))
-                                .text_size(px(11.5))
-                                .text_color(move || design::text()),
-                        ),
-                )
-                .child(
-                    view()
-                        .h(px(22.0))
-                        .px(px(10.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(5.0))
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), "shell.changes"))
-                                .text_size(px(11.5))
-                                .text_color(move || design::text2()),
-                        )
-                        .child(
-                            text(move || change_count().to_string())
-                                .text_size(px(9.5))
-                                .text_color(move || design::text3()),
-                        ),
-                ),
+                .child(mode_tab(
+                    language,
+                    "shell.history",
+                    Arc::new(move || mode.get() == crate::Mode::History),
+                    move || set_history(crate::Mode::History),
+                    None,
+                ))
+                .child(mode_tab(
+                    language,
+                    "shell.changes",
+                    Arc::new(move || mode.get() == crate::Mode::Changes),
+                    move || set_changes(crate::Mode::Changes),
+                    Some(Arc::new(move || change_count())),
+                )),
         )
         .child(disabled_tool(language, "sparkle", "shell.agent"))
         .child(widgets::icon("gear", 14.0, design::text2));
@@ -330,6 +318,56 @@ pub(crate) fn statusbar(language: Signal<SharedString>, tab: Memo<Option<Tab>>) 
                 .text_size(px(10.5))
                 .text_color(move || design::text3()),
         );
+}
+
+/// 分段控件里的一项：选中态用内容底色与主文本色。
+fn mode_tab(
+    language: Signal<SharedString>,
+    key: &'static str,
+    active: Arc<dyn Fn() -> bool>,
+    on_press: impl Fn() + 'static,
+    count: Option<Arc<dyn Fn() -> u32>>,
+) -> impl IntoElement {
+    let active_background = active.clone();
+    let active_text = active.clone();
+    return view()
+        .h(px(22.0))
+        .px(px(10.0))
+        .flex_row()
+        .items_center()
+        .gap(px(5.0))
+        .rounded(px(5.0))
+        .bg(move || {
+            if active_background() {
+                design::content()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press(on_press)
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(11.5))
+                .text_color(move || {
+                    if active_text() {
+                        design::text()
+                    } else {
+                        design::text2()
+                    }
+                }),
+        )
+        .when(count.is_some(), |this| {
+            let count = count.clone();
+            this.child(dynamic(move || -> AnyElement {
+                match count.as_ref() {
+                    Some(count) => text(count().to_string())
+                        .text_size(px(9.5))
+                        .text_color(move || design::text3())
+                        .into_element(),
+                    None => view().w(px(0.0)).into_element(),
+                }
+            }))
+        });
 }
 
 /// 尚未接入的动作：按钮按设计稿渲染，但处于禁用态（不响应按压）。

@@ -8,7 +8,7 @@ use crate::i18n;
 use crate::model;
 use crate::model::Tab;
 use crate::shell;
-use crate::workspace::{diff, history, inspector, sidebar};
+use crate::workspace::{commit, diff, history, inspector, sidebar};
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -24,6 +24,10 @@ pub(crate) fn workspace(
     filter_open: Signal<bool>,
     inspector_open: Signal<bool>,
     compare_mode: Signal<bool>,
+    mode: Signal<crate::Mode>,
+    commit_summary: Signal<String>,
+    commit_description: Signal<String>,
+    changelist_open: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -45,7 +49,13 @@ pub(crate) fn workspace(
             active,
             actions.clone(),
         ))
-        .child(shell::toolbar(language, history_query, change_count))
+        .child(shell::toolbar(
+            language,
+            history_query,
+            change_count,
+            mode,
+            actions.set_mode.clone(),
+        ))
         .child(
             view()
                 .w_full()
@@ -62,12 +72,17 @@ pub(crate) fn workspace(
                     filter_open,
                     inspector_open,
                     compare_mode,
+                    mode,
+                    commit_summary,
+                    commit_description,
+                    changelist_open,
                     actions_for_body,
                 )),
         )
         .child(shell::statusbar(language, current));
 }
 
+#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn match_body(
     language: Signal<SharedString>,
@@ -79,6 +94,10 @@ fn match_body(
     filter_open: Signal<bool>,
     inspector_open: Signal<bool>,
     compare_mode: Signal<bool>,
+    mode: Signal<crate::Mode>,
+    commit_summary: Signal<String>,
+    commit_description: Signal<String>,
+    changelist_open: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -119,6 +138,10 @@ fn match_body(
                 filter_open,
                 inspector_open,
                 compare_mode,
+                mode,
+                commit_summary,
+                commit_description,
+                changelist_open,
                 actions,
             )
             .into_element();
@@ -126,6 +149,7 @@ fn match_body(
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn body(
     language: Signal<SharedString>,
@@ -137,6 +161,10 @@ fn body(
     filter_open: Signal<bool>,
     inspector_open: Signal<bool>,
     compare_mode: Signal<bool>,
+    mode: Signal<crate::Mode>,
+    commit_summary: Signal<String>,
+    commit_description: Signal<String>,
+    changelist_open: Signal<bool>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -176,6 +204,11 @@ fn body(
         },
     };
     let inspector_visible = inspector_open.get_untracked();
+    let tab_for_changes = tab.clone();
+    let changes_actions = actions.clone();
+    let history_actions = actions.clone();
+    let inspector_actions = actions.clone();
+    let commit_actions = actions.clone();
     return view()
         .w_full()
         .h_full()
@@ -187,26 +220,55 @@ fn body(
                 .min_w_0()
                 .h_full()
                 .flex_col()
-                .child(history::history(
-                    language,
-                    tab_for_history,
-                    history_query,
-                    filter_reference,
-                    filter_author,
-                    filter_when,
-                    filter_open,
-                    compare_mode,
-                    actions.clone(),
-                ))
-                .child(diff::diff(language, label, patch, inspector_open)),
+                .child(dynamic(move || -> AnyElement {
+                    match mode.get() {
+                        crate::Mode::History => view()
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .flex_col()
+                            .child(history::history(
+                                language,
+                                tab_for_history.clone(),
+                                history_query,
+                                filter_reference,
+                                filter_author,
+                                filter_when,
+                                filter_open,
+                                compare_mode,
+                                history_actions.clone(),
+                            ))
+                            .child(diff::diff(language, label.clone(), patch.clone(), inspector_open))
+                            .into_element(),
+                        crate::Mode::Changes => crate::screens::changes_view(
+                            language,
+                            tab_for_changes.clone(),
+                            changelist_open,
+                            changes_actions.clone(),
+                        )
+                        .into_element(),
+                    }
+                })),
         )
-        .when(inspector_visible, |this| {
-            this.child(inspector::inspector(
-                language,
-                tab_for_inspector,
-                actions.clone(),
-            ))
-        });
+        .child(dynamic(move || -> AnyElement {
+            match mode.get() {
+                crate::Mode::History if inspector_visible => inspector::inspector(
+                    language,
+                    tab_for_inspector.clone(),
+                    inspector_actions.clone(),
+                )
+                .into_element(),
+                crate::Mode::Changes => commit::commit_panel(
+                    language,
+                    tab_for_inspector.clone(),
+                    commit_summary,
+                    commit_description,
+                    commit_actions.clone(),
+                )
+                .into_element(),
+                _ => view().w(px(0.0)).h_full().into_element(),
+            }
+        }));
 }
 
 fn error_panel(

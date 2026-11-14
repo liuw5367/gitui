@@ -132,6 +132,10 @@ pub(crate) fn del_fg() -> AdaptiveColor {
     return token("del-fg");
 }
 
+pub(crate) fn warn() -> AdaptiveColor {
+    return token("warn");
+}
+
 pub(crate) fn danger() -> AdaptiveColor {
     return token("danger");
 }

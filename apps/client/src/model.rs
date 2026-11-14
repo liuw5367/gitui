@@ -38,8 +38,78 @@ pub struct Tab {
     pub compare: Vec<usize>,
     /// 对比模式：开启后点击提交是加入/移出对比集合。
     pub comparing: bool,
+    /// 工作区与暂存区的变更（设计板 10 的列表）。
+    pub changes: Vec<ChangeEntry>,
+    /// 选中的变更下标。
+    pub selected_change: Option<usize>,
+    /// 选中变更的 diff 文本。
+    pub change_diff: String,
+    /// 变更清单（本地存储，按仓库分组）。
+    pub changelists: Vec<store::Changelist>,
+    /// 提交说明的两段文本。
+    pub summary: String,
+    pub description: String,
+    /// 最近一次提交尝试的钩子输出；`None` 表示还没提交过。
+    pub hook_log: Option<String>,
+    /// 最近一次提交是否成功。
+    pub hook_ok: bool,
     /// 打开失败时的错误详情；成功时为 `None`。
     pub error: Option<String>,
+}
+
+/// 一条工作区变更。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChangeEntry {
+    pub path: String,
+    /// 暂存区状态字符（`M`/`A`/`D`/`R`/`?`）。
+    pub index: char,
+    /// 工作区状态字符。
+    pub worktree: char,
+    /// 是否已在暂存区。
+    pub staged: bool,
+    /// 是否为未跟踪文件。
+    pub untracked: bool,
+    pub additions: u32,
+    pub deletions: u32,
+    /// 所属变更清单；`None` 表示默认清单。
+    pub changelist: Option<String>,
+}
+
+impl ChangeEntry {
+    /// 设计稿里显示的状态字母。
+    pub fn status_letter(&self) -> char {
+        if self.untracked {
+            return '?';
+        }
+        if self.staged && self.worktree != ' ' {
+            return 'M';
+        }
+        if self.staged {
+            return normalise_status(self.index);
+        }
+        return normalise_status(self.worktree);
+    }
+
+    /// 目录部分（`src/ui/CommitPanel.tsx` → `src/ui`），没有目录时为空串。
+    pub fn directory(&self) -> &str {
+        return match self.path.rsplit_once('/') {
+            Some((directory, _)) => directory,
+            None => "",
+        };
+    }
+}
+
+fn normalise_status(status: char) -> char {
+    return match status {
+        ' ' | '?' => '?',
+        'M' | 'T' => 'M',
+        'A' => 'A',
+        'D' => 'D',
+        'R' => 'R',
+        'C' => 'C',
+        'U' => 'U',
+        _ => 'M',
+    };
 }
 
 impl Tab {
@@ -87,6 +157,8 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let refs = repo.refs().unwrap_or_default();
     let status = repo.status().unwrap_or_default();
     let authors = repo.authors().unwrap_or_default();
+    let changes = load_changes(&repo);
+    let changelists = store::load_changelists(&store::default_dir(crate::brand::STORAGE_DIR), path);
     let mut tab = Tab {
         path: repo.root().display().to_string(),
         name: summary.name,
@@ -97,6 +169,8 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         refs,
         status,
         authors,
+        changes,
+        changelists,
         filter: filter.clone(),
         ..Tab::default()
     };
@@ -173,6 +247,192 @@ pub fn compare_patch(tab: &Tab) -> Option<String> {
     let repo = Repo::open(tab.path.as_str()).ok()?;
     return repo.diff_between(&format!("{}^", from_sha), &to_sha).ok();
 }
+
+/// 读取工作区与暂存区的变更，并附上逐文件行数统计。
+pub fn load_changes(repo: &Repo) -> Vec<ChangeEntry> {
+    let status = repo.status().unwrap_or_default();
+    let staged_stats = repo.numstat_section(true).unwrap_or_default();
+    let worktree_stats = repo.numstat_section(false).unwrap_or_default();
+    let mut entries: Vec<ChangeEntry> = Vec::new();
+    for entry in status {
+        let staged = entry.is_staged();
+        let untracked = entry.index == '?' && entry.worktree == '?';
+        let stats = if staged {
+            staged_stats.iter().find(|stat| stat.path == entry.path)
+        } else {
+            worktree_stats.iter().find(|stat| stat.path == entry.path)
+        };
+        entries.push(ChangeEntry {
+            path: entry.path.clone(),
+            index: entry.index,
+            worktree: entry.worktree,
+            staged,
+            untracked,
+            additions: stats.map(|stat| stat.additions).unwrap_or(0),
+            deletions: stats.map(|stat| stat.deletions).unwrap_or(0),
+            changelist: None,
+        });
+    }
+    // 暂存的排在前面，组内按路径排序，与设计板的 Staged / Unstaged 两段一致。
+    entries.sort_by(|left, right| {
+        right
+            .staged
+            .cmp(&left.staged)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    return entries;
+}
+
+/// 刷新变更列表（暂存、取消暂存、丢弃之后调用），保留选中项。
+pub fn refresh_changes(tab: &mut Tab) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    let previous = tab
+        .selected_change
+        .and_then(|index| tab.changes.get(index))
+        .map(|entry| entry.path.clone());
+    tab.changes = load_changes(&repo);
+    tab.status = repo.status().unwrap_or_default();
+    tab.selected_change = previous
+        .and_then(|path| tab.changes.iter().position(|entry| entry.path == path))
+        .or(if tab.changes.is_empty() { None } else { Some(0) });
+    if let Some(index) = tab.selected_change {
+        load_change_diff(tab, index);
+    } else {
+        tab.change_diff.clear();
+    }
+    tab.error = None;
+}
+
+/// 选中一条变更并读取它的 diff。
+pub fn load_change_diff(tab: &mut Tab, index: usize) {
+    let Some(entry) = tab.changes.get(index).cloned() else {
+        return;
+    };
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    tab.selected_change = Some(index);
+    // 未跟踪文件没有 diff（git 不比较索引外的文件），留空由界面提示。
+    tab.change_diff = if entry.untracked {
+        String::new()
+    } else {
+        repo.file_diff(entry.path.as_str(), entry.staged)
+            .unwrap_or_default()
+    };
+}
+
+/// 暂存或取消暂存一条变更。
+pub fn toggle_stage(tab: &mut Tab, index: usize) {
+    let Some(entry) = tab.changes.get(index).cloned() else {
+        return;
+    };
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    let paths = vec![entry.path.clone()];
+    let result = if entry.staged {
+        repo.unstage(&paths)
+    } else {
+        repo.stage(&paths)
+    };
+    match result {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
+}
+
+/// 暂存或取消暂存全部。
+pub fn stage_all_or_none(tab: &mut Tab, stage: bool) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    let result = if stage {
+        repo.stage_all()
+    } else {
+        repo.unstage_all()
+    };
+    match result {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
+}
+
+/// 丢弃一条变更的工作区改动（不可撤销，调用方负责确认）。
+pub fn discard_change(tab: &mut Tab, index: usize) {
+    let Some(entry) = tab.changes.get(index).cloned() else {
+        return;
+    };
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.discard(&[entry.path.clone()]) {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
+}
+
+/// 提交暂存区；无论成败都保留钩子输出。
+pub fn commit_staged(tab: &mut Tab) {
+    let summary = tab.summary.trim().to_string();
+    if summary.is_empty() {
+        tab.hook_log = Some("提交说明不能为空".to_string());
+        tab.hook_ok = false;
+        return;
+    }
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.commit(summary.as_str(), tab.description.as_str()) {
+        Ok(outcome) => {
+            tab.hook_ok = true;
+            tab.hook_log = Some(if outcome.log.is_empty() {
+                format!("已提交 {}", &outcome.sha[..7.min(outcome.sha.len())])
+            } else {
+                outcome.log
+            });
+            tab.summary.clear();
+            tab.description.clear();
+            refresh_changes(tab);
+            // 提交后历史新增一条，重新读取以显示。
+            let filter = tab.filter.clone();
+            let refreshed = load_tab(tab.path.as_str(), &filter);
+            tab.commits = refreshed.commits;
+            tab.authors = refreshed.authors;
+            tab.refs = refreshed.refs;
+        }
+        Err(error) => {
+            tab.hook_ok = false;
+            tab.hook_log = Some(error.detail());
+        }
+    }
+}
+
 
 /// 换一组筛选条件后重新装载。
 pub fn reload_with_filter(tab: &Tab, filter: &LogFilter) -> Tab {
@@ -314,6 +574,104 @@ mod tests {
 
         toggle_compare(&mut tab, 0);
         assert_eq!(tab.compare_range(), None, "移出后不再成区间");
+    }
+
+    #[test]
+    fn changes_list_splits_staged_and_unstaged() {
+        let repo = TempRepo::new("changes");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("a.txt"), "changed\n").expect("write");
+        std::fs::write(repo.path.join("new.txt"), "new\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert_eq!(tab.changes.len(), 2);
+
+        // 暂存 a.txt 后它应出现在 Staged 段。
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "a.txt")
+            .expect("a.txt");
+        toggle_stage(&mut tab, index);
+        let a = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a.txt");
+        assert!(a.staged);
+        let new = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "new.txt")
+            .expect("new.txt");
+        assert!(!new.staged);
+        assert!(new.untracked, "未跟踪文件应标记为 untracked");
+
+        // 取消暂存后回到未暂存段。
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "a.txt")
+            .expect("a.txt");
+        toggle_stage(&mut tab, index);
+        assert!(!tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a.txt")
+            .staged);
+    }
+
+    #[test]
+    fn commit_staged_creates_a_commit_and_clears_the_form() {
+        let repo = TempRepo::new("commit");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("a.txt"), "second\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        stage_all_or_none(&mut tab, true);
+        assert!(!tab.changes.is_empty());
+
+        tab.summary = "Working tree and commit".to_string();
+        tab.description = "Details.".to_string();
+        commit_staged(&mut tab);
+
+        assert!(tab.hook_ok, "提交应成功：{:?}", tab.hook_log);
+        assert!(tab.summary.is_empty());
+        assert!(tab.description.is_empty());
+        assert!(tab.changes.is_empty(), "提交后工作区应干净");
+        assert_eq!(
+            tab.commits.first().map(|commit| commit.summary.as_str()),
+            Some("Working tree and commit")
+        );
+    }
+
+    #[test]
+    fn commit_without_summary_reports_an_error() {
+        let repo = TempRepo::new("commit-empty");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        std::fs::write(repo.path.join("a.txt"), "changed\n").expect("write");
+        stage_all_or_none(&mut tab, true);
+        commit_staged(&mut tab);
+        assert!(!tab.hook_ok);
+        assert!(tab.hook_log.is_some());
+    }
+
+    #[test]
+    fn discard_change_restores_the_file() {
+        let repo = TempRepo::new("discard");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("a.txt"), "scribble\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "a.txt")
+            .expect("a.txt");
+        discard_change(&mut tab, index);
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("a.txt")).expect("read"),
+            "one\n"
+        );
+        assert!(tab.changes.is_empty());
     }
 
     #[test]

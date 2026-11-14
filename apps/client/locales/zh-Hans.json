@@ -172,5 +172,41 @@
     "openInEditor": "在编辑器中打开",
     "source": "源码",
     "blame": "追溯"
+  },
+  "changes": {
+    "staged": "已暂存",
+    "unstaged": "未暂存",
+    "stageAll": "全部暂存",
+    "unstageAll": "全部取消",
+    "summary": "已暂存 %{staged} · 未暂存 %{unstaged}",
+    "selectFile": "选择一个文件查看改动",
+    "empty": "工作区干净",
+    "discardTitle": "丢弃改动？",
+    "discardMessage": "%{path} 的工作区副本将恢复为暂存区内容，且无法撤销。",
+    "discardAction": "丢弃"
+  },
+  "commit": {
+    "tab": "提交",
+    "summary": "摘要",
+    "summaryPlaceholder": "修复编辑器状态",
+    "description": "说明",
+    "descriptionPlaceholder": "改了什么、为什么",
+    "required": "必填",
+    "markdown": "支持 Markdown",
+    "stagedFiles": "%{count} 个文件",
+    "action": "提交 %{count} 个已暂存文件",
+    "hooksHint": "钩子通过后才能提交",
+    "nothingStaged": "先暂存改动再提交",
+    "hooksPassed": "钩子通过",
+    "hooksFailed": "钩子失败"
+  },
+  "changelists": {
+    "default": "默认清单",
+    "title": "变更清单",
+    "files": "%{count} 个文件",
+    "setActive": "设为当前",
+    "moveSelected": "移动 3 个选中文件到…",
+    "rename": "重命名清单…",
+    "footHint": "仅筛选 — 暂存后提交"
   }
 }

@@ -16,6 +16,7 @@ mod workspace;
 
 use nsh_base::theme_overrides;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
+
 use nsh_core::element::desktop::{main_window, title_bar};
 use nsh_core::element::set_tokens;
 use nsh_core::prelude::*;
@@ -34,6 +35,13 @@ pub(crate) enum Screen {
     Welcome,
     RepoManager,
     Workspace,
+}
+
+/// 工作区主区的两种模式（工具栏的 History / Changes 分段）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Mode {
+    History,
+    Changes,
 }
 
 /// 仓库管理页的三种入口（设计板 03 的分段控件）。
@@ -56,6 +64,13 @@ pub(crate) struct Actions {
     pub(crate) toggle_compare: Arc<dyn Fn(usize)>,
     pub(crate) set_compare_mode: Arc<dyn Fn(bool)>,
     pub(crate) select_file: Arc<dyn Fn(usize)>,
+    pub(crate) set_mode: Arc<dyn Fn(Mode)>,
+    pub(crate) select_change: Arc<dyn Fn(usize)>,
+    pub(crate) toggle_stage: Arc<dyn Fn(usize)>,
+    pub(crate) discard_change: Arc<dyn Fn(usize)>,
+    pub(crate) stage_all: Arc<dyn Fn()>,
+    pub(crate) unstage_all: Arc<dyn Fn()>,
+    pub(crate) commit: Arc<dyn Fn()>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -96,6 +111,10 @@ pub fn App() -> impl IntoElement {
     let filter_open = signal(false);
     let inspector_open = signal(false);
     let compare_mode = signal(false);
+    let mode = signal(Mode::History);
+    let commit_summary = signal(String::new());
+    let commit_description = signal(String::new());
+    let changelist_open = signal(false);
     let now = store::now_unix();
 
     let session = store::load_session(&store_dir);
@@ -401,6 +420,130 @@ pub fn App() -> impl IntoElement {
         Arc::new(move |form: RepoForm| repo_form.set(form))
     };
 
+    let set_mode: Arc<dyn Fn(Mode)> = {
+        let mode = mode;
+        Arc::new(move |next: Mode| mode.set(next))
+    };
+
+    let select_change: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |index: usize| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::load_change_diff(tab, index);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let toggle_stage: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |index: usize| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::toggle_stage(tab, index);
+                tabs.set(list);
+            }
+        })
+    };
+
+    // 丢弃不可撤销：先弹系统确认框，确认后才动工作区。
+    let discard_change: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        let language = language;
+        Arc::new(move |index: usize| {
+            let list = tabs.get_untracked();
+            let current = active.get_untracked();
+            let Some(tab) = list.get(current).cloned() else {
+                return;
+            };
+            let Some(entry) = tab.changes.get(index).cloned() else {
+                return;
+            };
+            let language_now = language.get_untracked();
+            let pending = nsh_base::alert_dialog()
+                .title(i18n::t(language_now.as_str(), "changes.discardTitle"))
+                .description(i18n::with_arguments(
+                    language_now.as_str(),
+                    "changes.discardMessage",
+                    &[("path", entry.path.clone())],
+                ))
+                .destructive(
+                    "discard",
+                    i18n::t(language_now.as_str(), "changes.discardAction"),
+                )
+                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
+                .show();
+            let tabs = tabs;
+            let active = active;
+            spawn(async move {
+                if let Ok(result) = pending.await {
+                    if result.action.as_deref() != Some("discard") {
+                        return;
+                    }
+                    let current = active.get_untracked();
+                    let mut list = tabs.get_untracked();
+                    if let Some(tab) = list.get_mut(current) {
+                        model::discard_change(tab, index);
+                        tabs.set(list);
+                    }
+                }
+            });
+        })
+    };
+
+    let stage_all: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::stage_all_or_none(tab, true);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let unstage_all: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::stage_all_or_none(tab, false);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let commit: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let commit_summary = commit_summary;
+        let commit_description = commit_description;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                tab.summary = commit_summary.get_untracked();
+                tab.description = commit_description.get_untracked();
+                model::commit_staged(tab);
+                if tab.hook_ok {
+                    commit_summary.set(String::new());
+                    commit_description.set(String::new());
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -410,6 +553,13 @@ pub fn App() -> impl IntoElement {
         toggle_compare,
         set_compare_mode,
         select_file,
+        set_mode,
+        select_change,
+        toggle_stage,
+        discard_change,
+        stage_all,
+        unstage_all,
+        commit,
         apply_filter,
         clear_filter,
         clone_repository,
@@ -496,6 +646,10 @@ pub fn App() -> impl IntoElement {
                             filter_open,
                             inspector_open,
                             compare_mode,
+                            mode,
+                            commit_summary,
+                            commit_description,
+                            changelist_open,
                             actions_for_view.clone(),
                         )
                         .into_element(),

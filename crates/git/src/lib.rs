@@ -12,6 +12,15 @@ const MAX_OUTPUT: usize = 8 * 1024 * 1024;
 /// 展示在错误里的 stderr 长度上限。
 const MAX_DETAIL: usize = 4096;
 
+/// 一次提交的结果。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitOutcome {
+    /// 新提交的完整 SHA。
+    pub sha: String,
+    /// 钩子与 Git 的输出（成功或失败都有）。
+    pub log: String,
+}
+
 /// 历史筛选条件。空字段表示不限制。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LogFilter {
@@ -274,6 +283,125 @@ impl Repo {
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
         let output = run_git(&self.root, &["status", "--porcelain=v1", "-z"])?;
         return parse_status(&output);
+    }
+
+    /// 把工作区的改动加入暂存区（`git add -- <paths>`）。
+    pub fn stage(&self, paths: &[String]) -> Result<(), GitError> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        let mut args: Vec<&str> = vec!["add", "--"];
+        args.extend(paths.iter().map(|path| path.as_str()));
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 暂存全部改动，包含未跟踪文件（`git add -A`）。
+    pub fn stage_all(&self) -> Result<(), GitError> {
+        run_git(&self.root, &["add", "-A"])?;
+        return Ok(());
+    }
+
+    /// 取消暂存（`git restore --staged -- <paths>`）。
+    pub fn unstage(&self, paths: &[String]) -> Result<(), GitError> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        let mut args: Vec<&str> = vec!["restore", "--staged", "--"];
+        args.extend(paths.iter().map(|path| path.as_str()));
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 取消全部暂存（`git restore --staged .`）。
+    pub fn unstage_all(&self) -> Result<(), GitError> {
+        run_git(&self.root, &["restore", "--staged", "."])?;
+        return Ok(());
+    }
+
+    /// 丢弃工作区的改动，恢复为暂存区（或 `HEAD`）的内容。
+    ///
+    /// 这是不可撤销操作，调用方必须先确认；未跟踪文件不在处理范围内。
+    pub fn discard(&self, paths: &[String]) -> Result<(), GitError> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        let mut args: Vec<&str> = vec!["restore", "--worktree", "--"];
+        args.extend(paths.iter().map(|path| path.as_str()));
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 工作区或暂存区的逐文件统计；`staged` 为真时读 `--cached`。
+    pub fn numstat_section(&self, staged: bool) -> Result<Vec<DiffStat>, GitError> {
+        let args: Vec<&str> = if staged {
+            vec!["diff", "--numstat", "--cached"]
+        } else {
+            vec!["diff", "--numstat"]
+        };
+        let output = run_git(&self.root, &args)?;
+        let mut stats = Vec::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let mut parts = line.splitn(3, '\t');
+            let additions = parts.next().unwrap_or("");
+            let deletions = parts.next().unwrap_or("");
+            let path = parts.next().unwrap_or("");
+            if path.is_empty() {
+                continue;
+            }
+            stats.push(DiffStat {
+                path: path.to_string(),
+                additions: additions.parse().unwrap_or(0),
+                deletions: deletions.parse().unwrap_or(0),
+            });
+        }
+        return Ok(stats);
+    }
+
+    /// 某个文件的工作区 diff：`staged` 为真时读暂存区（`--cached`）。
+    pub fn file_diff(&self, path: &str, staged: bool) -> Result<String, GitError> {
+        let args: Vec<&str> = if staged {
+            vec!["diff", "--no-color", "--cached", "--", path]
+        } else {
+            vec!["diff", "--no-color", "--", path]
+        };
+        let output = run_git(&self.root, &args)?;
+        return Ok(String::from_utf8_lossy(&output).to_string());
+    }
+
+    /// 提交暂存区，返回提交 SHA 与钩子输出。
+    ///
+    /// 钩子的 stdout/stderr 由 `git commit` 合并返回；失败时错误里带有同样的
+    /// 输出，界面据此显示钩子日志（设计板的 `hook-box`）。
+    pub fn commit(&self, summary: &str, description: &str) -> Result<CommitOutcome, GitError> {
+        let message = if description.trim().is_empty() {
+            summary.to_string()
+        } else {
+            format!("{}\n\n{}", summary, description)
+        };
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&self.root)
+            .args(["commit", "-m", message.as_str()])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .map_err(|error| GitError::Spawn {
+                program: "git".to_string(),
+                reason: error.to_string(),
+            })?;
+        let log = {
+            let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+            text.push_str(&String::from_utf8_lossy(&output.stderr));
+            text.trim().to_string()
+        };
+        if !output.status.success() {
+            return Err(GitError::HookFailed { log });
+        }
+        let sha = run_git(&self.root, &["rev-parse", "HEAD"])?;
+        return Ok(CommitOutcome {
+            sha: String::from_utf8_lossy(&sha).trim().to_string(),
+            log,
+        });
     }
 
     /// 侧栏需要的引用集合：本地分支（含当前分支与领先/落后）、远程、标签、
@@ -835,6 +963,115 @@ mod tests {
         let repo = Repo::open(&target.display().to_string()).expect("open");
         assert_eq!(repo.abbrev_branch().unwrap_or_default(), "main");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn stage_and_unstage_move_paths_between_sections() {
+        let (_guard, path) = fixture("stage", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        std::fs::write(repo.root().join("b.txt"), "new\n").expect("write");
+
+        repo.stage_all().expect("stage all");
+        let staged: Vec<String> = repo
+            .status()
+            .expect("status")
+            .into_iter()
+            .filter(|entry| entry.is_staged())
+            .map(|entry| entry.path)
+            .collect();
+        assert!(staged.contains(&"a.txt".to_string()));
+        assert!(staged.contains(&"b.txt".to_string()));
+
+        repo.unstage(&["a.txt".to_string()]).expect("unstage");
+        let entries = repo.status().expect("status");
+        let a = entries.iter().find(|entry| entry.path == "a.txt").expect("a");
+        assert!(!a.is_staged());
+        assert!(a.is_unstaged());
+
+        repo.stage(&["a.txt".to_string()]).expect("stage");
+        assert!(repo
+            .status()
+            .expect("status")
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a")
+            .is_staged());
+    }
+
+    #[test]
+    fn discard_restores_the_worktree_copy() {
+        let (_guard, path) = fixture("discard", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "changed\n").expect("write");
+        assert!(repo.status().expect("status").iter().any(|entry| entry.is_unstaged()));
+
+        repo.discard(&["a.txt".to_string()]).expect("discard");
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
+            "one\n"
+        );
+        assert!(repo.status().expect("status").is_empty());
+    }
+
+    #[test]
+    fn commit_records_summary_and_description() {
+        let (_guard, path) = fixture("commit", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+        let outcome = repo
+            .commit("add second line", "A longer description.")
+            .expect("commit");
+        assert_eq!(outcome.sha.len(), 40);
+        let head = repo.log(1, "").expect("log").remove(0);
+        assert_eq!(head.sha, outcome.sha);
+        assert_eq!(head.summary, "add second line");
+    }
+
+    #[test]
+    fn failing_hook_reports_its_log() {
+        let (_guard, path) = fixture("hooks", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        // 让 pre-commit 钩子失败。
+        let hook = repo.root().join(".git/hooks/pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\necho 'lint failed' >&2\nexit 1\n").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&hook).expect("meta").permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(&hook, permissions).expect("chmod");
+        }
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+
+        let error = repo.commit("should fail", "").expect_err("hook failure");
+        match error {
+            GitError::HookFailed { log } => {
+                assert!(log.contains("lint failed"), "钩子输出应包含在日志里：{}", log);
+            }
+            other => panic!("期望 HookFailed，实际 {:?}", other),
+        }
+        // 失败后暂存区保留，历史没有新增提交。
+        assert_eq!(repo.log(10, "").expect("log").len(), 1);
+    }
+
+    #[test]
+    fn file_diff_reads_worktree_and_index() {
+        let (_guard, path) = fixture("filediff", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+
+        let worktree = repo.file_diff("a.txt", false).expect("worktree diff");
+        assert!(worktree.contains("-one"));
+        assert!(worktree.contains("+two"));
+        assert!(repo.file_diff("a.txt", true).expect("index diff").is_empty());
+
+        repo.stage(&["a.txt".to_string()]).expect("stage");
+        let staged = repo.file_diff("a.txt", true).expect("index diff");
+        assert!(staged.contains("+two"));
+        assert!(repo.file_diff("a.txt", false).expect("worktree diff").is_empty());
     }
 
     #[test]
