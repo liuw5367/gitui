@@ -404,7 +404,11 @@
     "discovery2Hint": "Folders scanned for repositories.",
     "scanFound": "Found %{count} repositories",
     "scanEmpty": "No repositories found in the scan folders",
-    "scanAdded": "Added %{count} repositories"
+    "scanAdded": "Added %{count} repositories",
+    "mergeEmptyDirs": "Merge empty directories",
+    "compactSingleChild": "Compact single-child folders",
+    "showWelcome": "Show Welcome",
+    "lastSession": "Last session · %{count} repositories will be restored"
   },
   "refs": {
     "title": "Refs",

@@ -59,6 +59,7 @@ pub(crate) fn settings(
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
     agent_settings: Signal<agent::Settings>,
     branches_for_agent: Vec<String>,
+    last_session: Vec<String>,
     use_system_git: bool,
     scan_folders: Vec<String>,
     found_repos: usize,
@@ -94,6 +95,7 @@ pub(crate) fn settings(
                     set_permission,
                     agent_settings,
                     branches_for_agent,
+                    last_session,
                     use_system_git,
                     scan_folders,
                     found_repos,
@@ -242,6 +244,7 @@ fn main(
     set_permission: std::sync::Arc<dyn Fn(agent::Action, agent::Permission)>,
     agent_settings: Signal<agent::Settings>,
     branches_for_agent: Vec<String>,
+    last_session: Vec<String>,
     use_system_git: bool,
     scan_folders: Vec<String>,
     found_repos: usize,
@@ -261,7 +264,6 @@ fn main(
     let set_theme = actions.set_theme.clone();
     let set_language = actions.toggle_language.clone();
     let set_file_tree = actions.set_file_tree.clone();
-    let set_restore = actions.set_restore_session.clone();
     return view()
         .flex_1()
         .min_w_0()
@@ -290,8 +292,10 @@ fn main(
                             set_theme.clone(),
                             set_language.clone(),
                             set_file_tree.clone(),
-                            set_restore.clone(),
                             actions.set_update_mode.clone(),
+                            actions.set_tree_flag.clone(),
+                            actions.set_launch_restore.clone(),
+                            last_session.clone(),
                             actions.set_date_style.clone(),
                             actions.set_date_pattern.clone(),
                             identity_text.clone(),
@@ -341,8 +345,10 @@ fn general(
     set_theme: std::sync::Arc<dyn Fn(ThemeMode)>,
     toggle_language: std::sync::Arc<dyn Fn()>,
     set_file_tree: std::sync::Arc<dyn Fn(bool)>,
-    set_restore_session: std::sync::Arc<dyn Fn(bool)>,
     set_update_mode: std::sync::Arc<dyn Fn(String)>,
+    set_tree_flag: std::sync::Arc<dyn Fn(&'static str, bool)>,
+    set_launch: std::sync::Arc<dyn Fn(bool)>,
+    last_session: Vec<String>,
     set_date_style: std::sync::Arc<dyn Fn(crate::i18n::DateStyle)>,
     set_date_pattern: std::sync::Arc<dyn Fn(String)>,
     identity_line: String,
@@ -544,23 +550,126 @@ fn general(
             language,
             "settings.fileTree",
             "settings.fileTreeHint",
-            toggle_row(
-                language,
-                "settings.fileTreeToggle",
-                std::sync::Arc::new(move || settings_state.get().file_tree),
-                move || set_file_tree(!settings_state.get_untracked().file_tree),
-            ),
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(2.0))
+                .child(toggle_row(
+                    language,
+                    "settings.fileTreeToggle",
+                    std::sync::Arc::new(move || settings_state.get().file_tree),
+                    move || set_file_tree(!settings_state.get_untracked().file_tree),
+                ))
+                .child(toggle_row(
+                    language,
+                    "settings.mergeEmptyDirs",
+                    std::sync::Arc::new(move || settings_state.get().merge_empty_dirs),
+                    {
+                        let set_tree_flag = set_tree_flag.clone();
+                        move || {
+                            set_tree_flag(
+                                "merge_empty_dirs",
+                                !settings_state.get_untracked().merge_empty_dirs,
+                            )
+                        }
+                    },
+                ))
+                .child(toggle_row(
+                    language,
+                    "settings.compactSingleChild",
+                    std::sync::Arc::new(move || settings_state.get().compact_single_child),
+                    {
+                        let set_tree_flag = set_tree_flag.clone();
+                        move || {
+                            set_tree_flag(
+                                "compact_single_child",
+                                !settings_state.get_untracked().compact_single_child,
+                            )
+                        }
+                    },
+                ))
+                .into_element(),
         ))
         .child(section_block(
             language,
             "settings.onLaunch",
             "settings.onLaunchHint",
-            toggle_row(
-                language,
-                "settings.restoreSession",
-                std::sync::Arc::new(move || settings_state.get().restore_session),
-                move || set_restore_session(!settings_state.get_untracked().restore_session),
-            ),
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(4.0))
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(2.0))
+                        .child(launch_choice(
+                            language,
+                            "settings.restoreSession",
+                            settings_state.get_untracked().restore_session,
+                            {
+                                let set_launch = set_launch.clone();
+                                move || set_launch(true)
+                            },
+                        ))
+                        .child(launch_choice(
+                            language,
+                            "settings.showWelcome",
+                            !settings_state.get_untracked().restore_session,
+                            {
+                                let set_launch = set_launch.clone();
+                                move || set_launch(false)
+                            },
+                        )),
+                )
+                // Last session：明确列出启动时会被恢复的仓库。
+                .child(view().w_full().when(!last_session.is_empty(), |this| {
+                    let rows: Vec<AnyElement> = last_session
+                        .iter()
+                        .map(|path| {
+                            let label = path.clone();
+                            return view()
+                                .w_full()
+                                .h(px(20.0))
+                                .flex_row()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(widgets::icon("folder", 10.0, design::text3))
+                                .child(
+                                    text(label)
+                                        .flex_1()
+                                        .text_size(px(9.5))
+                                        .line_height(px(13.0))
+                                        .font_family("SF Mono")
+                                        .text_color(move || design::text2())
+                                        .text_overflow(nsh_core::EllipsizeMode::Middle),
+                                )
+                                .into_element();
+                        })
+                        .collect();
+                    let count = rows.len().to_string();
+                    this.child(
+                        view()
+                            .w_full()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .child(
+                                text(move || {
+                                    i18n::with_arguments(
+                                        language.get().as_str(),
+                                        "settings.lastSession",
+                                        &[("count", count.clone())],
+                                    )
+                                })
+                                .text_size(px(9.5))
+                                .line_height(px(13.0))
+                                .text_color(move || design::text3()),
+                            )
+                            .child(rows),
+                    )
+                }))
+                .into_element(),
         ))
         .child(section_block(
             language,
@@ -662,6 +771,48 @@ fn general(
                 )
                 .into_element(),
         ));
+}
+
+/// 启动方式的两个选项（设计板 23 的 Launch behavior）。
+fn launch_choice(
+    language: Signal<SharedString>,
+    key: &'static str,
+    active: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return view()
+        .h(px(22.0))
+        .px(px(8.0))
+        .items_center()
+        .rounded(px(5.0))
+        .border_1()
+        .border_color(move || {
+            if active {
+                design::line_soft()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .bg(move || {
+            if active {
+                design::content()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press(on_press)
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(10.0))
+                .line_height(px(13.0))
+                .text_color(move || {
+                    if active {
+                        design::text()
+                    } else {
+                        design::text3()
+                    }
+                }),
+        );
 }
 
 /// 日期格式的四种预设。

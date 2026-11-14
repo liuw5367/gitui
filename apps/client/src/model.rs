@@ -138,6 +138,69 @@ impl ChangeEntry {
     }
 }
 
+/// 文件树的两项显示偏好（设计板 23）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TreeOptions {
+    /// 合并空目录：只含子目录、自己不含文件的层级不单独占一行。
+    pub merge_empty_dirs: bool,
+    /// 压缩单子目录：`a/b/c` 这种链式目录合并成一行显示。
+    pub compact_single_child: bool,
+}
+
+impl TreeOptions {
+    pub fn from_settings(settings: &store::Settings) -> TreeOptions {
+        return TreeOptions {
+            merge_empty_dirs: settings.merge_empty_dirs,
+            compact_single_child: settings.compact_single_child,
+        };
+    }
+
+    /// 目录行是否要显示。
+    ///
+    /// `merge_empty_dirs` 打开时，只有子目录、自己没有直接文件的层级不占行——
+    /// 这正是「merge empty directories」要的效果：不把 `src` 这种纯容器画成一行。
+    pub fn shows_directory(self, direct_files: usize) -> bool {
+        if !self.merge_empty_dirs {
+            return true;
+        }
+        return direct_files > 0;
+    }
+
+    /// 把文件名所属目录链压缩成一行显示用的标签。
+    ///
+    /// `dirs` 是所有出现过的目录（完整路径）。`compact_single_child` 打开时，
+    /// 如果 `a` 下只有 `b`、`b` 下只有 `c`，标签就是 `a/b/c`。
+    pub fn compact_label(self, dirs: &[String], path: &str) -> String {
+        if path.is_empty() || !self.compact_single_child {
+            return path.to_string();
+        }
+        let mut label = String::new();
+        let mut prefix: String;
+        for part in path.split('/') {
+            if label.is_empty() {
+                label.push_str(part);
+            } else {
+                label.push('/');
+                label.push_str(part);
+            }
+            prefix = label.clone();
+            // 该前缀下的直接子目录个数。
+            let child_prefix = format!("{prefix}/");
+            let mut children: Vec<&String> = dirs
+                .iter()
+                .filter(|candidate| candidate.starts_with(child_prefix.as_str()))
+                .filter(|candidate| !candidate[child_prefix.len()..].contains('/'))
+                .collect();
+            children.sort();
+            children.dedup();
+            if children.len() != 1 {
+                break;
+            }
+        }
+        return label;
+    }
+}
+
 fn normalise_status(status: char) -> char {
     return match status {
         ' ' | '?' => '?',
@@ -1601,6 +1664,58 @@ mod tests {
 
         // 不存在的 SHA 返回 false，不改变选中。
         assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn tree_options_compact_single_child_chains() {
+        let all = TreeOptions {
+            merge_empty_dirs: true,
+            compact_single_child: true,
+        };
+        // src 下只有 git，git 下只有 legacy → 整条链压成一行。
+        let dirs = vec![
+            "src".to_string(),
+            "src/git".to_string(),
+            "src/git/legacy".to_string(),
+        ];
+        assert_eq!(all.compact_label(&dirs, "src/git/legacy"), "src/git/legacy");
+        // 一旦某层有多个子目录，就在那层断开。
+        let dirs = vec![
+            "src".to_string(),
+            "src/git".to_string(),
+            "src/ui".to_string(),
+            "src/git/legacy".to_string(),
+        ];
+        assert_eq!(
+            all.compact_label(&dirs, "src/git/legacy"),
+            "src",
+            "src 有两个子目录，压缩应停在 src"
+        );
+
+        // 关掉压缩时原样返回。
+        let plain = TreeOptions {
+            merge_empty_dirs: true,
+            compact_single_child: false,
+        };
+        assert_eq!(plain.compact_label(&dirs, "src/git/legacy"), "src/git/legacy");
+        // 根目录没有标签。
+        assert_eq!(all.compact_label(&dirs, ""), "");
+    }
+
+    #[test]
+    fn tree_options_decide_whether_a_directory_row_shows() {
+        let merged = TreeOptions {
+            merge_empty_dirs: true,
+            compact_single_child: false,
+        };
+        assert!(merged.shows_directory(2), "有直接文件就显示");
+        assert!(!merged.shows_directory(0), "纯容器目录不占行");
+
+        let unmerged = TreeOptions {
+            merge_empty_dirs: false,
+            compact_single_child: false,
+        };
+        assert!(unmerged.shows_directory(0), "关闭合并时空目录也显示");
     }
 
     #[test]

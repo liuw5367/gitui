@@ -404,7 +404,11 @@
     "discovery2Hint": "在这些目录里扫描仓库。",
     "scanFound": "找到 %{count} 个仓库",
     "scanEmpty": "扫描目录里没有找到仓库",
-    "scanAdded": "已加入 %{count} 个仓库"
+    "scanAdded": "已加入 %{count} 个仓库",
+    "mergeEmptyDirs": "合并空目录",
+    "compactSingleChild": "压缩单子目录",
+    "showWelcome": "显示欢迎页",
+    "lastSession": "上次会话 · 将恢复 %{count} 个仓库"
   },
   "refs": {
     "title": "引用",

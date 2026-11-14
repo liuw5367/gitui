@@ -269,6 +269,7 @@ fn body(
     let refs_tab = signal(crate::screens::RefsTab::Refs);
     let set_refs_tab = std::sync::Arc::new(move |next: crate::screens::RefsTab| refs_tab.set(next));
     let group_by_directory = settings_state.get_untracked().file_tree;
+    let tree_options = crate::model::TreeOptions::from_settings(&settings_state.get_untracked());
     let changes_actions = actions.clone();
     let history_actions = actions.clone();
     let inspector_actions = actions.clone();
@@ -334,6 +335,7 @@ fn body(
                             tab_for_changes.clone(),
                             changelist_open,
                             group_by_directory,
+                            tree_options,
                             changes_actions.clone(),
                         )
                         .into_element(),

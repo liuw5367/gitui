@@ -126,7 +126,6 @@ pub(crate) struct Actions {
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
     pub(crate) set_theme: Arc<dyn Fn(ThemeMode)>,
     pub(crate) set_file_tree: Arc<dyn Fn(bool)>,
-    pub(crate) set_restore_session: Arc<dyn Fn(bool)>,
     pub(crate) go_settings: Arc<dyn Fn()>,
     pub(crate) undo_reflog: Arc<dyn Fn(usize)>,
     pub(crate) set_mode_refs: Arc<dyn Fn()>,
@@ -203,6 +202,10 @@ pub(crate) struct Actions {
     pub(crate) detect_git: Arc<dyn Fn()>,
     /// 切换「使用 PATH 里的 git」。
     pub(crate) toggle_git_path: Arc<dyn Fn()>,
+    /// 设置文件树的两项开关（`merge_empty_dirs` / `compact_single_child`）。
+    pub(crate) set_tree_flag: Arc<dyn Fn(&'static str, bool)>,
+    /// 设置启动方式：true = 恢复上次会话，false = 显示欢迎页。
+    pub(crate) set_launch_restore: Arc<dyn Fn(bool)>,
     /// 切换日期显示方式。
     pub(crate) set_date_style: Arc<dyn Fn(crate::i18n::DateStyle)>,
     /// 设置自定义日期 pattern。
@@ -1143,16 +1146,6 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let set_restore_session: Arc<dyn Fn(bool)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |enabled: bool| {
-            let mut next = settings_state.get_untracked();
-            next.restore_session = enabled;
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
 
     let undo_reflog: Arc<dyn Fn(usize)> = {
         let tabs = tabs;
@@ -2526,6 +2519,33 @@ pub fn App() -> impl IntoElement {
         Arc::new(move |split: bool| diff_split.set(split))
     };
 
+    // 文件树两项与启动方式：改了就持久化。
+    let set_tree_flag: Arc<dyn Fn(&'static str, bool)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |which: &'static str, value: bool| {
+            let mut next = settings_state.get_untracked();
+            match which {
+                "merge_empty_dirs" => next.merge_empty_dirs = value,
+                "compact_single_child" => next.compact_single_child = value,
+                _ => return,
+            }
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
+    let set_launch_restore: Arc<dyn Fn(bool)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |restore: bool| {
+            let mut next = settings_state.get_untracked();
+            next.restore_session = restore;
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2572,7 +2592,6 @@ pub fn App() -> impl IntoElement {
         run_command,
         set_theme,
         set_file_tree,
-        set_restore_session,
         go_settings,
         undo_reflog,
         set_mode_refs,
@@ -2623,6 +2642,8 @@ pub fn App() -> impl IntoElement {
         choose_git,
         detect_git,
         toggle_git_path,
+        set_tree_flag,
+        set_launch_restore,
         set_date_style,
         set_date_pattern,
         open_identity,
@@ -2991,6 +3012,11 @@ pub fn App() -> impl IntoElement {
                             actions_for_view.set_agent_permission.clone(),
                             agent_settings,
                             branches_for_settings.clone(),
+                            recent
+                                .get()
+                                .into_iter()
+                                .map(|entry| entry.path)
+                                .collect::<Vec<String>>(),
                             settings_state.get().use_system_git,
                             store::load_git_scan_folders(&store_dir)
                                 .iter()

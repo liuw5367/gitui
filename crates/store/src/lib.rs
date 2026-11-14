@@ -130,6 +130,10 @@ pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
 pub struct Settings {
     /// 变更列表按目录分组（关闭时为平铺路径）。
     pub file_tree: bool,
+    /// 合并空目录：只有一层子目录的层级合并成一行。
+    pub merge_empty_dirs: bool,
+    /// 压缩单子目录：`a/b/c` 这种链式目录合并显示。
+    pub compact_single_child: bool,
     /// 启动时恢复上次打开的仓库；关闭则显示欢迎页。
     pub restore_session: bool,
     /// 更新检查方式：`auto` / `manual` / `never`。
@@ -148,6 +152,8 @@ impl Default for Settings {
     fn default() -> Self {
         return Settings {
             file_tree: true,
+            merge_empty_dirs: true,
+            compact_single_child: true,
             restore_session: true,
             update_mode: "manual".to_string(),
             use_system_git: true,
@@ -174,6 +180,10 @@ pub fn load_settings(dir: &Path) -> Settings {
         };
         match key.trim() {
             "file_tree" => settings.file_tree = value.trim() != "false",
+            "merge_empty_dirs" => settings.merge_empty_dirs = value.trim() != "false",
+            "compact_single_child" => {
+                settings.compact_single_child = value.trim() != "false"
+            }
             "restore_session" => settings.restore_session = value.trim() != "false",
             "update_mode" => settings.update_mode = value.trim().to_string(),
             "use_system_git" => settings.use_system_git = value.trim() != "false",
@@ -190,6 +200,8 @@ pub fn load_settings(dir: &Path) -> Settings {
 pub fn save_settings(dir: &Path, settings: &Settings) {
     let lines = vec![
         format!("file_tree={}", settings.file_tree),
+        format!("merge_empty_dirs={}", settings.merge_empty_dirs),
+        format!("compact_single_child={}", settings.compact_single_child),
         format!("restore_session={}", settings.restore_session),
         format!("update_mode={}", settings.update_mode),
         format!("use_system_git={}", settings.use_system_git),
@@ -541,6 +553,8 @@ mod tests {
             dir.path(),
             &Settings {
                 file_tree: false,
+                merge_empty_dirs: false,
+                compact_single_child: false,
                 restore_session: false,
                 update_mode: "never".to_string(),
                 use_system_git: false,
@@ -552,6 +566,9 @@ mod tests {
         let loaded = load_settings(dir.path());
         assert!(!loaded.file_tree);
         assert!(!loaded.restore_session);
+        assert!(!loaded.merge_empty_dirs);
+        assert!(!loaded.compact_single_child);
+        assert!(Settings::default().merge_empty_dirs, "默认合并空目录");
         assert_eq!(loaded.update_mode, "never", "更新方式应持久化");
         assert_eq!(loaded.date_format, "custom");
         assert!(!loaded.use_system_git);

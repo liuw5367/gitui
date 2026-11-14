@@ -21,6 +21,7 @@ pub(crate) fn changes_view(
     tab: Tab,
     changelist_open: Signal<bool>,
     group_by_directory: bool,
+    tree: crate::model::TreeOptions,
     actions: Actions,
 ) -> impl IntoElement {
     let total = tab.changes.len();
@@ -90,6 +91,7 @@ pub(crate) fn changes_view(
             total,
             changelist_open,
             group_by_directory,
+            tree,
             actions,
         ))
         .child(
@@ -161,6 +163,7 @@ fn changes_list(
     total: usize,
     changelist_open: Signal<bool>,
     group_by_directory: bool,
+    tree: crate::model::TreeOptions,
     actions: Actions,
 ) -> impl IntoElement {
     let select_change = actions.select_change.clone();
@@ -192,9 +195,24 @@ fn changes_list(
         }
         let mut rows: Vec<AnyElement> = Vec::new();
         let mut current_directory = String::new();
+        // 目录链压缩需要知道所有出现过的目录。
+        let all_dirs: Vec<String> = tab
+            .changes
+            .iter()
+            .map(|entry| entry.directory().to_string())
+            .filter(|directory| !directory.is_empty())
+            .collect();
         for (index, entry) in entries {
-            let directory = entry.directory().to_string();
-            if group_by_directory && directory != current_directory {
+            let raw_directory = entry.directory().to_string();
+            let directory = tree.compact_label(&all_dirs, raw_directory.as_str());
+            // 该目录自己有没有直接文件；没有且开了「合并空目录」就不画这一行。
+            let direct_files = tab
+                .changes
+                .iter()
+                .filter(|candidate| candidate.directory() == raw_directory)
+                .count();
+            let show_row = tree.shows_directory(direct_files);
+            if group_by_directory && directory != current_directory && show_row {
                 current_directory = directory.clone();
                 rows.push(
                     view()
