@@ -104,6 +104,18 @@ pub(crate) fn token(name: &str) -> AdaptiveColor {
 }
 
 
+pub(crate) fn content() -> AdaptiveColor {
+    base_theme().background
+}
+
+pub(crate) fn line_soft() -> AdaptiveColor {
+    token("linesoft")
+}
+
+pub(crate) fn selected() -> AdaptiveColor {
+    token("sel")
+}
+
 pub(crate) fn text() -> AdaptiveColor {
     base_theme().foreground
 }

@@ -1,10 +1,10 @@
-//! Read-only selected-commit diff with commit actions.
+//! Selected-commit diff pane.
 
-use nsh_base::{editor, theme};
+use crate::design;
+use crate::widgets::header_button;
+use nsh_base::editor;
 use nsh_core::prelude::*;
 use std::sync::Arc;
-
-use crate::widgets::header_button;
 
 #[derive(Clone)]
 pub(crate) struct DiffActions {
@@ -19,18 +19,22 @@ pub(crate) fn diff_view(
 ) -> impl IntoElement {
     view()
         .flex_1()
+        .min_h_0()
         .flex_col()
-        .gap_2()
-        .p_2()
+        .bg(move || design::content())
         .child(
             view()
+                .h(px(38.0))
                 .flex_row()
                 .items_center()
                 .gap_2()
+                .px_3()
+                .border_b_1()
+                .border_color(move || design::line())
                 .child(
                     text(move || format!("Diff · {}", selected.get()))
-                        .text_size(px(10.0))
-                        .text_color(move || theme().foreground),
+                        .text_size(px(10.5))
+                        .text_color(move || design::text2()),
                 )
                 .child(view().flex_1())
                 .child(header_button("Cherry-pick", false, {
@@ -48,7 +52,7 @@ pub(crate) fn diff_view(
                 .read_only(true)
                 .language("diff")
                 .font_size(11.0)
-                .line_height(17.0)
+                .line_height(19.0)
                 .flex_1(),
         )
 }

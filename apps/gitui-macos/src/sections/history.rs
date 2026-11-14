@@ -1,72 +1,166 @@
-//! Commit history list.
+//! Commit history table.
 
+use crate::design;
 use gitui_git::Commit;
-use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
 pub(crate) fn history(
+    branch: Signal<SharedString>,
     commits: Signal<Vec<Commit>>,
     selected: Signal<SharedString>,
     on_select: Arc<dyn Fn(String)>,
 ) -> impl IntoElement {
     view()
-        .w(px(360.0))
+        .h(px(256.0))
+        .w_full()
         .flex_col()
-        .gap_2()
-        .p_2()
+        .bg(move || design::content())
+        .border_b_1()
+        .border_color(move || design::line())
         .child(
-            text("History")
-                .text_size(px(11.0))
-                .text_color(move || theme().foreground),
+            view()
+                .h(px(38.0))
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .border_b_1()
+                .border_color(move || design::line_soft())
+                .child(
+                    text("History")
+                        .text_size(px(13.0))
+                        .text_color(move || design::text()),
+                )
+                .child(
+                    view()
+                        .h(px(20.0))
+                        .px_2()
+                        .rounded(px(5.0))
+                        .bg(move || design::selected())
+                        .child(
+                            text(move || branch.get())
+                                .text_size(px(10.5))
+                                .text_color(move || design::primary()),
+                        ),
+                )
+                .child(
+                    text(move || format!("{} commits", commits.get().len()))
+                        .text_size(px(10.5))
+                        .text_color(move || design::text3()),
+                )
+                .child(view().flex_1())
+                .child(
+                    text("All authors")
+                        .text_size(px(10.5))
+                        .text_color(move || design::text3()),
+                ),
         )
-        .child(each(
-            commits,
-            |commit: &Commit| commit.sha.clone(),
-            move |commit, _| {
-                let sha = commit.get().sha.clone();
-                let on_select = on_select.clone();
-                view()
-                    .h(px(40.0))
-                    .px_2()
-                    .rounded(px(4.0))
-                    .bg(move || {
-                        if selected.get().to_string() == commit.get().sha {
-                            theme().primary
-                        } else {
-                            theme().background
-                        }
-                    })
-                    .on_press(move || on_select(sha.clone()))
-                    .child(
-                        text(move || commit.get().summary.clone())
-                            .text_size(px(11.0))
-                            .text_color(move || {
+        .child(
+            view()
+                .h(px(23.0))
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .border_b_1()
+                .border_color(move || design::line_soft())
+                .child(view().w(px(56.0)))
+                .child(
+                    text("Description")
+                        .flex_1()
+                        .text_size(px(10.5))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text("Author")
+                        .w(px(96.0))
+                        .text_size(px(10.5))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text("Date")
+                        .w(px(52.0))
+                        .text_size(px(10.5))
+                        .text_color(move || design::text3()),
+                ),
+        )
+        .child(
+            view()
+                .flex_1()
+                .min_h_0()
+                .flex_col()
+                .child(each(
+                    commits,
+                    |commit: &Commit| commit.sha.clone(),
+                    move |commit, _| {
+                        let sha = commit.get().sha.clone();
+                        let on_select = on_select.clone();
+                        view()
+                            .h(px(38.0))
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .px_3()
+                            .border_b_1()
+                            .border_l(move || {
                                 if selected.get().to_string() == commit.get().sha {
-                                    theme().primary_foreground
+                                    px(2.0)
                                 } else {
-                                    theme().foreground
+                                    px(0.0)
                                 }
-                            }),
-                    )
-                    .child(
-                        text(move || {
-                            format!(
-                                "{} · {} · {}",
-                                commit.get().short,
-                                commit.get().author,
-                                commit.get().date
+                            })
+                            .border_color(move || design::primary())
+                            .bg(move || {
+                                if selected.get().to_string() == commit.get().sha {
+                                    design::selected()
+                                } else {
+                                    design::content()
+                                }
+                            })
+                            .on_press(move || on_select(sha.clone()))
+                            .child(
+                                view()
+                                    .w(px(56.0))
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        view()
+                                            .w(px(8.0))
+                                            .h(px(8.0))
+                                            .rounded(px(4.0))
+                                            .bg(move || design::primary()),
+                                    ),
                             )
-                        })
-                        .text_size(px(9.0))
-                        .text_color(move || {
-                            if selected.get().to_string() == commit.get().sha {
-                                theme().primary_foreground
-                            } else {
-                                theme().foreground
-                            }
-                        }),
-                    )
-            },
-        ))
+                            .child(
+                                view()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex_col()
+                                    .child(
+                                        text(move || commit.get().summary.clone())
+                                            .text_size(px(12.0))
+                                            .text_color(move || design::text()),
+                                    )
+                                    .child(
+                                        text(move || commit.get().short.clone())
+                                            .text_size(px(10.0))
+                                            .text_color(move || design::text3()),
+                                    ),
+                            )
+                            .child(
+                                text(move || commit.get().author.clone())
+                                    .w(px(96.0))
+                                    .text_size(px(10.5))
+                                    .text_color(move || design::text2()),
+                            )
+                            .child(
+                                text(move || commit.get().date.clone())
+                                    .w(px(52.0))
+                                    .text_size(px(10.5))
+                                    .text_color(move || design::text3()),
+                            )
+                    },
+                )),
+        )
 }

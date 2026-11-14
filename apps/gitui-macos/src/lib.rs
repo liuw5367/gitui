@@ -960,7 +960,7 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let history = history(commits, selected, select_commit);
+    let history = history(branch, commits, selected, select_commit);
 
     let cherry_pick_action = Arc::new({
         let reload_pick = reload_for_branch.clone();
@@ -1001,6 +1001,12 @@ pub fn App() -> impl IntoElement {
         },
     );
 
+    let content = view()
+        .flex_1()
+        .min_w_0()
+        .flex_col()
+        .child(history)
+        .child(diff_pane);
     let main = view()
         .flex_1()
         .flex_row()
@@ -1008,8 +1014,7 @@ pub fn App() -> impl IntoElement {
         .p_0()
         .bg(move || theme().background)
         .child(status_pane)
-        .child(history)
-        .child(diff_pane);
+        .child(content);
 
     let statusbar = statusbar(commits);
 
