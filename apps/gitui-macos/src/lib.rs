@@ -260,6 +260,8 @@ pub fn App() -> impl IntoElement {
     };
 
     let reload_for_recent = reload.clone();
+    let reload_for_stage = reload.clone();
+    let reload_for_unstage = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -432,6 +434,35 @@ pub fn App() -> impl IntoElement {
             text(move || branch.get())
                 .text_size(px(10.0))
                 .text_color(move || theme().primary),
+        )
+        .child(
+            view()
+                .flex_row()
+                .gap_2()
+                .child(header_button("Stage All", true, {
+                    let reload_stage = reload_for_stage.clone();
+                    move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                        .and_then(|repo| repo.stage_all())
+                    {
+                        Ok(()) => {
+                            error.set(SharedString::from(""));
+                            reload_stage();
+                        }
+                        Err(err) => error.set(SharedString::from(err.to_string())),
+                    }
+                }))
+                .child(header_button("Unstage All", false, {
+                    let reload_unstage = reload_for_unstage.clone();
+                    move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+                        .and_then(|repo| repo.unstage_all())
+                    {
+                        Ok(()) => {
+                            error.set(SharedString::from(""));
+                            reload_unstage();
+                        }
+                        Err(err) => error.set(SharedString::from(err.to_string())),
+                    }
+                })),
         )
         .child(
             text(move || error.get())

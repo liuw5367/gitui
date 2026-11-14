@@ -154,6 +154,18 @@ impl Repo {
         ])
     }
 
+    /// Stage every working-tree change. M2 first write operation.
+    pub fn stage_all(&self) -> Result<(), GitError> {
+        self.git(&["add", "-A"])?;
+        Ok(())
+    }
+
+    /// Unstage everything, back to HEAD.
+    pub fn unstage_all(&self) -> Result<(), GitError> {
+        self.git(&["reset", "-q", "HEAD", "--", "."])?;
+        Ok(())
+    }
+
     fn git(&self, args: &[&str]) -> Result<String, GitError> {
         let mut command = Command::new("git");
         command
@@ -276,6 +288,24 @@ mod tests {
         let patch = repo.diff(&commits[0].sha).unwrap();
         assert!(patch.contains("-two"));
         assert!(patch.contains("+TWO"));
+    }
+
+    #[test]
+    fn stages_and_unstages_all() {
+        let fixture = TempRepo::new();
+        fs::write(fixture.path.join("a.txt"), "one\nTWO\n").unwrap();
+        fs::write(fixture.path.join("b.txt"), "new\n").unwrap();
+
+        let repo = Repo::open(fixture.path()).unwrap();
+        assert_eq!(repo.status().unwrap().unstaged, 2);
+        repo.stage_all().unwrap();
+        let staged = repo.status().unwrap();
+        assert_eq!(staged.staged, 2);
+        assert_eq!(staged.unstaged, 0);
+        repo.unstage_all().unwrap();
+        let unstaged = repo.status().unwrap();
+        assert_eq!(unstaged.staged, 0);
+        assert_eq!(unstaged.unstaged, 2);
     }
 
     #[test]
