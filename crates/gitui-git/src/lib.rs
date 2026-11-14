@@ -480,6 +480,43 @@ impl Repo {
         self.git(&["reset", "--hard", revision])
     }
 
+    pub fn compare(&self, from: &str, to: &str) -> Result<String, GitError> {
+        if from.is_empty() || to.is_empty() {
+            return Err(GitError("choose two refs to compare".to_string()));
+        }
+        self.git(&["diff", "--no-color", "--no-ext-diff", from, to])
+    }
+
+    pub fn file_history(&self, path: &str, limit: usize) -> Result<Vec<Commit>, GitError> {
+        if path.is_empty() {
+            return Err(GitError("choose a file".to_string()));
+        }
+        let output = self.git(&[
+            "log",
+            "--follow",
+            "--date=short",
+            "--format=%H%x1f%h%x1f%an%x1f%cd%x1f%s",
+            "-n",
+            &limit.to_string(),
+            "--",
+            path,
+        ])?;
+        let mut commits = Vec::new();
+        for line in output.lines() {
+            let fields: Vec<&str> = line.splitn(5, '\x1f').collect();
+            if fields.len() == 5 {
+                commits.push(Commit {
+                    sha: fields[0].to_string(),
+                    short: fields[1].to_string(),
+                    author: fields[2].to_string(),
+                    date: fields[3].to_string(),
+                    summary: fields[4].to_string(),
+                });
+            }
+        }
+        Ok(commits)
+    }
+
     pub fn log(&self, limit: usize) -> Result<Vec<Commit>, GitError> {
         let limit = limit.to_string();
         let output = self.git(&[
@@ -1383,6 +1420,20 @@ mod tests {
         assert!(entries.iter().any(|entry| entry.action.starts_with("commit")));
         assert!(entries[0].selector.starts_with("HEAD@{"));
         assert!(!entries[0].short.is_empty());
+    }
+
+    #[test]
+    fn compare_and_file_history_work() {
+        let temp = TempRepo::new();
+        fs::write(temp.path().to_string().as_str().to_owned() + "/a.txt", "one\nchanged\n").unwrap();
+        let repo = Repo::open(temp.path()).unwrap();
+        repo.stage_all().unwrap();
+        repo.commit("change a file").unwrap();
+        let patch = repo.compare("HEAD~1", "HEAD").unwrap();
+        assert!(patch.contains("changed"));
+        let history = repo.file_history("a.txt", 10).unwrap();
+        assert_eq!(history.len(), 2);
+        assert!(history[0].summary.contains("change a file"));
     }
 
 }

@@ -8,9 +8,9 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_git::{ReflogEntry, Repo, StatusEntry};
+use gitui_git::{Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{changes_list, diff_view, history, inspector, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{changes_list, diff_view, history, inspect_panel, inspector, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -50,6 +50,12 @@ fn split_entries(entries: &[StatusEntry]) -> (Vec<StatusEntry>, Vec<StatusEntry>
 #[native_module("gitui/native")]
 fn native(registry: &mut Registry) {
     registry.register::<App>();
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InspectTab {
+    Compare,
+    FileHistory,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -111,6 +117,26 @@ pub fn App() -> impl IntoElement {
     let reflog_entries = signal(Vec::<ReflogEntry>::new());
     let reflog_selected = signal(SharedString::from(""));
     let reflog_error = signal(SharedString::from(""));
+    let inspect_open = signal(false);
+    let inspect_tab = signal(InspectTab::Compare);
+    let inspect_from = signal(String::from("HEAD~1"));
+    let inspect_to = signal(String::from("HEAD"));
+    let inspect_path = signal(String::new());
+    let inspect_diff = signal(SharedString::from(""));
+    let inspect_commits = signal(Vec::<Commit>::new());
+    let inspect_selected = signal(SharedString::from(""));
+    let inspect_error = signal(SharedString::from(""));
+    let open_compare: Arc<dyn Fn()> = Arc::new(move || {
+        inspect_tab.set(InspectTab::Compare);
+        inspect_diff.set(SharedString::from(""));
+        inspect_error.set(SharedString::from(""));
+        inspect_open.set(true);
+    });
+    let open_file_history: Arc<dyn Fn()> = Arc::new(move || {
+        inspect_tab.set(InspectTab::FileHistory);
+        inspect_error.set(SharedString::from(""));
+        inspect_open.set(true);
+    });
     let branch = signal(SharedString::from(active_tab.branch.clone()));
     let operation = signal(active_tab.operation);
     let conflicts = signal(active_tab.conflicts.clone());
@@ -1146,7 +1172,16 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let history = history(branch, commits, selected, select_commit, open_reflog.clone(), mode);
+    let history = history(
+        branch,
+        commits,
+        selected,
+        select_commit,
+        open_reflog.clone(),
+        open_compare.clone(),
+        open_file_history.clone(),
+        mode,
+    );
 
     let cherry_pick_action = Arc::new({
         let reload_pick = reload_for_branch.clone();
@@ -1211,6 +1246,77 @@ pub fn App() -> impl IntoElement {
         commit_log,
         commit_actions,
     );
+    let close_inspect: Arc<dyn Fn()> = Arc::new(move || inspect_open.set(false));
+    let run_compare: Arc<dyn Fn()> = Arc::new(move || {
+        match Repo::open(repo_path.get_untracked().to_string().as_str()).and_then(|repo| {
+            repo.compare(
+                inspect_from.get_untracked().trim(),
+                inspect_to.get_untracked().trim(),
+            )
+        }) {
+            Ok(patch) => {
+                inspect_diff.set(SharedString::from(patch));
+                inspect_error.set(SharedString::from(""));
+            }
+            Err(err) => inspect_error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let run_file_history: Arc<dyn Fn()> = Arc::new(move || {
+        let path = inspect_path.get_untracked().trim().to_string();
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.file_history(&path, 80))
+        {
+            Ok(commits) => {
+                let first = commits
+                    .first()
+                    .map(|commit| commit.sha.clone())
+                    .unwrap_or_default();
+                inspect_commits.set(commits);
+                inspect_selected.set(SharedString::from(first.clone()));
+                if first.is_empty() {
+                    inspect_diff.set(SharedString::from(""));
+                } else if let Ok(repo) =
+                    Repo::open(repo_path.get_untracked().to_string().as_str())
+                {
+                    if let Ok(patch) = repo.diff(&first) {
+                        inspect_diff.set(SharedString::from(patch));
+                    }
+                }
+                inspect_error.set(SharedString::from(""));
+            }
+            Err(err) => inspect_error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let select_inspect_commit: Arc<dyn Fn(String)> = Arc::new(move |sha: String| {
+        inspect_selected.set(SharedString::from(sha.clone()));
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.diff(&sha))
+        {
+            Ok(patch) => {
+                inspect_diff.set(SharedString::from(patch));
+                inspect_error.set(SharedString::from(""));
+            }
+            Err(err) => inspect_error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let inspect_panel = inspect_panel(
+        inspect_open,
+        inspect_tab,
+        inspect_from,
+        inspect_to,
+        inspect_path,
+        inspect_diff,
+        inspect_commits,
+        inspect_selected,
+        inspect_error,
+        InspectActions {
+            close: close_inspect,
+            compare: run_compare,
+            history: run_file_history,
+            select_commit: select_inspect_commit,
+        },
+    );
+
     let reflog_panel = reflog_panel(
         reflog_open,
         reflog_entries,
@@ -1269,6 +1375,7 @@ pub fn App() -> impl IntoElement {
         .child(main)
         .child(sync_panel)
         .child(reflog_panel)
+        .child(inspect_panel)
         .child(settings_panel)
         .child(statusbar)
 }

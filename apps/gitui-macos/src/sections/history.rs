@@ -13,6 +13,8 @@ pub(crate) fn history(
     selected: Signal<SharedString>,
     on_select: Arc<dyn Fn(String)>,
     on_reflog: Arc<dyn Fn()>,
+    on_compare: Arc<dyn Fn()>,
+    on_file_history: Arc<dyn Fn()>,
     mode: Signal<Mode>,
 ) -> impl IntoElement {
     view()
@@ -65,7 +67,9 @@ pub(crate) fn history(
                         .text_size(px(10.5))
                         .text_color(move || design::text3()),
                 )
-                .child(header_button("Reflog", false, move || on_reflog())),
+                .child(header_button("Reflog", false, move || on_reflog()))
+                .child(header_button("Compare", false, move || on_compare()))
+                .child(header_button("Files", false, move || on_file_history())),
         )
         .child(
             view()
