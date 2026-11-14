@@ -896,12 +896,43 @@ pub fn App() -> impl IntoElement {
         .child(each(
             conflicts,
             |path: &String| path.clone(),
-            |path, _| {
-                view().h(px(18.0)).child(
-                    text(move || path.get())
-                        .text_size(px(9.0))
-                        .text_color(|| rgb(0xff3b30)),
-                )
+            move |path, _| {
+                view()
+                    .h(px(18.0))
+                    .px_1()
+                    .rounded(px(3.0))
+                    .bg(move || {
+                        if conflict_path.get() == path.get() {
+                            theme().primary
+                        } else {
+                            theme().background
+                        }
+                    })
+                    .on_press(move || {
+                        let selected = path.get();
+                        match Repo::open(repo_path.get_untracked().to_string().as_str())
+                            .and_then(|repo| repo.conflict_stages(&selected))
+                        {
+                            Ok(stages) => {
+                                conflict_path.set(selected.clone());
+                                conflict_result.set(stages.ours.clone());
+                                conflict_stages.set(Some(stages));
+                                error.set(SharedString::from(""));
+                            }
+                            Err(err) => error.set(SharedString::from(err.to_string())),
+                        }
+                    })
+                    .child(
+                        text(move || path.get())
+                            .text_size(px(9.0))
+                            .text_color(move || {
+                                if conflict_path.get() == path.get() {
+                                    rgb(0xffffff)
+                                } else {
+                                    rgb(0xff3b30)
+                                }
+                            }),
+                    )
             },
         ))
         .child(
