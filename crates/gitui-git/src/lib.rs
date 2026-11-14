@@ -130,6 +130,8 @@ pub struct PushPreview {
 pub struct ChangedFile {
     pub status: String,
     pub path: String,
+    pub additions: usize,
+    pub deletions: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -571,12 +573,38 @@ impl Repo {
             "--no-renames",
             sha,
         ])?;
+        let stats_output = self.git(&[
+            "show",
+            "--numstat",
+            "--format=",
+            "--no-renames",
+            sha,
+        ])?;
+        let mut stats = std::collections::HashMap::new();
+        for line in stats_output.lines().filter(|line| !line.trim().is_empty()) {
+            let fields: Vec<&str> = line.splitn(3, '\t').collect();
+            if fields.len() == 3 {
+                stats.insert(
+                    fields[2].to_string(),
+                    (
+                        fields[0].parse().unwrap_or(0),
+                        fields[1].parse().unwrap_or(0),
+                    ),
+                );
+            }
+        }
         let mut files = Vec::new();
         for line in files_output.lines().filter(|line| !line.trim().is_empty()) {
             if let Some((status, path)) = line.split_once('\t') {
+                let (additions, deletions) = stats
+                    .get(path)
+                    .copied()
+                    .unwrap_or((0, 0));
                 files.push(ChangedFile {
                     status: status.to_string(),
                     path: path.to_string(),
+                    additions,
+                    deletions,
                 });
             }
         }
@@ -1669,6 +1697,7 @@ mod tests {
         assert_eq!(details.files.len(), 1);
         assert_eq!(details.files[0].path, "a.txt");
         assert_eq!(details.files[0].status, "A");
+        assert_eq!(details.files[0].additions, 2);
     }
 
     #[test]

@@ -145,7 +145,19 @@ pub(crate) fn commit_info_panel(
                                 .border_r_1()
                                 .border_color(move || design::line())
                                 .child(
-                                    text(move || format!("Files · {}", files.get().len()))
+                                    text(move || {
+                                        let files = files.get();
+                                        let additions: usize =
+                                            files.iter().map(|file| file.additions).sum();
+                                        let deletions: usize =
+                                            files.iter().map(|file| file.deletions).sum();
+                                        format!(
+                                            "Files · {}  +{} −{}",
+                                            files.len(),
+                                            additions,
+                                            deletions
+                                        )
+                                    })
                                         .px_2()
                                         .py_1()
                                         .text_size(px(9.5))
@@ -181,8 +193,20 @@ pub(crate) fn commit_info_panel(
                                             )
                                             .child(
                                                 text(move || file.get().path)
+                                                    .flex_1()
                                                     .text_size(px(9.5))
                                                     .text_color(move || design::text()),
+                                            )
+                                            .child(
+                                                text(move || {
+                                                    format!(
+                                                        "+{} −{}",
+                                                        file.get().additions,
+                                                        file.get().deletions
+                                                    )
+                                                })
+                                                .text_size(px(9.0))
+                                                .text_color(move || design::text3()),
                                             )
                                     },
                                 )),
