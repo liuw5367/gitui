@@ -161,6 +161,22 @@ pub(crate) fn warn() -> AdaptiveColor {
     token("warn")
 }
 
+pub(crate) fn branch_bg() -> AdaptiveColor {
+    token("branchbg")
+}
+
+pub(crate) fn branch_fg() -> AdaptiveColor {
+    token("branchfg")
+}
+
+pub(crate) fn tag_bg() -> AdaptiveColor {
+    token("tagbg")
+}
+
+pub(crate) fn tag_fg() -> AdaptiveColor {
+    token("tagfg")
+}
+
 pub(crate) fn line() -> AdaptiveColor {
     base_theme().border
 }

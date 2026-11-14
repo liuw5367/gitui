@@ -8,6 +8,37 @@ use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
+fn ref_chip(label: String) -> impl IntoElement {
+    let is_tag = label.starts_with("tag: ");
+    let is_remote = label.contains('/');
+    view()
+        .h(px(16.0))
+        .px_1()
+        .rounded(px(3.0))
+        .bg(move || {
+            if is_tag {
+                design::tag_bg()
+            } else if is_remote {
+                design::panel2()
+            } else {
+                design::branch_bg()
+            }
+        })
+        .child(
+            text(label)
+                .text_size(px(8.5))
+                .text_color(move || {
+                    if is_tag {
+                        design::tag_fg()
+                    } else if is_remote {
+                        design::text2()
+                    } else {
+                        design::branch_fg()
+                    }
+                }),
+        )
+}
+
 pub(crate) fn history(
     branch: Signal<SharedString>,
     commits: Signal<Vec<Commit>>,
@@ -191,11 +222,13 @@ pub(crate) fn history(
                                                     .text_size(px(9.5))
                                                     .text_color(move || design::text3()),
                                             )
-                                            .child(
-                                                text(move || commit.get().refs.join(" · "))
-                                                    .text_size(px(9.0))
-                                                    .text_color(move || design::primary()),
-                                            ),
+                                            .child({
+                                                let mut chips = view().flex_row().items_center().gap_1();
+                                                for label in commit.get_untracked().refs {
+                                                    chips = chips.child(ref_chip(label));
+                                                }
+                                                chips
+                                            }),
                                     ),
                             )
                             .child(
