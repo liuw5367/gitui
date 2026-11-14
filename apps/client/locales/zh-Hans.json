@@ -536,7 +536,30 @@
     "stashPop": "弹出贮藏",
     "reveal": "在 Finder 中显示",
     "newBranchFromHere": "从这里新建分支…",
-    "showInHistory": "在历史中显示"
+    "showInHistory": "在历史中显示",
+    "app": {
+      "file": "文件",
+      "edit": "编辑",
+      "view": "视图",
+      "repository": "仓库",
+      "window": "窗口",
+      "help": "帮助"
+    },
+    "openRepo": "打开仓库…",
+    "closeTab": "关闭标签",
+    "commandPalette": "命令面板",
+    "showHistory": "显示历史",
+    "showChanges": "显示变更",
+    "toggleInspector": "显示/隐藏检查器",
+    "cycleAppearance": "切换外观",
+    "switchLanguage": "切换语言",
+    "fetch": "取回…",
+    "pull": "拉取…",
+    "push": "推送…",
+    "refresh": "刷新",
+    "repoManager": "仓库管理",
+    "settings": "设置…",
+    "welcome": "欢迎页"
   },
   "rewrite": {
     "rewordTitle": "改写提交说明",

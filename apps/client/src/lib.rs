@@ -2347,90 +2347,19 @@ pub fn App() -> impl IntoElement {
         clear_identity,
     };
 
-    // 原生菜单（设计板 22）：File/Edit/View/Repository/Window/Help。
-    // 处理器与命令面板共用同一批动作，因此菜单项不会指向空实现。
+    // 原生菜单（设计板 22）：文案随语言重建。菜单项与命令面板共用同一批动作，
+    // 因此不会指向空实现；系统角色项（关闭/撤销/最小化等）由系统给文案。
     {
         let run = actions.run_command.clone();
         let choose_folder = actions.choose_folder.clone();
-        let menu_run = {
-            let run = run.clone();
-            move |id: &'static str| {
-                let run = run.clone();
-                return move || run(id);
+        effect({
+            let language = language;
+            move || {
+                let lang = language.get();
+                let items = build_menu(lang.as_str(), run.clone(), choose_folder.clone());
+                nsh_core::element::desktop::set_application_menu(items);
             }
-        };
-        let items = vec![
-            MenuItem::submenu(
-                "File",
-                vec![
-                    MenuItem::new("Open Repository…")
-                        .shortcut("mod+o")
-                        .on_select({
-                            let choose_folder = choose_folder.clone();
-                            move || choose_folder()
-                        }),
-                    MenuItem::new("Close Tab").shortcut("mod+w").on_select(menu_run("closeTab")),
-                    MenuItem::separator(),
-                    MenuItem::role(MenuRole::Close),
-                ],
-            ),
-            MenuItem::submenu(
-                "Edit",
-                vec![
-                    MenuItem::role(MenuRole::Undo),
-                    MenuItem::role(MenuRole::Redo),
-                    MenuItem::separator(),
-                    MenuItem::role(MenuRole::Cut),
-                    MenuItem::role(MenuRole::Copy),
-                    MenuItem::role(MenuRole::Paste),
-                    MenuItem::role(MenuRole::SelectAll),
-                ],
-            ),
-            MenuItem::submenu(
-                "View",
-                vec![
-                    MenuItem::new("Command Palette").shortcut("mod+p").on_select(menu_run("openPalette")),
-                    MenuItem::separator(),
-                    MenuItem::new("Show History").on_select(menu_run("history")),
-                    MenuItem::new("Show Changes").on_select(menu_run("changes")),
-                    MenuItem::new("Toggle Inspector").on_select(menu_run("inspector")),
-                    MenuItem::separator(),
-                    MenuItem::new("Cycle Appearance").shortcut("mod+shift+a").on_select(menu_run("toggleTheme")),
-                    MenuItem::new("Switch Language").on_select(menu_run("toggleLanguage")),
-                ],
-            ),
-            MenuItem::submenu(
-                "Repository",
-                vec![
-                    MenuItem::new("Fetch…").on_select(menu_run("fetch")),
-                    MenuItem::new("Pull…").on_select(menu_run("pull")),
-                    MenuItem::new("Push…").on_select(menu_run("push")),
-                    MenuItem::separator(),
-                    MenuItem::new("Refresh").shortcut("mod+r").on_select(menu_run("refresh")),
-                    MenuItem::new("Repository Manager").on_select(menu_run("repoManager")),
-                    MenuItem::separator(),
-                    MenuItem::new("Settings…").shortcut("mod+,").on_select(menu_run("settings")),
-                ],
-            ),
-            MenuItem::submenu(
-                "Window",
-                vec![
-                    MenuItem::role(MenuRole::Minimize),
-                    MenuItem::role(MenuRole::Zoom),
-                    MenuItem::separator(),
-                    MenuItem::role(MenuRole::ToggleFullScreen),
-                ],
-            ),
-            MenuItem::submenu(
-                "Help",
-                vec![
-                    MenuItem::new("Welcome").on_select(menu_run("welcome")),
-                    MenuItem::separator(),
-                    MenuItem::role(MenuRole::About),
-                ],
-            ),
-        ];
-        nsh_core::element::desktop::set_application_menu(items);
+        });
     }
 
     // 重置请求由历史行的右键菜单写入，这里统一执行（--mixed 保留改动、--hard 丢弃）。
@@ -2845,6 +2774,144 @@ pub fn App() -> impl IntoElement {
             )
             .into_element();
         }));
+}
+
+/// 构建原生菜单。`language` 取当前语言，切换语言后重建即可。
+fn build_menu(
+    language: &str,
+    run: Arc<dyn Fn(&'static str)>,
+    choose_folder: Arc<dyn Fn()>,
+) -> Vec<MenuItem> {
+    let lang = language;
+    let menu = move |key: &'static str| i18n::t(lang, key);
+    let menu_run = {
+        let run = run.clone();
+        move |id: &'static str| {
+            let run = run.clone();
+            return move || run(id);
+        }
+    };
+    return vec![
+        MenuItem::submenu(
+            menu("menu.app.file"),
+            vec![
+                MenuItem::new(menu("menu.openRepo"))
+                    .shortcut("mod+o")
+                    .on_select({
+                        let choose_folder = choose_folder.clone();
+                        move || choose_folder()
+                    }),
+                MenuItem::new(menu("menu.closeTab"))
+                    .shortcut("mod+w")
+                    .on_select(menu_run("closeTab")),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::Close),
+            ],
+        ),
+        MenuItem::submenu(
+            menu("menu.app.edit"),
+            vec![
+                MenuItem::role(MenuRole::Undo),
+                MenuItem::role(MenuRole::Redo),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::Cut),
+                MenuItem::role(MenuRole::Copy),
+                MenuItem::role(MenuRole::Paste),
+                MenuItem::role(MenuRole::SelectAll),
+            ],
+        ),
+        MenuItem::submenu(
+            menu("menu.app.view"),
+            vec![
+                MenuItem::new(menu("menu.commandPalette"))
+                    .shortcut("mod+p")
+                    .on_select(menu_run("openPalette")),
+                MenuItem::separator(),
+                MenuItem::new(menu("menu.showHistory")).on_select(menu_run("history")),
+                MenuItem::new(menu("menu.showChanges")).on_select(menu_run("changes")),
+                MenuItem::new(menu("menu.toggleInspector")).on_select(menu_run("inspector")),
+                MenuItem::separator(),
+                MenuItem::new(menu("menu.cycleAppearance"))
+                    .shortcut("mod+shift+a")
+                    .on_select(menu_run("toggleTheme")),
+                MenuItem::new(menu("menu.switchLanguage")).on_select(menu_run("toggleLanguage")),
+            ],
+        ),
+        MenuItem::submenu(
+            menu("menu.app.repository"),
+            vec![
+                MenuItem::new(menu("menu.fetch")).on_select(menu_run("fetch")),
+                MenuItem::new(menu("menu.pull")).on_select(menu_run("pull")),
+                MenuItem::new(menu("menu.push")).on_select(menu_run("push")),
+                MenuItem::separator(),
+                MenuItem::new(menu("menu.refresh"))
+                    .shortcut("mod+r")
+                    .on_select(menu_run("refresh")),
+                MenuItem::new(menu("menu.repoManager")).on_select(menu_run("repoManager")),
+                MenuItem::separator(),
+                MenuItem::new(menu("menu.settings"))
+                    .shortcut("mod+,")
+                    .on_select(menu_run("settings")),
+            ],
+        ),
+        MenuItem::submenu(
+            menu("menu.app.window"),
+            vec![
+                MenuItem::role(MenuRole::Minimize),
+                MenuItem::role(MenuRole::Zoom),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::ToggleFullScreen),
+            ],
+        ),
+        MenuItem::submenu(
+            menu("menu.app.help"),
+            vec![
+                MenuItem::new(menu("menu.welcome")).on_select(menu_run("welcome")),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::About),
+            ],
+        ),
+    ];
+}
+
+#[cfg(test)]
+mod menu_tests {
+    use super::*;
+
+    /// 菜单文案全部来自 locales：两种语言都必须能取到，且内容不同。
+    #[test]
+    fn menu_labels_exist_in_both_languages() {
+        let keys = [
+            "menu.app.file",
+            "menu.app.edit",
+            "menu.app.view",
+            "menu.app.repository",
+            "menu.app.window",
+            "menu.app.help",
+            "menu.openRepo",
+            "menu.closeTab",
+            "menu.commandPalette",
+            "menu.showHistory",
+            "menu.showChanges",
+            "menu.toggleInspector",
+            "menu.cycleAppearance",
+            "menu.switchLanguage",
+            "menu.fetch",
+            "menu.pull",
+            "menu.push",
+            "menu.refresh",
+            "menu.repoManager",
+            "menu.settings",
+            "menu.welcome",
+        ];
+        for key in keys {
+            let english = i18n::t(i18n::DEFAULT_LANGUAGE, key);
+            let chinese = i18n::t(i18n::ZH_HANS_LANG, key);
+            assert_ne!(english, key, "{key} 在英文里缺文案");
+            assert_ne!(chinese, key, "{key} 在中文里缺文案");
+            assert_ne!(english, chinese, "{key} 两种语言不应相同");
+        }
+    }
 }
 
 /// 打开欢迎页窗口（独立窗口，主窗口不受影响）。

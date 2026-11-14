@@ -536,7 +536,30 @@
     "stashPop": "Pop Stash",
     "reveal": "Reveal in Finder",
     "newBranchFromHere": "New Branch from Here…",
-    "showInHistory": "Show in History"
+    "showInHistory": "Show in History",
+    "app": {
+      "file": "File",
+      "edit": "Edit",
+      "view": "View",
+      "repository": "Repository",
+      "window": "Window",
+      "help": "Help"
+    },
+    "openRepo": "Open Repository…",
+    "closeTab": "Close Tab",
+    "commandPalette": "Command Palette",
+    "showHistory": "Show History",
+    "showChanges": "Show Changes",
+    "toggleInspector": "Toggle Inspector",
+    "cycleAppearance": "Cycle Appearance",
+    "switchLanguage": "Switch Language",
+    "fetch": "Fetch…",
+    "pull": "Pull…",
+    "push": "Push…",
+    "refresh": "Refresh",
+    "repoManager": "Repository Manager",
+    "settings": "Settings…",
+    "welcome": "Welcome"
   },
   "rewrite": {
     "rewordTitle": "Edit Commit Message",
