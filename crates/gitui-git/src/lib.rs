@@ -529,6 +529,11 @@ impl Repo {
         self.git(&["push", "origin", "HEAD"])
     }
 
+    /// Merge a branch into the current branch.
+    pub fn merge(&self, branch: &str) -> Result<String, GitError> {
+        self.git(&["merge", branch])
+    }
+
     /// Continue the in-progress operation, dispatching by operation type.
     pub fn continue_operation(&self) -> Result<String, GitError> {
         match self.operation() {
@@ -1225,6 +1230,20 @@ mod tests {
         let identity = repo.identity();
         assert_eq!(identity.name, "Gitui Tester");
         assert_eq!(identity.email, "tester@example.invalid");
+    }
+
+    #[test]
+    fn merges_a_branch() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["checkout", "-qb", "feature"]);
+        fs::write(fixture.path.join("feature.txt"), "feature\n").unwrap();
+        run(&fixture.path, &["add", "feature.txt"]);
+        run(&fixture.path, &["commit", "-qm", "feature"]);
+        run(&fixture.path, &["checkout", "-q", "main"]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.merge("feature").unwrap();
+        assert!(fixture.path.join("feature.txt").exists());
+        assert_eq!(repo.operation(), None);
     }
 
     #[test]
