@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::{Branch, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session, short_name};
-use sections::{diff_view, header, history, statusbar, CommitActions, HeaderActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions};
 use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
@@ -384,121 +384,50 @@ pub fn App() -> impl IntoElement {
         },
     );
 
-    let conflict_panel = view()
-        .h(move || {
-            if conflict_stages.get().is_some() {
-                px(250.0)
-            } else {
-                px(0.0)
-            }
-        })
-        .flex_col()
-        .gap_2()
-        .p_2()
-        .bg(move || theme().background)
-        .child(
-            view()
-                .flex_row()
-                .items_center()
-                .gap_2()
-                .child(
-                    text(move || {
-                        let total = conflicts.get().len();
-                        let current = conflicts
-                            .get()
-                            .iter()
-                            .position(|path| path == &conflict_path.get())
-                            .map(|index| index + 1)
-                            .unwrap_or(0);
-                        format!("Conflict · {} · {} of {}", conflict_path.get(), current, total)
-                    })
-                    .text_size(px(10.0))
-                    .text_color(|| rgb(0xff3b30)),
+    let accept_ours_action = Arc::new(move || {
+        if let Some(stages) = conflict_stages.get_untracked().as_ref() {
+            conflict_result.set(stages.ours.clone());
+        }
+    });
+    let accept_theirs_action = Arc::new(move || {
+        if let Some(stages) = conflict_stages.get_untracked().as_ref() {
+            conflict_result.set(stages.theirs.clone());
+        }
+    });
+    let accept_both_action = Arc::new(move || {
+        if let Some(stages) = conflict_stages.get_untracked().as_ref() {
+            conflict_result.set(format!("{}\n{}", stages.ours, stages.theirs));
+        }
+    });
+    let mark_resolved_action = Arc::new({
+        let reload_conflict = reload_for_conflict.clone();
+        move || {
+            match Repo::open(repo_path.get_untracked().to_string().as_str()).and_then(|repo| {
+                repo.resolve(
+                    conflict_path.get_untracked().to_string().as_str(),
+                    conflict_result.get_untracked().to_string().as_str(),
                 )
-                .child(view().flex_1())
-                .child(header_button("Accept Ours", false, move || {
-                    if let Some(stages) = conflict_stages.get_untracked().as_ref() {
-                        conflict_result.set(stages.ours.clone());
-                    }
-                }))
-                .child(header_button("Accept Theirs", false, move || {
-                    if let Some(stages) = conflict_stages.get_untracked().as_ref() {
-                        conflict_result.set(stages.theirs.clone());
-                    }
-                }))
-                .child(header_button("Accept Both", false, move || {
-                    if let Some(stages) = conflict_stages.get_untracked().as_ref() {
-                        conflict_result.set(format!("{}\n{}", stages.ours, stages.theirs));
-                    }
-                }))
-                .child(header_button("Mark Resolved", true, {
-                    let reload_conflict = reload_for_conflict.clone();
-                    move || {
-                        match Repo::open(repo_path.get_untracked().to_string().as_str())
-                            .and_then(|repo| {
-                                repo.resolve(
-                                    conflict_path.get_untracked().to_string().as_str(),
-                                    conflict_result.get_untracked().to_string().as_str(),
-                                )
-                            })
-                        {
-                            Ok(()) => {
-                                error.set(SharedString::from(""));
-                                reload_conflict();
-                            }
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    }
-                })),
-        )
-        .child(
-            view()
-                .flex_1()
-                .flex_row()
-                .gap_2()
-                .child(conflict_pane("Base", move || {
-                    conflict_stages
-                        .get()
-                        .as_ref()
-                        .map(|stages| stages.base.clone())
-                        .unwrap_or_default()
-                }))
-                .child(conflict_pane("Ours", move || {
-                    conflict_stages
-                        .get()
-                        .as_ref()
-                        .map(|stages| stages.ours.clone())
-                        .unwrap_or_default()
-                }))
-                .child(conflict_pane("Theirs", move || {
-                    conflict_stages
-                        .get()
-                        .as_ref()
-                        .map(|stages| stages.theirs.clone())
-                        .unwrap_or_default()
-                }))
-                .child(
-                    view()
-                        .flex_1()
-                        .flex_col()
-                        .gap_1()
-                        .child(
-                            text("Result")
-                                .text_size(px(9.0))
-                                .text_color(move || theme().primary),
-                        )
-                        .child(
-                            editor()
-                                .value(move || Some(SharedString::from(conflict_result.get())))
-                                .on_change(move |value: &SharedString| {
-                                    conflict_result.set(value.to_string())
-                                })
-                                .font_size(10.0)
-                                .line_height(15.0)
-                                .flex_1(),
-                        ),
-                ),
-        );
+            }) {
+                Ok(()) => {
+                    error.set(SharedString::from(""));
+                    reload_conflict();
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
+    let conflict_panel = crate::sections::conflict_panel(
+        conflicts,
+        conflict_path,
+        conflict_stages,
+        conflict_result,
+        ConflictActions {
+            accept_ours: accept_ours_action,
+            accept_theirs: accept_theirs_action,
+            accept_both: accept_both_action,
+            mark_resolved: mark_resolved_action,
+        },
+    );
 
     let status_pane = view()
         .w(px(250.0))
