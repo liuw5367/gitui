@@ -585,6 +585,17 @@ impl Repo {
         return Ok(());
     }
 
+    /// 各远端的 URL（`git remote get-url <name>`），顺序与 `remote` 一致。
+    pub fn remote_urls(&self) -> Result<Vec<(String, String)>, GitError> {
+        let names = self.lines(&["remote"])?;
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        for name in names {
+            let url = run_git(&self.root, &["remote", "get-url", name.as_str()])?;
+            pairs.push((name, String::from_utf8_lossy(&url).trim().to_string()));
+        }
+        return Ok(pairs);
+    }
+
     /// 改写远程的 URL（`git remote set-url <name> <url>`）。
     pub fn set_remote_url(&self, name: &str, url: &str) -> Result<(), GitError> {
         run_git(&self.root, &["remote", "set-url", name, url])?;

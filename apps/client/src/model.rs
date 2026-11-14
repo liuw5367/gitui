@@ -81,6 +81,8 @@ pub struct Tab {
     pub push_after_commit: bool,
     /// 钩子完整日志弹层是否打开。
     pub hook_open: bool,
+    /// 各远端的 URL（`remote -v`），用于展示与「复制 URL」。
+    pub remote_urls: Vec<(String, String)>,
     /// 冲突视图：当前查看的冲突文件下标与是否打开。
     pub conflict_index: usize,
     pub conflict_open: bool,
@@ -194,6 +196,7 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let operation = repo.operation();
     let reflog = repo.reflog(100).unwrap_or_default();
     let conflicts = repo.conflicts().unwrap_or_default();
+    let remote_urls = repo.remote_urls().unwrap_or_default();
     // 存储键统一用仓库根路径：入参可能是符号链接形式（macOS 的 /tmp → /private/tmp），
     // 与写入时用的 `repo.root()` 不一致会读不到清单。
     let changelists = store::load_changelists(
@@ -213,6 +216,7 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         changes,
         operation,
         conflicts,
+        remote_urls,
         reflog,
         changelists,
         filter: filter.clone(),
@@ -352,6 +356,7 @@ pub fn refresh_changes(tab: &mut Tab) {
     tab.status = repo.status().unwrap_or_default();
     tab.operation = repo.operation();
     tab.conflicts = repo.conflicts().unwrap_or_default();
+    tab.remote_urls = repo.remote_urls().unwrap_or_default();
     tab.selected_change = previous
         .and_then(|path| tab.changes.iter().position(|entry| entry.path == path))
         .or(if tab.changes.is_empty() { None } else { Some(0) });
@@ -670,7 +675,7 @@ pub fn create_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), String
         Some(from.trim())
     };
     repo.create_branch(name, from).map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
+    refresh_refs(tab, &repo);
     return Ok(());
 }
 
@@ -683,7 +688,7 @@ pub fn create_tag(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
         Some(from.trim())
     };
     repo.create_tag(name, from).map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
+    refresh_refs(tab, &repo);
     return Ok(());
 }
 
@@ -691,7 +696,7 @@ pub fn create_tag(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
 pub fn add_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     repo.add_remote(name, url).map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
+    refresh_refs(tab, &repo);
     return Ok(());
 }
 
@@ -708,15 +713,71 @@ pub fn stash_changes(tab: &mut Tab, message: &str) -> Result<(), String> {
 pub fn drop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     repo.stash_drop(reference).map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
+    refresh_refs(tab, &repo);
     return Ok(());
 }
 
 /// 删除标签。
+/// 刷新引用与其附属信息（远端 URL）。所有改引用的动作都走这里。
+fn refresh_refs(tab: &mut Tab, repo: &Repo) {
+    tab.refs = repo.refs().unwrap_or_default();
+    tab.remote_urls = repo.remote_urls().unwrap_or_default();
+}
+
+/// 推送标签到首个远端。
+pub fn push_tag(tab: &mut Tab, name: &str) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let remote = repo
+        .refs()
+        .ok()
+        .and_then(|refs| refs.remotes.first().cloned())
+        .unwrap_or_else(|| "origin".to_string());
+    return repo
+        .push_tag(name, Some(remote.as_str()))
+        .map_err(|error| error.detail());
+}
+
+/// 应用贮藏但保留条目。
+pub fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.stash_apply(reference).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    refresh_changes(tab);
+    return Ok(());
+}
+
+/// 弹出贮藏：取出并删除条目。
+pub fn pop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    // `git stash pop` 只取最近一条；指定引用时用 `apply` + `drop` 组合，语义一致。
+    repo.stash_apply(reference).map_err(|error| error.detail())?;
+    repo.stash_drop(reference).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    refresh_changes(tab);
+    return Ok(());
+}
+
+/// 重命名分支。
+pub fn rename_branch(tab: &mut Tab, old: &str, new: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.rename_branch(old, new).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    tab.branch = repo.abbrev_branch().unwrap_or_default();
+    return Ok(());
+}
+
+/// 改写远端的 URL。
+pub fn edit_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.set_remote_url(name, url).map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    return Ok(());
+}
+
 pub fn drop_tag(tab: &mut Tab, name: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     repo.delete_tag(name).map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
+    refresh_refs(tab, &repo);
     return Ok(());
 }
 
@@ -724,7 +785,7 @@ pub fn drop_tag(tab: &mut Tab, name: &str) -> Result<(), String> {
 pub fn drop_remote(tab: &mut Tab, name: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     repo.remove_remote(name).map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
+    refresh_refs(tab, &repo);
     return Ok(());
 }
 
@@ -1146,7 +1207,7 @@ mod tests {
     fn compare_range_sorts_and_needs_two_commits() {
         let repo = TempRepo::new("compare");
         let path = repo.path.display().to_string();
-        let mut tab = load_tab(&path, &LogFilter::default());
+        // 先造提交，再装载 tab，避免读一次再整体覆盖。
         // 再提交两次，得到三个提交。
         for message in ["second", "third"] {
             std::fs::write(repo.path.join("a.txt"), format!("{message}\n")).expect("write");
@@ -1158,7 +1219,7 @@ mod tests {
                 .expect("git");
             assert!(status.success());
         }
-        tab = load_tab(&path, &LogFilter::default());
+        let mut tab = load_tab(&path, &LogFilter::default());
         assert_eq!(tab.commits.len(), 3);
 
         toggle_compare(&mut tab, 2);
@@ -1326,6 +1387,47 @@ mod tests {
         // 继续合并。
         continue_operation(&mut tab).expect("continue");
         assert_eq!(tab.operation, git::Operation::None, "合并应已结束");
+    }
+
+    #[test]
+    fn refs_actions_rename_branch_and_apply_stash() {
+        let repo = TempRepo::new("refs-actions");
+        let path = repo.path.display().to_string();
+
+        // 贮藏：改动先藏起来，列表里有条目；应用后改动回来且条目还在。
+        std::fs::write(repo.path.join("a.txt"), "stashed\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        stash_changes(&mut tab, "wip").expect("stash");
+        assert_eq!(tab.refs.stashes.len(), 1);
+        let reference = tab.refs.stashes[0].reference.clone();
+
+        apply_stash(&mut tab, reference.as_str()).expect("apply");
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("a.txt")).expect("read"),
+            "stashed\n"
+        );
+        assert_eq!(tab.refs.stashes.len(), 1, "apply 不删除条目");
+
+        // 先把工作区复原，否则再应用会与本地改动冲突。
+        std::fs::write(repo.path.join("a.txt"), "one\n").expect("restore");
+
+        // 弹出：条目消失。
+        pop_stash(&mut tab, reference.as_str()).expect("pop");
+        assert!(tab.refs.stashes.is_empty(), "pop 删除条目");
+
+        // 重命名分支：引用列表与当前分支名一起变。
+        rename_branch(&mut tab, "main", "renamed").expect("rename");
+        assert_eq!(tab.branch, "renamed");
+        assert!(tab.refs.branches.iter().any(|branch| branch.name == "renamed"));
+
+        // 远端 URL 列表与编辑。
+        add_remote(&mut tab, "origin", "https://example.com/a.git").expect("add remote");
+        assert!(tab.remote_urls.iter().any(|(name, _)| name == "origin"));
+        edit_remote(&mut tab, "origin", "git@example.com:b.git").expect("edit remote");
+        assert!(tab
+            .remote_urls
+            .iter()
+            .any(|(_, url)| url == "git@example.com:b.git"));
     }
 
     #[test]

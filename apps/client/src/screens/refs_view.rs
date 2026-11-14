@@ -150,135 +150,295 @@ fn tab_button(
         );
 }
 
-fn refs_table(
-    language: Signal<SharedString>,
-    tab: Tab,
-    actions: Actions,
-) -> impl IntoElement {
-    let drop_tag = actions.drop_tag.clone();
-    let drop_remote = actions.drop_remote.clone();
-    let drop_stash = actions.drop_stash.clone();
+fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> impl IntoElement {
     let mut sections: Vec<AnyElement> = Vec::new();
 
-    let branch_rows: Vec<AnyElement> = tab
-        .refs
-        .branches
-        .iter()
-        .map(|branch| {
-            let track = if branch.ahead == 0 && branch.behind == 0 {
-                String::new()
-            } else {
-                format!("↑{} ↓{}", branch.ahead, branch.behind)
-            };
-            return ref_row(
-                branch.name.clone(),
-                if branch.current {
-                    "shell.branch.current".to_string()
-                } else {
-                    String::new()
-                },
-                track,
-                design::branch_fg,
-            );
-        })
-        .collect();
+    // 分支：检出、检出为新本地分支、比较、合并、重命名、删除、复制。
+    let mut branch_rows: Vec<AnyElement> = Vec::new();
+    for (index, branch) in tab.refs.branches.iter().enumerate() {
+        let name = branch.name.clone();
+        let track = if branch.ahead == 0 && branch.behind == 0 {
+            String::new()
+        } else {
+            format!("↑{} ↓{}", branch.ahead, branch.behind)
+        };
+        let note = if branch.current {
+            i18n::t(language.get_untracked().as_str(), "shell.branch.current")
+        } else {
+            String::new()
+        };
+        let is_current = branch.current;
+        let checkout = actions.checkout_branch.clone();
+        let checkout_new = actions.checkout_new_branch.clone();
+        let merge = actions.merge_reference.clone();
+        let compare = actions.set_compare_refs.clone();
+        let open_form = actions.open_form_from.clone();
+        let delete = actions.delete_branch.clone();
+        let copy_text = actions.copy_text.clone();
+        let name_for_menu = name.clone();
+        let items = vec![
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "branch.checkout"))
+                .disabled(is_current)
+                .on_select({
+                    let checkout = checkout.clone();
+                    let name = name_for_menu.clone();
+                    move || checkout(name.clone())
+                }),
+            MenuItem::new(i18n::t(
+                language.get_untracked().as_str(),
+                "branch.checkoutAsNew",
+            ))
+            .on_select({
+                let checkout_new = checkout_new.clone();
+                let name = name_for_menu.clone();
+                move || checkout_new(name.clone(), name.clone())
+            }),
+            MenuItem::separator(),
+            MenuItem::new(i18n::t(
+                language.get_untracked().as_str(),
+                "menu.openCompare",
+            ))
+            .on_select({
+                let compare = compare.clone();
+                let name = name_for_menu.clone();
+                move || compare(None, Some(name.clone()))
+            }),
+            MenuItem::new(i18n::t(
+                language.get_untracked().as_str(),
+                "branch.mergeInto",
+            ))
+            .disabled(is_current)
+            .on_select({
+                let merge = merge.clone();
+                let name = name_for_menu.clone();
+                move || {
+                    let _ = merge(name.clone());
+                }
+            }),
+            MenuItem::separator(),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "branch.rename"))
+                .on_select({
+                    let open_form = open_form.clone();
+                    let name = name_for_menu.clone();
+                    move || {
+                        open_form(crate::screens::FormKind::RenameBranch, name.clone())
+                    }
+                }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyName"))
+                .on_select({
+                    let copy_text = copy_text.clone();
+                    let name = name_for_menu.clone();
+                    move || copy_text(name.clone())
+                }),
+            MenuItem::separator(),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "branch.delete"))
+                .disabled(is_current)
+                .on_select({
+                    let delete = delete.clone();
+                    let name = name_for_menu;
+                    move || delete(name.clone())
+                }),
+        ];
+        branch_rows.push(menu_row(
+            language,
+            name,
+            note,
+            track,
+            design::branch_fg,
+            items,
+            index,
+        ));
+    }
+
+    // 远程：编辑 URL、取回、移除、复制。
+    let mut remote_rows: Vec<AnyElement> = Vec::new();
+    for (index, remote) in tab.refs.remotes.iter().enumerate() {
+        let name = remote.clone();
+        let drop_remote = actions.drop_remote.clone();
+        let fetch = actions.open_sync.clone();
+        let copy_text = actions.copy_text.clone();
+        let edit_form = actions.open_form_from.clone();
+        let url = tab
+            .remote_urls
+            .iter()
+            .find(|(remote_name, _)| remote_name == &name)
+            .map(|(_, url)| url.clone())
+            .unwrap_or_default();
+        let items = vec![
+            MenuItem::new(i18n::t(
+                language.get_untracked().as_str(),
+                "menu.editRemoteUrl",
+            ))
+            .on_select({
+                let edit_form = edit_form.clone();
+                let name = name.clone();
+                move || {
+                    edit_form(crate::screens::FormKind::EditRemote, name.clone());
+                }
+            }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "sync.fetch"))
+                .on_select({
+                    let fetch = fetch.clone();
+                    move || fetch(crate::model::Sync::Fetch)
+                }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyUrl")).on_select({
+                let copy_text = copy_text.clone();
+                let url = url.clone();
+                move || copy_text(url.clone())
+            }),
+            MenuItem::separator(),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "form.dropRemote"))
+                .on_select({
+                    let drop_remote = drop_remote.clone();
+                    let name = name.clone();
+                    move || drop_remote(name.clone())
+                }),
+        ];
+        remote_rows.push(menu_row(
+            language,
+            name,
+            url,
+            String::new(),
+            design::text2,
+            items,
+            index,
+        ));
+    }
+
+    // 标签：推送、删除、复制。
+    let mut tag_rows: Vec<AnyElement> = Vec::new();
+    for (index, tag) in tab.refs.tags.iter().enumerate() {
+        let name = tag.clone();
+        let push = actions.push_tag.clone();
+        let drop_tag = actions.drop_tag.clone();
+        let copy_text = actions.copy_text.clone();
+        let items = vec![
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.pushTag")).on_select({
+                let push = push.clone();
+                let name = name.clone();
+                move || push(name.clone())
+            }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyName")).on_select({
+                let copy_text = copy_text.clone();
+                let name = name.clone();
+                move || copy_text(name.clone())
+            }),
+            MenuItem::separator(),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "form.dropTag")).on_select({
+                let drop_tag = drop_tag.clone();
+                let name = name.clone();
+                move || drop_tag(name.clone())
+            }),
+        ];
+        tag_rows.push(menu_row(
+            language,
+            name,
+            String::new(),
+            String::new(),
+            design::tag_fg,
+            items,
+            index,
+        ));
+    }
+
+    // 贮藏：应用、弹出、丢弃、复制引用。
+    let mut stash_rows: Vec<AnyElement> = Vec::new();
+    for (index, stash) in tab.refs.stashes.iter().enumerate() {
+        let reference = stash.reference.clone();
+        let summary = stash.summary.clone();
+        let apply = actions.apply_stash.clone();
+        let pop = actions.pop_stash.clone();
+        let drop_stash = actions.drop_stash.clone();
+        let copy_text = actions.copy_text.clone();
+        let items = vec![
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.stashApply"))
+                .on_select({
+                    let apply = apply.clone();
+                    let reference = reference.clone();
+                    move || apply(reference.clone())
+                }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.stashPop")).on_select({
+                let pop = pop.clone();
+                let reference = reference.clone();
+                move || pop(reference.clone())
+            }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyName")).on_select({
+                let copy_text = copy_text.clone();
+                let reference = reference.clone();
+                move || copy_text(reference.clone())
+            }),
+            MenuItem::separator(),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "form.dropStash"))
+                .on_select({
+                    let drop_stash = drop_stash.clone();
+                    let reference = reference.clone();
+                    move || drop_stash(reference.clone())
+                }),
+        ];
+        stash_rows.push(menu_row(
+            language,
+            reference,
+            summary,
+            String::new(),
+            design::text2,
+            items,
+            index,
+        ));
+    }
+
+    // 工作树：在 Finder 中显示、复制路径。
+    let mut worktree_rows: Vec<AnyElement> = Vec::new();
+    for (index, path) in tab.refs.worktrees.iter().enumerate() {
+        let reveal = actions.reveal_path.clone();
+        let copy_text = actions.copy_text.clone();
+        let path_for_menu = path.clone();
+        let items = vec![
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.reveal")).on_select({
+                let reveal = reveal.clone();
+                let path = path_for_menu.clone();
+                move || reveal(path.clone())
+            }),
+            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyPath")).on_select({
+                let copy_text = copy_text.clone();
+                let path = path_for_menu.clone();
+                move || copy_text(path.clone())
+            }),
+        ];
+        worktree_rows.push(menu_row(
+            language,
+            path.clone(),
+            String::new(),
+            String::new(),
+            design::text2,
+            items,
+            index,
+        ));
+    }
+
     sections.push(section(
         language,
         "sidebar.branches",
         tab.refs.branches.len(),
         branch_rows,
     ));
-
-    let remote_rows: Vec<AnyElement> = tab
-        .refs
-        .remotes
-        .iter()
-        .map(|remote| {
-            let drop_remote = drop_remote.clone();
-            let name = remote.clone();
-            return ref_row_with_menu(
-                language,
-                remote.clone(),
-                String::new(),
-                String::new(),
-                design::text2,
-                MenuAction {
-                    label_key: "form.dropRemote",
-                    name: name.clone(),
-                    run: Box::new(move || drop_remote(name.clone())),
-                },
-            );
-        })
-        .collect();
     sections.push(section(
         language,
         "sidebar.remotes",
         tab.refs.remotes.len(),
         remote_rows,
     ));
-
-    let tag_rows: Vec<AnyElement> = tab
-        .refs
-        .tags
-        .iter()
-        .map(|tag| {
-            let drop_tag = drop_tag.clone();
-            let name = tag.clone();
-            ref_row_with_menu(
-                language,
-                tag.clone(),
-                String::new(),
-                String::new(),
-                design::tag_fg,
-                MenuAction {
-                    label_key: "form.dropTag",
-                    name: name.clone(),
-                    run: Box::new(move || drop_tag(name.clone())),
-                },
-            )
-        })
-        .collect();
     sections.push(section(
         language,
         "sidebar.tags",
         tab.refs.tags.len(),
         tag_rows,
     ));
-
-    let stash_rows: Vec<AnyElement> = tab
-        .refs
-        .stashes
-        .iter()
-        .map(|stash| {
-            let drop_stash = drop_stash.clone();
-            let reference = stash.reference.clone();
-            return ref_row_with_menu(
-                language,
-                stash.reference.clone(),
-                stash.summary.clone(),
-                String::new(),
-                design::text2,
-                MenuAction {
-                    label_key: "form.dropStash",
-                    name: reference.clone(),
-                    run: Box::new(move || drop_stash(reference.clone())),
-                },
-            );
-        })
-        .collect();
     sections.push(section(
         language,
         "sidebar.stashes",
         tab.refs.stashes.len(),
         stash_rows,
     ));
-
-    let worktree_rows: Vec<AnyElement> = tab
-        .refs
-        .worktrees
-        .iter()
-        .map(|path| ref_row(path.clone(), String::new(), String::new(), design::text2))
-        .collect();
     sections.push(section(
         language,
         "sidebar.worktrees",
@@ -338,39 +498,6 @@ fn section(
         .into_element();
 }
 
-fn ref_row(name: String, note: String, track: String, color: fn() -> AdaptiveColor) -> AnyElement {
-    return view()
-        .w_full()
-        .h(px(28.0))
-        .px(px(6.0))
-        .flex_row()
-        .items_center()
-        .gap(px(8.0))
-        .rounded(px(4.0))
-        .hover(|style| style.bg(move || design::hover()))
-        .child(
-            text(name)
-                .w(px(220.0))
-                .text_size(px(11.5))
-                .line_height(px(15.0))
-                .text_color(move || color())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .child(
-            text(note)
-                .flex_1()
-                .text_size(px(10.0))
-                .line_height(px(14.0))
-                .text_color(move || design::text3())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .child(
-            text(track)
-                .text_size(px(9.5))
-                .text_color(move || design::text3()),
-        )
-        .into_element();
-}
 
 fn reflog_list(
     language: Signal<SharedString>,
@@ -487,23 +614,17 @@ fn create_button(
 }
 
 /// 行内的删除动作。
-struct MenuAction {
-    label_key: &'static str,
-    name: String,
-    run: Box<dyn Fn()>,
-}
-
-/// 带右键删除的引用行（标签、远程、贮藏）。
-fn ref_row_with_menu(
+/// 一行带右键菜单的引用。`items` 由各分段自己组装，顺序即菜单顺序。
+#[allow(clippy::too_many_arguments)]
+fn menu_row(
     language: Signal<SharedString>,
     name: String,
     note: String,
     track: String,
     color: fn() -> AdaptiveColor,
-    action: MenuAction,
+    items: Vec<MenuItem>,
+    _index: usize,
 ) -> AnyElement {
-    let label = format!("{} {}", i18n::t(language.get_untracked().as_str(), action.label_key), action.name);
-    let run = std::sync::Arc::new(action.run);
     return view()
         .w_full()
         .h(px(28.0))
@@ -514,12 +635,10 @@ fn ref_row_with_menu(
         .rounded(px(4.0))
         .hover(|style| style.bg(move || design::hover()))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let run = run.clone();
-            let items = vec![
-                MenuItem::new(i18n::t(language.get().as_str(), "form.drop"))
-                    .on_select(move || run()),
-            ];
-            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+            let _ = nsh_core::element::desktop::popup_menu_at(
+                items.clone(),
+                event.page_position,
+            );
         })
         .child(
             text(name)
@@ -543,7 +662,7 @@ fn ref_row_with_menu(
                 .text_color(move || design::text3()),
         )
         .child(
-            text(label)
+            text(move || i18n::t(language.get().as_str(), "common.menuHint"))
                 .text_size(px(9.0))
                 .line_height(px(12.0))
                 .text_color(move || design::text3()),

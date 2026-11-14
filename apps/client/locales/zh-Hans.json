@@ -123,7 +123,8 @@
     "search": "搜索",
     "loading": "加载中…",
     "close": "关闭",
-    "copy": "复制"
+    "copy": "复制",
+    "menuHint": "右键"
   },
   "repoManager": {
     "title": "仓库管理",
@@ -286,7 +287,9 @@
     "openFailed": "打不开该文件",
     "revealFailed": "无法在 Finder 中显示",
     "browserFailed": "打不开链接",
-    "historyDone": "已完成"
+    "historyDone": "已完成",
+    "pushed": "已推送",
+    "stashDone": "贮藏已应用"
   },
   "conflicts": {
     "title": "冲突",
@@ -405,7 +408,8 @@
     "resetTitle": "重置当前分支？",
     "resetMessage": "分支会移到 %{short}，未提交的改动会丢失。",
     "resetAction": "重置",
-    "resetSoft": "把当前分支重置到这里（soft）"
+    "resetSoft": "把当前分支重置到这里（soft）",
+    "rename": "重命名…"
   },
   "shortcut": {
     "openRepo": "打开仓库",
@@ -433,7 +437,13 @@
     "drop": "删除…",
     "dropTag": "删除标签",
     "dropRemote": "移除远程",
-    "dropStash": "丢弃贮藏"
+    "dropStash": "丢弃贮藏",
+    "renameBranch": "重命名分支",
+    "editRemote": "编辑远端 URL",
+    "newName": "新名称",
+    "urlNew": "URL",
+    "rename": "重命名",
+    "save": "保存"
   },
   "sync": {
     "fetchTitle": "获取",
@@ -478,6 +488,15 @@
     "revert": "回滚该提交…",
     "mergeIntoCurrent": "合并到当前分支",
     "copySha": "复制 SHA",
-    "copyMessage": "复制提交说明"
+    "copyMessage": "复制提交说明",
+    "openCompare": "与当前分支比较",
+    "copyName": "复制名称",
+    "copyUrl": "复制 URL",
+    "copyPath": "复制路径",
+    "editRemoteUrl": "编辑 URL…",
+    "pushTag": "推送标签",
+    "stashApply": "应用贮藏",
+    "stashPop": "弹出贮藏",
+    "reveal": "在 Finder 中显示"
   }
 }

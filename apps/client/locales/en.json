@@ -123,7 +123,8 @@
     "search": "Search",
     "loading": "Loading…",
     "close": "Close",
-    "copy": "Copy"
+    "copy": "Copy",
+    "menuHint": "right-click"
   },
   "repoManager": {
     "title": "Repository Manager",
@@ -286,7 +287,9 @@
     "openFailed": "Could not open",
     "revealFailed": "Could not reveal in Finder",
     "browserFailed": "Could not open link",
-    "historyDone": "Done"
+    "historyDone": "Done",
+    "pushed": "Pushed",
+    "stashDone": "Stash applied"
   },
   "conflicts": {
     "title": "Conflicted",
@@ -405,7 +408,8 @@
     "resetTitle": "Reset the current branch?",
     "resetMessage": "The branch will move to %{short}. Uncommitted changes are lost.",
     "resetAction": "Reset",
-    "resetSoft": "Reset Current Branch to Here (Soft)"
+    "resetSoft": "Reset Current Branch to Here (Soft)",
+    "rename": "Rename…"
   },
   "shortcut": {
     "openRepo": "Open repository",
@@ -433,7 +437,13 @@
     "drop": "Delete…",
     "dropTag": "Delete tag",
     "dropRemote": "Remove remote",
-    "dropStash": "Drop stash"
+    "dropStash": "Drop stash",
+    "renameBranch": "Rename Branch",
+    "editRemote": "Edit Remote URL",
+    "newName": "New name",
+    "urlNew": "URL",
+    "rename": "Rename",
+    "save": "Save"
   },
   "sync": {
     "fetchTitle": "Fetch",
@@ -478,6 +488,15 @@
     "revert": "Revert Commit…",
     "mergeIntoCurrent": "Merge into Current Branch",
     "copySha": "Copy SHA",
-    "copyMessage": "Copy Message"
+    "copyMessage": "Copy Message",
+    "openCompare": "Compare with Current Branch",
+    "copyName": "Copy Name",
+    "copyUrl": "Copy URL",
+    "copyPath": "Copy Path",
+    "editRemoteUrl": "Edit URL…",
+    "pushTag": "Push Tag",
+    "stashApply": "Apply Stash",
+    "stashPop": "Pop Stash",
+    "reveal": "Reveal in Finder"
   }
 }

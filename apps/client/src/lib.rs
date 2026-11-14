@@ -132,6 +132,12 @@ pub(crate) struct Actions {
     pub(crate) cherry_pick: Arc<dyn Fn(String)>,
     /// 反向提交（先确认）。
     pub(crate) revert_commit: Arc<dyn Fn(String)>,
+    /// 推送标签。
+    pub(crate) push_tag: Arc<dyn Fn(String)>,
+    /// 应用贮藏（保留条目）。
+    pub(crate) apply_stash: Arc<dyn Fn(String)>,
+    /// 弹出贮藏（取出并删除条目）。
+    pub(crate) pop_stash: Arc<dyn Fn(String)>,
     /// 打开表单并把第二个字段预填（从某个提交新建分支/标签）。
     pub(crate) open_form_from: Arc<dyn Fn(screens::FormKind, String)>,
     pub(crate) reset_to: Arc<dyn Fn(String, git::ResetMode)>,
@@ -1266,6 +1272,13 @@ pub fn App() -> impl IntoElement {
                 screens::FormKind::NewTag => model::create_tag(tab, first.as_str(), second.as_str()),
                 screens::FormKind::AddRemote => model::add_remote(tab, first.as_str(), second.as_str()),
                 screens::FormKind::NewStash => model::stash_changes(tab, first.as_str()),
+                // 重命名与改 URL：`second` 是被改对象的原名，`first` 是新值。
+                screens::FormKind::RenameBranch => {
+                    model::rename_branch(tab, second.as_str(), first.as_str())
+                }
+                screens::FormKind::EditRemote => {
+                    model::edit_remote(tab, second.as_str(), first.as_str())
+                }
             };
             tabs.set(list);
             match result {
@@ -1810,6 +1823,64 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 引用行上的动作：推送标签、应用/弹出贮藏。
+    let push_tag: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move |name: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                match model::push_tag(tab, name.as_str()) {
+                    Ok(_) => {
+                        let lang = language.get_untracked();
+                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.pushed"));
+                    }
+                    Err(detail) => tab.error = Some(detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let stash_action: Arc<dyn Fn(&'static str, String)> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move |kind: &'static str, reference: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                let result = if kind == "apply" {
+                    model::apply_stash(tab, reference.as_str())
+                } else {
+                    model::pop_stash(tab, reference.as_str())
+                };
+                match result {
+                    Ok(()) => {
+                        let lang = language.get_untracked();
+                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.stashDone"));
+                    }
+                    Err(detail) => tab.error = Some(detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let apply_stash: Arc<dyn Fn(String)> = {
+        let stash_action = stash_action.clone();
+        Arc::new(move |reference: String| stash_action("apply", reference))
+    };
+
+    let pop_stash: Arc<dyn Fn(String)> = {
+        let stash_action = stash_action.clone();
+        Arc::new(move |reference: String| stash_action("pop", reference))
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1869,6 +1940,9 @@ pub fn App() -> impl IntoElement {
         cherry_pick,
         revert_commit,
         open_form_from,
+        push_tag,
+        apply_stash,
+        pop_stash,
         reset_to,
         apply_filter,
         clear_filter,
