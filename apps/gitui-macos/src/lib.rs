@@ -8,9 +8,9 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_git::{Repo, StatusEntry};
+use gitui_git::{ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{changes_list, diff_view, history, inspector, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{changes_list, diff_view, history, inspector, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -107,6 +107,10 @@ pub fn App() -> impl IntoElement {
     save_recent(recent.get_untracked().as_slice());
 
     let repo_path = signal(SharedString::from(active_tab.path.clone()));
+    let reflog_open = signal(false);
+    let reflog_entries = signal(Vec::<ReflogEntry>::new());
+    let reflog_selected = signal(SharedString::from(""));
+    let reflog_error = signal(SharedString::from(""));
     let branch = signal(SharedString::from(active_tab.branch.clone()));
     let operation = signal(active_tab.operation);
     let conflicts = signal(active_tab.conflicts.clone());
@@ -424,6 +428,48 @@ pub fn App() -> impl IntoElement {
                     sync_log.set(SharedString::from(err.to_string()));
                     error.set(SharedString::from(err.to_string()));
                 }
+            }
+        }
+    });
+
+    let open_reflog: Arc<dyn Fn()> = Arc::new({
+        let repo_path = repo_path;
+        let reflog_open = reflog_open;
+        let reflog_entries = reflog_entries;
+        let reflog_selected = reflog_selected;
+        let reflog_error = reflog_error;
+        move || {
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.reflog(80))
+            {
+                Ok(entries) => {
+                    reflog_selected.set(
+                        entries
+                            .first()
+                            .map(|entry| SharedString::from(entry.sha.clone()))
+                            .unwrap_or_default(),
+                    );
+                    reflog_entries.set(entries);
+                    reflog_error.set(SharedString::from(""));
+                    reflog_open.set(true);
+                }
+                Err(err) => reflog_error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
+    let close_reflog: Arc<dyn Fn()> = Arc::new(move || reflog_open.set(false));
+    let reset_reflog: Arc<dyn Fn(String)> = Arc::new({
+        let reload = reload_for_branch.clone();
+        move |sha: String| {
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.reset_hard(&sha))
+            {
+                Ok(_) => {
+                    reflog_error.set(SharedString::from(""));
+                    reflog_open.set(false);
+                    reload();
+                }
+                Err(err) => reflog_error.set(SharedString::from(err.to_string())),
             }
         }
     });
@@ -1100,7 +1146,7 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let history = history(branch, commits, selected, select_commit, mode);
+    let history = history(branch, commits, selected, select_commit, open_reflog.clone(), mode);
 
     let cherry_pick_action = Arc::new({
         let reload_pick = reload_for_branch.clone();
@@ -1165,6 +1211,16 @@ pub fn App() -> impl IntoElement {
         commit_log,
         commit_actions,
     );
+    let reflog_panel = reflog_panel(
+        reflog_open,
+        reflog_entries,
+        reflog_selected,
+        reflog_error,
+        ReflogActions {
+            close: close_reflog,
+            reset: reset_reflog,
+        },
+    );
     let sync_panel = sync_panel(
         sync_open,
         sync_kind,
@@ -1212,6 +1268,7 @@ pub fn App() -> impl IntoElement {
         .child(conflict_panel)
         .child(main)
         .child(sync_panel)
+        .child(reflog_panel)
         .child(settings_panel)
         .child(statusbar)
 }

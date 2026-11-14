@@ -118,6 +118,16 @@ pub struct Commit {
     pub summary: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReflogEntry {
+    pub selector: String,
+    pub sha: String,
+    pub short: String,
+    pub action: String,
+    pub message: String,
+    pub date: String,
+}
+
 fn status_path(line: &str) -> Option<String> {
     let fields = if line.starts_with("1 ") {
         9
@@ -436,6 +446,40 @@ impl Repo {
     }
 
     /// Newest commits, up to `limit`.
+    pub fn reflog(&self, limit: usize) -> Result<Vec<ReflogEntry>, GitError> {
+        let output = self.git(&[
+            "reflog",
+            "--date=short",
+            "--format=%H%x1f%h%x1f%gd%x1f%gs%x1f%cd",
+            "-n",
+            &limit.to_string(),
+        ])?;
+        let mut entries = Vec::new();
+        for line in output.lines().filter(|line| !line.trim().is_empty()) {
+            let fields: Vec<&str> = line.splitn(5, '\x1f').collect();
+            if fields.len() != 5 {
+                continue;
+            }
+            let (action, message) = fields[3]
+                .split_once(": ")
+                .map(|(action, message)| (action.to_string(), message.to_string()))
+                .unwrap_or_else(|| (fields[3].to_string(), String::new()));
+            entries.push(ReflogEntry {
+                sha: fields[0].to_string(),
+                short: fields[1].to_string(),
+                selector: fields[2].to_string(),
+                action,
+                message,
+                date: fields[4].to_string(),
+            });
+        }
+        Ok(entries)
+    }
+
+    pub fn reset_hard(&self, revision: &str) -> Result<String, GitError> {
+        self.git(&["reset", "--hard", revision])
+    }
+
     pub fn log(&self, limit: usize) -> Result<Vec<Commit>, GitError> {
         let limit = limit.to_string();
         let output = self.git(&[
@@ -1330,4 +1374,15 @@ mod tests {
         assert!(error.to_string().contains("not a Git repository"));
         let _ = fs::remove_dir_all(path);
     }
+    #[test]
+    fn reflog_lists_recent_actions() {
+        let temp = TempRepo::new();
+        let repo = Repo::open(temp.path()).unwrap();
+        let entries = repo.reflog(10).unwrap();
+        assert!(!entries.is_empty());
+        assert!(entries.iter().any(|entry| entry.action.starts_with("commit")));
+        assert!(entries[0].selector.starts_with("HEAD@{"));
+        assert!(!entries[0].short.is_empty());
+    }
+
 }
