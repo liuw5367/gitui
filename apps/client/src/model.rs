@@ -46,6 +46,8 @@ pub struct Tab {
     pub change_diff: String,
     /// 变更清单（本地存储，按仓库分组）。
     pub changelists: Vec<store::Changelist>,
+    /// 当前清单名；`None` 表示默认清单。
+    pub active_changelist: Option<String>,
     /// 进行中的多步操作（合并/变基/拣选/回滚）。
     pub operation: git::Operation,
     /// 冲突文件路径。
@@ -181,7 +183,12 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let operation = repo.operation();
     let reflog = repo.reflog(100).unwrap_or_default();
     let conflicts = repo.conflicts().unwrap_or_default();
-    let changelists = store::load_changelists(&store::default_dir(crate::brand::STORAGE_DIR), path);
+    // 存储键统一用仓库根路径：入参可能是符号链接形式（macOS 的 /tmp → /private/tmp），
+    // 与写入时用的 `repo.root()` 不一致会读不到清单。
+    let changelists = store::load_changelists(
+        &store::default_dir(crate::brand::STORAGE_DIR),
+        repo.root().display().to_string().as_str(),
+    );
     let mut tab = Tab {
         path: repo.root().display().to_string(),
         name: summary.name,
@@ -415,6 +422,56 @@ pub fn delete_branch(tab: &mut Tab, branch: &str) {
         }
         Err(error) => tab.error = Some(error.detail()),
     }
+}
+
+/// 把一个变更文件放进某个清单（`None` 放回默认清单）。
+pub fn move_to_changelist(tab: &mut Tab, path: &str, list: Option<&str>) {
+    let store_dir = store::default_dir(crate::brand::STORAGE_DIR);
+    let repo = tab.path.clone();
+    let mut lists = store::load_changelists(&store_dir, repo.as_str());
+    // 先从所有清单里移除，再按需要加入目标清单。
+    for existing in lists.iter_mut() {
+        existing.paths.retain(|candidate| candidate != path);
+    }
+    if let Some(name) = list {
+        match lists.iter_mut().find(|existing| existing.name == name) {
+            Some(existing) => existing.paths.push(path.to_string()),
+            None => lists.push(store::Changelist {
+                name: name.to_string(),
+                paths: vec![path.to_string()],
+            }),
+        }
+    }
+    lists.retain(|existing| !existing.paths.is_empty());
+    store::save_changelists(&store_dir, repo.as_str(), &lists);
+    tab.changelists = lists;
+    // 变更行上的清单归属跟着更新。
+    for entry in tab.changes.iter_mut() {
+        if entry.path == path {
+            entry.changelist = list.map(|name| name.to_string());
+        }
+    }
+}
+
+/// 新建清单（空清单也保留，便于先建后移）。
+pub fn create_changelist(tab: &mut Tab, name: &str) {
+    let store_dir = store::default_dir(crate::brand::STORAGE_DIR);
+    let repo = tab.path.clone();
+    let mut lists = store::load_changelists(&store_dir, repo.as_str());
+    if lists.iter().any(|existing| existing.name == name) {
+        return;
+    }
+    lists.push(store::Changelist {
+        name: name.to_string(),
+        paths: Vec::new(),
+    });
+    store::save_changelists(&store_dir, repo.as_str(), &lists);
+    tab.changelists = lists;
+}
+
+/// 切换当前清单。
+pub fn set_active_changelist(tab: &mut Tab, name: Option<String>) {
+    tab.active_changelist = name;
 }
 
 /// 新建分支；`from` 为空时基于当前 HEAD。
@@ -1236,6 +1293,64 @@ mod tests {
         let reference = tab.refs.stashes[0].reference.clone();
         drop_stash(&mut tab, reference.as_str()).expect("drop");
         assert!(tab.refs.stashes.is_empty());
+    }
+
+    #[test]
+    fn changelists_group_changes_and_keep_storage() {
+        // 用独立的 APP_HOME 隔离存储，避免污染真实的应用支持目录。
+        let home = std::env::temp_dir().join(format!(
+            "nsh-app-changelists-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&home).expect("home");
+        // SAFETY：测试进程内串行使用该变量，只影响本测试的存储目录。
+        unsafe { std::env::set_var("APP_HOME", &home) };
+
+        let repo = TempRepo::new("changelists");
+        std::fs::write(repo.path.join("a.txt"), "changed\n").expect("write");
+        std::fs::write(repo.path.join("b.txt"), "new\n").expect("write");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert_eq!(tab.changes.len(), 2);
+
+        create_changelist(&mut tab, "Commit composer");
+        assert_eq!(tab.changelists.len(), 1);
+        assert!(tab.changelists[0].paths.is_empty());
+
+        move_to_changelist(&mut tab, "a.txt", Some("Commit composer"));
+        let list = tab
+            .changelists
+            .iter()
+            .find(|list| list.name == "Commit composer")
+            .expect("list");
+        assert_eq!(list.paths, vec!["a.txt".to_string()]);
+        let entry = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a.txt");
+        assert_eq!(entry.changelist.as_deref(), Some("Commit composer"));
+
+        // 重新读取：清单从磁盘恢复。
+        let reloaded = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert!(reloaded
+            .changelists
+            .iter()
+            .any(|list| list.name == "Commit composer"
+                && list.paths == vec!["a.txt".to_string()]));
+
+        // 移回默认清单：清单条目被清空。
+        move_to_changelist(&mut tab, "a.txt", None);
+        assert!(tab.changelists.iter().all(|list| list.paths.is_empty()));
+
+        set_active_changelist(&mut tab, Some("Commit composer".to_string()));
+        assert_eq!(tab.active_changelist.as_deref(), Some("Commit composer"));
+
+        unsafe { std::env::remove_var("APP_HOME") };
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

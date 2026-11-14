@@ -227,7 +227,10 @@
     "setActive": "Set Active",
     "moveSelected": "Move 3 selected files to…",
     "rename": "Rename Changelist…",
-    "footHint": "Filters only — staging commits"
+    "footHint": "Filters only — staging commits",
+    "moveHere": "Move here",
+    "newName": "New changelist name",
+    "create": "Create"
   },
   "operation": {
     "banner": "%{operation} in progress · %{conflicts} conflicts",

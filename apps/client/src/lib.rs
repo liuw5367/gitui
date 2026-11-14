@@ -98,6 +98,9 @@ pub(crate) struct Actions {
     pub(crate) drop_tag: Arc<dyn Fn(String)>,
     pub(crate) drop_remote: Arc<dyn Fn(String)>,
     pub(crate) drop_stash: Arc<dyn Fn(String)>,
+    pub(crate) set_active_changelist: Arc<dyn Fn(Option<String>)>,
+    pub(crate) move_to_changelist: Arc<dyn Fn(String, Option<String>)>,
+    pub(crate) create_changelist: Arc<dyn Fn(String)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -1087,6 +1090,45 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || form_state.set(None))
     };
 
+    let set_active_changelist: Arc<dyn Fn(Option<String>)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |name: Option<String>| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::set_active_changelist(tab, name);
+                tabs.set(list);
+            }
+        })
+    };
+
+    let move_to_changelist: Arc<dyn Fn(String, Option<String>)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |path: String, list_name: Option<String>| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::move_to_changelist(tab, path.as_str(), list_name.as_deref());
+                tabs.set(list);
+            }
+        })
+    };
+
+    let create_changelist: Arc<dyn Fn(String)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |name: String| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::create_changelist(tab, name.as_str());
+                tabs.set(list);
+            }
+        })
+    };
+
     let drop_tag: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
@@ -1239,6 +1281,9 @@ pub fn App() -> impl IntoElement {
         drop_tag,
         drop_remote,
         drop_stash,
+        set_active_changelist,
+        move_to_changelist,
+        create_changelist,
         apply_filter,
         clear_filter,
         clone_repository,

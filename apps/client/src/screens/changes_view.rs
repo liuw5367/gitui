@@ -121,6 +121,12 @@ fn changes_list(
     let select_change = actions.select_change.clone();
     let toggle_stage = actions.toggle_stage.clone();
     let discard_change = actions.discard_change.clone();
+    let tab_for_pop = tab.clone();
+    let actions_pop = actions.clone();
+    let selected_path = tab
+        .selected_change
+        .and_then(|index| tab.changes.get(index))
+        .map(|entry| entry.path.clone());
     let stage_all = actions.stage_all.clone();
     let unstage_all = actions.unstage_all.clone();
     let selected = tab.selected_change;
@@ -452,7 +458,14 @@ fn changes_list(
                         )
                         .child(
                             text(move || {
-                                i18n::t(language.get().as_str(), "changelists.default")
+                                tab.active_changelist
+                                    .clone()
+                                    .unwrap_or_else(|| {
+                                        i18n::t(
+                                            language.get().as_str(),
+                                            "changelists.default",
+                                        )
+                                    })
                             })
                             .text_size(px(9.5))
                             .text_color(move || design::text2()),
@@ -487,6 +500,25 @@ fn changes_list(
                 .child(scroll().w_full().h_full().child(
                     view().w_full().flex_col().child(sections),
                 )),
+        )
+        .child(
+            view()
+                .absolute()
+                .top(px(metrics::HIST_BAR_H))
+                .left(px(10.0))
+                .child(dynamic(move || -> AnyElement {
+                    if !changelist_open.get() {
+                        return view().w(px(0.0)).h(px(0.0)).into_element();
+                    }
+                    return changelist_pop(
+                        language,
+                        tab_for_pop.clone(),
+                        changelist_open,
+                        actions_pop.clone(),
+                        selected_path.clone(),
+                    )
+                    .into_element();
+                })),
         );
 }
 
@@ -558,4 +590,182 @@ fn diff_row(line: &domain::diff::DiffLine) -> AnyElement {
                 .text_overflow(nsh_core::EllipsizeMode::Clip),
         )
         .into_element();
+}
+
+/// 变更清单弹层（设计板 11）：清单列表、设为当前、把选中文件移入、新建清单。
+fn changelist_pop(
+    language: Signal<SharedString>,
+    tab: Tab,
+    open: Signal<bool>,
+    actions: Actions,
+    selected_path: Option<String>,
+) -> impl IntoElement {
+    let set_active = actions.set_active_changelist.clone();
+    let move_to = actions.move_to_changelist.clone();
+    let create = actions.create_changelist.clone();
+    let new_name = signal(String::new());
+    let mut rows: Vec<AnyElement> = Vec::new();
+
+    // 「默认清单」+ 已有清单。
+    let mut entries: Vec<(Option<String>, usize)> = vec![(None, 0)];
+    for list in &tab.changelists {
+        entries.push((Some(list.name.clone()), list.paths.len()));
+    }
+    for (name, count) in entries {
+        let set_active = set_active.clone();
+        let move_to = move_to.clone();
+        let selected = selected_path.clone();
+        let name_for_active = name.clone();
+        let name_for_move = name.clone();
+        let is_active = tab.active_changelist == name;
+        let label = name.clone().unwrap_or_else(|| {
+            i18n::t(language.get_untracked().as_str(), "changelists.default")
+        });
+        rows.push(
+            view()
+                .w_full()
+                .h(px(24.0))
+                .px(px(6.0))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .rounded(px(4.0))
+                .bg(move || {
+                    if is_active {
+                        design::selected()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .hover(|style| style.bg(move || design::hover()))
+                .on_press(move || set_active(name_for_active.clone()))
+                .child(
+                    view()
+                        .w(px(6.0))
+                        .h(px(6.0))
+                        .rounded(px(3.0))
+                        .bg(move || {
+                            if is_active {
+                                design::accent()
+                            } else {
+                                design::line_strong()
+                            }
+                        }),
+                )
+                .child(
+                    text(label)
+                        .flex_1()
+                        .text_size(px(11.0))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(count.to_string())
+                        .text_size(px(9.5))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    view()
+                        .h(px(16.0))
+                        .px(px(4.0))
+                        .items_center()
+                        .rounded(px(3.0))
+                        .opacity({
+                            let selected = selected.clone();
+                            move || if selected.is_some() { 1.0_f32 } else { 0.4_f32 }
+                        })
+                        .when(selected.is_some(), |this| {
+                            let move_to = move_to.clone();
+                            let selected = selected.clone();
+                            let name_for_move = name_for_move.clone();
+                            this.on_press(move || {
+                                if let Some(path) = selected.clone() {
+                                    move_to(path, name_for_move.clone());
+                                }
+                            })
+                        })
+                        .child(
+                            text(move || {
+                                i18n::t(language.get().as_str(), "changelists.moveHere")
+                            })
+                            .text_size(px(9.0))
+                            .line_height(px(11.0))
+                            .text_color(move || design::accent()),
+                        ),
+                )
+                .into_element(),
+        );
+    }
+
+    return view()
+        .w(px(300.0))
+        .p(px(6.0))
+        .flex_col()
+        .gap(px(4.0))
+        .rounded(px(metrics::RADIUS_PANEL))
+        .border_1()
+        .border_color(move || design::line())
+        .bg(move || design::token("popover"))
+        .child(
+            text(move || i18n::t(language.get().as_str(), "changelists.title"))
+                .text_size(px(10.0))
+                .font_weight(FontWeight(600))
+                .line_height(px(14.0))
+                .text_color(move || design::text3()),
+        )
+        .child(rows)
+        .child(
+            view()
+                .w_full()
+                .mt(px(2.0))
+                .pt(px(4.0))
+                .flex_row()
+                .items_center()
+                .gap(px(4.0))
+                .border_t_1()
+                .border_color(move || design::line())
+                .child(
+                    view()
+                        .flex_1()
+                        .h(px(22.0))
+                        .px(px(6.0))
+                        .items_center()
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(move || design::field_border())
+                        .bg(move || design::field())
+                        .child(
+                            nsh_base::input()
+                                .value(new_name)
+                                .on_change(move |text: &str| new_name.set(text.to_string()))
+                                .placeholder(move || {
+                                    i18n::t(language.get().as_str(), "changelists.newName")
+                                })
+                                .text_size(px(11.0))
+                                .flex_1(),
+                        ),
+                )
+                .child(crate::widgets::small_button(
+                    move || i18n::t(language.get().as_str(), "changelists.create"),
+                    {
+                        let create = create.clone();
+                        let open = open;
+                        move || {
+                            let name = new_name.get_untracked();
+                            if !name.trim().is_empty() {
+                                create(name.trim().to_string());
+                                new_name.set(String::new());
+                            }
+                            open.set(false);
+                        }
+                    },
+                )),
+        )
+        .child(
+            text(move || i18n::t(language.get().as_str(), "changelists.footHint"))
+                .text_size(px(9.0))
+                .line_height(px(12.0))
+                .text_color(move || design::text3()),
+        );
 }

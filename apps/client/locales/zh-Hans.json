@@ -227,7 +227,10 @@
     "setActive": "设为当前",
     "moveSelected": "移动 3 个选中文件到…",
     "rename": "重命名清单…",
-    "footHint": "仅筛选 — 暂存后提交"
+    "footHint": "仅筛选 — 暂存后提交",
+    "moveHere": "移入",
+    "newName": "新清单名称",
+    "create": "新建"
   },
   "operation": {
     "banner": "正在进行 %{operation} · %{conflicts} 个冲突",
