@@ -33,7 +33,7 @@
 | Design canvas | 30 boards, accepted; no more pages planned |
 | CLI spikes S-1/S-2/S-3 | **Pass** on macOS 15.7.7 / Git 2.56.0 |
 | S-4 performance | **Partial** — 100k commits + real 10k diff pass; 1 GB/UI pending |
-| S-5 auth/network | **Pending** (needs remote/token/SSH harness) |
+| S-5 auth/network | **Partial** — local HTTP basic pass; SSH/network pending |
 | S-6 NSH Rust editor/bridge | **Partial** — 10k headless mount passes; interactive pending |
 | v0.1 implementation | **Not started**; do not start M2 until S-5/S-6 close |
 

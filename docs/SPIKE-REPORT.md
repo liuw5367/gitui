@@ -16,7 +16,7 @@
 | **S-2** | pre-commit / post-commit / `--no-verify` | **PASS** (timeout not tested) |
 | **S-3** | merge conflict stages, editable result, abort; rebase conflict/abort | **PASS** (cherry-pick/revert not tested) |
 | **S-4** | performance benchmark | **PARTIAL** — 100k commits and real 10k diff pass; 1 GB and UI mount pending |
-| **S-5** | HTTPS/SSH auth, credential helper, failure classes | **PENDING** |
+| **S-5** | HTTP basic auth, credential helper, failure classes | **PARTIAL — HTTP basic pass; SSH/network pending** |
 | **S-6** | NSH Rust view + 3-pane editor + 10k-line rendering | **PARTIAL — 10k headless mount passes; interactive pending** |
 | **S-7** | CLI vs `gix` read path (optional) | **NOT RUN** |
 
@@ -121,22 +121,27 @@
 
 **Risk**: process/parse timings are fine; the remaining risk is UI virtualization and memory, not Git CLI.
 
-## 6. S-5 — auth / network (PENDING)
+## 6. S-5 — auth / network (PARTIAL)
 
-**Not run.** No disposable remote/token/SSH test host in this workspace.
+**HTTP basic fixture**: `spikes/s5-auth/run.py` runs a local `git http-backend` with basic auth; credentials come from `GIT_ASKPASS`, never the URL or argv.
 
-**Required before M3**
+**Observed**
 
-- HTTPS clone/fetch/push with a test token; verify token never appears in argv, logs, or UI.
-- Bad token → `auth_failed`; no infinite retry.
-- SSH success; host-key change → explicit warning; no auto-accept.
-- Offline/timeout → `network`; cancel is clean.
-- Non-fast-forward → Pull/Rebase/Force-with-lease prompt; no automatic force.
-- Credential helper / Keychain integration on macOS.
+| Case | Result |
+|---|---|
+| no credentials | exit 128; `could not read Username ... terminal prompts disabled` |
+| wrong password | exit 128; authentication failed |
+| correct password | exit 0; **2 refs** returned |
+| credentials in argv | **no** (askpass only) |
 
-**Decision**: M3 is blocked until this report is updated with real results.
+**Conclusion**: HTTP basic auth works and failure is distinguishable. This does not yet validate:
+- SSH + host-key change
+- proxy / TLS certificate errors
+- network timeout and cancellation
+- non-fast-forward push
+- Keychain / credential-helper integration in the Rust app
 
----
+**Risk**: the app-level auth service is still unbuilt; the CLI path is proven, the UI/error classification is not.
 
 ## 7. S-6 — NSH Rust editor / bridge (PARTIAL)
 
@@ -178,7 +183,7 @@ Not run. Revisit only if S-4 fails the 100k/1 GB budget. Write path remains syst
 - **D11 Rust-only NSH**: no TSX/JS bridge; all UI/state/Git in Rust.
 - **Merge editor** must read unmerged stages and support an editable result.
 - **S-4** needs a real fixture before claiming performance; 20k is not enough.
-- **S-5/S-6** remain open; M2/M4 blocked.
+- **S-5 SSH/network** remain open; M2/M4 blocked.
 
 ---
 
