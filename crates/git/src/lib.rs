@@ -585,6 +585,46 @@ impl Repo {
         return Ok(());
     }
 
+    /// 读取一条配置（`git config --get <key>`）；没有该键时返回 `None`。
+    pub fn config_get(&self, key: &str) -> Option<String> {
+        let output = run_git(&self.root, &["config", "--get", key]).ok()?;
+        let value = String::from_utf8_lossy(&output).trim().to_string();
+        if value.is_empty() {
+            return None;
+        }
+        return Some(value);
+    }
+
+    /// 只读仓库级配置（`git config --local --get <key>`）。
+    ///
+    /// 与 `config_get` 的区别：不回落全局，用于「本仓库是否覆盖了身份」这种判断。
+    pub fn config_get_local(&self, key: &str) -> Option<String> {
+        let output = run_git(&self.root, &["config", "--local", "--get", key]).ok()?;
+        let value = String::from_utf8_lossy(&output).trim().to_string();
+        if value.is_empty() {
+            return None;
+        }
+        return Some(value);
+    }
+
+    /// 写入仓库级配置（`git config <key> <value>`）。
+    pub fn config_set(&self, key: &str, value: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["config", key, value])?;
+        return Ok(());
+    }
+
+    /// 删除仓库级配置，让全局值生效（`git config --unset <key>`）。
+    ///
+    /// 键本来就不存在时 `--unset` 会以非零退出，这里视为成功。
+    pub fn config_unset(&self, key: &str) -> Result<(), GitError> {
+        let result = run_git(&self.root, &["config", "--unset", key]);
+        return match result {
+            Ok(_) => Ok(()),
+            Err(GitError::CommandFailed { code, .. }) if code == Some(5) => Ok(()),
+            Err(error) => Err(error),
+        };
+    }
+
     /// 各远端的 URL（`git remote get-url <name>`），顺序与 `remote` 一致。
     pub fn remote_urls(&self) -> Result<Vec<(String, String)>, GitError> {
         let names = self.lines(&["remote"])?;

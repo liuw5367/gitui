@@ -289,7 +289,8 @@
     "browserFailed": "Could not open link",
     "historyDone": "Done",
     "pushed": "Pushed",
-    "stashDone": "Stash applied"
+    "stashDone": "Stash applied",
+    "identityCleared": "Repository identity cleared"
   },
   "conflicts": {
     "title": "Conflicted",
@@ -357,7 +358,20 @@
     "sshKeysHint": "Keys available to git and the agent.",
     "sshKeyCount": "%{count} files in ~/.ssh",
     "sshAgentsNote": "gitui uses your SSH agent; it does not manage keys.",
-    "agent": "Agent"
+    "agent": "Agent",
+    "website": "Website",
+    "source": "Source Code",
+    "reportIssue": "Report an Issue",
+    "licenses": "Licenses",
+    "updatesAuto": "Automatically",
+    "updatesManual": "Manually",
+    "updatesNever": "Never",
+    "updaterUnavailable": "No update feed is wired up yet; the choice is saved and used when it is.",
+    "identity": "Commit identity",
+    "identityHint": "Stored in this repository's git config; empty falls back to your global identity.",
+    "editIdentity": "Edit…",
+    "useGlobalIdentity": "Use Global",
+    "identityInherited": "Inherited from your global git config"
   },
   "refs": {
     "title": "Refs",
@@ -421,7 +435,13 @@
     "filter": "Filter commits",
     "settings": "Settings",
     "cycleAppearance": "Cycle appearance",
-    "dismiss": "Dismiss overlay"
+    "dismiss": "Dismiss overlay",
+    "filterHistory": "Filter history",
+    "push": "Push",
+    "commit": "Go to commit panel",
+    "primaryAction": "Commit (Changes view)",
+    "switchTab": "Switch repository tab",
+    "cycleTab": "Previous / next tab"
   },
   "form": {
     "newBranch": "New Branch",
@@ -445,7 +465,10 @@
     "newName": "New name",
     "urlNew": "URL",
     "rename": "Rename",
-    "save": "Save"
+    "save": "Save",
+    "identity": "Commit Identity",
+    "authorName": "Name",
+    "authorEmail": "Email"
   },
   "sync": {
     "fetchTitle": "Fetch",

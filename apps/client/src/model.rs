@@ -790,6 +790,34 @@ pub fn rename_branch(tab: &mut Tab, old: &str, new: &str) -> Result<(), String> 
     return Ok(());
 }
 
+/// 仓库级提交身份（`user.name` / `user.email`）。
+pub fn identity(tab: &Tab) -> (String, String) {
+    let Ok(repo) = Repo::open(tab.path.as_str()) else {
+        return (String::new(), String::new());
+    };
+    let name = repo.config_get_local("user.name").unwrap_or_default();
+    let email = repo.config_get_local("user.email").unwrap_or_default();
+    return (name, email);
+}
+
+/// 写入仓库级提交身份。
+pub fn set_identity(tab: &Tab, name: &str, email: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.config_set("user.name", name)
+        .map_err(|error| error.detail())?;
+    repo.config_set("user.email", email)
+        .map_err(|error| error.detail())?;
+    return Ok(());
+}
+
+/// 清掉仓库级身份，回到全局配置。
+pub fn clear_identity(tab: &Tab) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.config_unset("user.name").map_err(|error| error.detail())?;
+    repo.config_unset("user.email").map_err(|error| error.detail())?;
+    return Ok(());
+}
+
 /// 改写远端的 URL。
 pub fn edit_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
@@ -1443,6 +1471,32 @@ mod tests {
 
         // 不存在的 SHA 返回 false，不改变选中。
         assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn identity_reads_writes_and_clears_repo_config() {
+        let repo = TempRepo::new("identity");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+
+        // 测试仓库自带仓库级身份（fixture 里设的）。
+        assert_eq!(
+            identity(&tab),
+            ("Test".to_string(), "test@example.com".to_string())
+        );
+
+        set_identity(&tab, "Ada", "ada@example.com").expect("set identity");
+        assert_eq!(
+            identity(&tab),
+            ("Ada".to_string(), "ada@example.com".to_string())
+        );
+
+        // 清掉后回到「没有仓库级身份」，与全局配置无关。
+        clear_identity(&tab).expect("clear identity");
+        assert_eq!(identity(&tab), (String::new(), String::new()));
+
+        // 再清一次不应报错（键已不存在）。
+        clear_identity(&tab).expect("clear twice");
+        tab.summary = "x".to_string();
     }
 
     #[test]

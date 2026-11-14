@@ -158,6 +158,14 @@ pub(crate) struct Actions {
     pub(crate) open_editor: Arc<dyn Fn(String)>,
     /// 在 Finder 中显示路径。
     pub(crate) reveal_path: Arc<dyn Fn(String)>,
+    /// 用浏览器打开链接。
+    pub(crate) open_browser: Arc<dyn Fn(String)>,
+    /// 打开身份编辑表单（仓库级 user.name / user.email）。
+    pub(crate) open_identity: Arc<dyn Fn()>,
+    /// 清掉仓库级身份，回到全局配置。
+    pub(crate) clear_identity: Arc<dyn Fn()>,
+    /// 设置更新检查方式（`auto` / `manual` / `never`）。
+    pub(crate) set_update_mode: Arc<dyn Fn(String)>,
 }
 
 /// 应用根组件。
@@ -1285,6 +1293,10 @@ pub fn App() -> impl IntoElement {
                 screens::FormKind::EditRemote => {
                     model::edit_remote(tab, second.as_str(), first.as_str())
                 }
+                // 身份：`first` 是姓名，`second` 是邮箱。
+                screens::FormKind::Identity => {
+                    model::set_identity(tab, first.as_str(), second.as_str())
+                }
             };
             tabs.set(list);
             match result {
@@ -1604,6 +1616,19 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let open_browser: Arc<dyn Fn(String)> = {
+        let notice = notice;
+        let language = language;
+        Arc::new(move |url: String| {
+            let language_now = language.get_untracked();
+            interactions::open_browser(
+                notice,
+                url,
+                i18n::t(language_now.as_str(), "toast.browserFailed"),
+            );
+        })
+    };
+
     let reveal_path: Arc<dyn Fn(String)> = {
         let notice = notice;
         let language = language;
@@ -1916,6 +1941,54 @@ pub fn App() -> impl IntoElement {
     let commit_for_key = commit.clone();
     let open_sync_for_key = open_sync.clone();
 
+    let set_update_mode: Arc<dyn Fn(String)> = {
+        let settings_state = settings_state;
+        let store_dir = store_dir.clone();
+        Arc::new(move |mode: String| {
+            let mut next = settings_state.get_untracked();
+            next.update_mode = mode;
+            settings_state.set(next.clone());
+            store::save_settings(&store_dir, &next);
+        })
+    };
+
+    let open_identity: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let form_state = form_state;
+        Arc::new(move || {
+            let list = tabs.get_untracked();
+            let Some(tab) = list.get(active.get_untracked()) else {
+                return;
+            };
+            let (name, email) = model::identity(tab);
+            let mut state = screens::FormState::new(screens::FormKind::Identity);
+            state.first = name;
+            state.second = email;
+            form_state.set(Some(state));
+        })
+    };
+
+    let clear_identity: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let list = tabs.get_untracked();
+            let Some(tab) = list.get(active.get_untracked()) else {
+                return;
+            };
+            match model::clear_identity(tab) {
+                Ok(()) => {
+                    let lang = language.get_untracked();
+                    interactions::notify(notice, i18n::t(lang.as_str(), "toast.identityCleared"));
+                }
+                Err(detail) => interactions::notify(notice, detail),
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1992,6 +2065,10 @@ pub fn App() -> impl IntoElement {
         copy_text,
         open_editor,
         reveal_path,
+        open_browser,
+        set_update_mode,
+        open_identity,
+        clear_identity,
     };
 
     // 原生菜单（设计板 22）：File/Edit/View/Repository/Window/Help。
@@ -2327,22 +2404,28 @@ pub fn App() -> impl IntoElement {
         }
     });
 
-    let identity_cmd = std::process::Command::new("git")
-        .args(["config", "--get", "user.name"])
-        .output();
-    let identity_name = identity_cmd
-        .ok()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_default();
-    let identity_email = std::process::Command::new("git")
-        .args(["config", "--get", "user.email"])
-        .output()
-        .ok()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .filter(|email| !email.is_empty())
-        .unwrap_or_default();
-    let identity_for_view = (identity_name, identity_email);
+    // 身份按当前仓库读（仓库级 config），没有打开仓库时回落到全局配置。
+    // 用计算值而不是一次性读取：编辑身份或切换标签后设置页会跟着变。
+    let identity_for_view = {
+        let tabs = tabs;
+        let active = active;
+        computed(move || {
+            let list = tabs.get();
+            if let Some(tab) = list.get(active.get()) {
+                return model::identity(tab);
+            }
+            let read = |key: &str| {
+                return std::process::Command::new("git")
+                    .args(["config", "--get", key])
+                    .output()
+                    .ok()
+                    .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_default();
+            };
+            return (read("user.name"), read("user.email"));
+        })
+    };
     // 设置页 Git 分区展示本机 Git 的版本、执行路径与凭据助手。
     let git_info_for_view = match git::info() {
         Ok(info) => (
@@ -2393,7 +2476,7 @@ pub fn App() -> impl IntoElement {
                             theme_mode,
                             settings_state,
                             settings_section,
-                            identity_for_view.clone(),
+                            identity_for_view.get(),
                             git_info_for_view.clone(),
                             agent_policies,
                             actions_for_view.set_agent_permission.clone(),

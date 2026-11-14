@@ -224,6 +224,12 @@ fn main(
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
+    // 仓库级身份为空时说明会回落到全局配置，而不是显示一对空尖括号。
+    let identity_text = if name.is_empty() && email.is_empty() {
+        i18n::t(language.get_untracked().as_str(), "settings.identityInherited")
+    } else {
+        format!("{} <{}>", name, email)
+    };
     let set_theme = actions.set_theme.clone();
     let set_language = actions.toggle_language.clone();
     let set_file_tree = actions.set_file_tree.clone();
@@ -257,9 +263,16 @@ fn main(
                             set_language.clone(),
                             set_file_tree.clone(),
                             set_restore.clone(),
+                            actions.set_update_mode.clone(),
+                            identity_text.clone(),
+                            actions.open_identity.clone(),
+                            actions.clear_identity.clone(),
                         )
                         .into_element(),
-                        Section::About => about(language, name.clone(), email.clone()).into_element(),
+                        Section::About => {
+                            about(language, name.clone(), email.clone(), actions.clone())
+                                .into_element()
+                        }
                         Section::Git => git_page(language, git_info.clone()).into_element(),
                         Section::Shortcuts => shortcuts_page(language).into_element(),
                         Section::Credentials => {
@@ -281,6 +294,10 @@ fn general(
     toggle_language: std::sync::Arc<dyn Fn()>,
     set_file_tree: std::sync::Arc<dyn Fn(bool)>,
     set_restore_session: std::sync::Arc<dyn Fn(bool)>,
+    set_update_mode: std::sync::Arc<dyn Fn(String)>,
+    identity_line: String,
+    open_identity: std::sync::Arc<dyn Fn()>,
+    clear_identity: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     let mut theme_rows: Vec<AnyElement> = Vec::new();
     for mode in [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark] {
@@ -380,6 +397,39 @@ fn general(
         ))
         .child(section_block(
             language,
+            "settings.identity",
+            "settings.identityHint",
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    text(identity_line.clone())
+                        .flex_1()
+                        .text_size(px(11.0))
+                        .font_family("SF Mono")
+                        .line_height(px(15.0))
+                        .text_color(move || design::text2()),
+                )
+                .child(widgets::small_button(
+                    move || i18n::t(language.get().as_str(), "settings.editIdentity"),
+                    {
+                        let open_form = open_identity.clone();
+                        move || open_form()
+                    },
+                ))
+                .child(widgets::small_button(
+                    move || i18n::t(language.get().as_str(), "settings.useGlobalIdentity"),
+                    {
+                        let clear = clear_identity.clone();
+                        move || clear()
+                    },
+                ))
+                .into_element(),
+        ))
+        .child(section_block(
+            language,
             "settings.updates",
             "settings.updatesHint",
             view()
@@ -388,30 +438,92 @@ fn general(
                 .gap(px(8.0))
                 .child(
                     view()
-                        .h(px(metrics::BUTTON_SMALL_H))
-                        .px(px(8.0))
+                        .h(px(22.0))
+                        .flex_row()
                         .items_center()
-                        .rounded(px(5.0))
+                        .gap(px(2.0))
+                        .p(px(2.0))
+                        .rounded(px(6.0))
                         .border_1()
-                        .border_color(move || design::btn_border())
-                        .bg(move || design::btn())
-                        .opacity(0.45)
+                        .border_color(move || design::line_soft())
+                        .bg(move || design::panel2())
                         .child(
-                            text(move || {
-                                i18n::t(language.get().as_str(), "settings.checkNow")
-                            })
-                            .text_size(px(11.0))
-                            .text_color(move || design::text()),
+                            UPDATE_MODES
+                                .iter()
+                                .map(|mode| {
+                                    let mode = *mode;
+                                    let active = settings_state.get_untracked().update_mode
+                                        == mode.id();
+                                    let set_update_mode = set_update_mode.clone();
+                                    let language = language;
+                                    return view()
+                                        .h(px(16.0))
+                                        .px(px(7.0))
+                                        .items_center()
+                                        .rounded(px(4.0))
+                                        .bg(move || {
+                                            if active {
+                                                design::content()
+                                            } else {
+                                                AdaptiveColor::TRANSPARENT
+                                            }
+                                        })
+                                        .on_press(move || set_update_mode(mode.id().to_string()))
+                                        .child(
+                                            text(move || {
+                                                i18n::t(language.get().as_str(), mode.key())
+                                            })
+                                            .text_size(px(10.0))
+                                            .line_height(px(13.0))
+                                            .text_color(move || {
+                                                if active {
+                                                    design::text()
+                                                } else {
+                                                    design::text3()
+                                                }
+                                            }),
+                                        )
+                                        .into_element();
+                                })
+                                .collect::<Vec<AnyElement>>(),
                         ),
                 )
                 .child(
-                    text(move || i18n::t(language.get().as_str(), "settings.notImplemented"))
+                    text(move || i18n::t(language.get().as_str(), "settings.updaterUnavailable"))
                         .text_size(px(9.5))
                         .text_color(move || design::text3()),
                 )
                 .into_element(),
         ));
 }
+
+/// 更新检查的三种方式（设计板 23）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UpdateMode {
+    Auto,
+    Manual,
+    Never,
+}
+
+impl UpdateMode {
+    fn id(self) -> &'static str {
+        return match self {
+            UpdateMode::Auto => "auto",
+            UpdateMode::Manual => "manual",
+            UpdateMode::Never => "never",
+        };
+    }
+
+    fn key(self) -> &'static str {
+        return match self {
+            UpdateMode::Auto => "settings.updatesAuto",
+            UpdateMode::Manual => "settings.updatesManual",
+            UpdateMode::Never => "settings.updatesNever",
+        };
+    }
+}
+
+const UPDATE_MODES: [UpdateMode; 3] = [UpdateMode::Auto, UpdateMode::Manual, UpdateMode::Never];
 
 fn theme_key(mode: ThemeMode) -> &'static str {
     return match mode {
@@ -500,6 +612,7 @@ fn about(
     language: Signal<SharedString>,
     name: String,
     email: String,
+    actions: Actions,
 ) -> impl IntoElement {
     return view()
         .w_full()
@@ -522,6 +635,64 @@ fn about(
                 .text_size(px(11.0))
                 .font_family("SF Mono")
                 .text_color(move || design::text2()),
+        )
+        // 四个外链；打不开时走状态栏提示，不弹错误框。
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .flex_wrap()
+                .gap(px(6.0))
+                .child(link_button(
+                    language,
+                    "settings.website",
+                    "https://example.com/git-client",
+                    actions.open_browser.clone(),
+                ))
+                .child(link_button(
+                    language,
+                    "settings.source",
+                    "https://example.com/git-client/source",
+                    actions.open_browser.clone(),
+                ))
+                .child(link_button(
+                    language,
+                    "settings.reportIssue",
+                    "https://example.com/git-client/issues",
+                    actions.open_browser.clone(),
+                ))
+                .child(link_button(
+                    language,
+                    "settings.licenses",
+                    "https://example.com/git-client/licenses",
+                    actions.open_browser.clone(),
+                )),
+        );
+}
+
+/// 一个外链按钮。
+fn link_button(
+    language: Signal<SharedString>,
+    key: &'static str,
+    url: &'static str,
+    open_browser: std::sync::Arc<dyn Fn(String)>,
+) -> impl IntoElement {
+    return view()
+        .h(px(metrics::BUTTON_SMALL_H))
+        .px(px(8.0))
+        .items_center()
+        .rounded(px(5.0))
+        .border_1()
+        .border_color(move || design::btn_border())
+        .bg(move || design::btn())
+        .hover(|style| style.bg(move || design::hover()))
+        .on_press(move || open_browser(url.to_string()))
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(11.0))
+                .line_height(px(14.0))
+                .text_color(move || design::accent()),
         );
 }
 
@@ -596,12 +767,19 @@ fn git_page(language: Signal<SharedString>, info: (String, String, String)) -> A
 /// 快捷键分区（25）：列出本构建真实的按键绑定。
 fn shortcuts_page(language: Signal<SharedString>) -> AnyElement {
     let mut rows: Vec<AnyElement> = Vec::new();
+    // 只列真实绑定：这里每一项都对应 lib.rs 里的 on_key。
     for (keys, key) in [
         ("⌘O", "shortcut.openRepo"),
         ("⌘P", "shortcut.palette"),
         ("⌘W", "shortcut.closeTab"),
         ("⌘R", "shortcut.refresh"),
         ("⌘F", "shortcut.filter"),
+        ("⇧⌘F", "shortcut.filterHistory"),
+        ("⇧⌘P", "shortcut.push"),
+        ("⇧⌘K", "shortcut.commit"),
+        ("⌘↵", "shortcut.primaryAction"),
+        ("⌘1…9", "shortcut.switchTab"),
+        ("⇧⌘[ / ]", "shortcut.cycleTab"),
         ("⌘,", "shortcut.settings"),
         ("⇧⌘A", "shortcut.cycleAppearance"),
         ("esc", "shortcut.dismiss"),

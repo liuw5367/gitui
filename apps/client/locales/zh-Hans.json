@@ -289,7 +289,8 @@
     "browserFailed": "打不开链接",
     "historyDone": "已完成",
     "pushed": "已推送",
-    "stashDone": "贮藏已应用"
+    "stashDone": "贮藏已应用",
+    "identityCleared": "已清除仓库级身份"
   },
   "conflicts": {
     "title": "冲突",
@@ -357,7 +358,20 @@
     "sshKeysHint": "git 与助手可用的密钥。",
     "sshKeyCount": "~/.ssh 中有 %{count} 个文件",
     "sshAgentsNote": "gitui 使用系统 SSH agent，不管理密钥。",
-    "agent": "助手"
+    "agent": "助手",
+    "website": "官网",
+    "source": "源代码",
+    "reportIssue": "反馈问题",
+    "licenses": "开源许可",
+    "updatesAuto": "自动",
+    "updatesManual": "手动",
+    "updatesNever": "从不",
+    "updaterUnavailable": "更新源尚未接入；该选择会被保存，接入后生效。",
+    "identity": "提交身份",
+    "identityHint": "保存在本仓库的 git config；为空时使用全局身份。",
+    "editIdentity": "编辑…",
+    "useGlobalIdentity": "使用全局",
+    "identityInherited": "继承自全局 git 配置"
   },
   "refs": {
     "title": "引用",
@@ -421,7 +435,13 @@
     "filter": "筛选提交",
     "settings": "设置",
     "cycleAppearance": "切换外观",
-    "dismiss": "关闭浮层"
+    "dismiss": "关闭浮层",
+    "filterHistory": "过滤历史",
+    "push": "推送",
+    "commit": "跳到提交面板",
+    "primaryAction": "提交（变更视图）",
+    "switchTab": "切换仓库标签",
+    "cycleTab": "上一个 / 下一个标签"
   },
   "form": {
     "newBranch": "新建分支",
@@ -445,7 +465,10 @@
     "newName": "新名称",
     "urlNew": "URL",
     "rename": "重命名",
-    "save": "保存"
+    "save": "保存",
+    "identity": "提交身份",
+    "authorName": "姓名",
+    "authorEmail": "邮箱"
   },
   "sync": {
     "fetchTitle": "获取",

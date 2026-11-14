@@ -17,6 +17,7 @@ pub(crate) enum FormKind {
     NewStash,
     RenameBranch,
     EditRemote,
+    Identity,
 }
 
 impl FormKind {
@@ -28,6 +29,7 @@ impl FormKind {
             FormKind::NewStash => "form.newStash",
             FormKind::RenameBranch => "form.renameBranch",
             FormKind::EditRemote => "form.editRemote",
+            FormKind::Identity => "form.identity",
         };
     }
 
@@ -39,6 +41,7 @@ impl FormKind {
             FormKind::NewStash => "form.message",
             FormKind::RenameBranch => "form.newName",
             FormKind::EditRemote => "form.urlNew",
+            FormKind::Identity => "form.authorName",
         };
     }
 
@@ -49,6 +52,7 @@ impl FormKind {
             FormKind::AddRemote => Some("form.url"),
             FormKind::NewStash => None,
             FormKind::RenameBranch | FormKind::EditRemote => None,
+            FormKind::Identity => Some("form.authorEmail"),
         };
     }
 
@@ -60,6 +64,7 @@ impl FormKind {
             FormKind::NewStash => "form.stash",
             FormKind::RenameBranch => "form.rename",
             FormKind::EditRemote => "form.save",
+            FormKind::Identity => "form.save",
         };
     }
 }

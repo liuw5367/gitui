@@ -132,6 +132,8 @@ pub struct Settings {
     pub file_tree: bool,
     /// 启动时恢复上次打开的仓库；关闭则显示欢迎页。
     pub restore_session: bool,
+    /// 更新检查方式：`auto` / `manual` / `never`。
+    pub update_mode: String,
 }
 
 impl Default for Settings {
@@ -139,6 +141,7 @@ impl Default for Settings {
         return Settings {
             file_tree: true,
             restore_session: true,
+            update_mode: "manual".to_string(),
         };
     }
 }
@@ -160,6 +163,7 @@ pub fn load_settings(dir: &Path) -> Settings {
         match key.trim() {
             "file_tree" => settings.file_tree = value.trim() != "false",
             "restore_session" => settings.restore_session = value.trim() != "false",
+            "update_mode" => settings.update_mode = value.trim().to_string(),
             _ => {}
         }
     }
@@ -171,6 +175,7 @@ pub fn save_settings(dir: &Path, settings: &Settings) {
     let lines = vec![
         format!("file_tree={}", settings.file_tree),
         format!("restore_session={}", settings.restore_session),
+        format!("update_mode={}", settings.update_mode),
     ];
     let _ = write_lines(&settings_file(dir), &lines);
 }
@@ -447,11 +452,14 @@ mod tests {
             &Settings {
                 file_tree: false,
                 restore_session: false,
+                update_mode: "never".to_string(),
             },
         );
         let loaded = load_settings(dir.path());
         assert!(!loaded.file_tree);
         assert!(!loaded.restore_session);
+        assert_eq!(loaded.update_mode, "never", "更新方式应持久化");
+        assert_eq!(Settings::default().update_mode, "manual");
     }
 
     #[test]
