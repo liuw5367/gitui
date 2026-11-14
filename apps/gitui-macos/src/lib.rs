@@ -3,7 +3,7 @@
 //! Slice 1: open the current repository, show status, recent history and the
 //! selected commit's patch. No staging, commit, push or settings.
 
-use gitui_git::{Commit, Operation, Repo, StatusEntry};
+use gitui_git::{Commit, ConflictStages, Operation, Repo, StatusEntry};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
@@ -14,6 +14,8 @@ struct Loaded {
     branch: String,
     operation: Option<Operation>,
     conflicts: Vec<String>,
+    conflict_path: String,
+    conflict_stages: Option<ConflictStages>,
     ahead: usize,
     behind: usize,
     staged: usize,
@@ -49,6 +51,17 @@ fn load(path: &str) -> Loaded {
                 branch,
                 operation: repo.operation(),
                 conflicts: repo.conflicts().unwrap_or_default(),
+                conflict_path: repo
+                    .conflicts()
+                    .unwrap_or_default()
+                    .first()
+                    .cloned()
+                    .unwrap_or_default(),
+                conflict_stages: repo
+                    .conflicts()
+                    .unwrap_or_default()
+                    .first()
+                    .and_then(|path| repo.conflict_stages(path).ok()),
                 ahead: status.ahead,
                 behind: status.behind,
                 staged: status.staged,
@@ -66,6 +79,8 @@ fn load(path: &str) -> Loaded {
             branch: "—".to_string(),
             operation: None,
             conflicts: Vec::new(),
+            conflict_path: String::new(),
+            conflict_stages: None,
             ahead: 0,
             behind: 0,
             selected: SharedString::from(""),
@@ -181,6 +196,26 @@ fn mini_button(
         )
 }
 
+fn conflict_pane(title: &'static str, value: impl Fn() -> String + 'static) -> impl IntoElement {
+    view()
+        .flex_1()
+        .flex_col()
+        .gap_1()
+        .child(
+            text(title)
+                .text_size(px(9.0))
+                .text_color(move || theme().foreground),
+        )
+        .child(
+            editor()
+                .value(move || Some(SharedString::from(value())))
+                .read_only(true)
+                .font_size(10.0)
+                .line_height(15.0)
+                .flex_1(),
+        )
+}
+
 fn header_button(
     label: &'static str,
     primary: bool,
@@ -250,6 +285,15 @@ pub fn App() -> impl IntoElement {
     let branch = signal(SharedString::from(active_tab.branch.clone()));
     let operation = signal(active_tab.operation);
     let conflicts = signal(active_tab.conflicts.clone());
+    let conflict_path = signal(active_tab.conflict_path.clone());
+    let conflict_stages = signal(active_tab.conflict_stages.clone());
+    let conflict_result = signal(
+        active_tab
+            .conflict_stages
+            .as_ref()
+            .map(|stages| stages.ours.clone())
+            .unwrap_or_default(),
+    );
     let ahead = signal(active_tab.ahead);
     let behind = signal(active_tab.behind);
     let staged = signal(active_tab.staged);
@@ -289,6 +333,15 @@ pub fn App() -> impl IntoElement {
         branch.set(SharedString::from(loaded.branch));
         operation.set(loaded.operation);
         conflicts.set(loaded.conflicts);
+        conflict_path.set(loaded.conflict_path);
+        conflict_stages.set(loaded.conflict_stages.clone());
+        conflict_result.set(
+            loaded
+                .conflict_stages
+                .as_ref()
+                .map(|stages| stages.ours.clone())
+                .unwrap_or_default(),
+        );
         ahead.set(loaded.ahead);
         behind.set(loaded.behind);
         staged.set(loaded.staged);
@@ -317,6 +370,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_entry = reload.clone();
     let reload_for_sync = reload.clone();
     let reload_for_merge = reload.clone();
+    let reload_for_conflict = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -327,6 +381,14 @@ pub fn App() -> impl IntoElement {
         branch.set(SharedString::from(tab.branch));
         operation.set(tab.operation);
         conflicts.set(tab.conflicts);
+        conflict_path.set(tab.conflict_path);
+        conflict_stages.set(tab.conflict_stages.clone());
+        conflict_result.set(
+            tab.conflict_stages
+                .as_ref()
+                .map(|stages| stages.ours.clone())
+                .unwrap_or_default(),
+        );
         ahead.set(tab.ahead);
         behind.set(tab.behind);
         staged.set(tab.staged);
@@ -669,6 +731,98 @@ pub fn App() -> impl IntoElement {
 
 
 
+    let conflict_panel = view()
+        .h(move || {
+            if conflict_stages.get().is_some() {
+                px(250.0)
+            } else {
+                px(0.0)
+            }
+        })
+        .flex_col()
+        .gap_2()
+        .p_2()
+        .bg(move || theme().background)
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(
+                    text(move || format!("Conflict · {}", conflict_path.get()))
+                        .text_size(px(10.0))
+                        .text_color(|| rgb(0xff3b30)),
+                )
+                .child(view().flex_1())
+                .child(header_button("Mark Resolved", true, {
+                    let reload_conflict = reload_for_conflict.clone();
+                    move || {
+                        match Repo::open(repo_path.get_untracked().to_string().as_str())
+                            .and_then(|repo| {
+                                repo.resolve(
+                                    conflict_path.get_untracked().to_string().as_str(),
+                                    conflict_result.get_untracked().to_string().as_str(),
+                                )
+                            })
+                        {
+                            Ok(()) => {
+                                error.set(SharedString::from(""));
+                                reload_conflict();
+                            }
+                            Err(err) => error.set(SharedString::from(err.to_string())),
+                        }
+                    }
+                })),
+        )
+        .child(
+            view()
+                .flex_1()
+                .flex_row()
+                .gap_2()
+                .child(conflict_pane("Base", move || {
+                    conflict_stages
+                        .get()
+                        .as_ref()
+                        .map(|stages| stages.base.clone())
+                        .unwrap_or_default()
+                }))
+                .child(conflict_pane("Ours", move || {
+                    conflict_stages
+                        .get()
+                        .as_ref()
+                        .map(|stages| stages.ours.clone())
+                        .unwrap_or_default()
+                }))
+                .child(conflict_pane("Theirs", move || {
+                    conflict_stages
+                        .get()
+                        .as_ref()
+                        .map(|stages| stages.theirs.clone())
+                        .unwrap_or_default()
+                }))
+                .child(
+                    view()
+                        .flex_1()
+                        .flex_col()
+                        .gap_1()
+                        .child(
+                            text("Result")
+                                .text_size(px(9.0))
+                                .text_color(move || theme().primary),
+                        )
+                        .child(
+                            editor()
+                                .value(move || Some(SharedString::from(conflict_result.get())))
+                                .on_change(move |value: &SharedString| {
+                                    conflict_result.set(value.to_string())
+                                })
+                                .font_size(10.0)
+                                .line_height(15.0)
+                                .flex_1(),
+                        ),
+                ),
+        );
+
     let status_pane = view()
         .w(px(250.0))
         .flex_col()
@@ -967,6 +1121,7 @@ pub fn App() -> impl IntoElement {
         .child(tab_bar)
         .child(recent_bar)
         .child(commit_bar)
+        .child(conflict_panel)
         .child(main)
         .child(commit_log_panel)
         .child(statusbar)

@@ -61,7 +61,7 @@ impl Operation {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConflictStages {
     pub base: String,
     pub ours: String,
