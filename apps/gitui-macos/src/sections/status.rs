@@ -22,6 +22,7 @@ pub(crate) struct StatusActions {
     pub(crate) select_file: Arc<dyn Fn(String)>,
     pub(crate) rename_branch: Arc<dyn Fn(String)>,
     pub(crate) merge_branch: Arc<dyn Fn(String)>,
+    pub(crate) rebase_branch: Arc<dyn Fn(String)>,
     pub(crate) create_tag: Arc<dyn Fn(String)>,
     pub(crate) delete_tag: Arc<dyn Fn(String)>,
     pub(crate) select_conflict: Arc<dyn Fn(String)>,
@@ -120,6 +121,10 @@ pub(crate) fn status_pane(
                 }))
                 .child(mini_button("Merge", false, {
                     let action = actions.merge_branch.clone();
+                    move || action(branch_name.get_untracked().trim().to_string())
+                }))
+                .child(mini_button("Rebase", false, {
+                    let action = actions.rebase_branch.clone();
                     move || action(branch_name.get_untracked().trim().to_string())
                 })),
         )

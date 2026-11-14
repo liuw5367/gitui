@@ -315,8 +315,20 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let skip_action = Arc::new({
+        let reload_skip = reload_for_merge.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.skip_operation())
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_skip();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
     let operation_banner =
-        crate::sections::operation_banner(operation, continue_action, abort_action);
+        crate::sections::operation_banner(operation, continue_action, skip_action, abort_action);
 
     let tab_bar = crate::sections::tabs(tabs, active, activate_tabs);
 
@@ -851,6 +863,27 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let rebase_branch_action = Arc::new({
+        let reload_rebase = reload_for_branch.clone();
+        move |name: String| {
+            if name.is_empty() {
+                error.set(SharedString::from("Branch name is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.rebase(&name))
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    reload_rebase();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    reload_rebase();
+                }
+            }
+        }
+    });
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -891,6 +924,7 @@ pub fn App() -> impl IntoElement {
             remove_remote: remove_remote_action,
             rename_branch: rename_branch_action,
             merge_branch: merge_branch_action,
+            rebase_branch: rebase_branch_action,
             select_file: select_file_action,
             create_tag: create_tag_action,
             delete_tag: delete_tag_action,

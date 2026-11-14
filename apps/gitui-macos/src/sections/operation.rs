@@ -10,6 +10,7 @@ use crate::widgets::header_button;
 pub(crate) fn operation_banner(
     operation: Signal<Option<Operation>>,
     on_continue: Arc<dyn Fn()>,
+    on_skip: Arc<dyn Fn()>,
     on_abort: Arc<dyn Fn()>,
 ) -> impl IntoElement {
     view()
@@ -38,6 +39,10 @@ pub(crate) fn operation_banner(
         .child(view().flex_1())
         .child(header_button("Continue", true, {
             let action = on_continue.clone();
+            move || action()
+        }))
+        .child(header_button("Skip", false, {
+            let action = on_skip.clone();
             move || action()
         }))
         .child(header_button("Abort", false, {
