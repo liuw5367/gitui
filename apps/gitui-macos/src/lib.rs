@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::{Branch, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session, short_name};
-use sections::{diff_view, history, statusbar};
+use sections::{diff_view, header, history, statusbar, HeaderActions};
 use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
@@ -196,82 +196,69 @@ pub fn App() -> impl IntoElement {
         activate_for_close(next);
     };
 
-    let header = view()
-        .h(px(46.0))
-        .flex_row()
-        .items_center()
-        .gap_3()
-        .px_3()
-        .bg(move || theme().background)
-        .child(
-            text("gitui · local")
-                .text_size(px(13.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            input()
-                .value(path_input)
-                .on_change(move |text: &str| path_input.set(text.to_string()))
-                .placeholder("Repository path")
-                .text_size(px(11.0))
-                .w(px(420.0)),
-        )
-        .child(
-            text(move || format!("{} ↑{} ↓{}", branch.get(), ahead.get(), behind.get()))
-                .text_size(px(10.0))
-                .text_color(move || theme().primary),
-        )
-        .child(view().flex_1())
-        .child(header_button("Open", true, reload))
-        .child(header_button("Close tab", false, close_active))
-        .child(header_button("Fetch", false, {
-            let reload_sync = reload_for_sync.clone();
-            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                .and_then(|repo| repo.fetch())
-            {
-                Ok(_) => {
-                    error.set(SharedString::from(""));
-                    commit_log.set(SharedString::from(""));
-                    reload_sync();
-                }
-                Err(err) => {
-                    error.set(SharedString::from(err.to_string()));
-                    commit_log.set(SharedString::from(err.to_string()));
-                }
+    let open_action = Arc::new(move || reload());
+    let close_action = Arc::new(move || close_active());
+    let fetch_action = Arc::new({
+        let reload_sync = reload_for_sync.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.fetch())
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                commit_log.set(SharedString::from(""));
+                reload_sync();
             }
-        }))
-        .child(header_button("Pull", false, {
-            let reload_sync = reload_for_sync.clone();
-            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                .and_then(|repo| repo.pull_ff_only())
-            {
-                Ok(_) => {
-                    error.set(SharedString::from(""));
-                    commit_log.set(SharedString::from(""));
-                    reload_sync();
-                }
-                Err(err) => {
-                    error.set(SharedString::from(err.to_string()));
-                    commit_log.set(SharedString::from(err.to_string()));
-                }
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                commit_log.set(SharedString::from(err.to_string()));
             }
-        }))
-        .child(header_button("Push", false, {
-            let reload_sync = reload_for_sync.clone();
-            move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                .and_then(|repo| repo.push())
-            {
-                Ok(_) => {
-                    error.set(SharedString::from(""));
-                    commit_log.set(SharedString::from(""));
-                    reload_sync();
-                }
-                Err(err) => {
-                    error.set(SharedString::from(err.to_string()));
-                    commit_log.set(SharedString::from(err.to_string()));
-                }
+        }
+    });
+    let pull_action = Arc::new({
+        let reload_sync = reload_for_sync.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.pull_ff_only())
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                commit_log.set(SharedString::from(""));
+                reload_sync();
             }
-        }));
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                commit_log.set(SharedString::from(err.to_string()));
+            }
+        }
+    });
+    let push_action = Arc::new({
+        let reload_sync = reload_for_sync.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.push())
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                commit_log.set(SharedString::from(""));
+                reload_sync();
+            }
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                commit_log.set(SharedString::from(err.to_string()));
+            }
+        }
+    });
+    let header = header(
+        path_input,
+        branch,
+        ahead,
+        behind,
+        HeaderActions {
+            open: open_action,
+            close: close_action,
+            fetch: fetch_action,
+            pull: pull_action,
+            push: push_action,
+        },
+    );
 
     let operation_banner = view()
         .h(move || {
