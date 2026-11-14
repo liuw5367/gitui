@@ -82,6 +82,16 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
+    /// 打开「改写提交说明」弹窗。
+    pub(crate) open_reword: Arc<dyn Fn(String, String, String)>,
+    /// 打开「合并提交」弹窗（from, to, 提交列表）。
+    pub(crate) open_squash: Arc<dyn Fn(String, String, Vec<(String, String)>)>,
+    /// 改写弹窗里编辑说明。
+    pub(crate) set_rewrite_message: Arc<dyn Fn(String)>,
+    /// 提交改写。
+    pub(crate) submit_rewrite: Arc<dyn Fn()>,
+    /// 关闭改写弹窗。
+    pub(crate) close_rewrite: Arc<dyn Fn()>,
     /// 打开冲突视图。
     pub(crate) open_conflict: Arc<dyn Fn()>,
     /// 切换冲突文件。
@@ -207,6 +217,8 @@ pub fn App() -> impl IntoElement {
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
+    // 历史改写弹窗（改写说明 / 合并提交）。
+    let rewrite_state = signal(Option::<screens::RewriteState>::None);
     // 命令面板的高亮行。
     let palette_selected = signal(0_usize);
     // reflog 的过滤关键字（动作或说明）。
@@ -2022,6 +2034,109 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 历史改写（设计板 22）：打开 → 编辑说明 → 执行。
+    let open_reword: Arc<dyn Fn(String, String, String)> = {
+        let tabs = tabs;
+        let active = active;
+        let rewrite_state = rewrite_state;
+        Arc::new(move |sha: String, short: String, summary: String| {
+            let blocker = {
+                let list = tabs.get_untracked();
+                list.get(active.get_untracked())
+                    .and_then(model::rewrite_blocker)
+            };
+            rewrite_state.set(Some(screens::RewriteState::new(
+                screens::RewriteKind::Reword { sha, short, summary: summary.clone() },
+                summary,
+                blocker,
+            )));
+        })
+    };
+
+    let open_squash: Arc<dyn Fn(String, String, Vec<(String, String)>)> = {
+        let tabs = tabs;
+        let active = active;
+        let rewrite_state = rewrite_state;
+        Arc::new(move |from: String, to: String, commits: Vec<(String, String)>| {
+            let blocker = {
+                let list = tabs.get_untracked();
+                list.get(active.get_untracked())
+                    .and_then(model::rewrite_blocker)
+            };
+            // 结果说明默认取最旧那条提交的说明，用户可改。
+            let message = commits
+                .last()
+                .map(|(_, summary)| summary.clone())
+                .unwrap_or_default();
+            rewrite_state.set(Some(screens::RewriteState::new(
+                screens::RewriteKind::Squash { from, to, commits },
+                message,
+                blocker,
+            )));
+        })
+    };
+
+    let set_rewrite_message: Arc<dyn Fn(String)> = {
+        let rewrite_state = rewrite_state;
+        Arc::new(move |message: String| {
+            let mut state = match rewrite_state.get_untracked() {
+                Some(state) => state,
+                None => return,
+            };
+            state.message = message;
+            state.error = None;
+            rewrite_state.set(Some(state));
+        })
+    };
+
+    let submit_rewrite: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let rewrite_state = rewrite_state;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let Some(state) = rewrite_state.get_untracked() else {
+                return;
+            };
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.get_mut(current) else {
+                return;
+            };
+            let result = match &state.kind {
+                screens::RewriteKind::Reword { sha, .. } => {
+                    model::reword_commit(tab, sha.as_str(), state.message.as_str())
+                }
+                screens::RewriteKind::Squash { from, to, .. } => model::squash_commits(
+                    tab,
+                    from.as_str(),
+                    to.as_str(),
+                    state.message.as_str(),
+                ),
+            };
+            match result {
+                Ok(()) => {
+                    tabs.set(list);
+                    rewrite_state.set(None);
+                    let lang = language.get_untracked();
+                    interactions::notify(notice, i18n::t(lang.as_str(), "rewrite.done"));
+                }
+                Err(detail) => {
+                    tabs.set(list);
+                    let mut next = state;
+                    next.error = Some(detail);
+                    rewrite_state.set(Some(next));
+                }
+            }
+        })
+    };
+
+    let close_rewrite: Arc<dyn Fn()> = {
+        let rewrite_state = rewrite_state;
+        Arc::new(move || rewrite_state.set(None))
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2041,6 +2156,11 @@ pub fn App() -> impl IntoElement {
         commit_without_hooks,
         set_commit_option,
         toggle_hook_log,
+        open_reword,
+        open_squash,
+        set_rewrite_message,
+        submit_rewrite,
+        close_rewrite,
         open_conflict,
         select_conflict,
         step_conflict,
@@ -2405,9 +2525,14 @@ pub fn App() -> impl IntoElement {
         let changelist_open = changelist_open;
         let sync_state = sync_state;
         let form_state = form_state;
+        let rewrite_state = rewrite_state;
         let tabs = tabs;
         let active = active;
         move |_| {
+            if rewrite_state.get_untracked().is_some() {
+                rewrite_state.set(None);
+                return;
+            }
             if form_state.get_untracked().is_some() {
                 form_state.set(None);
                 return;
@@ -2546,6 +2671,13 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(screens::rewrite_dialog(
+            language,
+            rewrite_state,
+            actions.set_rewrite_message.clone(),
+            actions.submit_rewrite.clone(),
+            actions.close_rewrite.clone(),
+        ))
         .child(screens::conflict_view(
             language,
             current_tab,

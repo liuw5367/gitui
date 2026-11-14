@@ -192,6 +192,34 @@ pub struct PushOptions {
     pub all_branches: bool,
 }
 
+/// 改写历史时一行的动作。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RewriteMark {
+    Pick,
+    Reword,
+    Squash,
+}
+
+impl RewriteMark {
+    fn command(self) -> &'static str {
+        return match self {
+            RewriteMark::Pick => "pick",
+            RewriteMark::Reword => "reword",
+            RewriteMark::Squash => "squash",
+        };
+    }
+}
+
+/// 改写类操作的错误：统一走 `CommandFailed`，界面只需展示 `detail`。
+fn rewrite_error(detail: String) -> GitError {
+    return GitError::CommandFailed {
+        program: "git".to_string(),
+        args: "rebase -i".to_string(),
+        code: None,
+        detail,
+    };
+}
+
 /// 历史筛选条件。空字段表示不限制。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LogFilter {
@@ -859,6 +887,198 @@ impl Repo {
     /// 用于 reflog 的撤销；调用方必须先确认，未提交的改动会被丢弃。
     pub fn reset_hard(&self, sha: &str) -> Result<(), GitError> {
         run_git(&self.root, &["reset", "--hard", sha])?;
+        return Ok(());
+    }
+
+    /// 改写某个提交的说明，不改内容（脚本化 `git rebase -i`）。
+    ///
+    /// 前置：工作区干净、没有进行中的操作、目标提交在 HEAD 的历史上。任一条不满足
+    /// 就直接返回可读错误，不启动 rebase。
+    pub fn reword_commit(&self, sha: &str, message: &str) -> Result<(), GitError> {
+        let target = self.full_sha(sha)?;
+        self.ensure_clean_for_rewrite()?;
+        if !self.is_ancestor(target.as_str(), "HEAD")? {
+            return Err(rewrite_error(format!("{sha} 不在当前分支的历史上")));
+        }
+        let base = format!("{target}^");
+        return self.rewrite(&base, &[(target, RewriteMark::Reword)], message);
+    }
+
+    /// 把 `from..=to` 这一段合成一个提交，说明用 `message`。
+    ///
+    /// 只接受连续、不含合并提交的区间；`to` 之后的提交原样保留。
+    pub fn squash_commits(
+        &self,
+        from: &str,
+        to: &str,
+        message: &str,
+    ) -> Result<(), GitError> {
+        let first = self.full_sha(from)?;
+        let last = self.full_sha(to)?;
+        self.ensure_clean_for_rewrite()?;
+        if first == last {
+            return Err(rewrite_error("至少要选两个提交才能合并".to_string()));
+        }
+        if !self.is_ancestor(first.as_str(), last.as_str())? {
+            return Err(rewrite_error(format!(
+                "{from} 不是 {to} 的祖先，无法合并这一段"
+            )));
+        }
+        if !self.is_ancestor(last.as_str(), "HEAD")? {
+            return Err(rewrite_error(format!("{to} 不在当前分支的历史上")));
+        }
+        let base = format!("{first}^");
+        // 区间内的提交从旧到新列出；第一条 pick，其余 squash。
+        // 用两个参数形式（`rev-list <base>..<last>` 在某些 SHA 组合下会被当成路径）。
+        let range = format!("{}..{}", base, last);
+        let shas: Vec<String> = self.lines(&["rev-list", "--reverse", range.as_str()])?;
+        if shas.len() < 2 {
+            return Err(rewrite_error("至少要选两个提交才能合并".to_string()));
+        }
+        let mut marks: Vec<(String, RewriteMark)> = Vec::new();
+        for (index, sha) in shas.iter().enumerate() {
+            let mark = if index == 0 {
+                RewriteMark::Pick
+            } else {
+                RewriteMark::Squash
+            };
+            marks.push((sha.clone(), mark));
+        }
+        return self.rewrite(&base, &marks, message);
+    }
+
+    /// 当前分支尖端是否等于 `sha`（界面上用来提示「只能改到分支尖端」）。
+    pub fn is_tip(&self, sha: &str) -> bool {
+        let target = match self.full_sha(sha) {
+            Ok(target) => target,
+            Err(_) => return false,
+        };
+        return self.full_sha("HEAD").map(|head| head == target).unwrap_or(false);
+    }
+
+    /// 工作区是否干净到可以改写历史。
+    pub fn can_rewrite(&self) -> Result<(), String> {
+        if self.operation() != Operation::None {
+            return Err("有进行中的操作，先完成或放弃它".to_string());
+        }
+        let entries = self.status().map_err(|error| error.detail())?;
+        if !entries.is_empty() {
+            return Err("工作区有未提交的改动，先提交或贮藏".to_string());
+        }
+        return Ok(());
+    }
+
+    fn ensure_clean_for_rewrite(&self) -> Result<(), GitError> {
+        return self.can_rewrite().map_err(rewrite_error);
+    }
+
+    fn full_sha(&self, reference: &str) -> Result<String, GitError> {
+        let output = run_git(&self.root, &["rev-parse", reference])?;
+        return Ok(String::from_utf8_lossy(&output).trim().to_string());
+    }
+
+    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, GitError> {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&self.root)
+            .args(["merge-base", "--is-ancestor", ancestor, descendant])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .status()
+            .map_err(|error| GitError::Spawn {
+                program: "git".to_string(),
+                reason: error.to_string(),
+            })?;
+        // 0 = 是祖先，1 = 不是，其它按失败处理。
+        return Ok(status.code() == Some(0));
+    }
+
+    /// 生成 todo 与提交说明，跑一次脚本化 `rebase -i`；失败一律回滚。
+    fn rewrite(
+        &self,
+        base: &str,
+        marks: &[(String, RewriteMark)],
+        message: &str,
+    ) -> Result<(), GitError> {
+        // todo 由我们自己写全，不用 sed 改 git 生成的模板。
+        let shas: Vec<String> = self.lines(&["rev-list", "--reverse", format!("{base}..HEAD").as_str()])?;
+        if shas.is_empty() {
+            return Err(rewrite_error("没有需要重写的提交".to_string()));
+        }
+        let mut todo = String::new();
+        for sha in &shas {
+            let mark = marks
+                .iter()
+                .find(|(target, _)| target == sha)
+                .map(|(_, mark)| *mark)
+                .unwrap_or(RewriteMark::Pick);
+            todo.push_str(mark.command());
+            todo.push(' ');
+            todo.push_str(sha);
+            todo.push('\n');
+        }
+        let dir = std::env::temp_dir();
+        let stamp = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        );
+        let todo_path = dir.join(format!("gitclient-todo-{stamp}.txt"));
+        let editor_path = dir.join(format!("gitclient-editor-{stamp}.sh"));
+        let sequence_path = dir.join(format!("gitclient-sequence-{stamp}.sh"));
+        std::fs::write(&todo_path, &todo).map_err(|error| GitError::Unreadable {
+            path: todo_path.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        // 序列编辑器：把 git 的模板整体覆盖成我们的 todo。
+        let sequence = format!(
+            "#!/bin/sh\ncat \"{}\" > \"$1\"\n",
+            todo_path.display()
+        );
+        std::fs::write(&sequence_path, sequence).map_err(|error| GitError::Unreadable {
+            path: sequence_path.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        // 提交信息编辑器：写入用户给的说明。
+        let message_path = dir.join(format!("gitclient-message-{stamp}.txt"));
+        std::fs::write(&message_path, message).map_err(|error| GitError::Unreadable {
+            path: message_path.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        let editor = format!(
+            "#!/bin/sh\ncat \"{}\" > \"$1\"\n",
+            message_path.display()
+        );
+        std::fs::write(&editor_path, editor).map_err(|error| GitError::Unreadable {
+            path: editor_path.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for path in [&sequence_path, &editor_path] {
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let result = run_git_combined_with_env(
+            &self.root,
+            &["rebase", "-i", base],
+            &[
+                ("GIT_SEQUENCE_EDITOR", sequence_path.to_str().unwrap_or("true")),
+                ("GIT_EDITOR", editor_path.to_str().unwrap_or("true")),
+                ("GIT_TERMINAL_PROMPT", "0"),
+            ],
+        );
+        for path in [&todo_path, &sequence_path, &editor_path, &message_path] {
+            let _ = std::fs::remove_file(path);
+        }
+        if result.is_err() {
+            // 失败就回到改写前，别把仓库留在半截状态。
+            let _ = run_git(&self.root, &["rebase", "--abort"]);
+        }
+        result?;
         return Ok(());
     }
 
@@ -2579,6 +2799,93 @@ mod tests {
 
         repo.rename_branch("main", "renamed").expect("rename");
         assert_eq!(repo.abbrev_branch().expect("branch"), "renamed");
+    }
+
+    #[test]
+    fn reword_rewrites_one_message_and_keeps_the_tree() {
+        let (_guard, path) = fixture("reword", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        for (file, message) in [("b.txt", "second"), ("c.txt", "third")] {
+            std::fs::write(repo.root().join(file), "x\n").expect("write");
+            repo.stage_all().expect("stage");
+            repo.commit(message, "").expect("commit");
+        }
+        let before = repo.log(10, "").expect("log");
+        assert_eq!(before.len(), 3);
+        let tree_before = run_git(repo.root(), &["rev-parse", "HEAD^{tree}"]).expect("tree");
+        let target = before[1].sha.clone();
+
+        repo.reword_commit(target.as_str(), "second (reworded)")
+            .expect("reword");
+
+        let after = repo.log(10, "").expect("log");
+        assert_eq!(after.len(), 3, "改写不改变提交数");
+        // 顺序是新的在前：第三条（原 second）现在是 after[1]。
+        assert_eq!(after[1].summary, "second (reworded)");
+        // 内容没变：树对象一致。
+        let tree_after = run_git(repo.root(), &["rev-parse", "HEAD^{tree}"]).expect("tree");
+        assert_eq!(tree_before, tree_after, "改写说明不应改动内容");
+        // HEAD 之后的提交被重放，SHA 会变但说明保留。
+        assert_eq!(after[0].summary, "third");
+        assert_eq!(repo.operation(), Operation::None, "不应留下进行中的操作");
+    }
+
+    #[test]
+    fn squash_squashes_a_contiguous_range() {
+        let (_guard, path) = fixture("squash", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        for (file, message) in [("b.txt", "second"), ("c.txt", "third")] {
+            std::fs::write(repo.root().join(file), "x\n").expect("write");
+            repo.stage_all().expect("stage");
+            repo.commit(message, "").expect("commit");
+        }
+        let before = repo.log(10, "").expect("log");
+        let tree_before = run_git(repo.root(), &["rev-parse", "HEAD^{tree}"]).expect("tree");
+        // 合并最近两个（third + second）。
+        let newest = before[0].sha.clone();
+        let older = before[1].sha.clone();
+        repo.squash_commits(older.as_str(), newest.as_str(), "squashed")
+            .expect("squash");
+
+        let after = repo.log(10, "").expect("log");
+        assert_eq!(after.len(), 2, "两个并成一个");
+        assert_eq!(after[0].summary, "squashed");
+        assert_eq!(after[1].summary, "first");
+        let tree_after = run_git(repo.root(), &["rev-parse", "HEAD^{tree}"]).expect("tree");
+        assert_eq!(tree_before, tree_after, "合并后内容必须一致");
+        // 所有文件都还在。
+        for file in ["a.txt", "b.txt", "c.txt"] {
+            assert!(repo.root().join(file).exists(), "{file} 应保留");
+        }
+    }
+
+    #[test]
+    fn rewriting_is_refused_on_a_dirty_worktree() {
+        let (_guard, path) = fixture("dirty-rewrite", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        let head = repo.log(1, "").expect("log")[0].sha.clone();
+        std::fs::write(repo.root().join("a.txt"), "changed\n").expect("write");
+
+        let error = repo.reword_commit(head.as_str(), "nope");
+        assert!(error.is_err(), "脏工作区必须拒绝改写");
+        let detail = error.unwrap_err().detail();
+        assert!(detail.contains("未提交"), "错误应说明原因：{detail}");
+        assert_eq!(
+            repo.log(1, "").expect("log")[0].summary,
+            "first",
+            "拒绝时不应改动历史"
+        );
+    }
+
+    #[test]
+    fn squash_needs_two_commits() {
+        let (_guard, path) = fixture("squash-single", &[("a.txt", "one\n")], "only");
+        let repo = Repo::open(&path).expect("open");
+        let head = repo.log(1, "").expect("log")[0].sha.clone();
+        let error = repo.squash_commits(head.as_str(), head.as_str(), "nope");
+        assert!(error.is_err(), "单提交不该允许合并：{:?}", error);
+        let detail = error.unwrap_err().detail();
+        assert!(detail.contains("两个提交"), "错误应说明原因，实际：{detail}");
     }
 
     #[test]

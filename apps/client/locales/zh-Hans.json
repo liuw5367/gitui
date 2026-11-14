@@ -176,7 +176,8 @@
     "range": "%{from} → %{to}",
     "withWorkingTree": "与工作区对比",
     "pick": "选择两个引用",
-    "swap": "交换"
+    "swap": "交换",
+    "selected": "已选 %{count} 个提交"
   },
   "files": {
     "title": "文件",
@@ -535,5 +536,15 @@
     "reveal": "在 Finder 中显示",
     "newBranchFromHere": "从这里新建分支…",
     "showInHistory": "在历史中显示"
+  },
+  "rewrite": {
+    "rewordTitle": "改写提交说明",
+    "squashTitle": "合并提交",
+    "rewordAction": "保存说明",
+    "squashAction": "合并",
+    "editMessage": "改写提交说明…",
+    "placeholder": "提交说明",
+    "squashRange": "%{range} · %{count} 个提交将合并成一个",
+    "done": "历史已改写"
   }
 }

@@ -39,6 +39,40 @@ pub(crate) fn history(
     let select = actions.select_commit.clone();
     let toggle_compare = actions.toggle_compare.clone();
     let row_actions = actions.clone();
+    let bar_actions = actions.clone();
+    // 合并提交的范围：取对比选区（至少两个），从旧到新列出来。
+    let squash_range: Option<(String, String, Vec<(String, String)>)> =
+        tab.compare_range().map(|(newest, oldest)| {
+            let mut commits: Vec<(String, String)> = Vec::new();
+            for index in oldest..=newest {
+                if let Some(commit) = tab.commits.get(index) {
+                    commits.push((commit.short.clone(), commit.summary.clone()));
+                }
+            }
+            // `compare_range` 返回 (新, 旧)；squash 需要 (旧, 新)。
+            let from = tab
+                .commits
+                .get(oldest)
+                .map(|commit| commit.sha.clone())
+                .unwrap_or_default();
+            let to = tab
+                .commits
+                .get(newest)
+                .map(|commit| commit.sha.clone())
+                .unwrap_or_default();
+            return (from, to, commits);
+        });
+    let can_squash = squash_range
+        .as_ref()
+        .map(|(_, _, commits)| commits.len() >= 2)
+        .unwrap_or(false);
+    let squash_range = squash_range.filter(|_| can_squash);
+    let squash_range_for_bar = squash_range.clone();
+    // 「清空选择」复用对比模式的取消：把 compare 集合清掉。
+    let clear_selection: std::sync::Arc<dyn Fn()> = {
+        let set_compare_mode = actions.set_compare_mode.clone();
+        std::sync::Arc::new(move || set_compare_mode(false))
+    };
     let total = commits.len();
     let now = store::now_unix();
     let visible = {
@@ -152,6 +186,7 @@ pub(crate) fn history(
                             let select = select.clone();
                             let toggle_compare = toggle_compare.clone();
                             let row_actions = row_actions.clone();
+                            let squash_range = squash_range.clone();
                             let compare_for_rows = compare.clone();
                             return view()
                                 .w_full()
@@ -165,6 +200,7 @@ pub(crate) fn history(
                                         let select_menu = select.clone();
                                         let toggle_compare = toggle_compare.clone();
                                         let row_actions_row = row_actions.clone();
+                                        let squash_range_for_row = squash_range.clone();
                                         let compare_for_rows = compare_for_rows.clone();
                                         let is_selected = selected == Some(index);
                                         let in_compare = compare_for_rows.contains(&index);
@@ -213,6 +249,8 @@ pub(crate) fn history(
                                                         select_menu.clone(),
                                                         row_actions_row.clone(),
                                                         reset_request,
+                                                        squash_range_for_row.clone(),
+                                                        can_squash,
                                                     );
                                                     let _ = nsh_core::element::desktop::popup_menu_at(
                                                         items,
@@ -273,6 +311,67 @@ pub(crate) fn history(
                 ),
             ),
         )
+        // 06 板的多选操作栏：选中两个以上提交时出现。
+        .child(dynamic(move || -> AnyElement {
+            if !can_squash {
+                return view().w_full().h(px(0.0)).into_element();
+            }
+            // 这个动态块是 `Fn`，每次渲染都取一份新的克隆。
+            let open_squash = bar_actions.open_squash.clone();
+            let range = squash_range_for_bar.clone();
+            let range_for_text = range.clone();
+            let clear = clear_selection.clone();
+            return view()
+                .w_full()
+                .h(px(metrics::HIST_BAR_H))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(10.0))
+                .border_b_1()
+                .border_color(move || design::line())
+                .bg(move || design::accent_soft())
+                .child(
+                    text(move || {
+                        i18n::with_arguments(
+                            language_value.get().as_str(),
+                            "compare.selected",
+                            &[(
+                                "count",
+                                range_for_text
+                                    .as_ref()
+                                    .map(|(_, _, commits)| commits.len())
+                                    .unwrap_or(0)
+                                    .to_string(),
+                            )],
+                        )
+                    })
+                    .text_size(px(10.0))
+                    .line_height(px(13.0))
+                    .text_color(move || design::accent()),
+                )
+                .child(view().flex_1())
+                .child(crate::widgets::small_button(
+                    move || i18n::t(language_value.get().as_str(), "rewrite.squashTitle"),
+                    {
+                        let open_squash = open_squash.clone();
+                        let range = range.clone();
+                        move || {
+                            if let Some((from, to, commits)) = range.clone() {
+                                open_squash(from, to, commits);
+                            }
+                        }
+                    },
+                ))
+                .child(crate::widgets::small_button(
+                    move || i18n::t(language_value.get().as_str(), "compare.clear"),
+                    {
+                        let clear = clear.clone();
+                        move || clear()
+                    },
+                ))
+                .into_element();
+        }))
         .child(
             view()
                 .w_full()
@@ -506,6 +605,8 @@ fn commit_menu(
     select: std::sync::Arc<dyn Fn(usize)>,
     actions: Actions,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
+    squash_range: Option<(String, String, Vec<(String, String)>)>,
+    can_squash: bool,
 ) -> Vec<MenuItem> {
     let lang = language.get_untracked();
     let lang = lang.as_str();
@@ -516,6 +617,8 @@ fn commit_menu(
     let merge = actions.merge_reference.clone();
     let open_form = actions.open_form_from.clone();
     let copy_text = actions.copy_text.clone();
+    let open_reword = actions.open_reword.clone();
+    let open_squash = actions.open_squash.clone();
 
     let mut items = vec![
         MenuItem::new(i18n::t(lang, "menu.openDiff")).on_select({
@@ -556,6 +659,24 @@ fn commit_menu(
                 let _ = merge(sha.clone());
             }
         }),
+        MenuItem::new(i18n::t(lang, "rewrite.editMessage")).on_select({
+            let open_reword = open_reword.clone();
+            let sha = sha.clone();
+            let summary = summary.to_string();
+            let short = short.to_string();
+            move || open_reword(sha.clone(), short.clone(), summary.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "rewrite.squashTitle"))
+            .disabled(!can_squash)
+            .on_select({
+                let open_squash = open_squash.clone();
+                let range = squash_range.clone();
+                move || {
+                    if let Some((from, to, commits)) = range.clone() {
+                        open_squash(from, to, commits);
+                    }
+                }
+            }),
         MenuItem::separator(),
         MenuItem::new(i18n::t(lang, "branch.resetSoft")).on_select({
             let sha = sha.clone();

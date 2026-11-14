@@ -176,7 +176,8 @@
     "range": "%{from} → %{to}",
     "withWorkingTree": "Compare with Working Tree",
     "pick": "Pick two refs",
-    "swap": "Swap"
+    "swap": "Swap",
+    "selected": "%{count} commits selected"
   },
   "files": {
     "title": "Files",
@@ -535,5 +536,15 @@
     "reveal": "Reveal in Finder",
     "newBranchFromHere": "New Branch from Here…",
     "showInHistory": "Show in History"
+  },
+  "rewrite": {
+    "rewordTitle": "Edit Commit Message",
+    "squashTitle": "Squash Commits",
+    "rewordAction": "Save Message",
+    "squashAction": "Squash",
+    "editMessage": "Edit Commit Message…",
+    "placeholder": "Commit message",
+    "squashRange": "%{range} · %{count} commits will become one",
+    "done": "History rewritten"
   }
 }

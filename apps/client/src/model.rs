@@ -578,6 +578,37 @@ fn reload_after_history_change(tab: &mut Tab) -> Result<String, String> {
     return Ok(refreshed.branch);
 }
 
+/// 改写提交说明。
+pub fn reword_commit(tab: &mut Tab, sha: &str, message: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.reword_commit(sha, message).map_err(|error| error.detail())?;
+    reload_after_history_change(tab)?;
+    return Ok(());
+}
+
+/// 合并连续的一段提交。
+pub fn squash_commits(
+    tab: &mut Tab,
+    from: &str,
+    to: &str,
+    message: &str,
+) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.squash_commits(from, to, message)
+        .map_err(|error| error.detail())?;
+    reload_after_history_change(tab)?;
+    return Ok(());
+}
+
+/// 当前是否能改写历史；`Err` 里是给用户看的原因。
+pub fn rewrite_blocker(tab: &Tab) -> Option<String> {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => return Some(error.detail()),
+    };
+    return repo.can_rewrite().err();
+}
+
 /// 打开冲突视图，并载入第一个冲突文件的内容。
 pub fn open_conflict(tab: &mut Tab) {
     tab.conflict_open = true;
@@ -1471,6 +1502,56 @@ mod tests {
 
         // 不存在的 SHA 返回 false，不改变选中。
         assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn rewrite_wrappers_reword_and_squash_through_the_model() {
+        let repo = TempRepo::new("rewrite");
+        let path = repo.path.display().to_string();
+        // 造三个提交。
+        for (file, message) in [("b.txt", "second"), ("c.txt", "third")] {
+            std::fs::write(repo.path.join(file), "x\n").expect("write");
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(["add", "-A"])
+                .status()
+                .expect("git");
+            assert!(status.success());
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(["commit", "-q", "-m", message])
+                .status()
+                .expect("git");
+            assert!(status.success());
+        }
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert_eq!(tab.commits.len(), 3);
+        assert!(rewrite_blocker(&tab).is_none(), "干净工作区应可改写");
+
+        // 改写中间那条的说明。
+        let middle = tab.commits[1].sha.clone();
+        reword_commit(&mut tab, middle.as_str(), "second (edited)").expect("reword");
+        assert_eq!(tab.commits[1].summary, "second (edited)");
+        assert_eq!(tab.commits.len(), 3, "改写不改变提交数");
+
+        // 合并最近两个。
+        let newest = tab.commits[0].sha.clone();
+        let older = tab.commits[1].sha.clone();
+        squash_commits(&mut tab, older.as_str(), newest.as_str(), "combined")
+            .expect("squash");
+        assert_eq!(tab.commits.len(), 2);
+        assert_eq!(tab.commits[0].summary, "combined");
+    }
+
+    #[test]
+    fn rewrite_blocker_reports_a_dirty_worktree() {
+        let repo = TempRepo::new("rewrite-dirty");
+        std::fs::write(repo.path.join("a.txt"), "dirty\n").expect("write");
+        let tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let blocker = rewrite_blocker(&tab).expect("脏工作区应被拦下");
+        assert!(blocker.contains("未提交"), "原因应可读：{blocker}");
     }
 
     #[test]
