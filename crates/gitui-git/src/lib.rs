@@ -228,12 +228,28 @@ impl Repo {
     /// Commit the staged changes with `git commit -F -` (hooks run).
     /// On failure the error carries the hook stdout/stderr.
     pub fn commit(&self, message: &str) -> Result<String, GitError> {
+        self.commit_with(message, false)
+    }
+
+    /// Commit with `--no-verify`; hooks are skipped. Used only after an
+    /// explicit user confirmation in the app.
+    pub fn commit_no_verify(&self, message: &str) -> Result<String, GitError> {
+        self.commit_with(message, true)
+    }
+
+    fn commit_with(&self, message: &str, no_verify: bool) -> Result<String, GitError> {
         let mut command = Command::new("git");
         command
             .arg("--no-pager")
             .arg("-C")
-            .arg(&self.root)
-            .args(["commit", "-F", "-"])
+            .arg(&self.root);
+        let mut args = vec!["commit"];
+        if no_verify {
+            args.push("--no-verify");
+        }
+        args.extend(["-F", "-"]);
+        command
+            .args(&args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_PAGER", "cat")
             .stdin(Stdio::piped())
@@ -255,9 +271,7 @@ impl Repo {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         if !output.status.success() {
             return Err(GitError(format!(
-                "git commit failed (hooks may have failed)
-{}
-{}",
+                "git commit failed (hooks may have failed)\n{}\n{}",
                 stdout.trim(),
                 stderr.trim()
             )));
@@ -430,6 +444,9 @@ mod tests {
         let error = repo.commit("should fail").unwrap_err();
         assert!(error.to_string().contains("hook failed"));
         assert_eq!(repo.log(1).unwrap()[0].summary, "update file");
+
+        repo.commit_no_verify("bypass hooks").unwrap();
+        assert_eq!(repo.log(1).unwrap()[0].summary, "bypass hooks");
     }
 
     #[test]
