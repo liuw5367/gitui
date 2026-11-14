@@ -1126,6 +1126,14 @@ pub fn App() -> impl IntoElement {
                 }
             }),
             view_audit: open_audit.clone(),
+            refresh_credentials: Arc::new(move || {
+                let helper = Repo::open(repo_path.get_untracked().to_string().as_str())
+                    .ok()
+                    .and_then(|repo| repo.credential_helper())
+                    .unwrap_or_default();
+                credential_helper.set(helper);
+                ssh_agent.set(std::env::var_os("SSH_AUTH_SOCK").is_some());
+            }),
         },
     );
     let merge_branch_action = Arc::new({

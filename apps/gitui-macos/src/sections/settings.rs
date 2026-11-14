@@ -15,6 +15,7 @@ pub(crate) struct SettingsActions {
     pub(crate) save_identity: Arc<dyn Fn()>,
     pub(crate) open_recent: Arc<dyn Fn(String)>,
     pub(crate) view_audit: Arc<dyn Fn()>,
+    pub(crate) refresh_credentials: Arc<dyn Fn()>,
 }
 
 fn nav_item(
@@ -540,7 +541,11 @@ pub(crate) fn settings_panel(
                                             })
                                             .text_size(px(10.5))
                                             .text_color(move || design::text2()),
-                                        ),
+                                        )
+                                        .child(header_button("Refresh", false, {
+                                            let action = actions.refresh_credentials.clone();
+                                            move || action()
+                                        })),
                                 )
                                 .child(
                                     view()
