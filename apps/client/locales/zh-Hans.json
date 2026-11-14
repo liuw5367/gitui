@@ -358,5 +358,22 @@
     "dropTag": "删除标签",
     "dropRemote": "移除远程",
     "dropStash": "丢弃贮藏"
+  },
+  "sync": {
+    "fetchTitle": "获取",
+    "pullTitle": "拉取",
+    "pushTitle": "推送",
+    "fetchHint": "获取只更新远程跟踪引用，不动工作区。",
+    "pullHint": "仅快进：分支已分叉时请改用合并或变基。取消不会做任何改动。",
+    "pushHint": "把当前分支推送到它的上游。",
+    "tracking": "%{branch} · ↑%{ahead} ↓%{behind}",
+    "fetch": "获取",
+    "pull": "拉取",
+    "push": "推送",
+    "running": "执行中…",
+    "ok": "完成",
+    "failed": "失败",
+    "close": "关闭",
+    "done": "已完成"
   }
 }

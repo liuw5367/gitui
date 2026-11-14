@@ -358,5 +358,22 @@
     "dropTag": "Delete tag",
     "dropRemote": "Remove remote",
     "dropStash": "Drop stash"
+  },
+  "sync": {
+    "fetchTitle": "Fetch",
+    "pullTitle": "Pull",
+    "pushTitle": "Push",
+    "fetchHint": "Fetch updates remote-tracking refs only. The working tree is untouched.",
+    "pullHint": "Fast-forward only: if the branch diverged, use a merge or rebase instead. Cancel leaves everything as is.",
+    "pushHint": "Pushes the current branch to its upstream.",
+    "tracking": "%{branch} · ↑%{ahead} ↓%{behind}",
+    "fetch": "Fetch",
+    "pull": "Pull",
+    "push": "Push",
+    "running": "Running…",
+    "ok": "Done",
+    "failed": "Failed",
+    "close": "Close",
+    "done": "Finished"
   }
 }

@@ -59,7 +59,7 @@ pub(crate) fn workspace(
             change_count,
             mode,
             actions.set_mode.clone(),
-            actions.sync.clone(),
+            actions.open_sync.clone(),
             actions.set_mode_refs.clone(),
             actions.set_mode_agent.clone(),
             inspector_open,

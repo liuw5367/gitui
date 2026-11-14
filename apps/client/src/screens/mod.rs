@@ -8,6 +8,7 @@ mod form_dialog;
 mod palette;
 mod refs_view;
 mod settings;
+mod sync_dialog;
 mod welcome;
 mod workspace;
 
@@ -16,6 +17,7 @@ pub(crate) use form_dialog::{form_dialog, FormKind, FormState};
 pub(crate) use palette::palette;
 pub(crate) use refs_view::{refs_view, RefsTab};
 pub(crate) use settings::{settings, Section as SettingsSection};
+pub(crate) use sync_dialog::{sync_dialog, SyncDialogState};
 pub(crate) use welcome::welcome;
 pub(crate) use workspace::workspace;
 

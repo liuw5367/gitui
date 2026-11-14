@@ -707,6 +707,21 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    /// 上游新增的提交数（`HEAD..@{u}`）；没有上游时为 0。
+    pub fn upstream_incoming(&self) -> u32 {
+        let output = match run_git(
+            &self.root,
+            &["rev-list", "--count", "HEAD..@{upstream}"],
+        ) {
+            Ok(output) => output,
+            Err(_) => return 0,
+        };
+        return String::from_utf8_lossy(&output)
+            .trim()
+            .parse()
+            .unwrap_or(0);
+    }
+
     /// 拉取当前分支的上游（`git pull --ff-only`）。
     ///
     /// 只用快进：会产生合并或冲突的拉取交给后续阶段的操作流程，避免在同步里隐式

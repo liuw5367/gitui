@@ -77,7 +77,6 @@ pub(crate) struct Actions {
     pub(crate) commit: Arc<dyn Fn()>,
     pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
     pub(crate) abort_operation: Arc<dyn Fn()>,
-    pub(crate) sync: Arc<dyn Fn(model::Sync)>,
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
     pub(crate) set_theme: Arc<dyn Fn(ThemeMode)>,
     pub(crate) set_file_tree: Arc<dyn Fn(bool)>,
@@ -93,6 +92,9 @@ pub(crate) struct Actions {
     pub(crate) checkout_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) open_form: Arc<dyn Fn(screens::FormKind)>,
+    pub(crate) open_sync: Arc<dyn Fn(model::Sync)>,
+    pub(crate) run_sync: Arc<dyn Fn(model::Sync)>,
+    pub(crate) close_sync: Arc<dyn Fn()>,
     pub(crate) drop_tag: Arc<dyn Fn(String)>,
     pub(crate) drop_remote: Arc<dyn Fn(String)>,
     pub(crate) drop_stash: Arc<dyn Fn(String)>,
@@ -143,6 +145,7 @@ pub fn App() -> impl IntoElement {
     let palette_open = signal(false);
     let settings_state = signal(store::load_settings(&store_dir));
     let form_state = signal(Option::<screens::FormState>::None);
+    let sync_state = signal(Option::<screens::SyncDialogState>::None);
     let agent_plan = signal(Option::<agent::Plan>::None);
     let agent_policies = signal({
         let mut policies = agent::Policies::default();
@@ -648,6 +651,93 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 同步动作：先在对话框里确认，再执行并留在对话框展示结果。
+    let open_sync: Arc<dyn Fn(model::Sync)> = {
+        let sync_state = sync_state;
+        Arc::new(move |kind: model::Sync| {
+            sync_state.set(Some(screens::SyncDialogState::new(kind)));
+        })
+    };
+
+    let run_sync: Arc<dyn Fn(model::Sync)> = {
+        let tabs = tabs;
+        let active = active;
+        let sync_state = sync_state;
+        Arc::new(move |kind: model::Sync| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::sync(tab, kind);
+                let result = match (&tab.sync_message, tab.sync_failed) {
+                    (Some(message), false) => Ok(message.clone()),
+                    (Some(message), true) => Err(message.clone()),
+                    (None, _) => Ok(String::new()),
+                };
+                tabs.set(list);
+                sync_state.set(Some(screens::SyncDialogState {
+                    kind,
+                    result: Some(result),
+                    running: false,
+                }));
+            }
+        })
+    };
+
+    let close_sync: Arc<dyn Fn()> = {
+        let sync_state = sync_state;
+        Arc::new(move || sync_state.set(None))
+    };
+
+    let resolve_conflict: Arc<dyn Fn(String, bool)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |path: String, ours: bool| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::resolve_conflict(tab, path.as_str(), ours);
+                tabs.set(list);
+            }
+        })
+    };
+
+    // 同步动作：先在对话框里确认，再执行并留在对话框展示结果。
+    let open_sync: Arc<dyn Fn(model::Sync)> = {
+        let sync_state = sync_state;
+        Arc::new(move |kind: model::Sync| {
+            sync_state.set(Some(screens::SyncDialogState::new(kind)));
+        })
+    };
+
+    let run_sync: Arc<dyn Fn(model::Sync)> = {
+        let tabs = tabs;
+        let active = active;
+        let sync_state = sync_state;
+        Arc::new(move |kind: model::Sync| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::sync(tab, kind);
+                let result = match (&tab.sync_message, tab.sync_failed) {
+                    (Some(message), false) => Ok(message.clone()),
+                    (Some(message), true) => Err(message.clone()),
+                    (None, _) => Ok(String::new()),
+                };
+                tabs.set(list);
+                sync_state.set(Some(screens::SyncDialogState {
+                    kind,
+                    result: Some(result),
+                    running: false,
+                }));
+            }
+        })
+    };
+
+    let close_sync: Arc<dyn Fn()> = {
+        let sync_state = sync_state;
+        Arc::new(move || sync_state.set(None))
+    };
+
     let sync: Arc<dyn Fn(model::Sync)> = {
         let tabs = tabs;
         let active = active;
@@ -683,6 +773,7 @@ pub fn App() -> impl IntoElement {
         let inspector_open = inspector_open;
         let compare_mode = compare_mode;
         let sync = sync.clone();
+        let open_sync = open_sync.clone();
         let go_welcome = go_welcome.clone();
         let go_repo_manager = go_repo_manager.clone();
         let go_settings = go_settings.clone();
@@ -700,9 +791,9 @@ pub fn App() -> impl IntoElement {
                 "changes" => set_mode_cmd(Mode::Changes),
                 "inspector" => inspector_open.set(!inspector_open.get_untracked()),
                 "compare" => compare_mode.set(!compare_mode.get_untracked()),
-                "fetch" => sync(model::Sync::Fetch),
-                "pull" => sync(model::Sync::Pull),
-                "push" => sync(model::Sync::Push),
+                "fetch" => open_sync(model::Sync::Fetch),
+                "pull" => open_sync(model::Sync::Pull),
+                "push" => open_sync(model::Sync::Push),
                 "welcome" => go_welcome(),
                 "repoManager" => go_repo_manager(),
                 "settings" => go_settings(),
@@ -1127,7 +1218,6 @@ pub fn App() -> impl IntoElement {
         commit,
         resolve_conflict,
         abort_operation,
-        sync,
         run_command,
         set_theme,
         set_file_tree,
@@ -1143,6 +1233,9 @@ pub fn App() -> impl IntoElement {
         checkout_branch,
         delete_branch,
         open_form,
+        open_sync,
+        run_sync,
+        close_sync,
         drop_tag,
         drop_remote,
         drop_stash,
@@ -1212,9 +1305,9 @@ pub fn App() -> impl IntoElement {
             MenuItem::submenu(
                 "Repository",
                 vec![
-                    MenuItem::new("Fetch").on_select(menu_run("fetch")),
-                    MenuItem::new("Pull").on_select(menu_run("pull")),
-                    MenuItem::new("Push").on_select(menu_run("push")),
+                    MenuItem::new("Fetch…").on_select(menu_run("fetch")),
+                    MenuItem::new("Pull…").on_select(menu_run("pull")),
+                    MenuItem::new("Push…").on_select(menu_run("push")),
                     MenuItem::separator(),
                     MenuItem::new("Refresh").shortcut("mod+r").on_select(menu_run("refresh")),
                     MenuItem::new("Repository Manager").on_select(menu_run("repoManager")),
@@ -1325,6 +1418,7 @@ pub fn App() -> impl IntoElement {
         actions.clone(),
     );
 
+    let current_tab = computed(move || tabs.get().get(active.get()).cloned());
     let language_value = language;
     let screen_value = screen;
     let actions_for_view = actions.clone();
@@ -1378,6 +1472,13 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(screens::sync_dialog(
+            language,
+            current_tab,
+            sync_state,
+            actions.run_sync.clone(),
+            actions.close_sync.clone(),
+        ))
         .child(screens::form_dialog(
             language,
             form_state,
