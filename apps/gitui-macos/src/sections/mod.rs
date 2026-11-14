@@ -1,3 +1,4 @@
+mod commit;
 mod diff;
 mod header;
 mod operation;
@@ -6,6 +7,7 @@ mod recent;
 mod statusbar;
 mod tabs;
 
+pub(crate) use commit::{commit_bar, CommitActions};
 pub(crate) use diff::diff_view;
 pub(crate) use header::{header, HeaderActions};
 pub(crate) use operation::operation_banner;

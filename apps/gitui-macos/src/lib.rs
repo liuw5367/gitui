@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::{Branch, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session, short_name};
-use sections::{diff_view, header, history, statusbar, HeaderActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, HeaderActions};
 use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
@@ -303,94 +303,86 @@ pub fn App() -> impl IntoElement {
     });
     let recent_bar = crate::sections::recent_bar(recent, open_recent);
 
-    let commit_bar = view()
-        .h(px(38.0))
-        .flex_row()
-        .items_center()
-        .gap_2()
-        .px_3()
-        .bg(move || theme().background)
-        .child(
-            input()
-                .value(message)
-                .on_change(move |text: &str| message.set(text.to_string()))
-                .placeholder("Commit message")
-                .flex_1(),
-        )
-        .child(header_button("Commit", true, {
-            let reload_commit = reload_for_commit.clone();
-            move || {
-                let text = message.get_untracked().trim().to_string();
-                if text.is_empty() {
-                    error.set(SharedString::from("Commit message is empty"));
-                    return;
+    let commit_action = Arc::new({
+        let reload_commit = reload_for_commit.clone();
+        move || {
+            let text = message.get_untracked().trim().to_string();
+            if text.is_empty() {
+                error.set(SharedString::from("Commit message is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.commit(&text))
+            {
+                Ok(_) => {
+                    message.set(String::new());
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_commit();
                 }
-                match Repo::open(repo_path.get_untracked().to_string().as_str())
-                    .and_then(|repo| repo.commit(&text))
-                {
-                    Ok(_) => {
-                        message.set(String::new());
-                        error.set(SharedString::from(""));
-                        commit_log.set(SharedString::from(""));
-                        reload_commit();
-                    }
-                    Err(err) => {
-                        error.set(SharedString::from(err.to_string()));
-                        commit_log.set(SharedString::from(err.to_string()));
-                    }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
                 }
             }
-        }))
-        .child(header_button("No hooks", false, {
-            let reload_no_verify = reload_for_commit.clone();
-            move || {
-                let text = message.get_untracked().trim().to_string();
-                if text.is_empty() {
-                    error.set(SharedString::from("Commit message is empty"));
-                    return;
+        }
+    });
+    let no_hooks_action = Arc::new({
+        let reload_no_verify = reload_for_commit.clone();
+        move || {
+            let text = message.get_untracked().trim().to_string();
+            if text.is_empty() {
+                error.set(SharedString::from("Commit message is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.commit_no_verify(&text))
+            {
+                Ok(_) => {
+                    message.set(String::new());
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_no_verify();
                 }
-                match Repo::open(repo_path.get_untracked().to_string().as_str())
-                    .and_then(|repo| repo.commit_no_verify(&text))
-                {
-                    Ok(_) => {
-                        message.set(String::new());
-                        error.set(SharedString::from(""));
-                        commit_log.set(SharedString::from(""));
-                        reload_no_verify();
-                    }
-                    Err(err) => {
-                        error.set(SharedString::from(err.to_string()));
-                        commit_log.set(SharedString::from(err.to_string()));
-                    }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
                 }
             }
-        }))
-        .child(header_button("Amend", false, {
-            let reload_amend = reload_for_commit.clone();
-            move || {
-                let text = message.get_untracked().trim().to_string();
-                if text.is_empty() {
-                    error.set(SharedString::from("Commit message is empty"));
-                    return;
+        }
+    });
+    let amend_action = Arc::new({
+        let reload_amend = reload_for_commit.clone();
+        move || {
+            let text = message.get_untracked().trim().to_string();
+            if text.is_empty() {
+                error.set(SharedString::from("Commit message is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.amend(&text))
+            {
+                Ok(_) => {
+                    message.set(String::new());
+                    error.set(SharedString::from(""));
+                    commit_log.set(SharedString::from(""));
+                    reload_amend();
                 }
-                match Repo::open(repo_path.get_untracked().to_string().as_str())
-                    .and_then(|repo| repo.amend(&text))
-                {
-                    Ok(_) => {
-                        message.set(String::new());
-                        error.set(SharedString::from(""));
-                        commit_log.set(SharedString::from(""));
-                        reload_amend();
-                    }
-                    Err(err) => {
-                        error.set(SharedString::from(err.to_string()));
-                        commit_log.set(SharedString::from(err.to_string()));
-                    }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    commit_log.set(SharedString::from(err.to_string()));
                 }
             }
-        }));
-
-
+        }
+    });
+    let commit_bar = crate::sections::commit_bar(
+        message,
+        CommitActions {
+            commit: commit_action,
+            no_hooks: no_hooks_action,
+            amend: amend_action,
+        },
+    );
 
     let conflict_panel = view()
         .h(move || {
