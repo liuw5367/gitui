@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::Repo;
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, StashActions, StatusActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, HunkActions, StashActions, StatusActions};
 use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -65,6 +65,8 @@ pub fn App() -> impl IntoElement {
     let remotes = signal(active_tab.remotes.clone());
     let remote_name = signal(String::new());
     let remote_url = signal(String::new());
+    let selected_file = signal(String::new());
+    let hunk_indices = signal(Vec::<usize>::new());
     let tag_name = signal(String::new());
     let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
@@ -693,6 +695,54 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
+    let select_file_action = Arc::new(move |path: String| {
+        selected_file.set(path.clone());
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.diff_unstaged(&path))
+        {
+            Ok(patch) => {
+                let count = patch.lines().filter(|line| line.starts_with("@@")).count();
+                hunk_indices.set((0..count).collect());
+                error.set(SharedString::from(""));
+            }
+            Err(err) => {
+                hunk_indices.set(Vec::new());
+                error.set(SharedString::from(err.to_string()));
+            }
+        }
+    });
+    let stage_hunk_action = Arc::new({
+        let reload_hunk = reload_for_entry.clone();
+        move |index: usize| {
+            let path = selected_file.get_untracked().to_string();
+            if path.is_empty() {
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.stage_hunk(&path, index))
+            {
+                Ok(()) => {
+                    error.set(SharedString::from(""));
+                    if let Ok(repo) = Repo::open(repo_path.get_untracked().to_string().as_str()) {
+                        if let Ok(patch) = repo.diff_unstaged(&path) {
+                            let count =
+                                patch.lines().filter(|line| line.starts_with("@@")).count();
+                            hunk_indices.set((0..count).collect());
+                        }
+                    }
+                    reload_hunk();
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
+    let hunks_bar = crate::sections::hunks_bar(
+        selected_file,
+        hunk_indices,
+        HunkActions {
+            stage: stage_hunk_action,
+        },
+    );
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -732,6 +782,7 @@ pub fn App() -> impl IntoElement {
             add_remote: add_remote_action,
             remove_remote: remove_remote_action,
             rename_branch: rename_branch_action,
+            select_file: select_file_action,
             create_tag: create_tag_action,
             delete_tag: delete_tag_action,
             select_conflict: select_conflict_action,
@@ -801,6 +852,7 @@ pub fn App() -> impl IntoElement {
         .child(recent_bar)
         .child(commit_bar)
         .child(stashes_bar)
+        .child(hunks_bar)
         .child(conflict_panel)
         .child(main)
         .child(commit_log_panel)

@@ -19,6 +19,7 @@ pub(crate) struct StatusActions {
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) add_remote: Arc<dyn Fn(String, String)>,
     pub(crate) remove_remote: Arc<dyn Fn(String)>,
+    pub(crate) select_file: Arc<dyn Fn(String)>,
     pub(crate) rename_branch: Arc<dyn Fn(String)>,
     pub(crate) create_tag: Arc<dyn Fn(String)>,
     pub(crate) delete_tag: Arc<dyn Fn(String)>,
@@ -373,11 +374,14 @@ pub(crate) fn status_pane(
                 let path = entry.get().path.clone();
                 let staged = entry.get().is_staged();
                 let unstaged = entry.get().is_unstaged();
+                let select = actions.select_file.clone();
+                let select_path = path.clone();
                 let mut row = view()
                     .h(px(36.0))
                     .flex_row()
                     .items_center()
                     .gap_1()
+                    .on_press(move || select(select_path.clone()))
                     .child(
                         text(move || short_name(&entry.get().path))
                             .text_size(px(9.0))
