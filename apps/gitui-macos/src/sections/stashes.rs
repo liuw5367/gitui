@@ -11,6 +11,7 @@ use crate::widgets::{header_button, mini_button};
 pub(crate) struct StashActions {
     pub(crate) push: Arc<dyn Fn()>,
     pub(crate) apply: Arc<dyn Fn(String)>,
+    pub(crate) pop: Arc<dyn Fn(String)>,
     pub(crate) drop: Arc<dyn Fn(String)>,
 }
 
@@ -36,8 +37,10 @@ pub(crate) fn stashes_bar(
             move |stash, _| {
                 let selector = stash.get().selector.clone();
                 let apply_selector = selector.clone();
+                let pop_selector = selector.clone();
                 let drop_selector = selector;
                 let apply = actions.apply.clone();
+                let pop = actions.pop.clone();
                 let drop = actions.drop.clone();
                 view()
                     .flex_row()
@@ -49,6 +52,7 @@ pub(crate) fn stashes_bar(
                             .text_color(move || theme().foreground),
                     )
                     .child(mini_button("Apply", true, move || apply(apply_selector.clone())))
+                    .child(mini_button("Pop", false, move || pop(pop_selector.clone())))
                     .child(mini_button("Drop", false, move || drop(drop_selector.clone())))
             },
         ))

@@ -596,6 +596,18 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
+    let stash_pop_action = Arc::new({
+        let reload_stash = reload_for_stash.clone();
+        move |selector: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.stash_pop(&selector))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_stash();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
     let stash_drop_action = Arc::new({
         let reload_stash = reload_for_stash.clone();
         move |selector: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
@@ -613,6 +625,7 @@ pub fn App() -> impl IntoElement {
         StashActions {
             push: stash_push_action,
             apply: stash_apply_action,
+            pop: stash_pop_action,
             drop: stash_drop_action,
         },
     );
