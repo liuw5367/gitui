@@ -110,6 +110,14 @@ pub(crate) struct Actions {
     pub(crate) create_changelist: Arc<dyn Fn(String)>,
     pub(crate) checkout_new_branch: Arc<dyn Fn(String, String)>,
     pub(crate) merge_reference: Arc<dyn Fn(String)>,
+    /// 切到某个提交（detached，先确认）。
+    pub(crate) checkout_commit: Arc<dyn Fn(String)>,
+    /// 拣选提交（先确认）。
+    pub(crate) cherry_pick: Arc<dyn Fn(String)>,
+    /// 反向提交（先确认）。
+    pub(crate) revert_commit: Arc<dyn Fn(String)>,
+    /// 打开表单并把第二个字段预填（从某个提交新建分支/标签）。
+    pub(crate) open_form_from: Arc<dyn Fn(screens::FormKind, String)>,
     pub(crate) reset_to: Arc<dyn Fn(String, git::ResetMode)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
@@ -1567,6 +1575,93 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 历史操作：都先确认，再落到 model → git。
+    let history_action: Arc<dyn Fn(&'static str, String)> = {
+        let tabs = tabs;
+        let active = active;
+        let language = language;
+        let notice = notice;
+        Arc::new(move |kind: &'static str, sha: String| {
+            let language_now = language.get_untracked();
+            let lang = language_now.as_str();
+            let (title_key, message_key, action_key) = match kind {
+                "checkout" => (
+                    "confirm.checkoutTitle",
+                    "confirm.checkoutMessage",
+                    "confirm.checkoutAction",
+                ),
+                "cherry" => (
+                    "confirm.cherryPickTitle",
+                    "confirm.cherryPickMessage",
+                    "confirm.cherryPickAction",
+                ),
+                _ => (
+                    "confirm.revertTitle",
+                    "confirm.revertMessage",
+                    "confirm.revertAction",
+                ),
+            };
+            let short = sha.chars().take(7).collect::<String>();
+            let pending = interactions::confirm(
+                i18n::with_arguments(lang, title_key, &[("short", short.clone())]),
+                i18n::t(lang, message_key),
+                "history",
+                i18n::t(lang, action_key),
+                kind == "checkout",
+            );
+            spawn(async move {
+                if !pending.await {
+                    return;
+                }
+                let current = active.get_untracked();
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    let result = match kind {
+                        "checkout" => model::checkout_commit(tab, sha.as_str()),
+                        "cherry" => model::cherry_pick(tab, sha.as_str()),
+                        _ => model::revert_commit(tab, sha.as_str()),
+                    };
+                    match result {
+                        Ok(_) => {
+                            let lang = language.get_untracked();
+                            interactions::notify(
+                                notice,
+                                i18n::t(lang.as_str(), "toast.historyDone"),
+                            );
+                        }
+                        Err(detail) => tab.error = Some(detail),
+                    }
+                    tabs.set(list);
+                }
+            });
+        })
+    };
+
+    let checkout_commit: Arc<dyn Fn(String)> = {
+        let history_action = history_action.clone();
+        Arc::new(move |sha: String| history_action("checkout", sha))
+    };
+
+    let cherry_pick: Arc<dyn Fn(String)> = {
+        let history_action = history_action.clone();
+        Arc::new(move |sha: String| history_action("cherry", sha))
+    };
+
+    let revert_commit: Arc<dyn Fn(String)> = {
+        let history_action = history_action.clone();
+        Arc::new(move |sha: String| history_action("revert", sha))
+    };
+
+    // 从某个提交新建分支/标签：表单第二个字段预填该提交。
+    let open_form_from: Arc<dyn Fn(screens::FormKind, String)> = {
+        let form_state = form_state;
+        Arc::new(move |kind: screens::FormKind, from: String| {
+            let mut state = screens::FormState::new(kind);
+            state.second = from;
+            form_state.set(Some(state));
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1614,6 +1709,10 @@ pub fn App() -> impl IntoElement {
         create_changelist,
         checkout_new_branch,
         merge_reference,
+        checkout_commit,
+        cherry_pick,
+        revert_commit,
+        open_form_from,
         reset_to,
         apply_filter,
         clear_filter,

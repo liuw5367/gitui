@@ -269,14 +269,24 @@
     "closeAction": "关闭",
     "noVerifyTitle": "跳过钩子提交？",
     "noVerifyMessage": "本次提交会跳过 pre-commit 与 commit-msg 钩子，它们本来能拦下的问题（格式、测试、说明规范）都不会被检查。",
-    "noVerifyAction": "仍然提交"
+    "noVerifyAction": "仍然提交",
+    "checkoutTitle": "检出 %{short}？",
+    "checkoutMessage": "仓库会离开当前分支，进入 detached HEAD。在这里产生的提交不属于任何分支，除非你新建一个。",
+    "checkoutAction": "检出",
+    "cherryPickTitle": "拣选 %{short}？",
+    "cherryPickMessage": "该提交会在当前分支上重放为一个新提交；若有冲突，进入冲突界面解决。",
+    "cherryPickAction": "拣选",
+    "revertTitle": "回滚 %{short}？",
+    "revertMessage": "会生成一个反向提交来抵消这次改动，不改写历史。",
+    "revertAction": "回滚"
   },
   "toast": {
     "copied": "已复制到剪贴板",
     "copyFailed": "没有可复制的内容",
     "openFailed": "打不开该文件",
     "revealFailed": "无法在 Finder 中显示",
-    "browserFailed": "打不开链接"
+    "browserFailed": "打不开链接",
+    "historyDone": "已完成"
   },
   "conflicts": {
     "title": "冲突",
@@ -382,7 +392,8 @@
     "resetHard": "重置到这里（丢弃改动）",
     "resetTitle": "重置当前分支？",
     "resetMessage": "分支会移到 %{short}，未提交的改动会丢失。",
-    "resetAction": "重置"
+    "resetAction": "重置",
+    "resetSoft": "把当前分支重置到这里（soft）"
   },
   "shortcut": {
     "openRepo": "打开仓库",
@@ -433,5 +444,14 @@
     "hint": "助手提议的每个仓库动作默认都要先询问，可在这里逐项调整。",
     "boundary": "助手不会拿到 shell 或凭据；每一步都走与你手动操作相同的应用动作。",
     "destructive": "会改动仓库"
+  },
+  "menu": {
+    "openDiff": "打开 Diff",
+    "checkout": "检出该提交",
+    "cherryPick": "拣选该提交…",
+    "revert": "回滚该提交…",
+    "mergeIntoCurrent": "合并到当前分支",
+    "copySha": "复制 SHA",
+    "copyMessage": "复制提交说明"
   }
 }

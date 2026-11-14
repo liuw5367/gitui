@@ -38,6 +38,7 @@ pub(crate) fn history(
     let compare = tab.compare.clone();
     let select = actions.select_commit.clone();
     let toggle_compare = actions.toggle_compare.clone();
+    let row_actions = actions.clone();
     let total = commits.len();
     let now = store::now_unix();
     let visible = {
@@ -150,6 +151,7 @@ pub(crate) fn history(
                             }
                             let select = select.clone();
                             let toggle_compare = toggle_compare.clone();
+                            let row_actions = row_actions.clone();
                             let compare_for_rows = compare.clone();
                             return view()
                                 .w_full()
@@ -160,7 +162,9 @@ pub(crate) fn history(
                                     move |row, _| {
                                         let (index, commit) = row.get();
                                         let select = select.clone();
+                                        let select_menu = select.clone();
                                         let toggle_compare = toggle_compare.clone();
+                                        let row_actions_row = row_actions.clone();
                                         let compare_for_rows = compare_for_rows.clone();
                                         let is_selected = selected == Some(index);
                                         let in_compare = compare_for_rows.contains(&index);
@@ -196,37 +200,25 @@ pub(crate) fn history(
                                                     select(index);
                                                 }
                                             })
-                                            // 右键：把当前分支重置到这个提交（--mixed，
-                                            // 工作区改动保留；--hard 见菜单第二项）。
-                                            .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-                                                let sha_mixed = commit.sha.clone();
-                                                let sha_hard = commit.sha.clone();
-                                                let items = vec![
-                                                    MenuItem::new(i18n::t(
-                                                        language_value.get().as_str(),
-                                                        "branch.resetMixed",
-                                                    ))
-                                                    .on_select(move || {
-                                                        reset_request.set(Some((
-                                                            sha_mixed.clone(),
-                                                            git::ResetMode::Mixed,
-                                                        )))
-                                                    }),
-                                                    MenuItem::new(i18n::t(
-                                                        language_value.get().as_str(),
-                                                        "branch.resetHard",
-                                                    ))
-                                                    .on_select(move || {
-                                                        reset_request.set(Some((
-                                                            sha_hard.clone(),
-                                                            git::ResetMode::Hard,
-                                                        )))
-                                                    }),
-                                                ];
-                                                let _ = nsh_core::element::desktop::popup_menu_at(
-                                                    items,
-                                                    event.page_position,
-                                                );
+                                            // 右键：提交级操作（设计板 21）。
+                                            .on_context_menu({
+                                                let summary = commit.summary.clone();
+                                                let short = commit.short.clone();
+                                                move |event: &nsh_core::ContextMenuEvent| {
+                                                    let items = commit_menu(
+                                                        language_value,
+                                                        short.as_str(),
+                                                        summary.as_str(),
+                                                        index,
+                                                        select_menu.clone(),
+                                                        row_actions_row.clone(),
+                                                        reset_request,
+                                                    );
+                                                    let _ = nsh_core::element::desktop::popup_menu_at(
+                                                        items,
+                                                        event.page_position,
+                                                    );
+                                                }
                                             })
                                             .child(graph_cell(is_selected || in_compare, is_merge))
                                             .child(
@@ -501,6 +493,98 @@ fn graph_cell(highlight: bool, is_merge: bool) -> impl IntoElement {
 }
 
 /// 筛选浮层（设计板 05）：分支、作者、时间三组，底部应用与清除。
+/// 提交行的右键菜单（设计板 21）。
+///
+/// 顺序：查看 → 引用类（检出/新建分支/新建标签）→ 改写类（拣选/回滚/合并）→
+/// 重置 → 复制。重置放在最后并用分隔线隔开，因为它会移动当前分支。
+#[allow(clippy::too_many_arguments)]
+fn commit_menu(
+    language: Signal<SharedString>,
+    short: &str,
+    summary: &str,
+    index: usize,
+    select: std::sync::Arc<dyn Fn(usize)>,
+    actions: Actions,
+    reset_request: Signal<Option<(String, git::ResetMode)>>,
+) -> Vec<MenuItem> {
+    let lang = language.get_untracked();
+    let lang = lang.as_str();
+    let sha = short.to_string();
+    let checkout = actions.checkout_commit.clone();
+    let cherry = actions.cherry_pick.clone();
+    let revert = actions.revert_commit.clone();
+    let merge = actions.merge_reference.clone();
+    let open_form = actions.open_form_from.clone();
+    let copy_text = actions.copy_text.clone();
+
+    let mut items = vec![
+        MenuItem::new(i18n::t(lang, "menu.openDiff")).on_select({
+            let select = select.clone();
+            move || select(index)
+        }),
+        MenuItem::separator(),
+        MenuItem::new(i18n::t(lang, "menu.checkout")).on_select({
+            let checkout = checkout.clone();
+            let sha = sha.clone();
+            move || checkout(sha.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "form.newBranch")).on_select({
+            let open_form = open_form.clone();
+            let sha = sha.clone();
+            move || open_form(crate::screens::FormKind::NewBranch, sha.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "form.newTag")).on_select({
+            let open_form = open_form.clone();
+            let sha = sha.clone();
+            move || open_form(crate::screens::FormKind::NewTag, sha.clone())
+        }),
+        MenuItem::separator(),
+        MenuItem::new(i18n::t(lang, "menu.cherryPick")).on_select({
+            let cherry = cherry.clone();
+            let sha = sha.clone();
+            move || cherry(sha.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "menu.revert")).on_select({
+            let revert = revert.clone();
+            let sha = sha.clone();
+            move || revert(sha.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "menu.mergeIntoCurrent")).on_select({
+            let merge = merge.clone();
+            let sha = sha.clone();
+            move || {
+                let _ = merge(sha.clone());
+            }
+        }),
+        MenuItem::separator(),
+        MenuItem::new(i18n::t(lang, "branch.resetSoft")).on_select({
+            let sha = sha.clone();
+            move || reset_request.set(Some((sha.clone(), git::ResetMode::Soft)))
+        }),
+        MenuItem::new(i18n::t(lang, "branch.resetMixed")).on_select({
+            let sha = sha.clone();
+            move || reset_request.set(Some((sha.clone(), git::ResetMode::Mixed)))
+        }),
+        MenuItem::new(i18n::t(lang, "branch.resetHard")).on_select({
+            let sha = sha.clone();
+            move || reset_request.set(Some((sha.clone(), git::ResetMode::Hard)))
+        }),
+        MenuItem::separator(),
+        MenuItem::new(i18n::t(lang, "menu.copySha")).on_select({
+            let copy_text = copy_text.clone();
+            let sha = sha.clone();
+            move || copy_text(sha.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "menu.copyMessage")).on_select({
+            let copy_text = copy_text.clone();
+            let summary = summary.to_string();
+            move || copy_text(summary.clone())
+        }),
+    ];
+    items.shrink_to_fit();
+    return items;
+}
+
 fn filter_pop(
     language: Signal<SharedString>,
     branches: Vec<String>,

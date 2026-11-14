@@ -7,7 +7,7 @@
 //!
 //! 宽度 320，与设计稿 `.insp` 一致。
 
-use crate::design::{self, metrics};
+use crate::design;
 use crate::i18n;
 use crate::model::Tab;
 use crate::widgets;
@@ -62,6 +62,7 @@ pub(crate) fn inspector(
         .and_then(|commit| commit.date.parse::<i64>().ok())
         .unwrap_or(0);
     let tab_for_body = tab.clone();
+    let actions_for_tab = actions.clone();
     // 页脚两个按钮作用于当前选中的文件（相对仓库根）。
     let selected_path = tab
         .selected_file
@@ -160,7 +161,9 @@ pub(crate) fn inspector(
                 InspectorTab::Files => {
                     files_body(language, tab_for_body.clone(), select_file.clone()).into_element()
                 }
-                InspectorTab::Info => info_body(language, tab_for_body.clone()).into_element(),
+                InspectorTab::Info => {
+                    info_body(language, tab_for_body.clone(), actions_for_tab.clone()).into_element()
+                }
                 InspectorTab::Blame => blame_body(language, tab_for_body.clone()).into_element(),
             }
         }))
@@ -315,7 +318,11 @@ fn files_body(
     .into_element();
 }
 
-fn info_body(language: Signal<SharedString>, tab: Tab) -> AnyElement {
+fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyElement {
+    let sha_for_actions = tab
+        .selected_commit()
+        .map(|commit| commit.sha.clone())
+        .unwrap_or_default();
     let Some(details) = tab.details.clone() else {
         return view()
             .w_full()
@@ -410,31 +417,44 @@ fn info_body(language: Signal<SharedString>, tab: Tab) -> AnyElement {
                         .gap(px(6.0))
                         .border_t_1()
                         .border_color(move || design::line())
-                        .child(disabled_action(language, "files.copySha"))
-                        .child(disabled_action(language, "files.cherryPick"))
-                        .child(disabled_action(language, "files.revert")),
+                        .child(widgets::small_button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.copySha")
+                            },
+                            {
+                                let copy_text = actions.copy_text.clone();
+                                let sha = sha_for_actions.clone();
+                                move || copy_text(sha.clone())
+                            },
+                        ))
+                        .child(widgets::small_button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.cherryPick")
+                            },
+                            {
+                                let cherry_pick = actions.cherry_pick.clone();
+                                let sha = sha_for_actions.clone();
+                                move || cherry_pick(sha.clone())
+                            },
+                        ))
+                        .child(widgets::small_button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.revert")
+                            },
+                            {
+                                let revert_commit = actions.revert_commit.clone();
+                                let sha = sha_for_actions.clone();
+                                move || revert_commit(sha.clone())
+                            },
+                        )),
                 ),
         )
         .into_element();
 }
 
-fn disabled_action(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
-    return view()
-        .h(px(metrics::BUTTON_SMALL_H))
-        .px(px(8.0))
-        .items_center()
-        .rounded(px(5.0))
-        .border_1()
-        .border_color(move || design::btn_border())
-        .bg(move || design::btn())
-        .opacity(0.45)
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(10.5))
-                .line_height(px(13.0))
-                .text_color(move || design::text()),
-        );
-}
 
 fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
     let now = store::now_unix();

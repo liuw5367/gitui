@@ -496,6 +496,54 @@ pub fn checkout_new_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), 
 }
 
 /// 把某个引用合并进当前分支。
+/// 切到某个提交（detached HEAD）。调用方先确认，因为离开当前分支容易误提交。
+pub fn checkout_commit(tab: &mut Tab, sha: &str) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.checkout_branch(sha).map_err(|error| error.detail())?;
+    return reload_after_history_change(tab);
+}
+
+/// 拣选一个提交到当前分支；冲突时进入冲突态，由冲突界面接手。
+pub fn cherry_pick(tab: &mut Tab, sha: &str) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let outcome = repo.cherry_pick(sha);
+    let summary = reload_after_history_change(tab)?;
+    match outcome {
+        Ok(()) => return Ok(summary),
+        Err(error) => return Err(error.detail()),
+    }
+}
+
+/// 反向提交一个提交；冲突处理同上。
+pub fn revert_commit(tab: &mut Tab, sha: &str) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let outcome = repo.revert(sha);
+    let summary = reload_after_history_change(tab)?;
+    match outcome {
+        Ok(()) => return Ok(summary),
+        Err(error) => return Err(error.detail()),
+    }
+}
+
+/// 历史被改写或切走后，把列表、引用与操作状态一起刷新。
+fn reload_after_history_change(tab: &mut Tab) -> Result<String, String> {
+    refresh_changes(tab);
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.commits = refreshed.commits;
+    tab.refs = refreshed.refs;
+    tab.branch = refreshed.branch.clone();
+    tab.operation = refreshed.operation;
+    tab.conflicts = refreshed.conflicts;
+    tab.ahead = refreshed.ahead;
+    tab.behind = refreshed.behind;
+    tab.selected = None;
+    if !tab.commits.is_empty() {
+        select_commit(tab, 0);
+    }
+    return Ok(refreshed.branch);
+}
+
 pub fn merge_reference(tab: &mut Tab, reference: &str) -> Result<String, String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     let summary = repo.merge(reference).map_err(|error| error.detail())?;
@@ -1123,6 +1171,32 @@ mod tests {
         commit_staged_with(&mut tab, true);
         assert!(tab.hook_ok, "跳过钩子应成功：{:?}", tab.hook_log);
         assert_eq!(tab.commits[0].summary, "Blocked");
+    }
+
+    #[test]
+    fn cherry_pick_and_revert_round_trip_through_the_model() {
+        let repo = TempRepo::new("pick-revert");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("b.txt"), "bee\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        stage_all_or_none(&mut tab, true);
+        tab.summary = "add b".to_string();
+        commit_staged(&mut tab);
+        let picked = tab.commits[0].sha.clone();
+
+        // 回到初始提交，再拣选回来。
+        let base = tab.commits[1].sha.clone();
+        reset_to(&mut tab, base.as_str(), git::ResetMode::Hard);
+        assert!(!repo.path.join("b.txt").exists());
+
+        cherry_pick(&mut tab, picked.as_str()).expect("cherry-pick");
+        assert!(repo.path.join("b.txt").exists(), "拣选应带过来文件");
+        assert_eq!(tab.commits[0].summary, "add b");
+
+        let picked = tab.commits[0].sha.clone();
+        revert_commit(&mut tab, picked.as_str()).expect("revert");
+        assert!(!repo.path.join("b.txt").exists(), "回滚应删掉文件");
+        assert!(tab.commits[0].summary.contains("Revert"));
     }
 
     #[test]

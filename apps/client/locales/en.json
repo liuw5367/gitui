@@ -269,14 +269,24 @@
     "closeAction": "Close",
     "noVerifyTitle": "Commit without hooks?",
     "noVerifyMessage": "The pre-commit and commit-msg hooks are skipped for this commit. Anything they would have caught (formatting, tests, message rules) is not checked.",
-    "noVerifyAction": "Commit anyway"
+    "noVerifyAction": "Commit anyway",
+    "checkoutTitle": "Checkout %{short}?",
+    "checkoutMessage": "The repository leaves the current branch and works on a detached HEAD. Commits made here belong to no branch until you create one.",
+    "checkoutAction": "Checkout",
+    "cherryPickTitle": "Cherry-pick %{short}?",
+    "cherryPickMessage": "The commit is replayed on the current branch as a new commit. Conflicts, if any, are resolved in the conflict view.",
+    "cherryPickAction": "Cherry-pick",
+    "revertTitle": "Revert %{short}?",
+    "revertMessage": "A new commit is created that undoes this one. History is not rewritten.",
+    "revertAction": "Revert"
   },
   "toast": {
     "copied": "Copied to clipboard",
     "copyFailed": "Nothing to copy",
     "openFailed": "Could not open",
     "revealFailed": "Could not reveal in Finder",
-    "browserFailed": "Could not open link"
+    "browserFailed": "Could not open link",
+    "historyDone": "Done"
   },
   "conflicts": {
     "title": "Conflicted",
@@ -382,7 +392,8 @@
     "resetHard": "Reset Here (discard changes)",
     "resetTitle": "Reset the current branch?",
     "resetMessage": "The branch will move to %{short}. Uncommitted changes are lost.",
-    "resetAction": "Reset"
+    "resetAction": "Reset",
+    "resetSoft": "Reset Current Branch to Here (Soft)"
   },
   "shortcut": {
     "openRepo": "Open repository",
@@ -433,5 +444,14 @@
     "hint": "Each repository action the agent may propose asks first unless you change it here.",
     "boundary": "The agent never gets a shell or credentials; every step runs through the same app actions you use by hand.",
     "destructive": "changes the repo"
+  },
+  "menu": {
+    "openDiff": "Open Diff",
+    "checkout": "Checkout Commit",
+    "cherryPick": "Cherry-pick Commit…",
+    "revert": "Revert Commit…",
+    "mergeIntoCurrent": "Merge into Current Branch",
+    "copySha": "Copy SHA",
+    "copyMessage": "Copy Message"
   }
 }
