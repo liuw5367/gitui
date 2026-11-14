@@ -78,7 +78,8 @@
 apps/client/                NSH 应用入口、窗口、标题栏、屏幕与工作区视图、locales（同一 crate 供各平台构建）
 crates/core/                领域类型、错误分类、补丁解析（无 UI/进程依赖）
 crates/git/                 进程执行与输出解析：status/log/show/diff/refs；后续写路径、同步、操作状态机
-crates/store/               会话、最近仓库、界面语言（本地 JSON/文本文件）
+crates/store/               会话、最近仓库、界面语言、设置、变更清单、Agent 权限与审计
+crates/agent/               Agent 的计划模型、权限策略与审计（不碰进程与凭据）
 ```
 
 
@@ -87,7 +88,7 @@ Rules:
 - 应用 crate 拥有每个标签页的界面状态；`core` 不依赖 UI、AppKit 或进程。
 - `git` 是唯一构造 Git 命令的 crate；写路径、同步与冲突状态机在后续阶段加入同一 crate。
 - 凭据只经系统 Git 的 credential helper 与 Keychain，应用不自行读取；`store` 不保存秘密。
-- Agent（v0.2）接入时只能调用应用实现的能力接口，不直接获得 `std::process` 或 Keychain。
+- `agent` 只产出计划与权限判定，执行由应用完成（调用 `git` crate 的动作），不直接获得 `std::process` 或 Keychain。
 - 13 个 crate 的早期拆分对 v0.1 属于过度设计，按实测需要再拆。
 
 ---

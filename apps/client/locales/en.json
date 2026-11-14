@@ -286,5 +286,29 @@
     "undoTitle": "Reset to this entry?",
     "undoMessage": "The branch will move to %{short} with git reset --hard; uncommitted changes are lost.",
     "undoAction": "Reset"
+  },
+  "agent": {
+    "name": "Agent",
+    "localOnly": "local only",
+    "intro": "The agent proposes a plan from the current repository state. Nothing runs without your approval.",
+    "plan": "Propose a plan",
+    "replan": "Re-propose",
+    "run": "Run",
+    "denied": "Denied",
+    "permissions": "Permissions",
+    "ask": "Ask",
+    "allow": "Allow",
+    "deny": "Deny",
+    "audit": "Audit log",
+    "auditEmpty": "No actions yet",
+    "action": {
+      "stageAll": "Stage all changes",
+      "commit": "Commit",
+      "unstageAll": "Unstage all",
+      "fetch": "Fetch",
+      "pull": "Pull",
+      "push": "Push",
+      "discard": "Discard changes"
+    }
   }
 }

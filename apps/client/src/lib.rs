@@ -45,6 +45,7 @@ pub(crate) enum Mode {
     History,
     Changes,
     Refs,
+    Agent,
 }
 
 /// 仓库管理页的三种入口（设计板 03 的分段控件）。
@@ -84,6 +85,10 @@ pub(crate) struct Actions {
     pub(crate) go_settings: Arc<dyn Fn()>,
     pub(crate) undo_reflog: Arc<dyn Fn(usize)>,
     pub(crate) set_mode_refs: Arc<dyn Fn()>,
+    pub(crate) set_mode_agent: Arc<dyn Fn()>,
+    pub(crate) propose_plan: Arc<dyn Fn()>,
+    pub(crate) run_agent_step: Arc<dyn Fn(usize)>,
+    pub(crate) set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -130,6 +135,45 @@ pub fn App() -> impl IntoElement {
     let changelist_open = signal(false);
     let palette_open = signal(false);
     let settings_state = signal(store::load_settings(&store_dir));
+    let agent_plan = signal(Option::<agent::Plan>::None);
+    let agent_policies = signal({
+        let mut policies = agent::Policies::default();
+        for (action, permission) in store::load_agent_policies(&store_dir) {
+            let matched = [
+                agent::Action::StageAll,
+                agent::Action::Commit,
+                agent::Action::UnstageAll,
+                agent::Action::Fetch,
+                agent::Action::Pull,
+                agent::Action::Push,
+                agent::Action::Discard,
+            ]
+            .into_iter()
+            .find(|candidate| candidate.id() == action);
+            if let Some(action) = matched {
+                policies.set(action, agent::Permission::from_id(permission.as_str()));
+            }
+        }
+        policies
+    });
+    let agent_audit = signal(
+        store::load_agent_audit(&store_dir)
+            .into_iter()
+            .filter_map(|line| {
+                let mut fields = line.split('\t');
+                let timestamp = fields.next()?.parse().ok()?;
+                let action = fields.next()?.to_string();
+                let ok = fields.next()? == "ok";
+                let detail = fields.next().unwrap_or("").to_string();
+                return Some(agent::AuditEntry {
+                    timestamp,
+                    action,
+                    ok,
+                    detail,
+                });
+            })
+            .collect::<Vec<_>>(),
+    );
     let settings_section = signal(screens::SettingsSection::General);
     let palette_query = signal(String::new());
     let theme_mode = signal(ThemeMode::from_id(
@@ -739,6 +783,167 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let persist_audit: Arc<dyn Fn()> = {
+        let store_dir = store_dir.clone();
+        let agent_audit = agent_audit;
+        Arc::new(move || {
+            let lines: Vec<String> = agent_audit
+                .get_untracked()
+                .iter()
+                .map(|entry| {
+                    format!(
+                        "{}\t{}\t{}\t{}",
+                        entry.timestamp,
+                        entry.action,
+                        if entry.ok { "ok" } else { "fail" },
+                        entry.detail
+                    )
+                })
+                .collect();
+            store::save_agent_audit(&store_dir, &lines);
+        })
+    };
+
+    let propose_plan: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let agent_plan = agent_plan;
+        let commit_summary = commit_summary;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let list = tabs.get_untracked();
+            let Some(tab) = list.get(current) else {
+                return;
+            };
+            let staged = tab.changes.iter().filter(|entry| entry.staged).count();
+            let unstaged = tab.changes.len() - staged;
+            let message = commit_summary.get_untracked();
+            let plan = agent::propose(
+                "本地计划：整理当前仓库",
+                staged,
+                unstaged,
+                tab.ahead,
+                tab.behind,
+                message.as_str(),
+            );
+            agent_plan.set(Some(plan));
+        })
+    };
+
+    let run_agent_step: Arc<dyn Fn(usize)> = {
+        let tabs = tabs;
+        let active = active;
+        let agent_plan = agent_plan;
+        let agent_audit = agent_audit;
+        let agent_policies = agent_policies;
+        let commit_summary = commit_summary;
+        let persist_audit = persist_audit.clone();
+        Arc::new(move |index: usize| {
+            let Some(plan) = agent_plan.get_untracked() else {
+                return;
+            };
+            let Some(step) = plan.steps.get(index).cloned() else {
+                return;
+            };
+            let now = store::now_unix();
+            // 权限：Deny 直接记审计并跳过；Ask 在界面上就是用户按了这一行。
+            if agent_policies.get_untracked().is_denied(step.action) {
+                let mut audit = agent_audit.get_untracked();
+                audit.insert(
+                    0,
+                    agent::AuditEntry::new(now, step.action, false, "denied by policy"),
+                );
+                audit.truncate(agent::Audit::LIMIT);
+                agent_audit.set(audit);
+                persist_audit();
+                return;
+            }
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.get_mut(current) else {
+                return;
+            };
+            let detail = match step.action {
+                agent::Action::StageAll => {
+                    model::stage_all_or_none(tab, true);
+                    "staged all".to_string()
+                }
+                agent::Action::UnstageAll => {
+                    model::stage_all_or_none(tab, false);
+                    "unstaged all".to_string()
+                }
+                agent::Action::Commit => {
+                    tab.summary = step
+                        .argument
+                        .clone()
+                        .unwrap_or_else(|| commit_summary.get_untracked());
+                    model::commit_staged(tab);
+                    tab.hook_log.clone().unwrap_or_default()
+                }
+                agent::Action::Fetch => {
+                    model::sync(tab, model::Sync::Fetch);
+                    tab.sync_message.clone().unwrap_or_default()
+                }
+                agent::Action::Pull => {
+                    model::sync(tab, model::Sync::Pull);
+                    tab.sync_message.clone().unwrap_or_default()
+                }
+                agent::Action::Push => {
+                    model::sync(tab, model::Sync::Push);
+                    tab.sync_message.clone().unwrap_or_default()
+                }
+                agent::Action::Discard => "skipped: destructive".to_string(),
+            };
+            let ok = match step.action {
+                agent::Action::Commit => tab.hook_ok,
+                agent::Action::Fetch | agent::Action::Pull | agent::Action::Push => {
+                    !tab.sync_failed
+                }
+                agent::Action::Discard => false,
+                _ => true,
+            };
+            let mut audit = agent_audit.get_untracked();
+            audit.insert(0, agent::AuditEntry::new(now, step.action, ok, detail));
+            audit.truncate(agent::Audit::LIMIT);
+            agent_audit.set(audit);
+            tabs.set(list);
+            persist_audit();
+        })
+    };
+
+    let set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)> = {
+        let agent_policies = agent_policies;
+        let store_dir = store_dir.clone();
+        Arc::new(move |action: agent::Action, permission: agent::Permission| {
+            let mut policies = agent_policies.get_untracked();
+            policies.set(action, permission);
+            agent_policies.set(policies.clone());
+            let entries: Vec<(String, String)> = [
+                agent::Action::StageAll,
+                agent::Action::Commit,
+                agent::Action::UnstageAll,
+                agent::Action::Fetch,
+                agent::Action::Pull,
+                agent::Action::Push,
+                agent::Action::Discard,
+            ]
+            .into_iter()
+            .map(|candidate| {
+                (
+                    candidate.id().to_string(),
+                    policies.permission(candidate).id().to_string(),
+                )
+            })
+            .collect();
+            store::save_agent_policies(&store_dir, &entries);
+        })
+    };
+
+    let set_mode_agent: Arc<dyn Fn()> = {
+        let mode = mode;
+        Arc::new(move || mode.set(Mode::Agent))
+    };
+
     let set_mode_refs: Arc<dyn Fn()> = {
         let mode = mode;
         Arc::new(move || mode.set(Mode::Refs))
@@ -770,6 +975,10 @@ pub fn App() -> impl IntoElement {
         go_settings,
         undo_reflog,
         set_mode_refs,
+        set_mode_agent,
+        propose_plan,
+        run_agent_step,
+        set_agent_permission,
         apply_filter,
         clear_filter,
         clone_repository,
@@ -983,6 +1192,9 @@ pub fn App() -> impl IntoElement {
                             commit_description,
                             changelist_open,
                             settings_state,
+                            agent_plan,
+                            agent_audit,
+                            agent_policies,
                             actions_for_view.clone(),
                         )
                         .into_element(),

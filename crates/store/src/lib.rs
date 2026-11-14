@@ -175,6 +175,43 @@ pub fn save_settings(dir: &Path, settings: &Settings) {
     let _ = write_lines(&settings_file(dir), &lines);
 }
 
+/// Agent 的设置：每个动作的权限（`动作=权限` 行）。
+pub fn load_agent_policies(dir: &Path) -> Vec<(String, String)> {
+    let Ok(text) = std::fs::read_to_string(dir.join("agent-policies.txt")) else {
+        return Vec::new();
+    };
+    return text
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(action, permission)| {
+            (action.trim().to_string(), permission.trim().to_string())
+        })
+        .filter(|(action, permission)| !action.is_empty() && !permission.is_empty())
+        .collect();
+}
+
+/// 保存 Agent 的动作权限。
+pub fn save_agent_policies(dir: &Path, policies: &[(String, String)]) {
+    let lines: Vec<String> = policies
+        .iter()
+        .map(|(action, permission)| format!("{}={}", action, permission))
+        .collect();
+    let _ = write_lines(&dir.join("agent-policies.txt"), &lines);
+}
+
+/// Agent 的审计日志：每行 `时间\t动作\t结果\t详情`。
+pub fn load_agent_audit(dir: &Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(dir.join("agent-audit.txt")) else {
+        return Vec::new();
+    };
+    return text.lines().map(|line| line.to_string()).collect();
+}
+
+/// 保存 Agent 的审计日志（最新的在前，调用方负责截断）。
+pub fn save_agent_audit(dir: &Path, entries: &[String]) {
+    let _ = write_lines(&dir.join("agent-audit.txt"), entries);
+}
+
 fn appearance_file(dir: &Path) -> PathBuf {
     return dir.join("appearance.txt");
 }
@@ -382,6 +419,23 @@ mod tests {
         let paths = load_recent(dir.path());
         assert_eq!(paths.len(), MAX_RECENT);
         assert_eq!(paths[0].path, "/repo-19");
+    }
+
+    #[test]
+    fn agent_policies_and_audit_round_trip() {
+        let dir = TempDir::new("agent");
+        assert!(load_agent_policies(dir.path()).is_empty());
+        save_agent_policies(
+            dir.path(),
+            &[("push".to_string(), "deny".to_string())],
+        );
+        assert_eq!(
+            load_agent_policies(dir.path()),
+            vec![("push".to_string(), "deny".to_string())]
+        );
+
+        save_agent_audit(dir.path(), &["1\tfetch\tok\t2 refs".to_string()]);
+        assert_eq!(load_agent_audit(dir.path()).len(), 1);
     }
 
     #[test]

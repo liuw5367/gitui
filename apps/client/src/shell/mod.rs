@@ -200,8 +200,10 @@ pub(crate) fn toolbar(
     set_mode: std::sync::Arc<dyn Fn(crate::Mode)>,
     sync: std::sync::Arc<dyn Fn(crate::model::Sync) -> ()>,
     refs: std::sync::Arc<dyn Fn() -> ()>,
+    agent_mode: std::sync::Arc<dyn Fn() -> ()>,
     panel_open: Signal<bool>,
 ) -> impl IntoElement {
+    let do_agent = agent_mode.clone();
     let do_refs = refs.clone();
     let do_fetch = sync.clone();
     let do_pull = sync.clone();
@@ -291,7 +293,9 @@ pub(crate) fn toolbar(
                     Some(Arc::new(move || change_count())),
                 )),
         )
-        .child(disabled_tool(language, "sparkle", "shell.agent"))
+        .child(tool_button(language, "sparkle", "shell.agent", move || {
+            do_agent()
+        }))
         // 设计稿：Agent 右侧的 tb-icon 是右侧面板的显隐开关。
         .child(widgets::icon_button(
             "sidebar",

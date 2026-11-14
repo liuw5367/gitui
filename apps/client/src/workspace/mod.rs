@@ -1,5 +1,6 @@
 //! 工作区内部视图：侧栏、历史表、diff 与提交文件面板。
 
+pub(crate) mod agent;
 pub(crate) mod commit;
 pub(crate) mod diff;
 pub(crate) mod history;

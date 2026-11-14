@@ -29,6 +29,9 @@ pub(crate) fn workspace(
     commit_description: Signal<String>,
     changelist_open: Signal<bool>,
     settings_state: Signal<store::Settings>,
+    agent_plan: Signal<Option<agent::Plan>>,
+    agent_audit: Signal<Vec<agent::AuditEntry>>,
+    agent_policies: Signal<agent::Policies>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -58,6 +61,7 @@ pub(crate) fn workspace(
             actions.set_mode.clone(),
             actions.sync.clone(),
             actions.set_mode_refs.clone(),
+            actions.set_mode_agent.clone(),
             inspector_open,
         ))
         .child(shell::op_banner(
@@ -87,6 +91,9 @@ pub(crate) fn workspace(
                     commit_description,
                     changelist_open,
                     settings_state,
+                    agent_plan,
+                    agent_audit,
+                    agent_policies,
                     actions_for_body,
                 )),
         )
@@ -110,6 +117,9 @@ fn match_body(
     commit_description: Signal<String>,
     changelist_open: Signal<bool>,
     settings_state: Signal<store::Settings>,
+    agent_plan: Signal<Option<agent::Plan>>,
+    agent_audit: Signal<Vec<agent::AuditEntry>>,
+    agent_policies: Signal<agent::Policies>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -155,6 +165,9 @@ fn match_body(
                 commit_description,
                 changelist_open,
                 settings_state,
+                agent_plan,
+                agent_audit,
+                agent_policies,
                 actions,
             )
             .into_element();
@@ -179,6 +192,9 @@ fn body(
     commit_description: Signal<String>,
     changelist_open: Signal<bool>,
     settings_state: Signal<store::Settings>,
+    agent_plan: Signal<Option<agent::Plan>>,
+    agent_audit: Signal<Vec<agent::AuditEntry>>,
+    agent_policies: Signal<agent::Policies>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -257,6 +273,11 @@ fn body(
                             ))
                             .child(diff::diff(language, label.clone(), patch.clone()))
                             .into_element(),
+                        crate::Mode::Agent => view()
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .into_element(),
                         crate::Mode::Refs => crate::screens::refs_view(
                             language,
                             tab_for_changes.clone(),
@@ -282,6 +303,14 @@ fn body(
                     language,
                     tab_for_inspector.clone(),
                     inspector_actions.clone(),
+                )
+                .into_element(),
+                crate::Mode::Agent => crate::workspace::agent::agent_panel(
+                    language,
+                    agent_plan,
+                    agent_audit,
+                    agent_policies,
+                    actions.clone(),
                 )
                 .into_element(),
                 crate::Mode::Refs => view().w(px(0.0)).h_full().into_element(),
