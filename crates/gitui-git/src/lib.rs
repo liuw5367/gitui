@@ -228,22 +228,35 @@ impl Repo {
     /// Commit the staged changes with `git commit -F -` (hooks run).
     /// On failure the error carries the hook stdout/stderr.
     pub fn commit(&self, message: &str) -> Result<String, GitError> {
-        self.commit_with(message, false)
+        self.commit_with(message, false, false)
     }
 
     /// Commit with `--no-verify`; hooks are skipped. Used only after an
     /// explicit user confirmation in the app.
     pub fn commit_no_verify(&self, message: &str) -> Result<String, GitError> {
-        self.commit_with(message, true)
+        self.commit_with(message, true, false)
     }
 
-    fn commit_with(&self, message: &str, no_verify: bool) -> Result<String, GitError> {
+    /// Amend the last commit with the staged content and `message`.
+    pub fn amend(&self, message: &str) -> Result<String, GitError> {
+        self.commit_with(message, false, true)
+    }
+
+    fn commit_with(
+        &self,
+        message: &str,
+        no_verify: bool,
+        amend: bool,
+    ) -> Result<String, GitError> {
         let mut command = Command::new("git");
         command
             .arg("--no-pager")
             .arg("-C")
             .arg(&self.root);
         let mut args = vec!["commit"];
+        if amend {
+            args.push("--amend");
+        }
         if no_verify {
             args.push("--no-verify");
         }
@@ -309,6 +322,7 @@ impl Repo {
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct TempRepo {
@@ -317,12 +331,14 @@ mod tests {
 
     impl TempRepo {
         fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
             let unique = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
+            let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
             let path = std::env::temp_dir().join(format!(
-                "gitui-git-test-{}-{unique}",
+                "gitui-git-test-{}-{unique}-{sequence}",
                 std::process::id()
             ));
             fs::create_dir_all(&path).unwrap();
@@ -447,6 +463,15 @@ mod tests {
 
         repo.commit_no_verify("bypass hooks").unwrap();
         assert_eq!(repo.log(1).unwrap()[0].summary, "bypass hooks");
+
+        let _ = fs::remove_file(&hook);
+        fs::write(fixture.path.join("a.txt"), "one\nFOUR\n").unwrap();
+        repo.stage_all().unwrap();
+        let before = repo.log(10).unwrap().len();
+        repo.amend("amended").unwrap();
+        let after = repo.log(10).unwrap();
+        assert_eq!(after.len(), before);
+        assert_eq!(after[0].summary, "amended");
     }
 
     #[test]
