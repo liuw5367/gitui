@@ -830,6 +830,27 @@ pub fn App() -> impl IntoElement {
             save: save_identity_action,
         },
     );
+    let merge_branch_action = Arc::new({
+        let reload_merge = reload_for_branch.clone();
+        move |name: String| {
+            if name.is_empty() {
+                error.set(SharedString::from("Branch name is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.merge(&name))
+            {
+                Ok(_) => {
+                    error.set(SharedString::from(""));
+                    reload_merge();
+                }
+                Err(err) => {
+                    error.set(SharedString::from(err.to_string()));
+                    reload_merge();
+                }
+            }
+        }
+    });
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -869,6 +890,7 @@ pub fn App() -> impl IntoElement {
             add_remote: add_remote_action,
             remove_remote: remove_remote_action,
             rename_branch: rename_branch_action,
+            merge_branch: merge_branch_action,
             select_file: select_file_action,
             create_tag: create_tag_action,
             delete_tag: delete_tag_action,
