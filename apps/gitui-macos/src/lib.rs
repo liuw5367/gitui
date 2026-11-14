@@ -12,7 +12,7 @@ mod widgets;
 use gitui_agent::{AgentPermissions, AgentPlan, LocalPlanner, PlanStep, Planner};
 use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{agent_panel, changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{agent_panel, audit_panel, changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -151,6 +151,14 @@ pub fn App() -> impl IntoElement {
     let agent_error = signal(SharedString::from(""));
     let agent_protected_ok = signal(false);
     let agent_prompt = signal(String::new());
+    let audit_open = signal(false);
+    let audit_lines = signal(Vec::<String>::new());
+    let audit_error = signal(SharedString::from(""));
+    let open_audit: Arc<dyn Fn()> = Arc::new(move || {
+        audit_lines.set(crate::audit::read_recent(200));
+        audit_error.set(SharedString::from(""));
+        audit_open.set(true);
+    });
     let open_agent: Arc<dyn Fn()> = Arc::new(move || {
         agent_steps.set(Vec::new());
         agent_log.set(SharedString::from(""));
@@ -1080,6 +1088,7 @@ pub fn App() -> impl IntoElement {
                     open(path);
                 }
             }),
+            view_audit: open_audit.clone(),
         },
     );
     let merge_branch_action = Arc::new({
@@ -1571,6 +1580,18 @@ pub fn App() -> impl IntoElement {
         },
     );
 
+    let audit_panel = audit_panel(
+        audit_open,
+        audit_lines,
+        audit_error,
+        AuditActions {
+            close: Arc::new(move || audit_open.set(false)),
+            refresh: {
+                let open_audit = open_audit.clone();
+                Arc::new(move || open_audit())
+            },
+        },
+    );
     let reflog_panel = reflog_panel(
         reflog_open,
         reflog_entries,
@@ -1631,6 +1652,7 @@ pub fn App() -> impl IntoElement {
         .child(inspect_panel)
         .child(refs_panel)
         .child(agent_panel)
+        .child(audit_panel)
         .child(settings_panel)
         .child(statusbar)
 }

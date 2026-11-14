@@ -43,3 +43,18 @@ pub(crate) fn append(summary: &str, allowed: bool) {
         let _ = file.write_all(line.as_bytes());
     }
 }
+
+pub(crate) fn read_recent(limit: usize) -> Vec<String> {
+    let Some(path) = path() else {
+        return Vec::new();
+    };
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    contents
+        .lines()
+        .rev()
+        .take(limit)
+        .map(|line| line.to_string())
+        .collect()
+}

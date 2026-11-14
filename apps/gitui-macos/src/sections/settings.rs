@@ -14,6 +14,7 @@ pub(crate) struct SettingsActions {
     pub(crate) close: Arc<dyn Fn()>,
     pub(crate) save_identity: Arc<dyn Fn()>,
     pub(crate) open_recent: Arc<dyn Fn(String)>,
+    pub(crate) view_audit: Arc<dyn Fn()>,
 }
 
 fn nav_item(
@@ -377,6 +378,10 @@ pub(crate) fn settings_panel(
                                                 .text_size(px(9.5))
                                                 .text_color(move || design::text3()),
                                         )
+                                        .child(header_button("View audit log", false, {
+                                            let action = actions.view_audit.clone();
+                                            move || action()
+                                        }))
                                         .child(
                                             view()
                                                 .h(px(38.0))
