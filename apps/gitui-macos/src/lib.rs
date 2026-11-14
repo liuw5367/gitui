@@ -4,7 +4,7 @@
 //! selected commit's patch. No staging, commit, push or settings.
 
 use gitui_git::{Commit, Repo};
-use nsh_base::{editor, theme};
+use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
 
 struct Loaded {
@@ -100,6 +100,7 @@ pub fn App() -> impl IntoElement {
         .map(|commit| commit.sha.clone())
         .unwrap_or_default();
 
+    let path_input = signal(initial.path.clone());
     let repo_path = signal(SharedString::from(initial.path));
     let branch = signal(SharedString::from(initial.branch));
     let staged = signal(initial.staged);
@@ -111,13 +112,15 @@ pub fn App() -> impl IntoElement {
     let error = signal(initial.error);
 
     let reload = move || {
-        let loaded = load(repo_path.get_untracked().to_string().as_str());
+        let requested = path_input.get_untracked();
+        let loaded = load(&requested);
         let first = loaded
             .commits
             .first()
             .map(|commit| commit.sha.clone())
             .unwrap_or_default();
-        repo_path.set(SharedString::from(loaded.path));
+        repo_path.set(SharedString::from(loaded.path.clone()));
+        path_input.set(loaded.path);
         branch.set(SharedString::from(loaded.branch));
         staged.set(loaded.staged);
         unstaged.set(loaded.unstaged);
@@ -141,9 +144,12 @@ pub fn App() -> impl IntoElement {
                 .text_color(move || theme().foreground),
         )
         .child(
-            text(move || repo_path.get())
-                .text_size(px(10.0))
-                .text_color(move || theme().foreground),
+            input()
+                .value(path_input)
+                .on_change(move |text: &str| path_input.set(text.to_string()))
+                .placeholder("Repository path")
+                .text_size(px(11.0))
+                .w(px(420.0)),
         )
         .child(
             text(move || branch.get())
@@ -151,7 +157,7 @@ pub fn App() -> impl IntoElement {
                 .text_color(move || theme().primary),
         )
         .child(view().flex_1())
-        .child(header_button("Reload", true, reload));
+        .child(header_button("Open", true, reload));
 
     let status_pane = view()
         .w(px(250.0))
