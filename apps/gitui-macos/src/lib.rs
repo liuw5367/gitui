@@ -229,6 +229,19 @@ pub fn App() -> impl IntoElement {
         error.set(tab.error);
     };
     let activate_for_tabs = activate.clone();
+    let activate_for_close = activate.clone();
+    let close_active = move || {
+        let index = active.get_untracked();
+        let len = tabs.get_untracked().len();
+        if len <= 1 || index >= len {
+            return;
+        }
+        tabs.update(|list| {
+            list.remove(index);
+        });
+        let next = if index >= len - 1 { len - 2 } else { index };
+        activate_for_close(next);
+    };
 
     let header = view()
         .h(px(46.0))
@@ -256,7 +269,8 @@ pub fn App() -> impl IntoElement {
                 .text_color(move || theme().primary),
         )
         .child(view().flex_1())
-        .child(header_button("Open", true, reload));
+        .child(header_button("Open", true, reload))
+        .child(header_button("Close tab", false, close_active));
 
     let tab_bar = view()
         .h(px(30.0))
