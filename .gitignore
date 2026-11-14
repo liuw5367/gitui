@@ -1,0 +1,15 @@
+# Rust / NSH 构建产物
+# workspace 共用根 target/；根 Cargo.lock 入库，不再有每个 crate 的 lock。
+target/
+
+# nsh 生成的脚手架与本地构建目录
+apps/client/.nsh/
+
+# 本地测试与截图目录
+.tmp/
+.nsh-home/
+.swift-cache/
+
+# 编辑器与系统文件
+.idea/
+.DS_Store
