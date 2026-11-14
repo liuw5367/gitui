@@ -61,6 +61,12 @@ impl Operation {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Branch {
+    pub name: String,
+    pub current: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConflictStages {
     pub base: String,
@@ -192,6 +198,34 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// Local branches.
+    pub fn branches(&self) -> Result<Vec<Branch>, GitError> {
+        let output = self.git(&[
+            "for-each-ref",
+            "--format=%(refname:short)%09%(HEAD)",
+            "refs/heads",
+        ])?;
+        Ok(output
+            .lines()
+            .filter_map(|line| {
+                let (name, head) = line.split_once('\t')?;
+                let name = name.trim();
+                if name.is_empty() {
+                    return None;
+                }
+                Some(Branch {
+                    name: name.to_string(),
+                    current: head.trim() == "*",
+                })
+            })
+            .collect())
+    }
+
+    /// Switch to an existing local branch.
+    pub fn checkout(&self, branch: &str) -> Result<String, GitError> {
+        self.git(&["switch", branch])
     }
 
     /// Paths with unmerged entries.
@@ -731,6 +765,22 @@ mod tests {
         repo.merge_abort().unwrap();
         assert_eq!(repo.operation(), None);
         assert!(repo.conflicts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn lists_and_checks_out_branches() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["branch", "feature"]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        let branches = repo.branches().unwrap();
+        assert!(branches.iter().any(|branch| branch.name == "main" && branch.current));
+        assert!(branches.iter().any(|branch| branch.name == "feature" && !branch.current));
+        repo.checkout("feature").unwrap();
+        assert!(repo
+            .branches()
+            .unwrap()
+            .iter()
+            .any(|branch| branch.name == "feature" && branch.current));
     }
 
     #[test]
