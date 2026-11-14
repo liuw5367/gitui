@@ -390,18 +390,20 @@ pub fn App() -> impl IntoElement {
         let store_dir = store_dir.clone();
         let current_filter = current_filter.clone();
         Arc::new(move |path: String| {
-            let tab = model::load_tab(path.as_str(), &current_filter());
+            // 先插入一个「加载中」的占位标签页，再在后台读仓库：
+            // 大仓库的 `git log`/`status` 不再卡住界面，用户也能看到骨架。
+            let filter = current_filter();
             let mut list = tabs.get_untracked();
             let existing = list
                 .iter()
-                .position(|candidate| candidate.path == tab.path);
+                .position(|candidate| candidate.path == path.as_str());
             match existing {
                 Some(index) => {
-                    list[index] = tab;
+                    list[index].loading = true;
                     active.set(index);
                 }
                 None => {
-                    list.push(tab);
+                    list.push(model::placeholder_tab(path.as_str(), &filter));
                     active.set(list.len() - 1);
                 }
             }
@@ -413,6 +415,21 @@ pub fn App() -> impl IntoElement {
             welcome_open.set(false);
             main_window().focus();
             persist(&store_dir, active, tabs);
+
+            let path_for_load = path.clone();
+            spawn(async move {
+                let loaded = model::load_tab(path_for_load.as_str(), &filter);
+                let mut list = tabs.get_untracked();
+                // 加载期间用户可能关掉了这个标签页，找不到就丢弃结果。
+                let Some(index) = list
+                    .iter()
+                    .position(|candidate| candidate.path == loaded.path)
+                else {
+                    return;
+                };
+                list[index] = loaded;
+                tabs.set(list);
+            });
         })
     };
 

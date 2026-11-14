@@ -81,6 +81,8 @@ pub struct Tab {
     pub push_after_commit: bool,
     /// 钩子完整日志弹层是否打开。
     pub hook_open: bool,
+    /// 正在后台读取（设计板 16 的 loading 状态）。
+    pub loading: bool,
     /// HEAD 形态：分支 / 游离 / 尚未提交（设计板 16）。
     pub head: git::HeadState,
     /// 最近一次同步失败的归类（offline / auth / rejected），猜不出来时为空。
@@ -319,6 +321,18 @@ pub fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
         return true;
     }
     return false;
+}
+
+/// 生成一个「正在加载」的占位标签页：只有路径与名称，列表都是空的。
+pub fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
+    return Tab {
+        path: path.to_string(),
+        name: last_segment(path),
+        loading: true,
+        filter: filter.clone(),
+        branch: "…".to_string(),
+        ..Tab::default()
+    };
 }
 
 /// 选中第 `index` 个提交，读取补丁与文件统计，并清掉单文件选择。
@@ -1664,6 +1678,21 @@ mod tests {
 
         // 不存在的 SHA 返回 false，不改变选中。
         assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn placeholder_tab_is_loading_and_has_no_data() {
+        let tab = placeholder_tab("/tmp/whatever", &LogFilter::default());
+        assert!(tab.loading, "占位标签页应标记为加载中");
+        assert_eq!(tab.name, "whatever");
+        assert!(tab.commits.is_empty());
+        assert!(tab.changes.is_empty());
+        assert!(tab.error.is_none(), "占位不应显示错误面板");
+
+        // 真的装载出来的标签页不是 loading。
+        let repo = TempRepo::new("loading-flag");
+        let loaded = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert!(!loaded.loading, "装载完成后应清掉 loading");
     }
 
     #[test]

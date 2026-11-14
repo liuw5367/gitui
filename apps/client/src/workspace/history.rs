@@ -41,6 +41,7 @@ pub(crate) fn history(
     let row_actions = actions.clone();
     let bar_actions = actions.clone();
     // 空仓库与「筛选后无结果」要区分：前者要给创建初始提交的入口。
+    let loading = tab.loading;
     let unborn = matches!(tab.head, git::HeadState::Unborn { .. });
     let branch_for_empty = match &tab.head {
         git::HeadState::Unborn { branch } => branch.clone(),
@@ -170,6 +171,18 @@ pub(crate) fn history(
                         .w_full()
                         .flex_col()
                         .child(dynamic(move || -> AnyElement {
+                            // 后台还在读：先画骨架行，避免看到「空仓库」的假象。
+                            if loading {
+                                let mut skeleton: Vec<AnyElement> = Vec::new();
+                                for index in 0..8 {
+                                    skeleton.push(skeleton_row(index));
+                                }
+                                return view()
+                                    .w_full()
+                                    .flex_col()
+                                    .child(skeleton)
+                                    .into_element();
+                            }
                             if visible.get().is_empty() {
                                 let branch_for_empty = branch_for_empty.clone();
                                 let mut empty = view()
@@ -626,6 +639,44 @@ fn graph_cell(highlight: bool, is_merge: bool) -> impl IntoElement {
 }
 
 /// 筛选浮层（设计板 05）：分支、作者、时间三组，底部应用与清除。
+/// 加载骨架的一行：宽窄不等的灰条，模拟「提交说明 / 作者 / 时间」。
+fn skeleton_row(index: usize) -> AnyElement {
+    // 宽度按行号错开，看起来像真实数据的长度差异。
+    let summary_width = 180.0 + ((index * 37) % 160) as f32;
+    return view()
+        .w_full()
+        .h(px(metrics::COMMIT_ROW_H))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(8.0))
+        .border_b_1()
+        .border_color(move || design::line_soft())
+        .child(
+            view()
+                .w(px(20.0))
+                .h(px(8.0))
+                .rounded(px(4.0))
+                .bg(move || design::panel2()),
+        )
+        .child(
+            view()
+                .w(px(summary_width))
+                .h(px(8.0))
+                .rounded(px(4.0))
+                .bg(move || design::panel2()),
+        )
+        .child(view().flex_1())
+        .child(
+            view()
+                .w(px(56.0))
+                .h(px(8.0))
+                .rounded(px(4.0))
+                .bg(move || design::panel2()),
+        )
+        .into_element();
+}
+
 /// 提交行的右键菜单（设计板 21）。
 ///
 /// 顺序：查看 → 引用类（检出/新建分支/新建标签）→ 改写类（拣选/回滚/合并）→
