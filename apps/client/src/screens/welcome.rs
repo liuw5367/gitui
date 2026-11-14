@@ -10,6 +10,25 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use crate::widgets::{self, kbd};
 use crate::{Actions, RepoForm};
+
+/// Init 表单的附带文件（设计板 03）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct InitFiles {
+    pub gitignore: bool,
+    pub readme: bool,
+}
+
+/// Clone 表单的选项（设计板 03）：分支、深度、子模块、克隆后打开。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct CloneOptions {
+    pub branch: String,
+    /// 0 = 完整克隆。
+    pub depth: u32,
+    /// 用户自定义深度输入（空则用 `depth`）。
+    pub depth_custom: String,
+    pub recurse_submodules: bool,
+    pub open_after_clone: bool,
+}
 use nsh_base::input;
 use nsh_core::prelude::*;
 use store::RecentRepo;
@@ -26,6 +45,8 @@ pub(crate) fn welcome(
     query: Signal<String>,
     clone_url: Signal<String>,
     clone_destination: Signal<String>,
+    clone_options: Signal<CloneOptions>,
+    init_files: Signal<InitFiles>,
     init_path: Signal<String>,
     clone_error: Signal<Option<String>>,
     cloning: Signal<bool>,
@@ -58,6 +79,8 @@ pub(crate) fn welcome(
                                 form,
                                 clone_url,
                                 clone_destination,
+                                clone_options,
+                                init_files,
                                 init_path,
                                 clone_error,
                                 cloning,
@@ -435,6 +458,8 @@ fn entry_section(
     form: Signal<RepoForm>,
     clone_url: Signal<String>,
     clone_destination: Signal<String>,
+    clone_options: Signal<CloneOptions>,
+    init_files: Signal<InitFiles>,
     init_path: Signal<String>,
     error: Signal<Option<String>>,
     cloning: Signal<bool>,
@@ -512,13 +537,16 @@ fn entry_section(
                             language,
                             clone_url,
                             clone_destination,
+                            clone_options,
                             error,
                             cloning,
                             actions.clone(),
                         )
                         .into_element(),
-                        RepoForm::Init => init_form(language, init_path, error, actions.clone())
-                            .into_element(),
+                        RepoForm::Init => {
+                            init_form(language, init_path, init_files, error, actions.clone())
+                                .into_element()
+                        }
                     }
                 })),
         );
@@ -643,10 +671,12 @@ fn open_form(language: Signal<SharedString>, actions: Actions) -> impl IntoEleme
         );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn clone_form(
     language: Signal<SharedString>,
     clone_url: Signal<String>,
     clone_destination: Signal<String>,
+    options: Signal<CloneOptions>,
     error: Signal<Option<String>>,
     cloning: Signal<bool>,
     actions: Actions,
@@ -697,6 +727,87 @@ fn clone_form(
                     },
                 )),
         )
+        // 选项行：分支、深度、子模块、克隆后打开（设计板 03）。
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_end()
+                .gap(px(9.0))
+                .child(
+                    view()
+                        .flex_1()
+                        .min_w_0()
+                        .flex_col()
+                        .gap(px(5.0))
+                        .child(field_label(language, "welcome.branch"))
+                        .child(
+                            view()
+                                .w_full()
+                                .h(px(metrics::FIELD_H))
+                                .px(px(7.0))
+                                .items_center()
+                                .rounded(px(metrics::RADIUS_CONTROL))
+                                .border_1()
+                                .border_color(move || design::field_border())
+                                .bg(move || design::field())
+                                .child(
+                                    nsh_base::input()
+                                        .value({
+                                        let options = options;
+                                        move || options.get().branch
+                                    })
+                                        .on_change(move |text: &str| {
+                                            let mut next = options.get_untracked();
+                                            next.branch = text.to_string();
+                                            options.set(next);
+                                        })
+                                        .placeholder(move || {
+                                            i18n::t(
+                                                language.get().as_str(),
+                                                "welcome.branchHint",
+                                            )
+                                        })
+                                        .text_size(px(11.0))
+                                        .flex_1(),
+                                ),
+                        ),
+                )
+                .child(
+                    view()
+                        .w(px(170.0))
+                        .flex_col()
+                        .gap(px(5.0))
+                        .child(field_label(language, "welcome.depth"))
+                        .child(depth_toggle(language, options)),
+                ),
+        )
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(14.0))
+                .child(check_line(
+                    language,
+                    "welcome.recurse",
+                    options.get_untracked().recurse_submodules,
+                    move || {
+                        let mut next = options.get_untracked();
+                        next.recurse_submodules = !next.recurse_submodules;
+                        options.set(next);
+                    },
+                ))
+                .child(check_line(
+                    language,
+                    "welcome.openAfterClone",
+                    options.get_untracked().open_after_clone,
+                    move || {
+                        let mut next = options.get_untracked();
+                        next.open_after_clone = !next.open_after_clone;
+                        options.set(next);
+                    },
+                )),
+        )
         .child(
             view()
                 .flex_row()
@@ -724,9 +835,121 @@ fn clone_form(
         .child(error_line(error));
 }
 
+/// 深度三选一：完整 / 浅 1 / 浅 50。
+fn depth_toggle(language: Signal<SharedString>, options: Signal<CloneOptions>) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h(px(metrics::FIELD_H))
+        .flex_row()
+        .items_center()
+        .gap(px(2.0))
+        .p(px(2.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .border_1()
+        .border_color(move || design::field_border())
+        .bg(move || design::panel2())
+        .child(
+            [0u32, 1, 50]
+                .iter()
+                .map(|depth| {
+                    let depth = *depth;
+                    let active = options.get_untracked().depth == depth;
+                    let label = match depth {
+                        0 => "welcome.depthFull",
+                        1 => "welcome.depthOne",
+                        _ => "welcome.depthFifty",
+                    };
+                    let language = language;
+                    return view()
+                        .flex_1()
+                        .h(px(18.0))
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(4.0))
+                        .bg(move || {
+                            if active {
+                                design::content()
+                            } else {
+                                AdaptiveColor::TRANSPARENT
+                            }
+                        })
+                        .on_press(move || {
+                            let mut next = options.get_untracked();
+                            next.depth = depth;
+                            next.depth_custom.clear();
+                            options.set(next);
+                        })
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), label))
+                                .text_size(px(9.5))
+                                .line_height(px(12.0))
+                                .text_color(move || {
+                                    if active {
+                                        design::text()
+                                    } else {
+                                        design::text3()
+                                    }
+                                }),
+                        )
+                        .into_element();
+                })
+                .collect::<Vec<AnyElement>>(),
+        );
+}
+
+/// 一行复选（12px 方框 + 文案）。
+fn check_line(
+    language: Signal<SharedString>,
+    key: &'static str,
+    checked: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return view()
+        .h(px(18.0))
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .on_press(on_press)
+        .child(
+            view()
+                .w(px(12.0))
+                .h(px(12.0))
+                .items_center()
+                .justify_center()
+                .rounded(px(3.0))
+                .border_1()
+                .border_color(move || design::line_strong())
+                .bg(move || {
+                    if checked {
+                        design::accent()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .child(
+                    text(move || {
+                        if checked {
+                            "✓".to_string()
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .text_size(px(8.0))
+                    .text_color(move || design::content()),
+                ),
+        )
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(10.5))
+                .line_height(px(14.0))
+                .text_color(move || design::text2()),
+        );
+}
+
 fn init_form(
     language: Signal<SharedString>,
     init_path: Signal<String>,
+    files: Signal<InitFiles>,
     error: Signal<Option<String>>,
     actions: Actions,
 ) -> impl IntoElement {
@@ -737,6 +960,32 @@ fn init_form(
         .gap(px(9.0))
         .child(field_label(language, "repoManager.initPath"))
         .child(text_field(init_path, "~/Developer/new-repo"))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(14.0))
+                .child(check_line(
+                    language,
+                    "welcome.gitignore",
+                    files.get_untracked().gitignore,
+                    move || {
+                        let mut next = files.get_untracked();
+                        next.gitignore = !next.gitignore;
+                        files.set(next);
+                    },
+                ))
+                .child(check_line(
+                    language,
+                    "welcome.readme",
+                    files.get_untracked().readme,
+                    move || {
+                        let mut next = files.get_untracked();
+                        next.readme = !next.readme;
+                        files.set(next);
+                    },
+                )),
+        )
         .child(widgets::primary_button(
             move || i18n::t(language.get().as_str(), "repoManager.initAction"),
             {

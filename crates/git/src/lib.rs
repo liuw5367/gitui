@@ -1404,8 +1404,82 @@ pub fn init_repository(directory: &str) -> Result<(), GitError> {
 }
 
 /// 克隆 `url` 到 `destination`；目标目录必须不存在或为空。
+/// 初始化的附带文件（设计板 03 的 Init 表单）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InitOptions {
+    /// 生成 `.gitignore`（内容按常见 macOS + Rust 组合）。
+    pub gitignore: bool,
+    /// 生成 `README.md` 并作为首个提交。
+    pub readme: bool,
+}
+
+/// 带附带文件的初始化；目录非空时只初始化、不追加文件。
+pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError> {
+    init_repository(directory)?;
+    let root = Path::new(directory);
+    let has_gitignore = root.join(".gitignore").exists();
+    if options.gitignore && !has_gitignore {
+        std::fs::write(root.join(".gitignore"), DEFAULT_GITIGNORE).map_err(|error| {
+            GitError::Unreadable {
+                path: root.join(".gitignore").display().to_string(),
+                reason: error.to_string(),
+            }
+        })?;
+    }
+    let has_readme = root.join("README.md").exists();
+    if options.readme && !has_readme {
+        let name = root
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "repository".to_string());
+        std::fs::write(root.join("README.md"), format!("# {name}\n")).map_err(|error| {
+            GitError::Unreadable {
+                path: root.join("README.md").display().to_string(),
+                reason: error.to_string(),
+            }
+        })?;
+    }
+    return Ok(());
+}
+
+/// 生成的 `.gitignore` 内容（固定的最小集合，不猜用户的技术栈）。
+const DEFAULT_GITIGNORE: &str = "\n# macOS\n.DS_Store\n\n# Editors\n.idea/\n.vscode/\n\n# Build output\ntarget/\ndist/\nnode_modules/\n";
+
 pub fn clone(url: &str, destination: &str) -> Result<(), GitError> {
+    return clone_with(url, destination, &CloneOptions::default());
+}
+
+/// 克隆选项（设计板 03 的 Clone 表单）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CloneOptions {
+    /// 只拉取指定分支（`--branch`）。
+    pub branch: Option<String>,
+    /// 浅克隆深度（`--depth`）；`0` 表示完整克隆。
+    pub depth: u32,
+    /// 递归拉取子模块（`--recurse-submodules`）。
+    pub recurse_submodules: bool,
+}
+
+/// 带选项的克隆。目录非空时直接报错，不覆盖已有内容。
+pub fn clone_with(
+    url: &str,
+    destination: &str,
+    options: &CloneOptions,
+) -> Result<(), GitError> {
     let destination_path = Path::new(destination);
+    if destination_path.exists() {
+        let empty = std::fs::read_dir(destination_path)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if !empty {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: "clone".to_string(),
+                code: None,
+                detail: format!("目标目录不是空目录：{destination}"),
+            });
+        }
+    }
     if let Some(parent) = destination_path.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
             std::fs::create_dir_all(parent).map_err(|error| GitError::Unreadable {
@@ -1415,7 +1489,24 @@ pub fn clone(url: &str, destination: &str) -> Result<(), GitError> {
         }
     }
     let destination_text = destination_path.display().to_string();
-    run_git(Path::new("."), &["clone", url, destination_text.as_str()])?;
+    let depth = options.depth.to_string();
+    let mut args: Vec<&str> = vec!["clone"];
+    if let Some(branch) = options.branch.as_deref()
+        && !branch.trim().is_empty()
+    {
+        args.push("--branch");
+        args.push(branch);
+    }
+    if options.depth > 0 {
+        args.push("--depth");
+        args.push(depth.as_str());
+    }
+    if options.recurse_submodules {
+        args.push("--recurse-submodules");
+    }
+    args.push(url);
+    args.push(destination_text.as_str());
+    run_git(Path::new("."), &args)?;
     return Ok(());
 }
 
@@ -2488,6 +2579,80 @@ mod tests {
 
         repo.rename_branch("main", "renamed").expect("rename");
         assert_eq!(repo.abbrev_branch().expect("branch"), "renamed");
+    }
+
+    #[test]
+    fn clone_options_produce_the_expected_arguments() {
+        // 选项到参数的映射：完整克隆不带额外参数。
+        let defaults = CloneOptions::default();
+        assert_eq!(defaults.depth, 0);
+        assert!(!defaults.recurse_submodules);
+        assert!(defaults.branch.is_none());
+
+        // 真的克隆一次：浅克隆 + 指定分支 + 子模块开关都走通。
+        let (work_guard, work_path, _remote_guard, remote_path) = with_remote("clone-opts");
+        let target = TempDir::new("clone-opts-target");
+        let destination = target.path().join("copy");
+        let options = CloneOptions {
+            branch: Some("main".to_string()),
+            depth: 1,
+            recurse_submodules: false,
+        };
+        clone_with(
+            remote_path.as_str(),
+            destination.display().to_string().as_str(),
+            &options,
+        )
+        .expect("clone");
+        assert!(destination.join("a.txt").exists(), "浅克隆应拿到文件");
+        let repo = Repo::open(destination.display().to_string().as_str()).expect("open");
+        assert_eq!(repo.abbrev_branch().expect("branch"), "main");
+        // 浅克隆只有一个提交。
+        assert_eq!(repo.log(10, "").expect("log").len(), 1);
+        let _ = (&work_guard, &work_path);
+    }
+
+    #[test]
+    fn clone_refuses_a_non_empty_directory() {
+        let (_guard, path) = fixture("clone-dirty", &[("a.txt", "one\n")], "base");
+        let error = clone("https://example.com/x.git", path.as_str());
+        assert!(error.is_err(), "非空目录必须拒绝");
+        let detail = error.unwrap_err().detail();
+        assert!(detail.contains("不是空目录"), "错误应说明原因：{detail}");
+    }
+
+    #[test]
+    fn init_with_writes_the_requested_files() {
+        let dir = TempDir::new("init-files");
+        let target = dir.path().join("fresh");
+        let target_text = target.display().to_string();
+        init_with(
+            target_text.as_str(),
+            &InitOptions {
+                gitignore: true,
+                readme: true,
+            },
+        )
+        .expect("init");
+        assert!(target.join(".gitignore").exists());
+        assert!(target.join("README.md").exists());
+        let readme = std::fs::read_to_string(target.join("README.md")).expect("read");
+        assert!(readme.starts_with("# fresh"), "README 应带仓库名：{readme}");
+
+        // 已存在的文件不覆盖。
+        std::fs::write(target.join("README.md"), "# mine\n").expect("write");
+        init_with(
+            target_text.as_str(),
+            &InitOptions {
+                gitignore: false,
+                readme: true,
+            },
+        )
+        .expect("re-init");
+        assert_eq!(
+            std::fs::read_to_string(target.join("README.md")).expect("read"),
+            "# mine\n"
+        );
     }
 
     #[test]

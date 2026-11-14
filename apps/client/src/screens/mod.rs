@@ -22,7 +22,7 @@ pub(crate) use palette::palette;
 pub(crate) use refs_view::{refs_view, RefsTab};
 pub(crate) use settings::{settings, Section as SettingsSection};
 pub(crate) use sync_dialog::{sync_dialog, SyncDialogState};
-pub(crate) use welcome::welcome;
+pub(crate) use welcome::{welcome, CloneOptions, InitFiles};
 pub(crate) use workspace::workspace;
 
 /// 命令面板的命令列表（供根组件与测试共用）。

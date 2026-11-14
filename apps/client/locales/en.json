@@ -22,7 +22,17 @@
     "noRecent": "No recent repositories",
     "openFolder": "Open…",
     "cloneWorking": "Cloning…",
-    "noRecentHint": "Open a repository with ⌘O, or clone one below."
+    "noRecentHint": "Open a repository with ⌘O, or clone one below.",
+    "branch": "Branch",
+    "branchHint": "default branch",
+    "depth": "Depth",
+    "depthFull": "Full",
+    "depthOne": "Shallow 1",
+    "depthFifty": "Shallow 50",
+    "recurse": "Recurse submodules",
+    "openAfterClone": "Open after clone",
+    "gitignore": "Add .gitignore",
+    "readme": "Add README.md"
   },
   "shell": {
     "history": "History",

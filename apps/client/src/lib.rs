@@ -290,6 +290,10 @@ pub fn App() -> impl IntoElement {
     let welcome_query = signal(String::new());
     let clone_url = signal(String::new());
     let clone_destination = signal(String::new());
+    // Clone 的额外选项（设计板 03）合成一个结构，避免把四个信号串到窗口里。
+    let clone_options = signal(screens::CloneOptions::default());
+    // Init 的附带文件（设计板 03）。
+    let init_files = signal(screens::InitFiles::default());
     let clone_error = signal(Option::<String>::None);
     let cloning = signal(false);
     let init_path = signal(String::new());
@@ -545,12 +549,20 @@ pub fn App() -> impl IntoElement {
     let clone_repository: Arc<dyn Fn()> = {
         let clone_url = clone_url;
         let clone_destination = clone_destination;
+        let clone_options = clone_options;
+        let store_dir = store_dir.clone();
         let clone_error = clone_error;
         let cloning = cloning;
         let open_path = open_path.clone();
         Arc::new(move || {
             let url = clone_url.get_untracked();
             let destination = clone_destination.get_untracked();
+            let chosen = clone_options.get_untracked();
+            let options = git::CloneOptions {
+                branch: Some(chosen.branch.clone()).filter(|b| !b.trim().is_empty()),
+                depth: chosen.depth,
+                recurse_submodules: chosen.recurse_submodules,
+            };
             if url.trim().is_empty() {
                 clone_error.set(Some("缺少仓库地址".to_string()));
                 return;
@@ -559,16 +571,31 @@ pub fn App() -> impl IntoElement {
                 clone_error.set(Some("缺少目标位置".to_string()));
                 return;
             }
+            // 「克隆后打开」关闭时只记入最近仓库，不切走当前工作区。
+            let open_after = chosen.open_after_clone;
             cloning.set(true);
             clone_error.set(None);
             let open_path = open_path.clone();
+            let recent = recent;
+            let store_dir = store_dir.clone();
             let clone_error = clone_error;
             let cloning = cloning;
             spawn(async move {
-                let result = git::clone(url.trim(), destination.trim());
+                let result =
+                    git::clone_with(url.trim(), destination.trim(), &options);
                 cloning.set(false);
                 match result {
-                    Ok(()) => open_path(destination.trim().to_string()),
+                    Ok(()) => {
+                        if open_after {
+                            open_path(destination.trim().to_string());
+                        } else {
+                            let path = destination.trim().to_string();
+                            let list = recent.get_untracked();
+                            // 复用既有的「记住最近仓库」入口，顺序与去重规则一致。
+                            store::remember_recent(&store_dir, &list, path.as_str());
+                            recent.set(store::load_recent(&store_dir));
+                        }
+                    }
                     Err(error) => clone_error.set(Some(error.detail())),
                 }
             });
@@ -578,6 +605,7 @@ pub fn App() -> impl IntoElement {
     let init_repository: Arc<dyn Fn()> = {
         let init_path = init_path;
         let clone_error = clone_error;
+        let init_files = init_files;
         let open_path = open_path.clone();
         Arc::new(move || {
             let path = init_path.get_untracked();
@@ -585,7 +613,12 @@ pub fn App() -> impl IntoElement {
                 clone_error.set(Some("缺少目录".to_string()));
                 return;
             }
-            match git::init_repository(path.trim()) {
+            let files = init_files.get_untracked();
+            let options = git::InitOptions {
+                gitignore: files.gitignore,
+                readme: files.readme,
+            };
+            match git::init_with(path.trim(), &options) {
                 Ok(()) => open_path(path.trim().to_string()),
                 Err(error) => clone_error.set(Some(error.detail())),
             }
@@ -2445,6 +2478,8 @@ pub fn App() -> impl IntoElement {
         welcome_query,
         clone_url,
         clone_destination,
+        clone_options,
+        init_files,
         init_path,
         clone_error,
         cloning,
@@ -2567,6 +2602,8 @@ fn open_welcome_window(
     query: Signal<String>,
     clone_url: Signal<String>,
     clone_destination: Signal<String>,
+    clone_options: Signal<screens::CloneOptions>,
+    init_files: Signal<screens::InitFiles>,
     init_path: Signal<String>,
     clone_error: Signal<Option<String>>,
     cloning: Signal<bool>,
@@ -2595,6 +2632,8 @@ fn open_welcome_window(
                 query,
                 clone_url,
                 clone_destination,
+                clone_options,
+                init_files,
                 init_path,
                 clone_error,
                 cloning,

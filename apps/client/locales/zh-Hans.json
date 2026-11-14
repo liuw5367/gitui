@@ -22,7 +22,17 @@
     "noRecent": "还没有最近打开的仓库",
     "openFolder": "打开…",
     "cloneWorking": "正在克隆…",
-    "noRecentHint": "按 ⌘O 打开仓库，或在下方克隆。"
+    "noRecentHint": "按 ⌘O 打开仓库，或在下方克隆。",
+    "branch": "分支",
+    "branchHint": "默认分支",
+    "depth": "深度",
+    "depthFull": "完整",
+    "depthOne": "浅 1",
+    "depthFifty": "浅 50",
+    "recurse": "递归子模块",
+    "openAfterClone": "克隆后打开",
+    "gitignore": "生成 .gitignore",
+    "readme": "生成 README.md"
   },
   "shell": {
     "history": "历史",
