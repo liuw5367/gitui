@@ -62,6 +62,12 @@ pub(crate) enum RefsTab {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InspectorTab {
+    Commit,
+    Agent,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InspectTab {
     Compare,
     FileHistory,
@@ -194,6 +200,7 @@ pub fn App() -> impl IntoElement {
     let settings_open = signal(false);
     let settings_tab = signal(SettingsTab::General);
     let agent_permissions = signal(AgentPermissions::default());
+    let inspector_tab = signal(InspectorTab::Commit);
     let refs_open = signal(false);
     let refs_tab = signal(RefsTab::Branches);
     let open_refs: Arc<dyn Fn()> = Arc::new(move || {
@@ -1304,6 +1311,8 @@ pub fn App() -> impl IntoElement {
     );
     let inspector = inspector(
         mode,
+        inspector_tab,
+        agent_permissions,
         branch,
         staged,
         unstaged,
