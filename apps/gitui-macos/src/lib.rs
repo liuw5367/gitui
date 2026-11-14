@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::Repo;
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, HunkActions, StashActions, StatusActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
 use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -65,6 +65,8 @@ pub fn App() -> impl IntoElement {
     let remotes = signal(active_tab.remotes.clone());
     let remote_name = signal(String::new());
     let remote_url = signal(String::new());
+    let identity_name = signal(active_tab.identity.name.clone());
+    let identity_email = signal(active_tab.identity.email.clone());
     let selected_file = signal(String::new());
     let hunk_indices = signal(Vec::<usize>::new());
     let staged_hunk_indices = signal(Vec::<usize>::new());
@@ -123,6 +125,8 @@ pub fn App() -> impl IntoElement {
         tags.set(loaded.tags);
         stashes.set(loaded.stashes);
         remotes.set(loaded.remotes);
+        identity_name.set(loaded.identity.name);
+        identity_email.set(loaded.identity.email);
         conflict_path.set(loaded.conflict_path);
         conflict_stages.set(loaded.conflict_stages.clone());
         conflict_result.set(
@@ -177,6 +181,8 @@ pub fn App() -> impl IntoElement {
         tags.set(tab.tags);
         stashes.set(tab.stashes);
         remotes.set(tab.remotes);
+        identity_name.set(tab.identity.name);
+        identity_email.set(tab.identity.email);
         conflict_path.set(tab.conflict_path);
         conflict_stages.set(tab.conflict_stages.clone());
         conflict_result.set(
@@ -796,6 +802,29 @@ pub fn App() -> impl IntoElement {
             unstage: unstage_hunk_action,
         },
     );
+    let save_identity_action = Arc::new({
+        let reload_identity = reload_for_branch.clone();
+        move || {
+            let name = identity_name.get_untracked().trim().to_string();
+            let email = identity_email.get_untracked().trim().to_string();
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.set_identity(&name, &email))
+            {
+                Ok(()) => {
+                    error.set(SharedString::from(""));
+                    reload_identity();
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
+    let identity_bar = crate::sections::identity_bar(
+        identity_name,
+        identity_email,
+        IdentityActions {
+            save: save_identity_action,
+        },
+    );
     let select_conflict_action = Arc::new(move |selected: String| {
         match Repo::open(repo_path.get_untracked().to_string().as_str())
             .and_then(|repo| repo.conflict_stages(&selected))
@@ -906,6 +935,7 @@ pub fn App() -> impl IntoElement {
         .child(commit_bar)
         .child(stashes_bar)
         .child(hunks_bar)
+        .child(identity_bar)
         .child(conflict_panel)
         .child(main)
         .child(commit_log_panel)

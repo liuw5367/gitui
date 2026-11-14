@@ -1,6 +1,6 @@
 //! Model and persistence for the NSH app.
 
-use gitui_git::{Branch, Commit, ConflictStages, Operation, Remote, Repo, Stash, StatusEntry, Tag};
+use gitui_git::{Branch, Commit, ConflictStages, Identity, Operation, Remote, Repo, Stash, StatusEntry, Tag};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 
@@ -14,6 +14,7 @@ pub(crate) struct Loaded {
     pub(crate) tags: Vec<Tag>,
     pub(crate) stashes: Vec<Stash>,
     pub(crate) remotes: Vec<Remote>,
+    pub(crate) identity: Identity,
     pub(crate) conflict_path: String,
     pub(crate) conflict_stages: Option<ConflictStages>,
     pub(crate) ahead: usize,
@@ -55,6 +56,7 @@ pub(crate) fn load(path: &str) -> Loaded {
                 tags: repo.tags().unwrap_or_default(),
                 stashes: repo.stashes().unwrap_or_default(),
                 remotes: repo.remotes().unwrap_or_default(),
+                identity: repo.identity(),
                 conflict_path: repo
                     .conflicts()
                     .unwrap_or_default()
@@ -87,6 +89,7 @@ pub(crate) fn load(path: &str) -> Loaded {
             tags: Vec::new(),
             stashes: Vec::new(),
             remotes: Vec::new(),
+            identity: Identity::default(),
             conflict_path: String::new(),
             conflict_stages: None,
             ahead: 0,
