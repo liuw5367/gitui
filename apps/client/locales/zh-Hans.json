@@ -319,7 +319,8 @@
     "applyContinue": "应用并继续 %{operation}",
     "abort": "放弃 %{operation}",
     "resolve": "解决…",
-    "marked": "文件已标记为解决"
+    "marked": "文件已标记为解决",
+    "files": "冲突文件"
   },
   "palette": {
     "placeholder": "输入命令",

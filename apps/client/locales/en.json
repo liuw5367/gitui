@@ -319,7 +319,8 @@
     "applyContinue": "Apply & Continue %{operation}",
     "abort": "Abort %{operation}",
     "resolve": "Resolve…",
-    "marked": "File marked resolved"
+    "marked": "File marked resolved",
+    "files": "Conflicted files"
   },
   "palette": {
     "placeholder": "Type a command",

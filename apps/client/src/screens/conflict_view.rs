@@ -199,9 +199,9 @@ pub(crate) fn conflict_view(
                         .h(px(metrics::MERGE_HEAD_H))
                         .flex_shrink_0()
                         .px(px(14.0))
-                        .flex_col()
-                        .justify_center()
-                        .gap(px(4.0))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(9.0))
                         .bg(move || design::panel())
                         .border_b_1()
                         .border_color(move || design::line())
@@ -267,27 +267,64 @@ pub(crate) fn conflict_view(
                                         move || close()
                                     },
                                 )),
-                        )
-                        .child(
-                            view()
-                                .w_full()
-                                .flex_row()
-                                .items_center()
-                                .flex_wrap()
-                                .gap(px(4.0))
-                                .child(chips),
                         ),
                 )
-                // 中部：ours / 结果 / theirs。
+                // `.merge-body`：左侧 224 文件列表 + 三栏。
                 .child(
                     view()
                         .w_full()
                         .flex_1()
                         .min_h_0()
                         .flex_row()
-                        .gap(px(8.0))
-                        .p(px(12.0))
-                        .child(pane(language, "conflicts.ours", side_text(conflict_text.as_str(), Side::Ours)))
+                        .child(
+                            view()
+                                .w(px(metrics::MERGE_LIST_W))
+                                .h_full()
+                                .flex_shrink_0()
+                                .flex_col()
+                                .bg(move || design::panel())
+                                .border_r_1()
+                                .border_color(move || design::line())
+                                .child(
+                                    view()
+                                        .w_full()
+                                        .h(px(metrics::MERGE_LIST_HEAD_H))
+                                        .flex_shrink_0()
+                                        .px(px(10.0))
+                                        .flex_row()
+                                        .items_center()
+                                        .border_b_1()
+                                        .border_color(move || design::line_soft())
+                                        .child(
+                                            text(move || {
+                                                i18n::t(
+                                                    language_value.get().as_str(),
+                                                    "conflicts.files",
+                                                )
+                                            })
+                                            .text_size(px(9.5))
+                                            .font_weight(FontWeight(600))
+                                            .line_height(px(12.0))
+                                            .text_color(move || design::text2()),
+                                        ),
+                                )
+                                .child(
+                                    view().w_full().flex_1().min_h_0().p(px(6.0)).child(
+                                        scroll().w_full().h_full().child(
+                                            view().w_full().flex_col().gap(px(1.0)).child(chips),
+                                        ),
+                                    ),
+                                ),
+                        )
+                        .child(
+                            view()
+                                .flex_1()
+                                .min_w_0()
+                                .h_full()
+                                .flex_row()
+                                .gap(px(8.0))
+                                .p(px(12.0))
+                                .child(pane(language, "conflicts.ours", side_text(conflict_text.as_str(), Side::Ours)))
                         .child(
                             view()
                                 .flex_1()
@@ -340,6 +377,7 @@ pub(crate) fn conflict_view(
                             "conflicts.theirs",
                             side_text(conflict_text.as_str(), Side::Theirs),
                         )),
+                        ),
                 )
                 // base 条：只在 diff3 风格有内容，且需要用户展开。
                 .child(
@@ -351,7 +389,7 @@ pub(crate) fn conflict_view(
                             this.child(
                                 view()
                                     .w_full()
-                                    .max_h(px(110.0))
+                                    .h(px(metrics::MERGE_BASE_H))
                                     .flex_col()
                                     .rounded(px(metrics::RADIUS_CONTROL))
                                     .border_1()
