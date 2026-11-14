@@ -67,6 +67,7 @@ pub fn App() -> impl IntoElement {
     let remote_url = signal(String::new());
     let selected_file = signal(String::new());
     let hunk_indices = signal(Vec::<usize>::new());
+    let staged_hunk_indices = signal(Vec::<usize>::new());
     let file_patch = signal(SharedString::from(""));
     let tag_name = signal(String::new());
     let branch_name = signal(String::new());
@@ -705,6 +706,15 @@ pub fn App() -> impl IntoElement {
                 let count = patch.lines().filter(|line| line.starts_with("@@")).count();
                 hunk_indices.set((0..count).collect());
                 file_patch.set(SharedString::from(patch));
+                if let Ok(repo) =
+                    Repo::open(repo_path.get_untracked().to_string().as_str())
+                {
+                    if let Ok(staged) = repo.diff_staged(&path) {
+                        let staged_count =
+                            staged.lines().filter(|line| line.starts_with("@@")).count();
+                        staged_hunk_indices.set((0..staged_count).collect());
+                    }
+                }
                 error.set(SharedString::from(""));
             }
             Err(err) => {
@@ -733,6 +743,42 @@ pub fn App() -> impl IntoElement {
                             hunk_indices.set((0..count).collect());
                             file_patch.set(SharedString::from(patch));
                         }
+                        if let Ok(staged) = repo.diff_staged(&path) {
+                            let staged_count =
+                                staged.lines().filter(|line| line.starts_with("@@")).count();
+                            staged_hunk_indices.set((0..staged_count).collect());
+                        }
+                    }
+                    reload_hunk();
+                }
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
+    let unstage_hunk_action = Arc::new({
+        let reload_hunk = reload_for_entry.clone();
+        move |index: usize| {
+            let path = selected_file.get_untracked().to_string();
+            if path.is_empty() {
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.unstage_hunk(&path, index))
+            {
+                Ok(()) => {
+                    error.set(SharedString::from(""));
+                    if let Ok(repo) = Repo::open(repo_path.get_untracked().to_string().as_str()) {
+                        if let Ok(patch) = repo.diff_unstaged(&path) {
+                            let count =
+                                patch.lines().filter(|line| line.starts_with("@@")).count();
+                            hunk_indices.set((0..count).collect());
+                            file_patch.set(SharedString::from(patch));
+                        }
+                        if let Ok(staged) = repo.diff_staged(&path) {
+                            let staged_count =
+                                staged.lines().filter(|line| line.starts_with("@@")).count();
+                            staged_hunk_indices.set((0..staged_count).collect());
+                        }
                     }
                     reload_hunk();
                 }
@@ -743,9 +789,11 @@ pub fn App() -> impl IntoElement {
     let hunks_bar = crate::sections::hunks_bar(
         selected_file,
         hunk_indices,
+        staged_hunk_indices,
         file_patch,
         HunkActions {
             stage: stage_hunk_action,
+            unstage: unstage_hunk_action,
         },
     );
     let select_conflict_action = Arc::new(move |selected: String| {

@@ -9,11 +9,13 @@ use crate::widgets::mini_button;
 #[derive(Clone)]
 pub(crate) struct HunkActions {
     pub(crate) stage: Arc<dyn Fn(usize)>,
+    pub(crate) unstage: Arc<dyn Fn(usize)>,
 }
 
 pub(crate) fn hunks_bar(
     selected_file: Signal<String>,
     hunk_indices: Signal<Vec<usize>>,
+    staged_hunk_indices: Signal<Vec<usize>>,
     patch: Signal<SharedString>,
     actions: HunkActions,
 ) -> impl IntoElement {
@@ -63,6 +65,36 @@ pub(crate) fn hunks_bar(
                                     .text_color(move || theme().foreground),
                             )
                             .child(mini_button("Stage", true, move || stage(number)))
+                    },
+                )),
+        )
+        .child(
+            view()
+                .h(px(24.0))
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(
+                    text("Staged")
+                        .text_size(px(8.5))
+                        .text_color(move || theme().foreground),
+                )
+                .child(each(
+                    staged_hunk_indices,
+                    |index: &usize| index.to_string(),
+                    move |index, _| {
+                        let unstage = actions.unstage.clone();
+                        let number = index.get();
+                        view()
+                            .flex_row()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                text(move || format!("#{}", number + 1))
+                                    .text_size(px(8.5))
+                                    .text_color(move || theme().foreground),
+                            )
+                            .child(mini_button("Unstage", false, move || unstage(number)))
                     },
                 )),
         )
