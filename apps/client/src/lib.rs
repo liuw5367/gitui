@@ -35,8 +35,6 @@ const THEME_JSON: &str = include_str!("../theme.json");
 /// 当前显示哪一屏。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Screen {
-    Welcome,
-    RepoManager,
     Workspace,
     Settings,
 }
@@ -151,11 +149,9 @@ pub fn App() -> impl IntoElement {
     if !initial_settings.restore_session {
         initial_tabs.clear();
     }
-    let screen = signal(if initial_tabs.is_empty() {
-        Screen::Welcome
-    } else {
-        Screen::Workspace
-    });
+    let screen = signal(Screen::Workspace);
+    // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
+    let welcome_open = signal(initial_tabs.is_empty());
     let active = signal(session.active.min(initial_tabs.len().saturating_sub(1)));
     if initial_tabs.is_empty() {
         initial_tabs.clear();
@@ -189,6 +185,7 @@ pub fn App() -> impl IntoElement {
     };
 
     let open_path: Arc<dyn Fn(String)> = {
+        let welcome_open = welcome_open;
         let tabs = tabs;
         let active = active;
         let recent = recent;
@@ -215,6 +212,9 @@ pub fn App() -> impl IntoElement {
             store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
             recent.set(store::load_recent(&store_dir));
             screen.set(Screen::Workspace);
+            // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
+            welcome_open.set(false);
+            main_window().focus();
             persist(&store_dir, active, tabs);
         })
     };
@@ -235,6 +235,7 @@ pub fn App() -> impl IntoElement {
     };
 
     let close_tab: Arc<dyn Fn(usize)> = {
+        let welcome_open = welcome_open;
         let tabs = tabs;
         let active = active;
         let screen = screen;
@@ -253,7 +254,7 @@ pub fn App() -> impl IntoElement {
             tabs.set(list.clone());
             active.set(next_active);
             if list.is_empty() {
-                screen.set(Screen::Welcome);
+                welcome_open.set(true);
             }
             persist(&store_dir, active, tabs);
         })
@@ -432,13 +433,17 @@ pub fn App() -> impl IntoElement {
     };
 
     let go_welcome: Arc<dyn Fn()> = {
+        let welcome_open = welcome_open;
         let screen = screen;
-        Arc::new(move || screen.set(Screen::Welcome))
+        Arc::new(move || {
+            screen.set(Screen::Workspace);
+            welcome_open.set(true);
+        })
     };
 
     let go_repo_manager: Arc<dyn Fn()> = {
-        let screen = screen;
-        Arc::new(move || screen.set(Screen::RepoManager))
+        let go_welcome = go_welcome.clone();
+        Arc::new(move || go_welcome())
     };
 
     let go_settings: Arc<dyn Fn()> = {
@@ -867,15 +872,32 @@ pub fn App() -> impl IntoElement {
         .filter(|email| !email.is_empty())
         .unwrap_or_default();
     let identity_for_view = (identity_name, identity_email);
+
+    // 欢迎页放在独立窗口里：它是入口页，不与多标签主窗口混在一起。
+    // `open_window` 同一 id 只建一次；在组件主体里建一次即可。
+    open_welcome_window(
+        welcome_open,
+        language,
+        recent,
+        welcome_query,
+        clone_url,
+        clone_destination,
+        init_path,
+        clone_error,
+        cloning,
+        repo_form,
+        actions.clone(),
+    );
+
     let language_value = language;
     let screen_value = screen;
     let actions_for_view = actions.clone();
-    let recent_value = recent;
 
     return view()
         .w_full()
         .h_full()
         .flex_col()
+        .overflow_hidden()
         .bg(move || design::content())
         .text_color(move || design::text())
         .child(
@@ -885,30 +907,6 @@ pub fn App() -> impl IntoElement {
                 .flex_col()
                 .child(dynamic(move || -> AnyElement {
                     match screen_value.get() {
-                        Screen::Welcome => screens::welcome(
-                            language_value,
-                            recent_value,
-                            welcome_query,
-                            clone_url,
-                            clone_destination,
-                            clone_error,
-                            cloning,
-                            actions_for_view.clone(),
-                        )
-                        .into_element(),
-                        Screen::RepoManager => screens::repo_manager(
-                            language_value,
-                            recent_value,
-                            welcome_query,
-                            clone_url,
-                            clone_destination,
-                            init_path,
-                            clone_error,
-                            cloning,
-                            repo_form,
-                            actions_for_view.clone(),
-                        )
-                        .into_element(),
                         Screen::Settings => screens::settings(
                             language_value,
                             theme_mode,
@@ -955,6 +953,55 @@ pub fn App() -> impl IntoElement {
             )
             .into_element();
         }));
+}
+
+/// 打开欢迎页窗口（独立窗口，主窗口不受影响）。
+///
+/// 同一 id 只建一次；`open` 绑定到信号，从欢迎页打开仓库后窗口自动关闭。
+#[allow(clippy::too_many_arguments)]
+fn open_welcome_window(
+    open: Signal<bool>,
+    language: Signal<SharedString>,
+    recent: Signal<Vec<store::RecentRepo>>,
+    query: Signal<String>,
+    clone_url: Signal<String>,
+    clone_destination: Signal<String>,
+    init_path: Signal<String>,
+    clone_error: Signal<Option<String>>,
+    cloning: Signal<bool>,
+    form: Signal<RepoForm>,
+    actions: Actions,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static OPENED: AtomicBool = AtomicBool::new(false);
+    if OPENED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let welcome = nsh_core::element::desktop::window()
+        .id("welcome")
+        .title(brand::PRODUCT_NAME)
+        .default_size(size(Points(980.0), Points(620.0)))
+        .open(open)
+        .on_open_change(move |event| {
+            if !event.open {
+                open.set(false);
+            }
+        })
+        .content(move || {
+            return screens::welcome(
+                language,
+                recent,
+                query,
+                clone_url,
+                clone_destination,
+                init_path,
+                clone_error,
+                cloning,
+                form,
+                actions.clone(),
+            );
+        });
+    let _ = nsh_core::element::desktop::open_window(welcome);
 }
 
 /// 把打开的标签页写回会话，供下次启动恢复。

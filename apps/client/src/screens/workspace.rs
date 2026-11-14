@@ -57,6 +57,7 @@ pub(crate) fn workspace(
             mode,
             actions.set_mode.clone(),
             actions.sync.clone(),
+            inspector_open,
         ))
         .child(shell::op_banner(
             language,
@@ -251,7 +252,7 @@ fn body(
                                 compare_mode,
                                 history_actions.clone(),
                             ))
-                            .child(diff::diff(language, label.clone(), patch.clone(), inspector_open))
+                            .child(diff::diff(language, label.clone(), patch.clone()))
                             .into_element(),
                         crate::Mode::Changes => crate::screens::changes_view(
                             language,

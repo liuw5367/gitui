@@ -21,7 +21,8 @@
     "tipBody": "按 ⌘O 打开仓库，按 ⌘P 打开命令面板。",
     "noRecent": "还没有最近打开的仓库",
     "openFolder": "打开…",
-    "cloneWorking": "正在克隆…"
+    "cloneWorking": "正在克隆…",
+    "noRecentHint": "按 ⌘O 打开仓库，或在下方克隆。"
   },
   "shell": {
     "history": "历史",

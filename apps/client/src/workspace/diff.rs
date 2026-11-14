@@ -15,7 +15,6 @@ pub(crate) fn diff(
     language: Signal<SharedString>,
     label: String,
     patch_text: String,
-    inspector_open: Signal<bool>,
 ) -> impl IntoElement {
     let patch = Patch::parse(patch_text.as_str());
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
@@ -63,18 +62,7 @@ pub(crate) fn diff(
                 )
                 .child(view().flex_1())
                 .child(mode_toggle(language))
-                .child(widgets::icon_button(
-                    "sidebar",
-                    12.0,
-                    move || {
-                        if inspector_open.get() {
-                            design::accent()
-                        } else {
-                            design::text2()
-                        }
-                    },
-                    move || inspector_open.set(!inspector_open.get_untracked()),
-                )),
+                .child(widgets::icon("copy", 12.0, design::text3)),
         )
         .child(
             view().w_full().flex_1().min_h_0().child(

@@ -21,7 +21,8 @@
     "tipBody": "Press ⌘O to open a repository, ⌘P for the command palette.",
     "noRecent": "No recent repositories",
     "openFolder": "Open…",
-    "cloneWorking": "Cloning…"
+    "cloneWorking": "Cloning…",
+    "noRecentHint": "Open a repository with ⌘O, or clone one below."
   },
   "shell": {
     "history": "History",

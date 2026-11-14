@@ -78,6 +78,7 @@ pub(crate) fn titlebar(
                             .child(
                                 text(move || tab.get().label())
                                     .text_size(px(11.5))
+                                    .line_height(px(16.0))
                                     .text_color(move || {
                                         if is_active() {
                                             design::text()
@@ -99,6 +100,7 @@ pub(crate) fn titlebar(
                                     .child(
                                         text("×")
                                             .text_size(px(11.0))
+                                            .line_height(px(14.0))
                                             .text_color(move || design::text3()),
                                     ),
                             )
@@ -196,7 +198,8 @@ pub(crate) fn toolbar(
     change_count: impl Fn() -> u32 + 'static,
     mode: Signal<crate::Mode>,
     set_mode: std::sync::Arc<dyn Fn(crate::Mode)>,
-    sync: std::sync::Arc<dyn Fn(crate::model::Sync)>,
+    sync: std::sync::Arc<dyn Fn(crate::model::Sync) -> ()>,
+    panel_open: Signal<bool>,
 ) -> impl IntoElement {
     let do_fetch = sync.clone();
     let do_pull = sync.clone();
@@ -284,11 +287,29 @@ pub(crate) fn toolbar(
                 )),
         )
         .child(disabled_tool(language, "sparkle", "shell.agent"))
-        .child(widgets::icon("gear", 14.0, design::text2));
+        // 设计稿：Agent 右侧的 tb-icon 是右侧面板的显隐开关。
+        .child(widgets::icon_button(
+            "sidebar",
+            14.0,
+            move || {
+                if panel_open.get() {
+                    design::accent()
+                } else {
+                    design::text2()
+                }
+            },
+            move || panel_open.set(!panel_open.get_untracked()),
+        ));
 }
 
 /// 同步结果条：成功用面板底色，失败用危险色；没有结果时高度为 0。
 pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
+    let has_message = move || {
+        return tab
+            .get()
+            .and_then(|tab| tab.sync_message)
+            .is_some();
+    };
     return view()
         .w_full()
         .h(move || match tab.get().and_then(|tab| tab.sync_message) {
@@ -307,31 +328,43 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
         })
         .border_b_1()
         .border_color(move || design::line())
-        .child(
-            text(move || {
-                tab.get()
-                    .and_then(|tab| tab.sync_message)
-                    .unwrap_or_default()
-            })
-            .text_size(px(10.5))
-            .font_family("SF Mono")
-            .text_color(move || {
-                match tab.get() {
-                    Some(tab) if tab.sync_failed => design::danger(),
-                    _ => design::text2(),
-                }
-            }),
-        )
-        .child(view().flex_1())
-        .child(
-            text(move || {
-                tab.get()
-                    .map(|tab| tab.branch.clone())
-                    .unwrap_or_default()
-            })
-            .text_size(px(9.5))
-            .text_color(move || design::text3()),
-        );
+        .overflow_hidden()
+        .child(dynamic(move || -> AnyElement {
+            if !has_message() {
+                return view().w_full().h(px(0.0)).into_element();
+            }
+            return view()
+                .w_full()
+                .h(px(24.0))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    text(move || {
+                        tab.get()
+                            .and_then(|tab| tab.sync_message)
+                            .unwrap_or_default()
+                    })
+                    .text_size(px(10.5))
+                    .line_height(px(14.0))
+                    .font_family("SF Mono")
+                    .text_color(move || match tab.get() {
+                        Some(tab) if tab.sync_failed => design::danger(),
+                        _ => design::text2(),
+                    }),
+                )
+                .child(view().flex_1())
+                .child(
+                    text(move || {
+                        tab.get()
+                            .map(|tab| tab.branch.clone())
+                            .unwrap_or_default()
+                    })
+                    .text_size(px(9.5))
+                    .text_color(move || design::text3()),
+                )
+                .into_element();
+        }));
 }
 
 /// 操作条（设计板 14 / 16 的 `.op-banner`）：合并/变基/拣选/回滚进行中时的提示
@@ -342,6 +375,13 @@ pub(crate) fn op_banner(
     actions: Actions,
 ) -> impl IntoElement {
     let abort = actions.abort_operation.clone();
+    let has_operation = move || {
+        return !matches!(
+            tab.get().map(|tab| tab.operation),
+            Some(git::Operation::None) | None
+        );
+    };
+    let abort_for_view = abort.clone();
     return view()
         .w_full()
         .h(move || {
@@ -357,28 +397,46 @@ pub(crate) fn op_banner(
         .bg(move || design::token("tag-bg"))
         .border_b_1()
         .border_color(move || design::line())
-        .child(widgets::icon("info", 12.0, design::warn))
-        .child(
-            text(move || {
-                let operation = tab
-                    .get()
-                    .map(|tab| tab.operation.id().to_string())
-                    .unwrap_or_default();
-                let conflicts = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "operation.banner",
-                    &[("operation", operation), ("conflicts", conflicts.to_string())],
+        .overflow_hidden()
+        .child(dynamic(move || -> AnyElement {
+            if !has_operation() {
+                return view().w_full().h(px(0.0)).into_element();
+            }
+            let abort = abort_for_view.clone();
+            return view()
+                .w_full()
+                .h(px(28.0))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(widgets::icon("info", 12.0, design::warn))
+                .child(
+                    text(move || {
+                        let operation = tab
+                            .get()
+                            .map(|tab| tab.operation.id().to_string())
+                            .unwrap_or_default();
+                        let conflicts = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "operation.banner",
+                            &[
+                                ("operation", operation),
+                                ("conflicts", conflicts.to_string()),
+                            ],
+                        )
+                    })
+                    .text_size(px(11.0))
+                    .line_height(px(15.0))
+                    .text_color(move || design::text()),
                 )
-            })
-            .text_size(px(11.0))
-            .text_color(move || design::text()),
-        )
-        .child(view().flex_1())
-        .child(widgets::small_button(
-            move || i18n::t(language.get().as_str(), "operation.abort"),
-            move || abort(),
-        ));
+                .child(view().flex_1())
+                .child(widgets::small_button(
+                    move || i18n::t(language.get().as_str(), "operation.abort"),
+                    move || abort(),
+                ))
+                .into_element();
+        }));
 }
 
 /// 状态栏：分支、操作状态、变更数量与编码信息。
@@ -402,6 +460,7 @@ pub(crate) fn statusbar(language: Signal<SharedString>, tab: Memo<Option<Tab>>) 
                     .unwrap_or_default();
             })
             .text_size(px(10.5))
+            .line_height(px(14.0))
             .text_color(move || design::text3()),
         )
         .child(view().flex_1())
@@ -418,16 +477,19 @@ pub(crate) fn statusbar(language: Signal<SharedString>, tab: Memo<Option<Tab>>) 
                 );
             })
             .text_size(px(10.5))
+            .line_height(px(14.0))
             .text_color(move || design::text3()),
         )
         .child(
             text("UTF-8")
                 .text_size(px(10.5))
+                .line_height(px(14.0))
                 .text_color(move || design::text3()),
         )
         .child(
             text("LF")
                 .text_size(px(10.5))
+                .line_height(px(14.0))
                 .text_color(move || design::text3()),
         );
 }
@@ -502,6 +564,7 @@ fn tool_button(
         .child(
             text(move || i18n::t(language.get().as_str(), key))
                 .text_size(px(12.0))
+                .line_height(px(16.0))
                 .text_color(move || design::text()),
         );
 }
@@ -524,6 +587,7 @@ fn disabled_tool(
         .child(
             text(move || i18n::t(language.get().as_str(), key))
                 .text_size(px(12.0))
+                .line_height(px(16.0))
                 .text_color(move || design::text()),
         );
 }
