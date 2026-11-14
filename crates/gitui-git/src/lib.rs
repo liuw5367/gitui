@@ -62,6 +62,13 @@ impl Operation {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct ConflictStages {
+    pub base: String,
+    pub ours: String,
+    pub theirs: String,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Status {
     pub branch: String,
     pub ahead: usize,
@@ -185,6 +192,42 @@ impl Repo {
         }
 
         Ok(status)
+    }
+
+    /// Paths with unmerged entries.
+    pub fn conflicts(&self) -> Result<Vec<String>, GitError> {
+        let output = self.git(&["diff", "--name-only", "--diff-filter=U", "--"])?;
+        Ok(output
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect())
+    }
+
+    /// Base / ours / theirs contents for a conflicted path.
+    pub fn conflict_stages(&self, path: &str) -> Result<ConflictStages, GitError> {
+        let read = |stage: u8| -> String {
+            self.git(&["show", &format!(":{stage}:{path}")])
+                .unwrap_or_default()
+        };
+        Ok(ConflictStages {
+            base: read(1),
+            ours: read(2),
+            theirs: read(3),
+        })
+    }
+
+    /// Write a resolved result and stage it with `git add`.
+    pub fn resolve(&self, path: &str, result: &str) -> Result<(), GitError> {
+        let target = self.root.join(path);
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&target, result)
+            .map_err(|error| GitError(format!("could not write {path}: {error}")))?;
+        self.git(&["add", "--", path])?;
+        Ok(())
     }
 
     /// The operation in progress, if any, from the Git state files.
@@ -641,6 +684,16 @@ mod tests {
         assert!(!status.success());
         let repo = Repo::open(fixture.path()).unwrap();
         assert_eq!(repo.operation(), Some(Operation::Merge));
+
+        let conflicts = repo.conflicts().unwrap();
+        assert_eq!(conflicts, vec!["a.txt"]);
+        let stages = repo.conflict_stages("a.txt").unwrap();
+        assert!(stages.base.contains("two"));
+        assert!(stages.ours.contains("MAIN"));
+        assert!(stages.theirs.contains("FEATURE"));
+
+        repo.resolve("a.txt", "one\nMERGED\n").unwrap();
+        assert!(repo.conflicts().unwrap().is_empty());
     }
 
     #[test]
