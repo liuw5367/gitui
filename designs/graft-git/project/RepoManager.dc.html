@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gitui — Repository manager</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/dbb426056b594f574465a3a1a7f16ea9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+
+<div class="desktop">
+  <div class="window">
+    <div class="titlebar">
+      <div class="lights" aria-hidden="true"><span class="light red"></span><span class="light yellow"></span><span class="light green"></span></div>
+      <div style="font-size:12px;font-weight:600;color:var(--text2);letter-spacing:.01em">Repository Manager</div>
+      <div class="title-right">
+        <span class="status-dot"></span><span>6 repositories</span>
+        <a class="tb-icon" href="Settings.dc.html" aria-label="Settings">Settings</a>
+      </div>
+    </div>
+
+    <div class="body">
+      <aside class="repo-side">
+        <div class="head">
+          <h1>Repositories</h1>
+          <div class="sub">6 recent · 3 open</div>
+          <div class="field wsearch" style="margin-top:10px;height:26px;background:var(--field)">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.3 10.3 13.7 13.7"/></svg>
+            <input placeholder="Filter repositories" aria-label="Filter repositories" style="flex:1;border:0;background:none;outline:0;color:var(--text);font-size:10.5px">
+          </div>
+        </div>
+        <div class="list">
+          <div class="grp">Recent</div>
+          <button class="repo-row on" type="button">
+            <span class="rp"><b>gitui</b><span>~/Developer/gitui</span></span><span class="rb">main</span><span class="ra">Open</span>
+          </button>
+          <button class="repo-row" type="button">
+            <span class="rp"><b>docs-site</b><span>~/Work/docs-site</span></span><span class="rb">main</span><span class="ra">Open</span>
+          </button>
+          <button class="repo-row" type="button">
+            <span class="rp"><b>atlas-web</b><span>~/Work/atlas-web</span></span><span class="rb">feature/hero</span><span class="ra">Open</span>
+          </button>
+          <div class="grp">Other</div>
+          <button class="repo-row" type="button">
+            <span class="rp"><b>dotfiles</b><span>~/.dotfiles</span></span><span class="rb">main</span><span class="ra">Open</span>
+          </button>
+          <button class="repo-row" type="button">
+            <span class="rp"><b>spectra</b><span>~/Labs/spectra</span></span><span class="rb">main</span><span class="ra">Open</span>
+          </button>
+          <button class="repo-row" type="button">
+            <span class="rp"><b>billing-api</b><span>~/Work/billing-api</span></span><span class="rb">release</span><span class="ra">Open</span>
+          </button>
+        </div>
+        <div class="foot">
+          <button class="btn" type="button">Open…</button>
+          <button class="btn" type="button">Clone…</button>
+          <button class="btn" type="button">Init…</button>
+        </div>
+      </aside>
+
+      <div class="main" style="padding:0;display:flex;flex-direction:column">
+        <div style="height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--content)">
+          <div class="seg" role="tablist" aria-label="Add repository">
+            <button type="button" role="tab" aria-selected="false">Open</button>
+            <button class="on" type="button" role="tab" aria-selected="true">Clone</button>
+            <button type="button" role="tab" aria-selected="false">Init</button>
+          </div>
+          <span class="spacer" style="flex:1"></span>
+          <span class="hint">git clone</span>
+        </div>
+
+        <div style="padding:20px 22px;overflow:auto;flex:1">
+          <h2 style="margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em;color:var(--text)">Clone a Repository</h2>
+          <div class="hint" style="margin-top:3px">Bring a remote repository into a local folder.</div>
+
+          <div class="frow" style="margin-top:16px">
+            <label class="label" for="clone-url">Repository URL</label>
+            <div class="field" style="height:29px"><input id="clone-url" type="text" value="https://github.com/gitui/gitui.git" spellcheck="false" style="flex:1;border:0;background:none;outline:0;color:var(--text);font-family:var(--mono);font-size:10.5px"></div>
+          </div>
+
+          <div class="frow">
+            <label class="label" for="clone-dir">Directory</label>
+            <div class="field" style="height:29px"><input id="clone-dir" type="text" value="~/Developer/gitui" spellcheck="false" style="flex:1;border:0;background:none;outline:0;color:var(--text);font-family:var(--mono);font-size:10.5px"></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="frow">
+              <label class="label" for="clone-branch">Branch</label>
+              <div class="field" style="height:29px"><input id="clone-branch" type="text" value="main" spellcheck="false" style="flex:1;border:0;background:none;outline:0;color:var(--text);font-size:10.5px"><svg width="10" height="10" viewBox="0 0 16 16" style="color:var(--text3)" aria-hidden="true"><path d="M4 6.2 8 10l4-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            </div>
+            <div class="frow">
+              <label class="label" for="clone-depth">Depth</label>
+              <select id="clone-depth" style="width:100%;height:29px;padding:0 8px;border:1px solid var(--field-border);border-radius:6px;background:var(--field);font-size:10.5px;color:var(--text)">
+                <option selected>Full history</option><option>Shallow · 1</option><option>Shallow · 50</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">
+            <label class="checkrow"><input type="checkbox" checked> Recurse submodules</label>
+            <label class="checkrow"><input type="checkbox" checked> Open after clone</label>
+            <label class="checkrow"><input type="checkbox"> Use shallow clone for large repos</label>
+          </div>
+
+          <div style="margin-top:12px;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);display:flex;align-items:center;gap:7px;font-size:9.5px;color:var(--text2)">
+            <span class="status-dot"></span> GitHub · mia@github.com
+            <span class="spacer" style="flex:1"></span>
+            <a class="btn small" href="SettingsCredentials.dc.html">Credentials</a>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:7px;margin-top:16px">
+            <button class="btn primary" type="button" style="height:29px">Clone Repository</button>
+            <button class="btn" type="button" style="height:29px">Cancel</button>
+            <span class="hint" style="margin-left:auto">~12 MB · public</span>
+          </div>
+
+          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--line)">
+            <div class="settings-sec-title" style="font-size:11px">Or create a new repository</div>
+            <div class="hint" style="margin-top:2px">Init a folder with an initial branch and optional .gitignore.</div>
+            <div style="display:grid;grid-template-columns:1fr 150px;gap:8px;margin-top:9px">
+              <div class="field" style="height:29px"><input type="text" value="~/Developer/new-repo" aria-label="New repository directory" style="flex:1;border:0;background:none;outline:0;color:var(--text);font-family:var(--mono);font-size:10.5px"></div>
+              <select aria-label="Initial branch" style="height:29px;padding:0 8px;border:1px solid var(--field-border);border-radius:6px;background:var(--field);font-size:10.5px;color:var(--text)"><option selected>main</option><option>master</option></select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <select aria-label="Gitignore template" style="height:26px;padding:0 8px;border:1px solid var(--field-border);border-radius:6px;background:var(--field);font-size:10px;color:var(--text)"><option selected>.gitignore · macOS</option><option>.gitignore · Node</option><option>No template</option></select>
+              <button class="btn primary" type="button" style="height:26px;font-size:10px">Create Repository</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span class="sitem"><span class="status-dot"></span> Ready</span>
+      <span class="spacer"></span>
+      <span class="sitem">3 open · 6 recent</span>
+      <span class="sitem">~/Developer</span>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

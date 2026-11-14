@@ -1,0 +1,355 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Agent.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "12 · Agent panel",
+      "w": 1440,
+      "x": 0,
+      "y": 5040
+    },
+    "AgentPermissions.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "13 · Agent permissions",
+      "w": 1440,
+      "x": 1520,
+      "y": 5040
+    },
+    "BlameHistory.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "title": "19 · Blame & file history",
+      "w": 1440,
+      "x": 1520,
+      "y": 8960
+    },
+    "Changelists.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "11 · Changelists",
+      "w": 1440,
+      "x": 1520,
+      "y": 3920
+    },
+    "Changes.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "10 · Staging & commit",
+      "w": 1440,
+      "x": 0,
+      "y": 3920
+    },
+    "CommandPalette.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "20 · Command palette",
+      "w": 1440,
+      "x": 0,
+      "y": 10360
+    },
+    "CommitFiles.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "18 · Files at commit",
+      "w": 1440,
+      "x": 0,
+      "y": 8960
+    },
+    "CommitInfo.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "08 · Commit info",
+      "w": 1440,
+      "x": 1520,
+      "y": 2520
+    },
+    "CompareRefs.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "07 · Compare refs",
+      "w": 1440,
+      "x": 0,
+      "y": 2520
+    },
+    "ContextMenu.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "21 · Dark & context menu",
+      "w": 1440,
+      "x": 1520,
+      "y": 10360
+    },
+    "DiffFocus.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "06 · Multi-commit diff",
+      "w": 1440,
+      "x": 3040,
+      "y": 1400
+    },
+    "HistoryFilter.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "05 · History filters",
+      "w": 1440,
+      "x": 1520,
+      "y": 1400
+    },
+    "Menus.dc.html": {
+      "expand": "fill",
+      "h": 1400,
+      "title": "22 · Menus & dialogs",
+      "w": 1440,
+      "x": 3040,
+      "y": 10360
+    },
+    "MergeConflict.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "14 · Merge conflict",
+      "w": 1440,
+      "x": 0,
+      "y": 6440
+    },
+    "Reflog.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "17 · Reflog & undo",
+      "w": 1440,
+      "x": 1520,
+      "y": 7560
+    },
+    "RefsManager.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "09 · Refs manager",
+      "w": 1440,
+      "x": 3040,
+      "y": 2520
+    },
+    "RepoManager.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "03 · Repository manager",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "RepositoryStates.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "is_interactive": true,
+      "title": "16 · Repository states",
+      "w": 1440,
+      "x": 0,
+      "y": 7560
+    },
+    "Settings.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "23 · Settings",
+      "w": 1440,
+      "x": 0,
+      "y": 12260
+    },
+    "SettingsAbout.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "26 · Settings · About",
+      "w": 1440,
+      "x": 0,
+      "y": 13380
+    },
+    "SettingsCredentials.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "27 · Settings · Credentials & tools",
+      "w": 1440,
+      "x": 1520,
+      "y": 13380
+    },
+    "SettingsGit.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "24 · Settings · Git",
+      "w": 1440,
+      "x": 1520,
+      "y": 12260
+    },
+    "SettingsShortcuts.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "25 · Settings · Shortcuts",
+      "w": 1440,
+      "x": 3040,
+      "y": 12260
+    },
+    "Sync.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "15 · Sync & auth",
+      "w": 1440,
+      "x": 1520,
+      "y": 6440
+    },
+    "Welcome.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "01 · Welcome",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "WelcomeEmpty.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "02 · Welcome (empty)",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Workspace.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "04 · History & diff",
+      "w": 1440,
+      "x": 0,
+      "y": 1400
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-14T02:12:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "noteOrder": [
+    "canvas-title",
+    "app-name"
+  ],
+  "notes": {
+    "app-name": {
+      "x": 0,
+      "y": -860,
+      "text": "APP_NAME 常量 · dev override GITUI_APP_NAME · 打包 app 不依赖 shell env",
+      "kind": "title1",
+      "maxW": 1840
+    },
+    "canvas-title": {
+      "x": 0,
+      "y": -520,
+      "text": "gitui — a native Git client for macOS",
+      "kind": "title1",
+      "maxW": 1840
+    },
+    "group-start": {
+      "x": 0,
+      "y": -260,
+      "text": "01–03 · Start — open, clone, or create a repository",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "group-review": {
+      "x": 0,
+      "y": 1140,
+      "text": "04–09 · Review — history, filters, compare, refs, commit info",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "group-worktree": {
+      "x": 0,
+      "y": 3660,
+      "text": "10–13 · Worktree — staging, changelists, agent",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "group-operations": {
+      "x": 0,
+      "y": 6180,
+      "text": "14–17 · Operations — conflict, sync, states, recovery",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "group-files": {
+      "x": 0,
+      "y": 8700,
+      "text": "18–19 · Files — at commit, blame & history",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "group-nav": {
+      "x": 0,
+      "y": 10100,
+      "text": "20–22 · Navigation — palette, context menu, component sheet",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "group-settings": {
+      "x": 0,
+      "y": 12000,
+      "text": "23–27 · Settings — preferences, credentials, shortcuts",
+      "kind": "title1",
+      "maxW": 4480
+    }
+  },
+  "order": [
+    "Welcome.dc.html",
+    "WelcomeEmpty.dc.html",
+    "RepoManager.dc.html",
+    "Workspace.dc.html",
+    "HistoryFilter.dc.html",
+    "DiffFocus.dc.html",
+    "CompareRefs.dc.html",
+    "CommitInfo.dc.html",
+    "RefsManager.dc.html",
+    "Changes.dc.html",
+    "Changelists.dc.html",
+    "Agent.dc.html",
+    "AgentPermissions.dc.html",
+    "MergeConflict.dc.html",
+    "Sync.dc.html",
+    "RepositoryStates.dc.html",
+    "Reflog.dc.html",
+    "CommitFiles.dc.html",
+    "BlameHistory.dc.html",
+    "CommandPalette.dc.html",
+    "ContextMenu.dc.html",
+    "Menus.dc.html",
+    "Settings.dc.html",
+    "SettingsGit.dc.html",
+    "SettingsShortcuts.dc.html",
+    "SettingsAbout.dc.html",
+    "SettingsCredentials.dc.html"
+  ],
+  "pages": [],
+  "title": "gitui — macOS Git 客户端"
+}
