@@ -73,6 +73,7 @@ pub(crate) struct Actions {
     pub(crate) commit: Arc<dyn Fn()>,
     pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
     pub(crate) abort_operation: Arc<dyn Fn()>,
+    pub(crate) sync: Arc<dyn Fn(model::Sync)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -559,6 +560,19 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let sync: Arc<dyn Fn(model::Sync)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |kind: model::Sync| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                model::sync(tab, kind);
+                tabs.set(list);
+            }
+        })
+    };
+
     let abort_operation: Arc<dyn Fn()> = {
         let tabs = tabs;
         let active = active;
@@ -590,6 +604,7 @@ pub fn App() -> impl IntoElement {
         commit,
         resolve_conflict,
         abort_operation,
+        sync,
         apply_filter,
         clear_filter,
         clone_repository,

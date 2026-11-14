@@ -50,6 +50,10 @@ pub struct Tab {
     pub operation: git::Operation,
     /// 冲突文件路径。
     pub conflicts: Vec<String>,
+    /// 最近一次同步（fetch/pull/push）的结果；`None` 表示还没同步过。
+    pub sync_message: Option<String>,
+    /// 最近一次同步是否失败。
+    pub sync_failed: bool,
     /// 提交说明的两段文本。
     pub summary: String,
     pub description: String,
@@ -341,6 +345,71 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
     };
 }
 
+/// 同步操作。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sync {
+    Fetch,
+    Pull,
+    Push,
+}
+
+impl Sync {
+    /// 界面上显示的动作名（同时用于文案键 `sync.<id>`）。
+    pub fn id(self) -> &'static str {
+        return match self {
+            Sync::Fetch => "fetch",
+            Sync::Pull => "pull",
+            Sync::Push => "push",
+        };
+    }
+}
+
+/// 执行一次同步，并把结果留在标签页上（供操作条显示）。
+pub fn sync(tab: &mut Tab, kind: Sync) {
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    let remote = repo
+        .refs()
+        .ok()
+        .and_then(|refs| refs.remotes.first().cloned())
+        .unwrap_or_else(|| "origin".to_string());
+    let result = match kind {
+        Sync::Fetch => repo.fetch(remote.as_str()),
+        Sync::Pull => repo.pull(),
+        Sync::Push => repo.push(Some(remote.as_str())),
+    };
+    match result {
+        Ok(message) => {
+            tab.sync_failed = false;
+            tab.sync_message = Some(if message.trim().is_empty() {
+                format!("{} 完成", kind.id())
+            } else {
+                message
+            });
+            refresh_changes(tab);
+            // 领先/落后与历史都要跟着刷新。
+            let filter = tab.filter.clone();
+            let refreshed = load_tab(tab.path.as_str(), &filter);
+            tab.branch = refreshed.branch;
+            tab.ahead = refreshed.ahead;
+            tab.behind = refreshed.behind;
+            tab.commits = refreshed.commits;
+            tab.refs = refreshed.refs;
+            tab.changelists = refreshed.changelists;
+        }
+        Err(error) => {
+            tab.sync_failed = true;
+            tab.sync_message = Some(error.detail());
+            refresh_changes(tab);
+        }
+    }
+}
+
 /// 用一侧内容解决冲突（`ours` 为真取当前分支）。
 pub fn resolve_conflict(tab: &mut Tab, path: &str, ours: bool) {
     let repo = match Repo::open(tab.path.as_str()) {
@@ -465,6 +534,9 @@ pub fn commit_staged(tab: &mut Tab) {
             tab.commits = refreshed.commits;
             tab.authors = refreshed.authors;
             tab.refs = refreshed.refs;
+            tab.branch = refreshed.branch;
+            tab.ahead = refreshed.ahead;
+            tab.behind = refreshed.behind;
         }
         Err(error) => {
             tab.hook_ok = false;
@@ -749,6 +821,63 @@ mod tests {
         abort_operation(&mut tab);
         assert_eq!(tab.operation, git::Operation::None);
         assert!(tab.changes.is_empty());
+    }
+
+    #[test]
+    fn sync_pushes_and_reports_clean_state() {
+        // 建 bare 远程并让工作仓库跟踪它。
+        let base = std::env::temp_dir().join(format!(
+            "nsh-app-sync-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&base).expect("dir");
+        let remote = base.join("remote.git");
+        let repo_dir = base.join("local");
+        let run = |directory: &std::path::Path, args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(directory)
+                .args(args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {:?}", args);
+        };
+        run(&base, &["init", "-q", "--bare", remote.to_str().expect("utf8")]);
+        run(&base, &["init", "-q", "-b", "main", repo_dir.to_str().expect("utf8")]);
+        run(&repo_dir, &["config", "user.name", "Test"]);
+        run(&repo_dir, &["config", "user.email", "test@example.com"]);
+        std::fs::write(repo_dir.join("a.txt"), "one\n").expect("write");
+        run(&repo_dir, &["add", "-A"]);
+        run(&repo_dir, &["commit", "-q", "-m", "base"]);
+        run(
+            &repo_dir,
+            &["remote", "add", "origin", remote.to_str().expect("utf8")],
+        );
+        run(&repo_dir, &["push", "-q", "-u", "origin", "main"]);
+
+        let mut tab = load_tab(&repo_dir.display().to_string(), &LogFilter::default());
+        assert_eq!((tab.ahead, tab.behind), (0, 0));
+
+        // 本地再提交一次，推送后领先数回到 0，并留下同步信息。
+        std::fs::write(repo_dir.join("a.txt"), "two\n").expect("write");
+        stage_all_or_none(&mut tab, true);
+        tab.summary = "second".to_string();
+        commit_staged(&mut tab);
+        assert_eq!(tab.ahead, 1, "提交后应领先远程一个提交");
+
+        sync(&mut tab, Sync::Push);
+        assert!(!tab.sync_failed, "推送应成功：{:?}", tab.sync_message);
+        assert!(tab.sync_message.is_some());
+        assert_eq!(tab.ahead, 0, "推送后不再领先");
+
+        sync(&mut tab, Sync::Fetch);
+        assert!(!tab.sync_failed);
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

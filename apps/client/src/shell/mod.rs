@@ -188,7 +188,11 @@ pub(crate) fn toolbar(
     change_count: impl Fn() -> u32 + 'static,
     mode: Signal<crate::Mode>,
     set_mode: std::sync::Arc<dyn Fn(crate::Mode)>,
+    sync: std::sync::Arc<dyn Fn(crate::model::Sync)>,
 ) -> impl IntoElement {
+    let do_fetch = sync.clone();
+    let do_pull = sync.clone();
+    let do_push = sync.clone();
     let set_history = set_mode.clone();
     let set_changes = set_mode.clone();
     return view()
@@ -208,9 +212,15 @@ pub(crate) fn toolbar(
             || {},
         ))
         .child(widgets::separator())
-        .child(disabled_tool(language, "refresh", "shell.fetch"))
-        .child(disabled_tool(language, "down", "shell.pull"))
-        .child(disabled_tool(language, "up", "shell.push"))
+        .child(tool_button(language, "refresh", "shell.fetch", move || {
+            do_fetch(crate::model::Sync::Fetch)
+        }))
+        .child(tool_button(language, "down", "shell.pull", move || {
+            do_pull(crate::model::Sync::Pull)
+        }))
+        .child(tool_button(language, "up", "shell.push", move || {
+            do_push(crate::model::Sync::Push)
+        }))
         .child(widgets::separator())
         .child(disabled_tool(language, "branch", "shell.branch"))
         .child(disabled_tool(language, "archive", "shell.stash"))
@@ -267,6 +277,53 @@ pub(crate) fn toolbar(
         )
         .child(disabled_tool(language, "sparkle", "shell.agent"))
         .child(widgets::icon("gear", 14.0, design::text2));
+}
+
+/// 同步结果条：成功用面板底色，失败用危险色；没有结果时高度为 0。
+pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h(move || match tab.get().and_then(|tab| tab.sync_message) {
+            Some(_) => px(24.0),
+            None => px(0.0),
+        })
+        .px(px(12.0))
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .bg(move || {
+            match tab.get() {
+                Some(tab) if tab.sync_failed => design::del_bg(),
+                _ => design::panel(),
+            }
+        })
+        .border_b_1()
+        .border_color(move || design::line())
+        .child(
+            text(move || {
+                tab.get()
+                    .and_then(|tab| tab.sync_message)
+                    .unwrap_or_default()
+            })
+            .text_size(px(10.5))
+            .font_family("SF Mono")
+            .text_color(move || {
+                match tab.get() {
+                    Some(tab) if tab.sync_failed => design::danger(),
+                    _ => design::text2(),
+                }
+            }),
+        )
+        .child(view().flex_1())
+        .child(
+            text(move || {
+                tab.get()
+                    .map(|tab| tab.branch.clone())
+                    .unwrap_or_default()
+            })
+            .text_size(px(9.5))
+            .text_color(move || design::text3()),
+        );
 }
 
 /// 操作条（设计板 14 / 16 的 `.op-banner`）：合并/变基/拣选/回滚进行中时的提示
@@ -415,6 +472,30 @@ fn mode_tab(
                 }
             }))
         });
+}
+
+/// 可用的工具栏按钮（图标 + 文案）。
+fn tool_button(
+    language: Signal<SharedString>,
+    icon: &'static str,
+    key: &'static str,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return view()
+        .h(px(metrics::TBTN_H))
+        .px(px(9.0))
+        .flex_row()
+        .items_center()
+        .gap(px(5.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .hover(|style| style.bg(move || design::hover()))
+        .on_press(on_press)
+        .child(widgets::icon(icon, 13.0, design::text2))
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(12.0))
+                .text_color(move || design::text()),
+        );
 }
 
 /// 尚未接入的动作：按钮按设计稿渲染，但处于禁用态（不响应按压）。

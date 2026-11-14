@@ -61,6 +61,23 @@ pub struct LogFilter {
     pub reference: Option<String>,
 }
 
+/// 把 Git 的输出压成一行可展示的摘要：去掉空行，保留最后一条有效信息。
+fn summarise(output: &str) -> String {
+    let mut lines: Vec<&str> = output
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    // fetch/push 的进度行很多，最后几行才是结果（`main -> main`、`up to date`）。
+    if lines.len() > 3 {
+        lines = lines.split_off(lines.len() - 3);
+    }
+    return lines.join("\n");
+}
+
 /// 一个已经校验过的仓库。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Repo {
@@ -371,6 +388,38 @@ impl Repo {
         };
         run_git(&self.root, args)?;
         return Ok(());
+    }
+
+    /// 从远程取回引用（`git fetch --prune <remote>`）。
+    pub fn fetch(&self, remote: &str) -> Result<String, GitError> {
+        let output = run_git_combined(&self.root, &["fetch", "--prune", remote])?;
+        return Ok(summarise(&output));
+    }
+
+    /// 拉取当前分支的上游（`git pull --ff-only`）。
+    ///
+    /// 只用快进：会产生合并或冲突的拉取交给后续阶段的操作流程，避免在同步里隐式
+    /// 生成合并提交。
+    pub fn pull(&self) -> Result<String, GitError> {
+        let output = run_git_combined(&self.root, &["pull", "--ff-only"])?;
+        return Ok(summarise(&output));
+    }
+
+    /// 推送当前分支到上游；没有上游时用 `-u <remote> <branch>` 建立。
+    pub fn push(&self, remote: Option<&str>) -> Result<String, GitError> {
+        let branch = self.abbrev_branch()?;
+        let has_upstream = run_git(
+            &self.root,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        )
+        .is_ok();
+        let args: Vec<&str> = match (has_upstream, remote) {
+            (true, _) => vec!["push"],
+            (false, Some(remote)) => vec!["push", "-u", remote, branch.as_str()],
+            (false, None) => vec!["push", "-u", "origin", branch.as_str()],
+        };
+        let output = run_git_combined(&self.root, &args)?;
+        return Ok(summarise(&output));
     }
 
     /// 把工作区的改动加入暂存区（`git add -- <paths>`）。
@@ -709,6 +758,36 @@ pub fn run_git(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
     let mut stdout = output.stdout;
     stdout.truncate(MAX_OUTPUT);
     return Ok(stdout);
+}
+
+/// 运行 Git 并把 stdout 与 stderr 合并返回。
+///
+/// 同步命令（fetch/pull/push）的进度与结果都写在 stderr，只读 stdout 会得到空串。
+fn run_git_combined(directory: &Path, args: &[&str]) -> Result<String, GitError> {
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(directory)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    let output = command.output().map_err(|error| GitError::Spawn {
+        program: "git".to_string(),
+        reason: error.to_string(),
+    })?;
+    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !stderr.trim().is_empty() {
+        text.push_str(stderr.as_str());
+    }
+    if !output.status.success() {
+        return Err(GitError::CommandFailed {
+            program: "git".to_string(),
+            args: args.join(" "),
+            code: output.status.code(),
+            detail: truncate(text.trim(), MAX_DETAIL),
+        });
+    }
+    return Ok(text);
 }
 
 fn truncate(text: &str, limit: usize) -> String {
@@ -1203,6 +1282,93 @@ mod tests {
         assert_eq!(repo.operation(), Operation::Rebase);
         std::fs::remove_dir_all(repo.root().join(".git/rebase-merge")).expect("rmdir");
         assert_eq!(repo.operation(), Operation::None);
+    }
+
+    /// 建一个 bare 远程，并把工作仓库推上去。
+    ///
+    /// 远程目录的守卫要一并返回：它在 drop 时删除整个裸仓库，留在函数里会让
+    /// 后续命令找不到远程。
+    fn with_remote(name: &str) -> (TempDir, String, TempDir, String) {
+        let (guard, path) = fixture(name, &[("a.txt", "one\n")], "base");
+        let remote_dir = TempDir::new(&format!("{}-remote", name));
+        let remote = remote_dir.path().display().to_string();
+        run_git(Path::new("."), &["init", "-q", "--bare", remote.as_str()]).expect("bare init");
+        let repo = Repo::open(&path).expect("open");
+        run_git(repo.root(), &["remote", "add", "origin", remote.as_str()]).expect("remote add");
+        run_git(repo.root(), &["push", "-q", "-u", "origin", "main"]).expect("push");
+        return (guard, path, remote_dir, remote);
+    }
+
+    #[test]
+    fn push_and_fetch_report_results() {
+        let (guard, path, _remote_guard, _remote) = with_remote("sync");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("second", "").expect("commit");
+
+        let pushed = repo.push(None).expect("push");
+        assert!(!pushed.is_empty(), "推送应有输出");
+        assert_eq!(repo.ahead_behind(), (0, 0));
+
+        // 再取一次远端：没有新提交时也应有可展示的输出或空串，不应报错。
+        repo.fetch("origin").expect("fetch");
+        assert_eq!(repo.summary().expect("summary").ahead, 0);
+        drop(guard);
+    }
+
+    #[test]
+    fn pull_fast_forwards_from_the_remote() {
+        let (_guard, path, _remote_guard, remote) = with_remote("pull");
+        // 用第二个克隆向远程推一个新提交。
+        let other_dir = TempDir::new("pull-other");
+        let other = other_dir.path().display().to_string();
+        run_git(Path::new("."), &["clone", "-q", remote.as_str(), other.as_str()]).expect("clone");
+        run_git(Path::new(other.as_str()), &["config", "user.name", "Other"]).expect("name");
+        run_git(Path::new(other.as_str()), &["config", "user.email", "o@example.com"]).expect("mail");
+        std::fs::write(Path::new(other.as_str()).join("b.txt"), "b\n").expect("write");
+        run_git(Path::new(other.as_str()), &["add", "-A"]).expect("add");
+        run_git(Path::new(other.as_str()), &["commit", "-q", "-m", "remote work"]).expect("commit");
+        run_git(Path::new(other.as_str()), &["push", "-q", "origin", "main"]).expect("push");
+
+        let repo = Repo::open(&path).expect("open");
+        repo.fetch("origin").expect("fetch");
+        assert_eq!(repo.ahead_behind(), (0, 1), "应落后一个提交");
+        repo.pull().expect("pull");
+        assert_eq!(repo.ahead_behind(), (0, 0));
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("b.txt")).expect("read"),
+            "b\n"
+        );
+    }
+
+    #[test]
+    fn push_failure_keeps_the_rejection_text() {
+        let (_guard, path, _remote_guard, remote) = with_remote("pushfail");
+        // 让远程前进，本地推送会被拒（non-fast-forward）。
+        let other_dir = TempDir::new("pushfail-other");
+        let other = other_dir.path().display().to_string();
+        run_git(Path::new("."), &["clone", "-q", remote.as_str(), other.as_str()]).expect("clone");
+        run_git(Path::new(other.as_str()), &["config", "user.name", "Other"]).expect("name");
+        run_git(Path::new(other.as_str()), &["config", "user.email", "o@example.com"]).expect("mail");
+        std::fs::write(Path::new(other.as_str()).join("c.txt"), "c\n").expect("write");
+        run_git(Path::new(other.as_str()), &["add", "-A"]).expect("add");
+        run_git(Path::new(other.as_str()), &["commit", "-q", "-m", "remote"]).expect("commit");
+        run_git(Path::new(other.as_str()), &["push", "-q", "origin", "main"]).expect("push");
+
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "local\n").expect("write");
+        repo.stage_all().expect("stage");
+        repo.commit("local", "").expect("commit");
+        let error = repo.push(None).expect_err("push should be rejected");
+        let detail = error.detail();
+        assert!(
+            detail.to_lowercase().contains("reject")
+                || detail.to_lowercase().contains("fetch first")
+                || detail.to_lowercase().contains("non-fast-forward"),
+            "推送拒绝的原因应在详情里：{}",
+            detail
+        );
     }
 
     #[test]
