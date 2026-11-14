@@ -148,6 +148,15 @@ pub fn App() -> impl IntoElement {
             .unwrap_or_default(),
     );
     let ssh_agent = signal(std::env::var_os("SSH_AUTH_SOCK").is_some());
+    effect(move || {
+        let path = repo_path.get();
+        let helper = Repo::open(path.as_str())
+            .ok()
+            .and_then(|repo| repo.credential_helper())
+            .unwrap_or_default();
+        credential_helper.set(helper);
+        ssh_agent.set(std::env::var_os("SSH_AUTH_SOCK").is_some());
+    });
     let inspect_open = signal(false);
     let inspect_tab = signal(InspectTab::Compare);
     let inspect_from = signal(String::from("HEAD~1"));
