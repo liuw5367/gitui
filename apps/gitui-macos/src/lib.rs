@@ -3,7 +3,7 @@
 //! Slice 1: open the current repository, show status, recent history and the
 //! selected commit's patch. No staging, commit, push or settings.
 
-use gitui_git::{Commit, ConflictStages, Operation, Repo, StatusEntry};
+use gitui_git::{Branch, Commit, ConflictStages, Operation, Repo, StatusEntry};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
@@ -14,6 +14,7 @@ struct Loaded {
     branch: String,
     operation: Option<Operation>,
     conflicts: Vec<String>,
+    branches: Vec<Branch>,
     conflict_path: String,
     conflict_stages: Option<ConflictStages>,
     ahead: usize,
@@ -51,6 +52,7 @@ fn load(path: &str) -> Loaded {
                 branch,
                 operation: repo.operation(),
                 conflicts: repo.conflicts().unwrap_or_default(),
+                branches: repo.branches().unwrap_or_default(),
                 conflict_path: repo
                     .conflicts()
                     .unwrap_or_default()
@@ -79,6 +81,7 @@ fn load(path: &str) -> Loaded {
             branch: "—".to_string(),
             operation: None,
             conflicts: Vec::new(),
+            branches: Vec::new(),
             conflict_path: String::new(),
             conflict_stages: None,
             ahead: 0,
@@ -285,6 +288,7 @@ pub fn App() -> impl IntoElement {
     let branch = signal(SharedString::from(active_tab.branch.clone()));
     let operation = signal(active_tab.operation);
     let conflicts = signal(active_tab.conflicts.clone());
+    let branches = signal(active_tab.branches.clone());
     let conflict_path = signal(active_tab.conflict_path.clone());
     let conflict_stages = signal(active_tab.conflict_stages.clone());
     let conflict_result = signal(
@@ -333,6 +337,7 @@ pub fn App() -> impl IntoElement {
         branch.set(SharedString::from(loaded.branch));
         operation.set(loaded.operation);
         conflicts.set(loaded.conflicts);
+        branches.set(loaded.branches);
         conflict_path.set(loaded.conflict_path);
         conflict_stages.set(loaded.conflict_stages.clone());
         conflict_result.set(
@@ -371,6 +376,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_sync = reload.clone();
     let reload_for_merge = reload.clone();
     let reload_for_conflict = reload.clone();
+    let reload_for_branch = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -381,6 +387,7 @@ pub fn App() -> impl IntoElement {
         branch.set(SharedString::from(tab.branch));
         operation.set(tab.operation);
         conflicts.set(tab.conflicts);
+        branches.set(tab.branches);
         conflict_path.set(tab.conflict_path);
         conflict_stages.set(tab.conflict_stages.clone());
         conflict_result.set(
@@ -896,6 +903,56 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(
+            text("Branches")
+                .text_size(px(9.0))
+                .text_color(move || theme().foreground),
+        )
+        .child(each(
+            branches,
+            |branch: &Branch| branch.name.clone(),
+            move |branch, _| {
+                let name = branch.get().name.clone();
+                let current = branch.get().current;
+                let reload_branch = reload_for_branch.clone();
+                view()
+                    .h(px(18.0))
+                    .px_1()
+                    .rounded(px(3.0))
+                    .bg(move || {
+                        if branch.get().current {
+                            theme().primary
+                        } else {
+                            theme().background
+                        }
+                    })
+                    .on_press(move || {
+                        if current {
+                            return;
+                        }
+                        match Repo::open(repo_path.get_untracked().to_string().as_str())
+                            .and_then(|repo| repo.checkout(&name))
+                        {
+                            Ok(_) => {
+                                error.set(SharedString::from(""));
+                                reload_branch();
+                            }
+                            Err(err) => error.set(SharedString::from(err.to_string())),
+                        }
+                    })
+                    .child(
+                        text(move || branch.get().name)
+                            .text_size(px(9.0))
+                            .text_color(move || {
+                                if branch.get().current {
+                                    theme().primary_foreground
+                                } else {
+                                    theme().foreground
+                                }
+                            }),
+                    )
+            },
+        ))
         .child(
             text(move || {
                 if conflicts.get().is_empty() {
