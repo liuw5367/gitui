@@ -25,6 +25,23 @@ pub struct Repo {
     root: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusEntry {
+    pub path: String,
+    pub x: char,
+    pub y: char,
+}
+
+impl StatusEntry {
+    pub fn is_staged(&self) -> bool {
+        self.x != '.' && self.x != ' ' && self.x != '?'
+    }
+
+    pub fn is_unstaged(&self) -> bool {
+        self.y != '.' && self.y != ' '
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Status {
     pub branch: String,
@@ -32,6 +49,7 @@ pub struct Status {
     pub unstaged: usize,
     /// Raw `git status --porcelain=v2` entry lines (no branch headers).
     pub lines: Vec<String>,
+    pub entries: Vec<StatusEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +59,21 @@ pub struct Commit {
     pub author: String,
     pub date: String,
     pub summary: String,
+}
+
+fn status_path(line: &str) -> Option<String> {
+    let fields = if line.starts_with("1 ") {
+        9
+    } else if line.starts_with("2 ") {
+        10
+    } else if line.starts_with("u ") {
+        11
+    } else {
+        return None;
+    };
+    line.splitn(fields, ' ')
+        .nth(fields - 1)
+        .map(|path| path.split('\t').next().unwrap_or(path).to_string())
 }
 
 impl Repo {
@@ -100,12 +133,25 @@ impl Repo {
                     status.unstaged += 1;
                 }
                 status.lines.push(line.to_string());
+                if let Some(path) = status_path(line) {
+                    status.entries.push(StatusEntry {
+                        path,
+                        x: x as char,
+                        y: y as char,
+                    });
+                }
             } else if line.starts_with("u ") {
                 status.unstaged += 1;
                 status.lines.push(line.to_string());
+                if let Some(path) = status_path(line) {
+                    status.entries.push(StatusEntry { path, x: 'U', y: 'U' });
+                }
             } else if line.starts_with("? ") {
                 status.unstaged += 1;
                 status.lines.push(line.to_string());
+                if let Some(path) = line.strip_prefix("? ").map(str::to_string) {
+                    status.entries.push(StatusEntry { path, x: '?', y: '?' });
+                }
             }
         }
 
@@ -164,6 +210,18 @@ impl Repo {
     /// Unstage everything, back to HEAD.
     pub fn unstage_all(&self) -> Result<(), GitError> {
         self.git(&["reset", "-q", "HEAD", "--", "."])?;
+        Ok(())
+    }
+
+    /// Stage one path.
+    pub fn stage_path(&self, path: &str) -> Result<(), GitError> {
+        self.git(&["add", "--", path])?;
+        Ok(())
+    }
+
+    /// Unstage one path.
+    pub fn unstage_path(&self, path: &str) -> Result<(), GitError> {
+        self.git(&["restore", "--staged", "--", path])?;
         Ok(())
     }
 
@@ -372,6 +430,30 @@ mod tests {
         let error = repo.commit("should fail").unwrap_err();
         assert!(error.to_string().contains("hook failed"));
         assert_eq!(repo.log(1).unwrap()[0].summary, "update file");
+    }
+
+    #[test]
+    fn stages_and_unstages_one_path() {
+        let fixture = TempRepo::new();
+        fs::write(fixture.path.join("a.txt"), "one\nTWO\n").unwrap();
+        fs::write(fixture.path.join("b.txt"), "new\n").unwrap();
+        let repo = Repo::open(fixture.path()).unwrap();
+        let status = repo.status().unwrap();
+        assert_eq!(status.entries.len(), 2);
+        let b = status
+            .entries
+            .iter()
+            .find(|entry| entry.path == "b.txt")
+            .unwrap();
+        assert!(b.is_unstaged());
+        repo.stage_path("b.txt").unwrap();
+        let after = repo.status().unwrap();
+        let b = after.entries.iter().find(|entry| entry.path == "b.txt").unwrap();
+        assert!(b.is_staged());
+        repo.unstage_path("b.txt").unwrap();
+        let back = repo.status().unwrap();
+        let b = back.entries.iter().find(|entry| entry.path == "b.txt").unwrap();
+        assert!(b.is_unstaged());
     }
 
     #[test]
