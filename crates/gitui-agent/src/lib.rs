@@ -145,6 +145,45 @@ impl AgentPlan {
     }
 }
 
+pub trait Planner {
+    fn plan(&self, prompt: &str, commit_message: &str) -> Result<AgentPlan, PlanError>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LocalPlanner;
+
+impl Planner for LocalPlanner {
+    fn plan(&self, prompt: &str, commit_message: &str) -> Result<AgentPlan, PlanError> {
+        let mut steps = Vec::new();
+        let mut has_commit = false;
+        for raw in prompt.split_whitespace() {
+            let token = raw
+                .trim_matches(|ch: char| !ch.is_ascii_alphabetic())
+                .to_ascii_lowercase();
+            match token.as_str() {
+                "stage" if !steps.iter().any(|step| matches!(step, PlanStep::StageAll)) => {
+                    steps.push(PlanStep::StageAll);
+                }
+                "commit" if !has_commit => {
+                    has_commit = true;
+                    steps.push(PlanStep::Commit {
+                        message: commit_message.trim().to_string(),
+                    });
+                }
+                "push" if !steps.iter().any(|step| matches!(step, PlanStep::Push)) => {
+                    steps.push(PlanStep::Push);
+                }
+                _ => {}
+            }
+        }
+        if steps.is_empty() {
+            Err(PlanError::EmptyPlan)
+        } else {
+            Ok(AgentPlan { steps })
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditEvent {
     pub summary: String,
@@ -255,6 +294,31 @@ mod tests {
         log.append("push origin/main", false);
         assert_eq!(log.events().len(), 2);
         assert!(!log.events()[1].allowed);
+    }
+
+    #[test]
+    fn local_planner_builds_ordered_plan() {
+        let plan = LocalPlanner
+            .plan("stage commit push", "fix thing")
+            .unwrap();
+        assert_eq!(
+            plan.steps,
+            vec![
+                PlanStep::StageAll,
+                PlanStep::Commit {
+                    message: "fix thing".to_string()
+                },
+                PlanStep::Push,
+            ]
+        );
+    }
+
+    #[test]
+    fn local_planner_rejects_unknown_prompt() {
+        assert_eq!(
+            LocalPlanner.plan("summarize the repo", ""),
+            Err(PlanError::EmptyPlan)
+        );
     }
 
 }

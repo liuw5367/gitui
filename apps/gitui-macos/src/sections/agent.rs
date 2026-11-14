@@ -3,6 +3,7 @@
 use crate::design;
 use crate::widgets::header_button;
 use gitui_agent::{AgentPermissions, PlanStep};
+use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ pub(crate) struct AgentActions {
     pub(crate) add_commit: Arc<dyn Fn()>,
     pub(crate) add_push: Arc<dyn Fn()>,
     pub(crate) clear: Arc<dyn Fn()>,
+    pub(crate) build: Arc<dyn Fn()>,
     pub(crate) confirm_protected: Arc<dyn Fn()>,
     pub(crate) approve: Arc<dyn Fn()>,
 }
@@ -31,6 +33,7 @@ pub(crate) fn agent_panel(
     branch: Signal<SharedString>,
     staged: Signal<usize>,
     steps: Signal<Vec<PlanStep>>,
+    prompt: Signal<String>,
     protected_ok: Signal<bool>,
     log: Signal<SharedString>,
     error: Signal<SharedString>,
@@ -95,6 +98,24 @@ pub(crate) fn agent_panel(
                         .flex_col()
                         .gap_2()
                         .p_3()
+                        .child(
+                            view()
+                                .flex_row()
+                                .items_center()
+                                .gap_1()
+                                .child(
+                                    input()
+                                        .value(prompt)
+                                        .on_change(move |text: &str| prompt.set(text.to_string()))
+                                        .placeholder("Local planner: stage commit push")
+                                        .text_size(px(10.5))
+                                        .flex_1(),
+                                )
+                                .child(header_button("Build plan", true, {
+                                    let action = actions.build.clone();
+                                    move || action()
+                                })),
+                        )
                         .child(
                             view()
                                 .flex_row()

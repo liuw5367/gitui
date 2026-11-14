@@ -9,7 +9,7 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_agent::{AgentPermissions, AgentPlan, PlanStep};
+use gitui_agent::{AgentPermissions, AgentPlan, LocalPlanner, PlanStep, Planner};
 use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
 use sections::{agent_panel, changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
@@ -150,11 +150,13 @@ pub fn App() -> impl IntoElement {
     let agent_log = signal(SharedString::from(""));
     let agent_error = signal(SharedString::from(""));
     let agent_protected_ok = signal(false);
+    let agent_prompt = signal(String::new());
     let open_agent: Arc<dyn Fn()> = Arc::new(move || {
         agent_steps.set(Vec::new());
         agent_log.set(SharedString::from(""));
         agent_error.set(SharedString::from(""));
         agent_protected_ok.set(false);
+        agent_prompt.set(String::new());
         agent_open.set(true);
     });
     let open_compare: Arc<dyn Fn()> = Arc::new(move || {
@@ -1465,6 +1467,16 @@ pub fn App() -> impl IntoElement {
         agent_error.set(SharedString::from(""));
         agent_log.set(SharedString::from(""));
     });
+    let build_agent_plan: Arc<dyn Fn()> = Arc::new(move || {
+        let prompt = agent_prompt.get_untracked();
+        match LocalPlanner.plan(&prompt, message.get_untracked().trim()) {
+            Ok(plan) => {
+                agent_steps.set(plan.steps);
+                agent_error.set(SharedString::from(""));
+            }
+            Err(err) => agent_error.set(SharedString::from(err.to_string())),
+        }
+    });
     let approve_agent: Arc<dyn Fn()> = Arc::new({
         let reload = reload_for_branch.clone();
         move || {
@@ -1541,6 +1553,7 @@ pub fn App() -> impl IntoElement {
         branch,
         staged,
         agent_steps,
+        agent_prompt,
         agent_protected_ok,
         agent_log,
         agent_error,
@@ -1550,6 +1563,7 @@ pub fn App() -> impl IntoElement {
             add_commit,
             add_push,
             clear: clear_agent,
+            build: build_agent_plan,
             confirm_protected: Arc::new(move || {
                 agent_protected_ok.set(!agent_protected_ok.get_untracked())
             }),
