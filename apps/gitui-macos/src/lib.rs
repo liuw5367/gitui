@@ -7,11 +7,10 @@ mod model;
 mod sections;
 mod widgets;
 
-use gitui_git::{Branch, Repo, StatusEntry};
-use model::{load, load_recent, load_session, save_recent, save_session, short_name};
+use gitui_git::Repo;
+use model::{load, load_recent, load_session, save_recent, save_session};
 use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, StatusActions};
-use widgets::{conflict_pane, header_button, mini_button};
-use nsh_base::{editor, input, theme};
+use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
