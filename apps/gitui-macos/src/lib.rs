@@ -749,9 +749,18 @@ pub fn App() -> impl IntoElement {
                 .items_center()
                 .gap_2()
                 .child(
-                    text(move || format!("Conflict · {}", conflict_path.get()))
-                        .text_size(px(10.0))
-                        .text_color(|| rgb(0xff3b30)),
+                    text(move || {
+                        let total = conflicts.get().len();
+                        let current = conflicts
+                            .get()
+                            .iter()
+                            .position(|path| path == &conflict_path.get())
+                            .map(|index| index + 1)
+                            .unwrap_or(0);
+                        format!("Conflict · {} · {} of {}", conflict_path.get(), current, total)
+                    })
+                    .text_size(px(10.0))
+                    .text_color(|| rgb(0xff3b30)),
                 )
                 .child(view().flex_1())
                 .child(header_button("Accept Ours", false, move || {
@@ -762,6 +771,11 @@ pub fn App() -> impl IntoElement {
                 .child(header_button("Accept Theirs", false, move || {
                     if let Some(stages) = conflict_stages.get_untracked().as_ref() {
                         conflict_result.set(stages.theirs.clone());
+                    }
+                }))
+                .child(header_button("Accept Both", false, move || {
+                    if let Some(stages) = conflict_stages.get_untracked().as_ref() {
+                        conflict_result.set(format!("{}\n{}", stages.ours, stages.theirs));
                     }
                 }))
                 .child(header_button("Mark Resolved", true, {
