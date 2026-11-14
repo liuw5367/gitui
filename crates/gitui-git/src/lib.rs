@@ -33,7 +33,7 @@ pub struct Status {
     pub lines: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Commit {
     pub sha: String,
     pub short: String,

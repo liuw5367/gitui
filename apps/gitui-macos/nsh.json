@@ -1,0 +1,8 @@
+{
+  "name": "gitui",
+  "id": "dev.gitui.app",
+  "version": "1.0.0",
+  "build": 1,
+  "rust": ".",
+  "root": "App"
+}
