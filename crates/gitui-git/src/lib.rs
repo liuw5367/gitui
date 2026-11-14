@@ -241,6 +241,16 @@ impl Repo {
         Ok(remotes)
     }
 
+    /// Add a remote.
+    pub fn add_remote(&self, name: &str, url: &str) -> Result<String, GitError> {
+        self.git(&["remote", "add", name, url])
+    }
+
+    /// Remove a remote.
+    pub fn remove_remote(&self, name: &str) -> Result<String, GitError> {
+        self.git(&["remote", "remove", name])
+    }
+
     /// Stash entries, newest first.
     pub fn stashes(&self) -> Result<Vec<Stash>, GitError> {
         let output = self.git(&["stash", "list", "--format=%gd%x1f%s"])?;
@@ -978,6 +988,25 @@ mod tests {
                 url: "https://example.invalid/repo.git".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn adds_and_removes_a_remote() {
+        let fixture = TempRepo::new();
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.add_remote("upstream", "https://example.invalid/upstream.git")
+            .unwrap();
+        assert!(repo
+            .remotes()
+            .unwrap()
+            .iter()
+            .any(|remote| remote.name == "upstream"));
+        repo.remove_remote("upstream").unwrap();
+        assert!(!repo
+            .remotes()
+            .unwrap()
+            .iter()
+            .any(|remote| remote.name == "upstream"));
     }
 
     #[test]
