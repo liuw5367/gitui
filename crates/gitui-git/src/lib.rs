@@ -533,6 +533,22 @@ impl Repo {
         self.git(&["reset", "--hard", revision])
     }
 
+    pub fn file_diff(&self, sha: &str, path: &str) -> Result<String, GitError> {
+        if sha.is_empty() || path.is_empty() {
+            return Err(GitError("commit and path are required".to_string()));
+        }
+        self.git(&[
+            "show",
+            "--format=",
+            "--patch",
+            "--no-color",
+            "--no-ext-diff",
+            sha,
+            "--",
+            path,
+        ])
+    }
+
     pub fn commit_details(&self, sha: &str) -> Result<CommitDetails, GitError> {
         if sha.is_empty() {
             return Err(GitError("no commit selected".to_string()));
@@ -1668,6 +1684,14 @@ mod tests {
         run(&temp.path, &["config", "credential.helper", "osxkeychain"]);
         let repo = Repo::open(temp.path()).unwrap();
         assert_eq!(repo.credential_helper().as_deref(), Some("osxkeychain"));
+    }
+
+    #[test]
+    fn file_diff_is_scoped_to_one_path() {
+        let temp = TempRepo::new();
+        let repo = Repo::open(temp.path()).unwrap();
+        let patch = repo.file_diff("HEAD", "a.txt").unwrap();
+        assert!(patch.contains("+one"));
     }
 
 }

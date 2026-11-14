@@ -1,20 +1,24 @@
-//! Commit details sheet.
+//! Commit details with per-file diff.
 
 use crate::design;
 use crate::widgets::header_button;
 use gitui_git::{ChangedFile, CommitDetails};
+use nsh_base::editor;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct CommitInfoActions {
     pub(crate) close: Arc<dyn Fn()>,
+    pub(crate) select_file: Arc<dyn Fn(String)>,
 }
 
 pub(crate) fn commit_info_panel(
     open: Signal<bool>,
     details: Signal<Option<CommitDetails>>,
     files: Signal<Vec<ChangedFile>>,
+    selected_file: Signal<String>,
+    file_diff: Signal<SharedString>,
     actions: CommitInfoActions,
 ) -> impl IntoElement {
     view()
@@ -71,10 +75,8 @@ pub(crate) fn commit_info_panel(
                 )
                 .child(
                     view()
-                        .flex_1()
-                        .min_h_0()
                         .flex_col()
-                        .gap_2()
+                        .gap_1()
                         .p_3()
                         .child(
                             text(move || {
@@ -126,42 +128,86 @@ pub(crate) fn commit_info_panel(
                             })
                             .text_size(px(11.0))
                             .text_color(move || design::text()),
-                        )
-                        .child(
-                            view().h(px(1.0)).bg(move || design::line_soft()),
-                        )
-                        .child(
-                            text(move || format!("Files · {}", files.get().len()))
-                                .text_size(px(10.0))
-                                .text_color(move || design::text3()),
-                        )
+                        ),
+                )
+                .child(
+                    view()
+                        .flex_1()
+                        .min_h_0()
+                        .flex_row()
+                        .border_t_1()
+                        .border_color(move || design::line())
                         .child(
                             view()
-                                .flex_1()
-                                .min_h_0()
+                                .w(px(280.0))
                                 .flex_col()
+                                .bg(move || design::panel())
+                                .border_r_1()
+                                .border_color(move || design::line())
+                                .child(
+                                    text(move || format!("Files · {}", files.get().len()))
+                                        .px_2()
+                                        .py_1()
+                                        .text_size(px(9.5))
+                                        .text_color(move || design::text3()),
+                                )
                                 .child(each(
                                     files,
                                     |file: &ChangedFile| file.path.clone(),
-                                    |file, _| {
+                                    move |file, _| {
+                                        let path = file.get().path.clone();
+                                        let select = actions.select_file.clone();
                                         view()
                                             .h(px(24.0))
                                             .flex_row()
                                             .items_center()
                                             .gap_2()
+                                            .px_2()
+                                            .border_b_1()
+                                            .border_color(move || design::line_soft())
+                                            .bg(move || {
+                                                if selected_file.get() == file.get().path {
+                                                    design::selected()
+                                                } else {
+                                                    design::panel()
+                                                }
+                                            })
+                                            .on_press(move || select(path.clone()))
                                             .child(
                                                 text(move || file.get().status)
-                                                    .w(px(36.0))
-                                                    .text_size(px(9.5))
+                                                    .w(px(28.0))
+                                                    .text_size(px(9.0))
                                                     .text_color(move || design::text3()),
                                             )
                                             .child(
                                                 text(move || file.get().path)
-                                                    .text_size(px(10.0))
+                                                    .text_size(px(9.5))
                                                     .text_color(move || design::text()),
                                             )
                                     },
                                 )),
+                        )
+                        .child(
+                            view()
+                                .flex_1()
+                                .min_w_0()
+                                .flex_col()
+                                .child(
+                                    text(move || selected_file.get())
+                                        .px_2()
+                                        .py_1()
+                                        .text_size(px(9.0))
+                                        .text_color(move || design::text3()),
+                                )
+                                .child(
+                                    editor()
+                                        .value(move || Some(file_diff.get()))
+                                        .read_only(true)
+                                        .language("diff")
+                                        .font_size(10.0)
+                                        .line_height(17.0)
+                                        .flex_1(),
+                                ),
                         ),
                 ),
         )

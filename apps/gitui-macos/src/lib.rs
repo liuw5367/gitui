@@ -138,6 +138,8 @@ pub fn App() -> impl IntoElement {
     let commit_info_open = signal(false);
     let commit_info = signal(None::<CommitDetails>);
     let commit_files = signal(Vec::<ChangedFile>::new());
+    let commit_info_file = signal(String::new());
+    let commit_info_diff = signal(SharedString::from(""));
     let push_open = signal(false);
     let push_preview = signal(None::<PushPreview>);
     let push_commits = signal(Vec::<Commit>::new());
@@ -1337,6 +1339,20 @@ pub fn App() -> impl IntoElement {
             .and_then(|repo| repo.commit_details(&sha))
         {
             Ok(details) => {
+                let first = details
+                    .files
+                    .first()
+                    .map(|file| file.path.clone())
+                    .unwrap_or_default();
+                let patch = if first.is_empty() {
+                    String::new()
+                } else {
+                    Repo::open(repo_path.get_untracked().to_string().as_str())
+                        .and_then(|repo| repo.file_diff(&sha, &first))
+                        .unwrap_or_default()
+                };
+                commit_info_file.set(first);
+                commit_info_diff.set(SharedString::from(patch));
                 commit_files.set(details.files.clone());
                 commit_info.set(Some(details));
                 commit_info_open.set(true);
@@ -1754,12 +1770,30 @@ pub fn App() -> impl IntoElement {
     ];
     let palette_panel = palette_panel(palette_open, palette_query, palette_commands, palette_close);
 
+    let select_commit_file: Arc<dyn Fn(String)> = Arc::new(move |path: String| {
+        let sha = commit_info
+            .get_untracked()
+            .map(|details| details.sha)
+            .unwrap_or_default();
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.file_diff(&sha, &path))
+        {
+            Ok(patch) => {
+                commit_info_file.set(path);
+                commit_info_diff.set(SharedString::from(patch));
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
     let commit_info_panel = commit_info_panel(
         commit_info_open,
         commit_info,
         commit_files,
+        commit_info_file,
+        commit_info_diff,
         CommitInfoActions {
             close: Arc::new(move || commit_info_open.set(false)),
+            select_file: select_commit_file,
         },
     );
     let push_panel = push_panel(
