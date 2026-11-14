@@ -197,76 +197,103 @@ pub(crate) fn rewrite_dialog(
 
             return view()
                 .w(px(480.0))
-                .p(px(16.0))
                 .flex_col()
-                .gap(px(10.0))
-                .rounded(px(metrics::RADIUS_PANEL))
+                .rounded(px(12.0))
                 .border_1()
                 .border_color(move || design::line())
-                .bg(move || design::token("popover"))
+                .bg(move || design::content())
+                .overflow_hidden()
                 .on_press(|| {})
                 .child(
-                    text(move || i18n::t(language_value.get().as_str(), title_key))
-                    .text_size(px(13.5))
-                    .font_weight(FontWeight(600))
-                    .line_height(px(18.0))
-                    .text_color(move || design::text()),
-                )
-                .child(body)
-                .child(
                     view()
                         .w_full()
-                        .min_h(px(72.0))
-                        .p(px(7.0))
-                        .rounded(px(metrics::RADIUS_CONTROL))
-                        .border_1()
-                        .border_color(move || design::field_border())
-                        .bg(move || design::field())
-                        .child(
-                            nsh_base::input()
-                                .value({
-                                    let message = message.clone();
-                                    move || message.clone()
-                                })
-                                .on_change({
-                                    let on_change = on_change.clone();
-                                    move |text: &str| on_change(text.to_string())
-                                })
-                                .placeholder(move || {
-                                    i18n::t(
-                                        language_value.get().as_str(),
-                                        "rewrite.placeholder",
-                                    )
-                                })
-                                .text_size(px(11.0))
-                                .flex_1(),
-                        ),
-                )
-                // 阻塞原因与错误分开显示：前者是前置条件，后者是执行结果。
-                .child(view().w_full().when(blocker.is_some(), |this| {
-                    let blocker = blocker.clone().unwrap_or_default();
-                    this.child(
-                        text(blocker)
-                            .text_size(px(10.0))
-                            .line_height(px(14.0))
-                            .text_color(move || design::warn()),
-                    )
-                }))
-                .child(view().w_full().when(error.is_some(), |this| {
-                    let error = error.clone().unwrap_or_default();
-                    this.child(
-                        text(error)
-                            .text_size(px(10.0))
-                            .line_height(px(14.0))
-                            .text_color(move || design::danger()),
-                    )
-                }))
-                .child(
-                    view()
-                        .w_full()
+                        .h(px(metrics::DIALOG_HEAD_H))
+                        .flex_shrink_0()
+                        .px(px(14.0))
                         .flex_row()
                         .items_center()
-                        .gap(px(8.0))
+                        .bg(move || design::panel())
+                        .border_b_1()
+                        .border_color(move || design::line())
+                        .child(
+                            text(move || i18n::t(language_value.get().as_str(), title_key))
+                                .text_size(px(13.0))
+                                .font_weight(FontWeight(600))
+                                .line_height(px(17.0))
+                                .text_color(move || design::text()),
+                        ),
+                )
+                // `.dialog-body`：padding 11 14。
+                .child(
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .gap(px(10.0))
+                        .px(px(14.0))
+                        .py(px(11.0))
+                        .child(body)
+                        .child(
+                            view()
+                                .w_full()
+                                .min_h(px(72.0))
+                                .p(px(7.0))
+                                .rounded(px(metrics::RADIUS_CONTROL))
+                                .border_1()
+                                .border_color(move || design::field_border())
+                                .bg(move || design::field())
+                                .child(
+                                    nsh_base::input()
+                                        .value({
+                                            let message = message.clone();
+                                            move || message.clone()
+                                        })
+                                        .on_change({
+                                            let on_change = on_change.clone();
+                                            move |text: &str| on_change(text.to_string())
+                                        })
+                                        .placeholder(move || {
+                                            i18n::t(
+                                                language_value.get().as_str(),
+                                                "rewrite.placeholder",
+                                            )
+                                        })
+                                        .text_size(px(11.0))
+                                        .flex_1(),
+                                ),
+                        )
+                        // 阻塞原因与错误分开显示：前者是前置条件，后者是执行结果。
+                        .child(view().w_full().when(blocker.is_some(), |this| {
+                            let blocker = blocker.clone().unwrap_or_default();
+                            this.child(
+                                text(blocker)
+                                    .text_size(px(10.0))
+                                    .line_height(px(14.0))
+                                    .text_color(move || design::warn()),
+                            )
+                        }))
+                        .child(view().w_full().when(error.is_some(), |this| {
+                            let error = error.clone().unwrap_or_default();
+                            this.child(
+                                text(error)
+                                    .text_size(px(10.0))
+                                    .line_height(px(14.0))
+                                    .text_color(move || design::danger()),
+                            )
+                        })),
+                )
+                // `.dialog-foot`：42 高、panel 底色。
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(metrics::DIALOG_FOOT_H))
+                        .flex_shrink_0()
+                        .px(px(14.0))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(7.0))
+                        .bg(move || design::panel())
+                        .border_t_1()
+                        .border_color(move || design::line())
                         .child(view().flex_1())
                         .child(widgets::button(
                             move || i18n::t(language_value.get().as_str(), "common.cancel"),

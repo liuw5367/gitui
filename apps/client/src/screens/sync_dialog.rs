@@ -90,38 +90,53 @@ pub(crate) fn sync_dialog(
             let set_option = set_option.clone();
 
             return view()
-                .w(px(460.0))
-                .p(px(16.0))
+                .w(px(metrics::SYNC_SHEET_W))
+                .max_w(px(760.0))
+                .h(px(metrics::SYNC_SHEET_H))
                 .flex_col()
-                .gap(px(10.0))
-                .rounded(px(metrics::RADIUS_PANEL))
+                .rounded(px(12.0))
                 .border_1()
                 .border_color(move || design::line())
-                .bg(move || design::token("popover"))
+                .bg(move || design::content())
+                .overflow_hidden()
                 .on_press(|| {})
                 .child(
-                    text(move || {
-                        i18n::t(
-                            language.get().as_str(),
-                            match kind {
-                                Sync::Fetch => "sync.fetchTitle",
-                                Sync::Pull => "sync.pullTitle",
-                                Sync::Push => "sync.pushTitle",
-                            },
-                        )
-                    })
-                    .text_size(px(13.5))
-                    .font_weight(FontWeight(600))
-                    .line_height(px(18.0))
-                    .text_color(move || design::text()),
+                    view()
+                        .w_full()
+                        .h(px(metrics::SYNC_HEAD_H))
+                        .flex_shrink_0()
+                        .px(px(14.0))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(10.0))
+                        .bg(move || design::panel())
+                        .border_b_1()
+                        .border_color(move || design::line())
+                        .child(
+                            text(move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    match kind {
+                                        Sync::Fetch => "sync.fetchTitle",
+                                        Sync::Pull => "sync.pullTitle",
+                                        Sync::Push => "sync.pushTitle",
+                                    },
+                                )
+                            })
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight(600))
+                            .line_height(px(17.0))
+                            .text_color(move || design::text()),
+                        ),
                 )
                 // 三 tab：切换动作，不丢已选项。
                 .child(
                     view()
                         .h(px(26.0))
+                        .flex_shrink_0()
                         .flex_row()
                         .items_center()
-                        .gap(px(2.0))
+                        .gap(px(1.0))
                         .p(px(2.0))
                         .rounded(px(6.0))
                         .border_1()

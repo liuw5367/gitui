@@ -46,8 +46,8 @@ fn pane(language: Signal<SharedString>, title_key: &'static str, body: String) -
                 scroll().w_full().h_full().child(
                     view().w_full().p(px(7.0)).child(
                         text(body)
-                            .text_size(px(10.0))
-                            .line_height(px(15.0))
+                            .text_size(px(metrics::MERGE_CODE_FONT))
+                            .line_height(px(metrics::MERGE_CODE_LINE_H))
                             .font_family("SF Mono")
                             .text_color(move || design::text2()),
                     ),
@@ -109,8 +109,11 @@ pub(crate) fn conflict_view(
         .absolute()
         .inset(px(0.0))
         .z_index(130)
+        // 设计稿 `.merge-layer`：顶部对齐、`padding:22px 34px`。
         .items_center()
         .justify_center()
+        .p(px(metrics::MERGE_LAYER_PAD.1))
+        .pt(px(metrics::MERGE_LAYER_PAD.0))
         .bg(move || {
             let open = tab.get().map(|tab| tab.conflict_open).unwrap_or(false);
             if open {
@@ -180,21 +183,26 @@ pub(crate) fn conflict_view(
                 .collect();
 
             return view()
-                .w(px(900.0))
-                .h(px(580.0))
+                .w_full()
+                .max_w(px(metrics::MERGE_SHEET_MAX_W))
+                .h(px(metrics::MERGE_SHEET_H))
                 .flex_col()
-                .rounded(px(metrics::RADIUS_PANEL))
+                .rounded(px(12.0))
                 .border_1()
                 .border_color(move || design::line())
-                .bg(move || design::token("popover"))
+                .bg(move || design::content())
+                .overflow_hidden()
                 // 顶部：标题、文件 chip、计数、关闭。
                 .child(
                     view()
                         .w_full()
+                        .h(px(metrics::MERGE_HEAD_H))
+                        .flex_shrink_0()
                         .px(px(14.0))
-                        .py(px(10.0))
                         .flex_col()
-                        .gap(px(6.0))
+                        .justify_center()
+                        .gap(px(4.0))
+                        .bg(move || design::panel())
                         .border_b_1()
                         .border_color(move || design::line())
                         .child(
@@ -319,7 +327,8 @@ pub(crate) fn conflict_view(
                                                 .on_change(move |value: &str| {
                                                     result.set(value.to_string())
                                                 })
-                                                .text_size(px(10.5))
+                                                .text_size(px(metrics::MERGE_CODE_FONT))
+                                                .line_height(px(metrics::MERGE_CODE_LINE_H))
                                                 .font_family("SF Mono")
                                                 .flex_1(),
                                         ),
@@ -376,11 +385,14 @@ pub(crate) fn conflict_view(
                 .child(
                     view()
                         .w_full()
+                        .w_full()
+                        .h(px(metrics::MERGE_FOOT_H))
+                        .flex_shrink_0()
                         .px(px(14.0))
-                        .py(px(10.0))
                         .flex_row()
                         .items_center()
-                        .gap(px(6.0))
+                        .gap(px(8.0))
+                        .bg(move || design::panel())
                         .border_t_1()
                         .border_color(move || design::line())
                         .child(widgets::small_button(

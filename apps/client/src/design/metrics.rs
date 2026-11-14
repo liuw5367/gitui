@@ -68,6 +68,39 @@ pub const WELCOME_MAX_W: f32 = 600.0;
 pub const WELCOME_TIP_TOP: f32 = 26.0;
 
 /// 控件高度：`.field`（样式表后段覆盖为 26）。
+
+// 覆盖层与弹窗（设计稿 14 / 22 / 28 / 29 的 sheet 与 dialog 规格）。
+
+/// 冲突解决 sheet：`max-width:1320px`、`height:772px`。
+pub const MERGE_SHEET_MAX_W: f32 = 1320.0;
+pub const MERGE_SHEET_H: f32 = 772.0;
+/// 覆盖层的上下/左右内边距（`.merge-layer` 的 `padding:22px 34px`）。
+pub const MERGE_LAYER_PAD: (f32, f32) = (22.0, 34.0);
+/// `.merge-head` 46、`.merge-toolbar` 38、`.merge-foot` 46。
+pub const MERGE_HEAD_H: f32 = 46.0;
+pub const MERGE_TOOLBAR_H: f32 = 38.0;
+pub const MERGE_FOOT_H: f32 = 46.0;
+/// `.conflict-list` 宽 224、`.conflict-row` 高 27、`.conflict-head` 高 30。
+pub const MERGE_LIST_W: f32 = 224.0;
+pub const MERGE_LIST_ROW_H: f32 = 27.0;
+pub const MERGE_LIST_HEAD_H: f32 = 30.0;
+/// `.merge-base` 高 62。
+pub const MERGE_BASE_H: f32 = 62.0;
+/// `.merge-code` 字号 10、行高 18。
+pub const MERGE_CODE_FONT: f32 = 10.0;
+pub const MERGE_CODE_LINE_H: f32 = 18.0;
+
+/// 同步 sheet：800×520（设计稿 28 / 29）。
+pub const SYNC_SHEET_W: f32 = 800.0;
+pub const SYNC_SHEET_H: f32 = 520.0;
+/// `.sync-head` 46、`.sync-foot` 46。
+pub const SYNC_HEAD_H: f32 = 46.0;
+pub const SYNC_FOOT_H: f32 = 46.0;
+
+/// 通用弹窗（设计稿 22）：head 44、foot 42。
+pub const DIALOG_HEAD_H: f32 = 44.0;
+pub const DIALOG_FOOT_H: f32 = 42.0;
+
 pub const FIELD_H: f32 = 26.0;
 /// 控件高度：`.btn`（覆盖后的最终值）。
 pub const BUTTON_H: f32 = 24.0;
@@ -304,5 +337,75 @@ mod geometry_tests {
         // PNG 1x 是 1440×900，`.desktop` 四周各 24px 留白。
         assert_eq!(CONTENT_W, 1440.0 - 48.0);
         assert_eq!(CONTENT_H, 900.0 - 48.0);
+    }
+
+    #[test]
+    fn conflict_sheet_matches_the_design() {
+        let css = read_css();
+        let height = last_declaration(&css, ".merge-sheet", "height").expect(".merge-sheet height");
+        assert_eq!(height, "772px");
+        let max_width =
+            last_declaration(&css, ".merge-sheet", "max-width").expect(".merge-sheet max-width");
+        assert_eq!(max_width, "1320px");
+        assert_eq!(MERGE_SHEET_H, 772.0);
+        assert_eq!(MERGE_SHEET_MAX_W, 1320.0);
+
+        for (selector, expected, ours) in [
+            (".merge-head", 46.0_f32, MERGE_HEAD_H),
+            (".merge-toolbar", 38.0, MERGE_TOOLBAR_H),
+            (".merge-foot", 46.0, MERGE_FOOT_H),
+            (".merge-base", 62.0, MERGE_BASE_H),
+            (".conflict-list", 0.0, MERGE_LIST_W),
+            (".conflict-row", 27.0, MERGE_LIST_ROW_H),
+            (".conflict-head", 30.0, MERGE_LIST_HEAD_H),
+        ] {
+            let property = if selector == ".conflict-list" { "width" } else { "height" };
+            let value = last_declaration(&css, selector, property)
+                .unwrap_or_else(|| panic!("{selector} {property} 缺失"));
+            let number: f32 = value
+                .trim_end_matches("px")
+                .parse()
+                .unwrap_or_else(|_| panic!("{selector} {property} 不是 px：{value}"));
+            assert_eq!(number, ours, "{selector} 的 {property} 与常量不一致");
+            let _ = expected;
+        }
+
+        let font = last_declaration(&css, ".merge-code", "font-size").expect(".merge-code font");
+        assert_eq!(font, "10px");
+        let line = last_declaration(&css, ".merge-code", "line-height").expect(".merge-code line");
+        assert_eq!(line, "18px");
+    }
+
+    #[test]
+    fn sync_sheet_and_dialog_heights_match_the_design() {
+        let css = read_css();
+        assert_eq!(
+            last_declaration(&css, ".sync-sheet", "width").expect(".sync-sheet width"),
+            "800px"
+        );
+        assert_eq!(
+            last_declaration(&css, ".sync-sheet", "height").expect(".sync-sheet height"),
+            "520px"
+        );
+        assert_eq!(SYNC_SHEET_W, 800.0);
+        assert_eq!(SYNC_SHEET_H, 520.0);
+        assert_eq!(
+            last_declaration(&css, ".sync-head", "height").expect(".sync-head height"),
+            "46px"
+        );
+        assert_eq!(
+            last_declaration(&css, ".sync-foot", "height").expect(".sync-foot height"),
+            "46px"
+        );
+        assert_eq!(
+            last_declaration(&css, ".dialog-head", "height").expect(".dialog-head height"),
+            "44px"
+        );
+        assert_eq!(
+            last_declaration(&css, ".dialog-foot", "height").expect(".dialog-foot height"),
+            "42px"
+        );
+        assert_eq!(DIALOG_HEAD_H, 44.0);
+        assert_eq!(DIALOG_FOOT_H, 42.0);
     }
 }

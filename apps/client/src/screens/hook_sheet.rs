@@ -53,7 +53,7 @@ pub(crate) fn hook_sheet(
                 .w(px(560.0))
                 .h(px(420.0))
                 .flex_col()
-                .rounded(px(metrics::RADIUS_PANEL))
+                .rounded(px(12.0))
                 .border_1()
                 .border_color(move || design::line())
                 .bg(move || design::token("popover"))
@@ -61,11 +61,13 @@ pub(crate) fn hook_sheet(
                 .child(
                     view()
                         .w_full()
-                        .h(px(38.0))
+                        .h(px(metrics::DIALOG_HEAD_H))
+                        .flex_shrink_0()
                         .flex_row()
                         .items_center()
                         .gap(px(8.0))
                         .px(px(14.0))
+                        .bg(move || design::panel())
                         .border_b_1()
                         .border_color(move || design::line())
                         .child(
