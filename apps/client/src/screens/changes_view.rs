@@ -200,27 +200,33 @@ fn changes_list(
                     })
                     .hover(|style| style.bg(move || design::hover()))
                     .on_press(move || select_change(index))
-                    // 右键：暂存/取消暂存、丢弃（未跟踪文件不能丢弃）。
+                    // 右键：暂存、撤销修改、外部打开、复制路径、移入清单。
                     .on_context_menu({
                         let toggle_stage = toggle_stage.clone();
                         let discard_change = discard_change.clone();
+                        let copy_text = actions.copy_text.clone();
+                        let open_editor = actions.open_editor.clone();
+                        let reveal_path = actions.reveal_path.clone();
+                        let move_to_changelist = actions.move_to_changelist.clone();
+                        let repo_root = tab.path.clone();
+                        let changelists = tab.changelists.clone();
+                        let path_for_menu = entry.path.clone();
                         move |event: &nsh_core::ContextMenuEvent| {
-                            let toggle_stage = toggle_stage.clone();
-                            let discard_change = discard_change.clone();
-                            let items = vec![
-                                MenuItem::new(i18n::t(
-                                    language.get().as_str(),
-                                    if is_staged { "changes.unstage" } else { "changes.stage" },
-                                ))
-                                .on_select(move || toggle_stage(index)),
-                                MenuItem::separator(),
-                                MenuItem::new(i18n::t(
-                                    language.get().as_str(),
-                                    "changes.discard",
-                                ))
-                                .disabled(is_staged || is_untracked)
-                                .on_select(move || discard_change(index)),
-                            ];
+                            let items = file_menu(
+                                language,
+                                repo_root.as_str(),
+                                path_for_menu.as_str(),
+                                changelists.clone(),
+                                is_staged,
+                                is_untracked,
+                                index,
+                                toggle_stage.clone(),
+                                discard_change.clone(),
+                                copy_text.clone(),
+                                open_editor.clone(),
+                                reveal_path.clone(),
+                                move_to_changelist.clone(),
+                            );
                             let _ = nsh_core::element::desktop::popup_menu_at(
                                 items,
                                 event.page_position,
@@ -520,6 +526,99 @@ fn changes_list(
                     .into_element();
                 })),
         );
+}
+
+/// 文件行的右键菜单（设计板 10 的 `file-menu`）。
+///
+/// 顺序：暂存/取消暂存 → 外部打开与复制 → 移入清单 → 撤销修改（破坏性，靠后且
+/// 需确认）。未跟踪文件没有「撤销修改」：那等于删文件，不属于撤销。
+#[allow(clippy::too_many_arguments)]
+fn file_menu(
+    language: Signal<SharedString>,
+    repo_root: &str,
+    path: &str,
+    changelists: Vec<store::Changelist>,
+    is_staged: bool,
+    is_untracked: bool,
+    index: usize,
+    toggle_stage: std::sync::Arc<dyn Fn(usize)>,
+    discard_change: std::sync::Arc<dyn Fn(usize)>,
+    copy_text: std::sync::Arc<dyn Fn(String)>,
+    open_editor: std::sync::Arc<dyn Fn(String)>,
+    reveal_path: std::sync::Arc<dyn Fn(String)>,
+    move_to_changelist: std::sync::Arc<dyn Fn(String, Option<String>)>,
+) -> Vec<MenuItem> {
+    let language_now = language.get_untracked();
+    let lang = language_now.as_str();
+    let absolute = format!("{}/{}", repo_root.trim_end_matches('/'), path);
+    let mut items = vec![
+        MenuItem::new(i18n::t(
+            lang,
+            if is_staged {
+                "changes.unstage"
+            } else {
+                "changes.stage"
+            },
+        ))
+        .on_select({
+            let toggle_stage = toggle_stage.clone();
+            move || toggle_stage(index)
+        }),
+        MenuItem::separator(),
+        MenuItem::new(i18n::t(lang, "files.openInEditor")).on_select({
+            let open_editor = open_editor.clone();
+            let absolute = absolute.clone();
+            move || open_editor(absolute.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "files.revealInFinder")).on_select({
+            let reveal_path = reveal_path.clone();
+            let absolute = absolute.clone();
+            move || reveal_path(absolute.clone())
+        }),
+        MenuItem::new(i18n::t(lang, "files.copyPath")).on_select({
+            let copy_text = copy_text.clone();
+            let absolute = absolute.clone();
+            move || copy_text(absolute.clone())
+        }),
+    ];
+
+    // 移入清单：不改暂存状态，所以不受 staged / untracked 限制。
+    let mut targets: Vec<MenuItem> = changelists
+        .iter()
+        .map(|list| {
+            let move_to_changelist = move_to_changelist.clone();
+            let name = list.name.clone();
+            let path = path.to_string();
+            let target = name.clone();
+            MenuItem::new(name).on_select(move || {
+                move_to_changelist(path.clone(), Some(target.clone()));
+            })
+        })
+        .collect();
+    if !targets.is_empty() {
+        targets.push(MenuItem::separator());
+    }
+    targets.push(MenuItem::new(i18n::t(lang, "changelists.default")).on_select({
+        let move_to_changelist = move_to_changelist.clone();
+        let path = path.to_string();
+        move || move_to_changelist(path.clone(), None)
+    }));
+    items.push(MenuItem::separator());
+    items.push(MenuItem::submenu(
+        i18n::t(lang, "changelists.moveTo"),
+        targets,
+    ));
+
+    items.push(MenuItem::separator());
+    items.push(
+        MenuItem::new(i18n::t(lang, "changes.revert"))
+            .disabled(is_staged || is_untracked)
+            .on_select({
+                let discard_change = discard_change.clone();
+                move || discard_change(index)
+            }),
+    );
+    return items;
 }
 
 fn entries_count(tab: &Tab, staged: bool) -> usize {

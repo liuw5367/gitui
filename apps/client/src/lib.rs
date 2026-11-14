@@ -118,6 +118,8 @@ pub(crate) struct Actions {
     pub(crate) copy_text: Arc<dyn Fn(String)>,
     /// 用系统默认程序打开路径。
     pub(crate) open_editor: Arc<dyn Fn(String)>,
+    /// 在 Finder 中显示路径。
+    pub(crate) reveal_path: Arc<dyn Fn(String)>,
 }
 
 /// 应用根组件。
@@ -1468,6 +1470,19 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let reveal_path: Arc<dyn Fn(String)> = {
+        let notice = notice;
+        let language = language;
+        Arc::new(move |path: String| {
+            let language_now = language.get_untracked();
+            interactions::reveal(
+                notice,
+                path,
+                i18n::t(language_now.as_str(), "toast.revealFailed"),
+            );
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1524,6 +1539,7 @@ pub fn App() -> impl IntoElement {
         set_repo_form,
         copy_text,
         open_editor,
+        reveal_path,
     };
 
     // 原生菜单（设计板 22）：File/Edit/View/Repository/Window/Help。

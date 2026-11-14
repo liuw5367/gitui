@@ -188,7 +188,8 @@
     "history": "File history",
     "copySha": "Copy SHA",
     "cherryPick": "Cherry-pick",
-    "revert": "Revert"
+    "revert": "Revert",
+    "revealInFinder": "Reveal in Finder"
   },
   "changes": {
     "staged": "Staged",
@@ -203,7 +204,8 @@
     "discardAction": "Discard",
     "stage": "Stage File",
     "unstage": "Unstage File",
-    "discard": "Discard Changes…"
+    "discard": "Discard Changes…",
+    "revert": "Revert Changes…"
   },
   "commit": {
     "tab": "Commit",
@@ -230,7 +232,8 @@
     "footHint": "Filters only — staging commits",
     "moveHere": "Move here",
     "newName": "New changelist name",
-    "create": "Create"
+    "create": "Create",
+    "moveTo": "Move to Changelist"
   },
   "operation": {
     "banner": "%{operation} in progress · %{conflicts} conflicts",

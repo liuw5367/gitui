@@ -188,7 +188,8 @@
     "history": "文件历史",
     "copySha": "复制 SHA",
     "cherryPick": "拣选",
-    "revert": "回滚"
+    "revert": "回滚",
+    "revealInFinder": "在 Finder 中显示"
   },
   "changes": {
     "staged": "已暂存",
@@ -203,7 +204,8 @@
     "discardAction": "丢弃",
     "stage": "暂存文件",
     "unstage": "取消暂存",
-    "discard": "丢弃改动…"
+    "discard": "丢弃改动…",
+    "revert": "撤销修改…"
   },
   "commit": {
     "tab": "提交",
@@ -230,7 +232,8 @@
     "footHint": "仅筛选 — 暂存后提交",
     "moveHere": "移入",
     "newName": "新清单名称",
-    "create": "新建"
+    "create": "新建",
+    "moveTo": "移入变更清单"
   },
   "operation": {
     "banner": "正在进行 %{operation} · %{conflicts} 个冲突",

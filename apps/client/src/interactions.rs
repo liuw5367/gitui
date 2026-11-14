@@ -85,6 +85,23 @@ pub(crate) fn open_in_editor(
     });
 }
 
+/// 在 Finder 中显示文件；失败提示。
+pub(crate) fn reveal(
+    notice: Signal<Option<String>>,
+    path: impl Into<std::path::PathBuf>,
+    failed_notice: String,
+) {
+    let path = path.into();
+    spawn(async move {
+        if let Err(error) = reveal_path(path).await {
+            notify(
+                notice,
+                format!("{}: {}", failed_notice, first_line(error.as_str())),
+            );
+        }
+    });
+}
+
 /// 只保留第一行，避免把 git 的整段输出塞进状态栏。
 fn first_line(text: &str) -> String {
     return text.lines().next().unwrap_or("").trim().to_string();
