@@ -17,6 +17,8 @@ pub(crate) struct StatusActions {
     pub(crate) checkout: Arc<dyn Fn(String)>,
     pub(crate) create_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
+    pub(crate) create_tag: Arc<dyn Fn(String)>,
+    pub(crate) delete_tag: Arc<dyn Fn(String)>,
     pub(crate) select_conflict: Arc<dyn Fn(String)>,
 }
 
@@ -31,9 +33,11 @@ pub(crate) fn status_pane(
     conflict_path: Signal<String>,
     error: Signal<SharedString>,
     branch_name: Signal<String>,
+    tag_name: Signal<String>,
     actions: StatusActions,
 ) -> impl IntoElement {
     let delete_armed = signal(false);
+    let tag_delete_armed = signal(false);
     view()
         .w(px(250.0))
         .flex_col()
@@ -152,13 +156,54 @@ pub(crate) fn status_pane(
         .child(
             text(move || {
                 if tags.get().is_empty() {
-                    String::new()
+                    "Tags".to_string()
                 } else {
                     "Tags".to_string()
                 }
             })
             .text_size(px(9.0))
             .text_color(move || theme().foreground),
+        )
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .child(
+                    input()
+                        .value(tag_name)
+                        .on_change(move |text: &str| tag_name.set(text.to_string()))
+                        .placeholder("tag-name")
+                        .text_size(px(9.0))
+                        .flex_1(),
+                )
+                .child(mini_button("Create", true, {
+                    let action = actions.create_tag.clone();
+                    move || action(tag_name.get_untracked().trim().to_string())
+                }))
+                .child(mini_button("Delete", false, {
+                    let action = actions.delete_tag.clone();
+                    move || {
+                        let name = tag_name.get_untracked().trim().to_string();
+                        if tag_delete_armed.get_untracked() {
+                            tag_delete_armed.set(false);
+                            action(name);
+                        } else {
+                            tag_delete_armed.set(true);
+                        }
+                    }
+                })),
+        )
+        .child(
+            text(move || {
+                if tag_delete_armed.get() {
+                    "Delete tag again to confirm".to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .text_size(px(8.5))
+            .text_color(|| rgb(0xff3b30)),
         )
         .child(each(
             tags,
