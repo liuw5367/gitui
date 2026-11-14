@@ -529,9 +529,35 @@ impl Repo {
         self.git(&["push", "origin", "HEAD"])
     }
 
+    /// Rebase the current branch onto another branch.
+    pub fn rebase(&self, branch: &str) -> Result<String, GitError> {
+        self.git(&["rebase", branch])
+    }
+
+    /// Cherry-pick a commit.
+    pub fn cherry_pick(&self, sha: &str) -> Result<String, GitError> {
+        self.git(&["cherry-pick", sha])
+    }
+
+    /// Revert a commit with its original message.
+    pub fn revert(&self, sha: &str) -> Result<String, GitError> {
+        self.git(&["revert", "--no-edit", sha])
+    }
+
     /// Merge a branch into the current branch.
     pub fn merge(&self, branch: &str) -> Result<String, GitError> {
         self.git(&["merge", branch])
+    }
+
+    /// Skip the current step of rebase/cherry-pick/revert.
+    pub fn skip_operation(&self) -> Result<String, GitError> {
+        match self.operation() {
+            Some(Operation::Rebase) => self.git(&["rebase", "--skip"]),
+            Some(Operation::CherryPick) => self.git(&["cherry-pick", "--skip"]),
+            Some(Operation::Revert) => self.git(&["revert", "--skip"]),
+            Some(Operation::Merge) => Err(GitError("merge cannot be skipped".to_string())),
+            None => Err(GitError("no operation in progress".to_string())),
+        }
     }
 
     /// Continue the in-progress operation, dispatching by operation type.
@@ -1243,6 +1269,53 @@ mod tests {
         let repo = Repo::open(fixture.path()).unwrap();
         repo.merge("feature").unwrap();
         assert!(fixture.path.join("feature.txt").exists());
+        assert_eq!(repo.operation(), None);
+    }
+
+    #[test]
+    fn rebases_onto_a_branch() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["checkout", "-qb", "feature"]);
+        fs::write(fixture.path.join("feature.txt"), "feature\n").unwrap();
+        run(&fixture.path, &["add", "feature.txt"]);
+        run(&fixture.path, &["commit", "-qm", "feature"]);
+        run(&fixture.path, &["checkout", "-q", "main"]);
+        fs::write(fixture.path.join("main.txt"), "main\n").unwrap();
+        run(&fixture.path, &["add", "main.txt"]);
+        run(&fixture.path, &["commit", "-qm", "main"]);
+        run(&fixture.path, &["checkout", "-q", "feature"]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.rebase("main").unwrap();
+        assert!(fixture.path.join("main.txt").exists());
+        assert!(fixture.path.join("feature.txt").exists());
+        assert_eq!(repo.operation(), None);
+    }
+
+    #[test]
+    fn cherry_picks_and_reverts() {
+        let fixture = TempRepo::new();
+        run(&fixture.path, &["checkout", "-qb", "feature"]);
+        fs::write(fixture.path.join("pick.txt"), "picked\n").unwrap();
+        run(&fixture.path, &["add", "pick.txt"]);
+        run(&fixture.path, &["commit", "-qm", "pick"]);
+        let sha = String::from_utf8(
+            Command::new("git")
+                .arg("-C")
+                .arg(&fixture.path)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        run(&fixture.path, &["checkout", "-q", "main"]);
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.cherry_pick(&sha).unwrap();
+        assert!(fixture.path.join("pick.txt").exists());
+        repo.revert(&sha).unwrap();
+        assert!(!fixture.path.join("pick.txt").exists());
         assert_eq!(repo.operation(), None);
     }
 
