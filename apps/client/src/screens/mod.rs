@@ -29,3 +29,22 @@ pub(crate) use workspace::workspace;
 pub(crate) fn palette_commands() -> Vec<palette::Command> {
     return palette::commands();
 }
+
+/// 当前查询命中的命令 id（顺序即显示顺序，已被上限截断）。
+///
+/// 根组件的键盘导航与面板渲染用同一份判断，避免「高亮一行、执行另一行」。
+pub(crate) fn palette_ids(query: &str, language: &str) -> Vec<&'static str> {
+    let needle = query.to_lowercase();
+    return palette::commands()
+        .into_iter()
+        .filter(|command| {
+            if needle.is_empty() {
+                return true;
+            }
+            let label = crate::i18n::t(language, command.key).to_lowercase();
+            return label.contains(&needle) || command.id.contains(&needle);
+        })
+        .take(palette::MAX_ROWS)
+        .map(|command| command.id)
+        .collect();
+}

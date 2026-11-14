@@ -199,6 +199,8 @@ pub fn App() -> impl IntoElement {
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
+    // 命令面板的高亮行。
+    let palette_selected = signal(0_usize);
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
     // 冲突视图：可编辑的结果区与 base 显隐。
@@ -1909,6 +1911,11 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 键盘与命令面板共用同一个派发入口（Actions 会把它移走，因此先留一份）。
+    let run_command_for_key = run_command.clone();
+    let commit_for_key = commit.clone();
+    let open_sync_for_key = open_sync.clone();
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2104,7 +2111,25 @@ pub fn App() -> impl IntoElement {
     });
     on_key("mod+p", {
         let palette_open = palette_open;
-        move |_| palette_open.set(!palette_open.get_untracked())
+        let palette_selected = palette_selected;
+        move |_| {
+            let next = !palette_open.get_untracked();
+            if next {
+                palette_selected.set(0);
+            }
+            palette_open.set(next);
+        }
+    });
+
+    // 查询变化时把高亮拉回第一行，避免高亮停在已被筛掉的位置。
+    effect({
+        let palette_query = palette_query;
+        let palette_selected = palette_selected;
+        move || {
+            // 读一次即建立依赖；查询一变就把高亮拉回第一行。
+            let _ = palette_query.get();
+            palette_selected.set(0);
+        }
     });
     on_key("mod+shift+a", {
         let theme_mode = theme_mode;
@@ -2118,8 +2143,151 @@ pub fn App() -> impl IntoElement {
     });
     on_key("mod+f", {
         let filter_open = filter_open;
-        move |_| filter_open.set(true)
+        let mode = mode;
+        move |_| {
+            // 设计板 04：搜索框在历史视图；过滤浮层也只在历史里有意义。
+            mode.set(Mode::History);
+            filter_open.set(true);
+        }
     });
+
+    // ⌘⇧F：过滤历史（与 ⌘F 同一浮层）。
+    on_key("mod+shift+f", {
+        let filter_open = filter_open;
+        let mode = mode;
+        move |_| {
+            mode.set(Mode::History);
+            filter_open.set(true);
+        }
+    });
+
+    // ⌘⇧P：推送确认；⌘⇧K：跳到提界面。
+    on_key("mod+shift+p", {
+        let open_sync = open_sync_for_key.clone();
+        move |_| open_sync(model::Sync::Push)
+    });
+
+    on_key("mod+shift+k", {
+        let mode = mode;
+        move |_| mode.set(Mode::Changes)
+    });
+
+    // ⌘↵：在 Changes 里提交，在 History 里不做（避免误提交）。
+    on_key("mod+enter", {
+        let mode = mode;
+        let commit = commit_for_key.clone();
+        move |_| {
+            if mode.get_untracked() == Mode::Changes {
+                commit();
+            }
+        }
+    });
+
+    // ⌘1…⌘9 切换仓库 tab；越界不做事（不把用户送到空 tab）。
+    for (key, slot) in [
+        ("mod+1", 0usize),
+        ("mod+2", 1),
+        ("mod+3", 2),
+        ("mod+4", 3),
+        ("mod+5", 4),
+        ("mod+6", 5),
+        ("mod+7", 6),
+        ("mod+8", 7),
+        ("mod+9", 8),
+    ] {
+        on_key(key, {
+            let active = active;
+            let tabs = tabs;
+            move |_| {
+                if slot < tabs.get_untracked().len() {
+                    active.set(slot);
+                    screen.set(Screen::Workspace);
+                }
+            }
+        });
+    }
+
+    // ⌘⇧[ / ⌘⇧] 前后切 tab（到头回绕，符合 macOS 习惯）。
+    for (key, forward) in [("mod+shift+[", false), ("mod+shift+]", true)] {
+        on_key(key, {
+            let active = active;
+            let tabs = tabs;
+            move |_| {
+                let count = tabs.get_untracked().len();
+                if count < 2 {
+                    return;
+                }
+                let current = active.get_untracked();
+                let next = if forward {
+                    (current + 1) % count
+                } else {
+                    (current + count - 1) % count
+                };
+                active.set(next);
+                screen.set(Screen::Workspace);
+            }
+        });
+    }
+    // 命令面板的键盘导航：↑↓ 移动高亮，↵ 执行，打开面板时高亮回到第一行。
+    on_key("down", {
+        let palette_open = palette_open;
+        let palette_selected = palette_selected;
+        let palette_query = palette_query;
+        let language = language;
+        move |_| {
+            if !palette_open.get_untracked() {
+                return;
+            }
+            let count = screens::palette_ids(
+                palette_query.get_untracked().as_str(),
+                language.get_untracked().as_str(),
+            )
+            .len();
+            if count == 0 {
+                return;
+            }
+            let next = (palette_selected.get_untracked() + 1).min(count - 1);
+            palette_selected.set(next);
+        }
+    });
+
+    on_key("up", {
+        let palette_open = palette_open;
+        let palette_selected = palette_selected;
+        move |_| {
+            if !palette_open.get_untracked() {
+                return;
+            }
+            let next = palette_selected.get_untracked().saturating_sub(1);
+            palette_selected.set(next);
+        }
+    });
+
+    on_key("enter", {
+        let palette_open = palette_open;
+        let palette_selected = palette_selected;
+        let palette_query = palette_query;
+        let language = language;
+        let run = run_command_for_key.clone();
+        move |_| {
+            if !palette_open.get_untracked() {
+                return;
+            }
+            let ids = screens::palette_ids(
+                palette_query.get_untracked().as_str(),
+                language.get_untracked().as_str(),
+            );
+            let index = palette_selected
+                .get_untracked()
+                .min(ids.len().saturating_sub(1));
+            let Some(id) = ids.get(index).copied() else {
+                return;
+            };
+            run(id);
+            palette_open.set(false);
+        }
+    });
+
     // Esc 层层退出：先关最上面的浮层，再退到过滤器；都不开时什么也不做。
     on_key("escape", {
         let filter_open = filter_open;
@@ -2299,6 +2467,7 @@ pub fn App() -> impl IntoElement {
                 commands,
                 run_command,
                 palette_open,
+                palette_selected,
             )
             .into_element();
         }));

@@ -9,7 +9,7 @@ use nsh_core::prelude::*;
 
 /// 面板宽度与最大高度（设计板 `.palette`）。
 const WIDTH: f32 = 520.0;
-const MAX_ROWS: usize = 9;
+pub(crate) const MAX_ROWS: usize = 9;
 
 /// 面板里的命令（顺序即显示顺序）。每条的 `id` 由 `Actions::run_command` 处理；
 /// 未接入的动作不列在这里。
@@ -66,6 +66,7 @@ pub(crate) fn palette(
     commands: Vec<Command>,
     on_run: std::sync::Arc<dyn Fn(&'static str)>,
     open: Signal<bool>,
+    selected: Signal<usize>,
 ) -> impl IntoElement {
     let filtered: Vec<Command> = commands
         .iter()
@@ -81,11 +82,13 @@ pub(crate) fn palette(
         .cloned()
         .collect();
     let mut rows: Vec<AnyElement> = Vec::new();
+    let highlighted = selected.get().min(filtered.len().saturating_sub(1));
     for (index, command) in filtered.iter().enumerate() {
         let id = command.id;
         let run = on_run.clone();
         let key = command.key;
         let shortcut = command.shortcut;
+        let is_highlighted = index == highlighted;
         rows.push(
             view()
                 .w_full()
@@ -96,7 +99,7 @@ pub(crate) fn palette(
                 .gap(px(8.0))
                 .rounded(px(5.0))
                 .bg(move || {
-                    if index == 0 {
+                    if is_highlighted {
                         design::selected()
                     } else {
                         AdaptiveColor::TRANSPARENT
