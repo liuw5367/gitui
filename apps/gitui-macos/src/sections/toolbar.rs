@@ -42,6 +42,7 @@ pub(crate) fn toolbar(
     mode: Signal<Mode>,
     on_mode: Arc<dyn Fn(Mode)>,
     on_sync: Arc<dyn Fn()>,
+    on_settings: Arc<dyn Fn()>,
 ) -> impl IntoElement {
     view()
         .h(px(44.0))
@@ -100,6 +101,7 @@ pub(crate) fn toolbar(
                 .child(mode_button("History", Mode::History, mode, on_mode.clone()))
                 .child(mode_button("Changes", Mode::Changes, mode, on_mode)),
         )
+        .child(header_button("Settings", false, move || on_settings()))
         .child(
             text(move || format!("{} ↑{} ↓{}", branch.get(), ahead.get(), behind.get()))
                 .text_size(px(10.5))

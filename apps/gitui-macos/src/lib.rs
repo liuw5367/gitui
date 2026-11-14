@@ -10,7 +10,7 @@ mod widgets;
 
 use gitui_git::{Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{changes_list, diff_view, history, inspector, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions, SyncActions};
+use sections::{changes_list, diff_view, history, inspector, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -31,6 +31,7 @@ pub(crate) enum SyncKind {
 }
 
 impl SyncKind {
+
     pub(crate) fn label(self) -> &'static str {
         match self {
             SyncKind::Fetch => "Fetch",
@@ -49,6 +50,15 @@ fn split_entries(entries: &[StatusEntry]) -> (Vec<StatusEntry>, Vec<StatusEntry>
 #[native_module("gitui/native")]
 fn native(registry: &mut Registry) {
     registry.register::<App>();
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SettingsTab {
+    General,
+    Git,
+    Credentials,
+    Shortcuts,
+    About,
 }
 
 #[component]
@@ -139,6 +149,12 @@ pub fn App() -> impl IntoElement {
     let sync_open = signal(false);
     let sync_kind = signal(SyncKind::Fetch);
     let sync_log = signal(SharedString::from(""));
+    let settings_open = signal(false);
+    let settings_tab = signal(SettingsTab::General);
+    let open_settings: Arc<dyn Fn()> = Arc::new(move || {
+        settings_tab.set(SettingsTab::General);
+        settings_open.set(true);
+    });
     let open_sync: Arc<dyn Fn()> = Arc::new(move || {
         sync_kind.set(SyncKind::Fetch);
         sync_log.set(SharedString::from(""));
@@ -346,6 +362,7 @@ pub fn App() -> impl IntoElement {
         mode,
         set_mode,
         open_sync.clone(),
+        open_settings.clone(),
     );
 
     let sync_close: Arc<dyn Fn()> = Arc::new(move || sync_open.set(false));
@@ -939,11 +956,15 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
-    let identity_bar = crate::sections::identity_bar(
+    let close_settings: Arc<dyn Fn()> = Arc::new(move || settings_open.set(false));
+    let settings_panel = settings_panel(
+        settings_open,
+        settings_tab,
         identity_name,
         identity_email,
-        IdentityActions {
-            save: save_identity_action,
+        SettingsActions {
+            close: close_settings,
+            save_identity: save_identity_action,
         },
     );
     let merge_branch_action = Arc::new({
@@ -1189,9 +1210,9 @@ pub fn App() -> impl IntoElement {
         .child(operation_banner)
         .child(recent_bar)
         .child(hunks_bar)
-        .child(identity_bar)
         .child(conflict_panel)
         .child(main)
         .child(sync_panel)
+        .child(settings_panel)
         .child(statusbar)
 }
