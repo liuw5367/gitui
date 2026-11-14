@@ -35,6 +35,7 @@ pub(crate) fn workspace(
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     notice: Signal<Option<String>>,
     reflog_query: Signal<String>,
+    diff_options: Signal<crate::workspace::diff::DiffOptions>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -104,6 +105,7 @@ pub(crate) fn workspace(
                     agent_policies,
                     reset_request,
                     reflog_query,
+                    diff_options,
                     actions_for_body,
                 )),
         )
@@ -132,6 +134,7 @@ fn match_body(
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     reflog_query: Signal<String>,
+    diff_options: Signal<crate::workspace::diff::DiffOptions>,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -182,6 +185,7 @@ fn match_body(
                 agent_policies,
                 reset_request,
                 reflog_query,
+                diff_options,
                 actions,
             )
             .into_element();
@@ -211,6 +215,7 @@ fn body(
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     reflog_query: Signal<String>,
+    diff_options: Signal<crate::workspace::diff::DiffOptions>,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -298,6 +303,9 @@ fn body(
                                 label.clone(),
                                 patch.clone(),
                                 history_actions.copy_text.clone(),
+                                diff_options.get(),
+                                history_actions.toggle_diff_option.clone(),
+                                history_actions.export_patch.clone(),
                             ))
                             .into_element(),
                         crate::Mode::Agent => view()

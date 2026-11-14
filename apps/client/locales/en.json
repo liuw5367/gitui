@@ -560,5 +560,12 @@
     "rejected": "The remote rejected the push — pull first",
     "openCredentials": "Credentials…",
     "dismiss": "Dismiss"
+  },
+  "diff": {
+    "export": "Export",
+    "exported": "Patch exported",
+    "exportName": "changes.patch",
+    "nothingToExport": "Nothing selected to export",
+    "folded": "%{count} unchanged lines"
   }
 }

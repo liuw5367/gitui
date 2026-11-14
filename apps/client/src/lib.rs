@@ -82,6 +82,10 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
+    /// 切换 diff 显示开关（`fold` / `wrap` / `whitespace`）。
+    pub(crate) toggle_diff_option: Arc<dyn Fn(&'static str)>,
+    /// 把当前 diff 导出成 patch 文件。
+    pub(crate) export_patch: Arc<dyn Fn()>,
     /// 游离头时回到 main/master。
     pub(crate) checkout_default_branch: Arc<dyn Fn()>,
     /// 空仓库里创建第一个提交。
@@ -223,6 +227,8 @@ pub fn App() -> impl IntoElement {
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
+    // diff 的三个显示开关（设计板 04）。
+    let diff_options = signal(crate::workspace::diff::DiffOptions::default());
     // 历史改写弹窗（改写说明 / 合并提交）。
     let rewrite_state = signal(Option::<screens::RewriteState>::None);
     // 命令面板的高亮行。
@@ -2198,6 +2204,57 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let toggle_diff_option: Arc<dyn Fn(&'static str)> = {
+        let diff_options = diff_options;
+        Arc::new(move |which: &'static str| {
+            let mut next = diff_options.get_untracked();
+            match which {
+                "fold" => next.fold = !next.fold,
+                "wrap" => next.wrap = !next.wrap,
+                "whitespace" => next.whitespace = !next.whitespace,
+                _ => return,
+            }
+            diff_options.set(next);
+        })
+    };
+
+    // 导出 patch：写到用户选择的路径。没有选择就不写，不落默认文件名。
+    let export_patch: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let list = tabs.get_untracked();
+            let Some(tab) = list.get(active.get_untracked()) else {
+                return;
+            };
+            let patch = tab.patch.clone();
+            if patch.trim().is_empty() {
+                let lang = language.get_untracked();
+                interactions::notify(notice, i18n::t(lang.as_str(), "diff.nothingToExport"));
+                return;
+            }
+            let lang = language.get_untracked();
+            let suggested = i18n::t(lang.as_str(), "diff.exportName");
+            let pending =
+                pick_save_path(nsh_core::file_dialog::SaveDialog::new().file_name(suggested));
+            spawn(async move {
+                let Ok(Some(path)) = pending.await else {
+                    return;
+                };
+                match std::fs::write(&path, patch.as_bytes()) {
+                    Ok(()) => {
+                        interactions::notify(notice, i18n::t(lang.as_str(), "diff.exported"));
+                    }
+                    Err(error) => {
+                        interactions::notify(notice, error.to_string());
+                    }
+                }
+            });
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -2218,6 +2275,8 @@ pub fn App() -> impl IntoElement {
         set_commit_option,
         toggle_hook_log,
         checkout_default_branch,
+        toggle_diff_option,
+        export_patch,
         create_initial_commit,
         clear_sync_fault,
         open_reword,
@@ -2729,6 +2788,7 @@ pub fn App() -> impl IntoElement {
                             reset_request,
                             notice,
                             reflog_query,
+                            diff_options,
                             actions_for_view.clone(),
                         )
                         .into_element(),

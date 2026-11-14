@@ -560,5 +560,12 @@
     "rejected": "远端拒绝了推送 —— 先拉取",
     "openCredentials": "凭据…",
     "dismiss": "忽略"
+  },
+  "diff": {
+    "export": "导出",
+    "exported": "已导出 patch",
+    "exportName": "changes.patch",
+    "nothingToExport": "当前没有可导出的 diff",
+    "folded": "%{count} 行未改动"
   }
 }
