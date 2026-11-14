@@ -236,6 +236,30 @@
     "banner": "正在进行 %{operation} · %{conflicts} 个冲突",
     "abort": "放弃"
   },
+  "confirm": {
+    "abortTitle": "放弃%{operation}？",
+    "abortMessage": "放弃后仓库回到操作开始前的状态，工作区里未解决的冲突会被丢弃。",
+    "abortAction": "放弃",
+    "dropTagTitle": "删除标签？",
+    "dropTagMessage": "标签 %{name} 会从本仓库删除。已推送到远端的副本不受影响。",
+    "deleteAction": "删除",
+    "dropRemoteTitle": "移除远端？",
+    "dropRemoteMessage": "远端 %{name} 及其远程跟踪分支会被移除，远端服务器本身不受影响。",
+    "removeAction": "移除",
+    "dropStashTitle": "丢弃贮藏？",
+    "dropStashMessage": "%{name} 会被丢弃，无法恢复。",
+    "dropAction": "丢弃",
+    "closeTitle": "关闭 %{name}？",
+    "closeMessage": "该仓库有 %{count} 个未提交的改动。关闭标签页不会删除磁盘上的改动。",
+    "closeAction": "关闭"
+  },
+  "toast": {
+    "copied": "已复制到剪贴板",
+    "copyFailed": "没有可复制的内容",
+    "openFailed": "打不开该文件",
+    "revealFailed": "无法在 Finder 中显示",
+    "browserFailed": "打不开链接"
+  },
   "conflicts": {
     "title": "冲突",
     "ours": "当前分支",

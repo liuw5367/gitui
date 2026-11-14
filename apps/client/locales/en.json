@@ -236,6 +236,30 @@
     "banner": "%{operation} in progress · %{conflicts} conflicts",
     "abort": "Abort"
   },
+  "confirm": {
+    "abortTitle": "Abort %{operation}?",
+    "abortMessage": "The operation is aborted and the repository returns to how it was before it started. Conflicts in the working tree are discarded.",
+    "abortAction": "Abort",
+    "dropTagTitle": "Delete tag?",
+    "dropTagMessage": "Tag %{name} is deleted from this repository. Copies already pushed to a remote are not affected.",
+    "deleteAction": "Delete",
+    "dropRemoteTitle": "Remove remote?",
+    "dropRemoteMessage": "Remote %{name} and its remote-tracking branches are removed. The remote server itself is not touched.",
+    "removeAction": "Remove",
+    "dropStashTitle": "Drop stash?",
+    "dropStashMessage": "%{name} is dropped and cannot be recovered.",
+    "dropAction": "Drop",
+    "closeTitle": "Close %{name}?",
+    "closeMessage": "This repository has %{count} uncommitted changes. Closing the tab leaves them on disk.",
+    "closeAction": "Close"
+  },
+  "toast": {
+    "copied": "Copied to clipboard",
+    "copyFailed": "Nothing to copy",
+    "openFailed": "Could not open",
+    "revealFailed": "Could not reveal in Finder",
+    "browserFailed": "Could not open link"
+  },
   "conflicts": {
     "title": "Conflicted",
     "ours": "Ours",

@@ -449,7 +449,11 @@ pub(crate) fn op_banner(
 }
 
 /// 状态栏：分支、操作状态、变更数量与编码信息。
-pub(crate) fn statusbar(language: Signal<SharedString>, tab: Memo<Option<Tab>>) -> impl IntoElement {
+pub(crate) fn statusbar(
+    language: Signal<SharedString>,
+    tab: Memo<Option<Tab>>,
+    notice: Signal<Option<String>>,
+) -> impl IntoElement {
     return view()
         .w_full()
         .h(px(metrics::STATUS_H))
@@ -473,6 +477,26 @@ pub(crate) fn statusbar(language: Signal<SharedString>, tab: Memo<Option<Tab>>) 
             .text_color(move || design::text3()),
         )
         .child(view().flex_1())
+        .child(dynamic(move || -> AnyElement {
+            // 提示只占右端一小段，出现时不挤动左侧状态。
+            let Some(message) = notice.get() else {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            };
+            return view()
+                .max_w(px(420.0))
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(widgets::icon("check", 10.0, design::ok))
+                .child(
+                    text(message)
+                        .text_size(px(10.5))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text2())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .into_element();
+        }))
         .child(
             text(move || {
                 let count = tab

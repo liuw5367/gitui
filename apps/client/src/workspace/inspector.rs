@@ -62,6 +62,11 @@ pub(crate) fn inspector(
         .and_then(|commit| commit.date.parse::<i64>().ok())
         .unwrap_or(0);
     let tab_for_body = tab.clone();
+    // 页脚两个按钮作用于当前选中的文件（相对仓库根）。
+    let selected_path = tab
+        .selected_file
+        .and_then(|index| tab.files.get(index))
+        .map(|file| file.path.clone());
     return view()
         .w(px(WIDTH))
         .h_full()
@@ -169,30 +174,39 @@ pub(crate) fn inspector(
                 .gap(px(6.0))
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(
-                    view()
-                        .h(px(metrics::BUTTON_SMALL_H))
-                        .px(px(8.0))
-                        .items_center()
-                        .rounded(px(5.0))
-                        .border_1()
-                        .border_color(move || design::btn_border())
-                        .bg(move || design::btn())
-                        .opacity(0.45)
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), "files.copyPath"))
-                                .text_size(px(11.0))
-                                .line_height(px(14.0))
-                                .text_color(move || design::text()),
-                        ),
-                )
+                .child(widgets::small_button(
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.copyPath")
+                    },
+                    {
+                        let copy_text = actions.copy_text.clone();
+                        let root = tab.path.clone();
+                        let relative = selected_path.clone();
+                        move || {
+                            if let Some(relative) = relative.clone() {
+                                copy_text(format!("{}/{}", root.trim_end_matches('/'), relative));
+                            }
+                        }
+                    },
+                ))
                 .child(view().flex_1())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "files.openInEditor"))
-                        .text_size(px(10.0))
-                        .line_height(px(13.0))
-                        .text_color(move || design::text3()),
-                ),
+                .child(widgets::small_button(
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.openInEditor")
+                    },
+                    {
+                        let open_editor = actions.open_editor.clone();
+                        let root = tab.path.clone();
+                        let relative = selected_path.clone();
+                        move || {
+                            if let Some(relative) = relative.clone() {
+                                open_editor(format!("{}/{}", root.trim_end_matches('/'), relative));
+                            }
+                        }
+                    },
+                )),
         );
 }
 

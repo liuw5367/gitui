@@ -8,6 +8,7 @@ pub mod brand;
 mod design;
 mod filters;
 mod i18n;
+mod interactions;
 mod model;
 mod screens;
 mod shell;
@@ -113,6 +114,10 @@ pub(crate) struct Actions {
     pub(crate) go_welcome: Arc<dyn Fn()>,
     pub(crate) go_repo_manager: Arc<dyn Fn()>,
     pub(crate) set_repo_form: Arc<dyn Fn(RepoForm)>,
+    /// 复制文本到剪贴板（成功后状态栏提示）。
+    pub(crate) copy_text: Arc<dyn Fn(String)>,
+    /// 用系统默认程序打开路径。
+    pub(crate) open_editor: Arc<dyn Fn(String)>,
 }
 
 /// 应用根组件。
@@ -152,6 +157,8 @@ pub fn App() -> impl IntoElement {
     let settings_state = signal(store::load_settings(&store_dir));
     let form_state = signal(Option::<screens::FormState>::None);
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
+    // 状态栏右端的短提示：复制成功、外部打开失败等。
+    let notice = signal(Option::<String>::None);
     let sync_state = signal(Option::<screens::SyncDialogState>::None);
     let agent_plan = signal(Option::<agent::Plan>::None);
     let agent_policies = signal({
@@ -305,23 +312,66 @@ pub fn App() -> impl IntoElement {
         let active = active;
         let screen = screen;
         let store_dir = store_dir.clone();
+        let language = language;
+        // 关闭动作本身；有未提交改动时先确认再走这里。
+        let perform: Arc<dyn Fn(usize)> = {
+            let welcome_open = welcome_open;
+            let tabs = tabs;
+            let active = active;
+            let store_dir = store_dir.clone();
+            Arc::new(move |index: usize| {
+                let mut list = tabs.get_untracked();
+                if index >= list.len() {
+                    return;
+                }
+                list.remove(index);
+                let next_active = if list.is_empty() {
+                    0
+                } else {
+                    active.get_untracked().min(list.len() - 1)
+                };
+                tabs.set(list.clone());
+                active.set(next_active);
+                if list.is_empty() {
+                    welcome_open.set(true);
+                }
+                persist(&store_dir, active, tabs);
+            })
+        };
+        let perform = perform;
         Arc::new(move |index: usize| {
-            let mut list = tabs.get_untracked();
-            if index >= list.len() {
+            let list = tabs.get_untracked();
+            let Some(tab) = list.get(index) else {
+                return;
+            };
+            let changes = tab.status.len();
+            let name = tab.label();
+            if changes == 0 {
+                perform(index);
                 return;
             }
-            list.remove(index);
-            let next_active = if list.is_empty() {
-                0
-            } else {
-                active.get_untracked().min(list.len() - 1)
-            };
-            tabs.set(list.clone());
-            active.set(next_active);
-            if list.is_empty() {
-                welcome_open.set(true);
-            }
-            persist(&store_dir, active, tabs);
+            let language_now = language.get_untracked();
+            let pending = interactions::confirm(
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "confirm.closeTitle",
+                    &[("name", name)],
+                ),
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "confirm.closeMessage",
+                    &[("count", changes.to_string())],
+                ),
+                "close",
+                i18n::t(language_now.as_str(), "confirm.closeAction"),
+                false,
+            );
+            let perform = perform.clone();
+            spawn(async move {
+                if pending.await {
+                    perform(index);
+                }
+            });
         })
     };
 
@@ -761,13 +811,36 @@ pub fn App() -> impl IntoElement {
     let abort_operation: Arc<dyn Fn()> = {
         let tabs = tabs;
         let active = active;
+        let language = language;
         Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::abort_operation(tab);
-                tabs.set(list);
-            }
+            let language_now = language.get_untracked();
+            let operation = tabs
+                .get_untracked()
+                .get(active.get_untracked())
+                .map(|tab| tab.operation.id().to_string())
+                .unwrap_or_default();
+            let pending = interactions::confirm(
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "confirm.abortTitle",
+                    &[("operation", operation)],
+                ),
+                i18n::t(language_now.as_str(), "confirm.abortMessage"),
+                "abort",
+                i18n::t(language_now.as_str(), "confirm.abortAction"),
+                true,
+            );
+            spawn(async move {
+                if !pending.await {
+                    return;
+                }
+                let current = active.get_untracked();
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    model::abort_operation(tab);
+                    tabs.set(list);
+                }
+            });
         })
     };
 
@@ -1204,39 +1277,93 @@ pub fn App() -> impl IntoElement {
     let drop_tag: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
+        let language = language;
         Arc::new(move |name: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let _ = model::drop_tag(tab, name.as_str());
-                tabs.set(list);
-            }
+            let language_now = language.get_untracked();
+            let pending = interactions::confirm(
+                i18n::t(language_now.as_str(), "confirm.dropTagTitle"),
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "confirm.dropTagMessage",
+                    &[("name", name.clone())],
+                ),
+                "drop",
+                i18n::t(language_now.as_str(), "confirm.deleteAction"),
+                true,
+            );
+            spawn(async move {
+                if !pending.await {
+                    return;
+                }
+                let current = active.get_untracked();
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    let _ = model::drop_tag(tab, name.as_str());
+                    tabs.set(list);
+                }
+            });
         })
     };
 
     let drop_remote: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
+        let language = language;
         Arc::new(move |name: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let _ = model::drop_remote(tab, name.as_str());
-                tabs.set(list);
-            }
+            let language_now = language.get_untracked();
+            let pending = interactions::confirm(
+                i18n::t(language_now.as_str(), "confirm.dropRemoteTitle"),
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "confirm.dropRemoteMessage",
+                    &[("name", name.clone())],
+                ),
+                "drop",
+                i18n::t(language_now.as_str(), "confirm.removeAction"),
+                true,
+            );
+            spawn(async move {
+                if !pending.await {
+                    return;
+                }
+                let current = active.get_untracked();
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    let _ = model::drop_remote(tab, name.as_str());
+                    tabs.set(list);
+                }
+            });
         })
     };
 
     let drop_stash: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
+        let language = language;
         Arc::new(move |reference: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let _ = model::drop_stash(tab, reference.as_str());
-                tabs.set(list);
-            }
+            let language_now = language.get_untracked();
+            let pending = interactions::confirm(
+                i18n::t(language_now.as_str(), "confirm.dropStashTitle"),
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "confirm.dropStashMessage",
+                    &[("name", reference.clone())],
+                ),
+                "drop",
+                i18n::t(language_now.as_str(), "confirm.dropAction"),
+                true,
+            );
+            spawn(async move {
+                if !pending.await {
+                    return;
+                }
+                let current = active.get_untracked();
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    let _ = model::drop_stash(tab, reference.as_str());
+                    tabs.set(list);
+                }
+            });
         })
     };
 
@@ -1314,6 +1441,33 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || mode.set(Mode::Refs))
     };
 
+    let copy_text: Arc<dyn Fn(String)> = {
+        let notice = notice;
+        let language = language;
+        Arc::new(move |text: String| {
+            let language_now = language.get_untracked();
+            interactions::copy(
+                notice,
+                text,
+                i18n::t(language_now.as_str(), "toast.copied"),
+                i18n::t(language_now.as_str(), "toast.copyFailed"),
+            );
+        })
+    };
+
+    let open_editor: Arc<dyn Fn(String)> = {
+        let notice = notice;
+        let language = language;
+        Arc::new(move |path: String| {
+            let language_now = language.get_untracked();
+            interactions::open_in_editor(
+                notice,
+                path,
+                i18n::t(language_now.as_str(), "toast.openFailed"),
+            );
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -1368,6 +1522,8 @@ pub fn App() -> impl IntoElement {
         go_welcome,
         go_repo_manager,
         set_repo_form,
+        copy_text,
+        open_editor,
     };
 
     // 原生菜单（设计板 22）：File/Edit/View/Repository/Window/Help。
@@ -1601,6 +1757,7 @@ pub fn App() -> impl IntoElement {
                             agent_audit,
                             agent_policies,
                             reset_request,
+                            notice,
                             actions_for_view.clone(),
                         )
                         .into_element(),

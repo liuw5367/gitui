@@ -33,6 +33,7 @@ pub(crate) fn workspace(
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
+    notice: Signal<Option<String>>,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -99,7 +100,7 @@ pub(crate) fn workspace(
                     actions_for_body,
                 )),
         )
-        .child(shell::statusbar(language, current));
+        .child(shell::statusbar(language, current, notice));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -282,7 +283,12 @@ fn body(
                                 reset_request,
                                 history_actions.clone(),
                             ))
-                            .child(diff::diff(language, label.clone(), patch.clone()))
+                            .child(diff::diff(
+                                language,
+                                label.clone(),
+                                patch.clone(),
+                                history_actions.copy_text.clone(),
+                            ))
                             .into_element(),
                         crate::Mode::Agent => view()
                             .w_full()
