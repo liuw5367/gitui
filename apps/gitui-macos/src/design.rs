@@ -121,6 +121,26 @@ pub(crate) fn statusbar() -> AdaptiveColor {
     token("statusbar")
 }
 
+pub(crate) fn sidebar() -> AdaptiveColor {
+    base_theme().sidebar
+}
+
+pub(crate) fn primary() -> AdaptiveColor {
+    base_theme().primary
+}
+
+pub(crate) fn primary_foreground() -> AdaptiveColor {
+    base_theme().primary_foreground
+}
+
+pub(crate) fn danger() -> AdaptiveColor {
+    base_theme().destructive
+}
+
+pub(crate) fn warn() -> AdaptiveColor {
+    token("warn")
+}
+
 pub(crate) fn line() -> AdaptiveColor {
     base_theme().border
 }

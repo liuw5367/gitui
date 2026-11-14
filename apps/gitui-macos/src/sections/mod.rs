@@ -23,7 +23,7 @@ pub(crate) use history::history;
 pub(crate) use hunks::{hunks_bar, HunkActions};
 pub(crate) use identity::{identity_bar, IdentityActions};
 pub(crate) use recent::recent_bar;
-pub(crate) use stashes::{stashes_bar, StashActions};
+pub(crate) use stashes::StashActions;
 pub(crate) use status::{status_pane, StatusActions};
 pub(crate) use statusbar::statusbar;
 pub(crate) use tabs::tabs;

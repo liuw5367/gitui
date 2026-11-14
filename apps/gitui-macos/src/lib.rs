@@ -651,16 +651,6 @@ pub fn App() -> impl IntoElement {
             Err(err) => error.set(SharedString::from(err.to_string())),
         }
     });
-    let stashes_bar = crate::sections::stashes_bar(
-        stashes,
-        StashActions {
-            push: stash_push_action,
-            apply: stash_apply_action,
-            pop: stash_pop_action,
-            drop: stash_drop_action,
-        },
-    );
-
     let rename_branch_action = Arc::new({
         let reload_branch = reload_for_branch.clone();
         move |new_name: String| {
@@ -908,6 +898,7 @@ pub fn App() -> impl IntoElement {
         branches,
         tags,
         remotes,
+        stashes,
         conflicts,
         conflict_path,
         error,
@@ -932,6 +923,12 @@ pub fn App() -> impl IntoElement {
             create_tag: create_tag_action,
             delete_tag: delete_tag_action,
             select_conflict: select_conflict_action,
+        },
+        StashActions {
+            push: stash_push_action,
+            apply: stash_apply_action,
+            pop: stash_pop_action,
+            drop: stash_drop_action,
         },
     );
 
@@ -999,8 +996,8 @@ pub fn App() -> impl IntoElement {
     let main = view()
         .flex_1()
         .flex_row()
-        .gap_2()
-        .p_2()
+        .gap_0()
+        .p_0()
         .bg(move || theme().background)
         .child(status_pane)
         .child(history)
@@ -1034,7 +1031,6 @@ pub fn App() -> impl IntoElement {
         .child(operation_banner)
         .child(recent_bar)
         .child(commit_bar)
-        .child(stashes_bar)
         .child(hunks_bar)
         .child(identity_bar)
         .child(conflict_panel)
