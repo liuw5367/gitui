@@ -18,10 +18,13 @@ use nsh_base::theme_overrides;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 
 use nsh_core::element::desktop::{main_window, title_bar};
+use nsh_core::desktop::MenuRole;
+use nsh_core::element::desktop::MenuItem;
 use nsh_core::element::set_tokens;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
+use brand::ThemeMode;
 use filters::When;
 use git::LogFilter;
 use model::Tab;
@@ -74,6 +77,7 @@ pub(crate) struct Actions {
     pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
     pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) sync: Arc<dyn Fn(model::Sync)>,
+    pub(crate) run_command: Arc<dyn Fn(&'static str)>,
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
@@ -118,6 +122,14 @@ pub fn App() -> impl IntoElement {
     let commit_summary = signal(String::new());
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
+    let palette_open = signal(false);
+    let palette_query = signal(String::new());
+    let theme_mode = signal(ThemeMode::from_id(
+        store::load_appearance(&store_dir)
+            .unwrap_or_else(|| ThemeMode::System.id().to_string())
+            .as_str(),
+    ));
+    nsh_core::element::set_color_scheme(theme_mode.get_untracked().appearance());
     let now = store::now_unix();
 
     let session = store::load_session(&store_dir);
@@ -586,6 +598,48 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    // 命令面板：每条命令对应一个已接好的动作。
+    let run_command: Arc<dyn Fn(&'static str)> = {
+        let open_repo = choose_folder.clone();
+        let close_tab = close_tab.clone();
+        let refresh = refresh.clone();
+        let set_mode_cmd = set_mode.clone();
+        let inspector_open = inspector_open;
+        let compare_mode = compare_mode;
+        let sync = sync.clone();
+        let go_welcome = go_welcome.clone();
+        let go_repo_manager = go_repo_manager.clone();
+        let toggle_language = toggle_language.clone();
+        let palette_open = palette_open;
+        let theme_mode = theme_mode;
+        let store_dir = store_dir.clone();
+        Arc::new(move |id: &'static str| {
+            match id {
+                "open" => open_repo(),
+                "openPalette" => palette_open.set(true),
+                "closeTab" => close_tab(active.get_untracked()),
+                "refresh" => refresh(),
+                "history" => set_mode_cmd(Mode::History),
+                "changes" => set_mode_cmd(Mode::Changes),
+                "inspector" => inspector_open.set(!inspector_open.get_untracked()),
+                "compare" => compare_mode.set(!compare_mode.get_untracked()),
+                "fetch" => sync(model::Sync::Fetch),
+                "pull" => sync(model::Sync::Pull),
+                "push" => sync(model::Sync::Push),
+                "welcome" => go_welcome(),
+                "repoManager" => go_repo_manager(),
+                "toggleLanguage" => toggle_language(),
+                "toggleTheme" => {
+                    let next = theme_mode.get_untracked().next();
+                    theme_mode.set(next);
+                    nsh_core::element::set_color_scheme(next.appearance());
+                    store::save_appearance(&store_dir, next.id());
+                }
+                _ => {}
+            }
+        })
+    };
+
     let actions = Actions {
         open_path: open_path.clone(),
         choose_folder: choose_folder.clone(),
@@ -605,6 +659,7 @@ pub fn App() -> impl IntoElement {
         resolve_conflict,
         abort_operation,
         sync,
+        run_command,
         apply_filter,
         clear_filter,
         clone_repository,
@@ -615,6 +670,90 @@ pub fn App() -> impl IntoElement {
         go_repo_manager,
         set_repo_form,
     };
+
+    // 原生菜单（设计板 22）：File/Edit/View/Repository/Window/Help。
+    // 处理器与命令面板共用同一批动作，因此菜单项不会指向空实现。
+    {
+        let run = actions.run_command.clone();
+        let choose_folder = actions.choose_folder.clone();
+        let menu_run = {
+            let run = run.clone();
+            move |id: &'static str| {
+                let run = run.clone();
+                return move || run(id);
+            }
+        };
+        let items = vec![
+            MenuItem::submenu(
+                "File",
+                vec![
+                    MenuItem::new("Open Repository…")
+                        .shortcut("mod+o")
+                        .on_select({
+                            let choose_folder = choose_folder.clone();
+                            move || choose_folder()
+                        }),
+                    MenuItem::new("Close Tab").shortcut("mod+w").on_select(menu_run("closeTab")),
+                    MenuItem::separator(),
+                    MenuItem::role(MenuRole::Close),
+                ],
+            ),
+            MenuItem::submenu(
+                "Edit",
+                vec![
+                    MenuItem::role(MenuRole::Undo),
+                    MenuItem::role(MenuRole::Redo),
+                    MenuItem::separator(),
+                    MenuItem::role(MenuRole::Cut),
+                    MenuItem::role(MenuRole::Copy),
+                    MenuItem::role(MenuRole::Paste),
+                    MenuItem::role(MenuRole::SelectAll),
+                ],
+            ),
+            MenuItem::submenu(
+                "View",
+                vec![
+                    MenuItem::new("Command Palette").shortcut("mod+p").on_select(menu_run("openPalette")),
+                    MenuItem::separator(),
+                    MenuItem::new("Show History").on_select(menu_run("history")),
+                    MenuItem::new("Show Changes").on_select(menu_run("changes")),
+                    MenuItem::new("Toggle Inspector").on_select(menu_run("inspector")),
+                    MenuItem::separator(),
+                    MenuItem::new("Cycle Appearance").shortcut("mod+shift+a").on_select(menu_run("toggleTheme")),
+                    MenuItem::new("Switch Language").on_select(menu_run("toggleLanguage")),
+                ],
+            ),
+            MenuItem::submenu(
+                "Repository",
+                vec![
+                    MenuItem::new("Fetch").on_select(menu_run("fetch")),
+                    MenuItem::new("Pull").on_select(menu_run("pull")),
+                    MenuItem::new("Push").on_select(menu_run("push")),
+                    MenuItem::separator(),
+                    MenuItem::new("Refresh").shortcut("mod+r").on_select(menu_run("refresh")),
+                    MenuItem::new("Repository Manager").on_select(menu_run("repoManager")),
+                ],
+            ),
+            MenuItem::submenu(
+                "Window",
+                vec![
+                    MenuItem::role(MenuRole::Minimize),
+                    MenuItem::role(MenuRole::Zoom),
+                    MenuItem::separator(),
+                    MenuItem::role(MenuRole::ToggleFullScreen),
+                ],
+            ),
+            MenuItem::submenu(
+                "Help",
+                vec![
+                    MenuItem::new("Welcome").on_select(menu_run("welcome")),
+                    MenuItem::separator(),
+                    MenuItem::role(MenuRole::About),
+                ],
+            ),
+        ];
+        nsh_core::element::desktop::set_application_menu(items);
+    }
 
     on_key("mod+o", {
         let choose_folder = actions.choose_folder.clone();
@@ -628,6 +767,20 @@ pub fn App() -> impl IntoElement {
     on_key("mod+r", {
         let refresh = actions.refresh.clone();
         move |_| refresh()
+    });
+    on_key("mod+p", {
+        let palette_open = palette_open;
+        move |_| palette_open.set(!palette_open.get_untracked())
+    });
+    on_key("mod+shift+a", {
+        let theme_mode = theme_mode;
+        let store_dir = store_dir.clone();
+        move |_| {
+            let next = theme_mode.get_untracked().next();
+            theme_mode.set(next);
+            nsh_core::element::set_color_scheme(next.appearance());
+            store::save_appearance(&store_dir, next.id());
+        }
     });
     on_key("mod+f", {
         let filter_open = filter_open;
@@ -700,7 +853,22 @@ pub fn App() -> impl IntoElement {
                         .into_element(),
                     }
                 })),
-        );
+        )
+        .child(dynamic(move || -> AnyElement {
+            if !palette_open.get() {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            let commands = screens::palette_commands();
+            let run_command = actions.run_command.clone();
+            return screens::palette(
+                language,
+                palette_query,
+                commands,
+                run_command,
+                palette_open,
+            )
+            .into_element();
+        }));
 }
 
 /// 把打开的标签页写回会话，供下次启动恢复。

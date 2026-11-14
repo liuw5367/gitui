@@ -218,5 +218,32 @@
     "ours": "Ours",
     "theirs": "Theirs",
     "resolved": "Mark Resolved"
+  },
+  "palette": {
+    "placeholder": "Type a command",
+    "empty": "No matching commands",
+    "open": "Command Palette"
+  },
+  "command": {
+    "closeTab": "Close Tab",
+    "refresh": "Refresh",
+    "changes": "Show Changes",
+    "history": "Show History",
+    "toggleTheme": "Cycle Appearance",
+    "toggleLanguage": "Switch Language",
+    "inspector": "Toggle Inspector",
+    "repoManager": "Repository Manager",
+    "welcome": "Go to Welcome",
+    "compare": "Toggle Compare",
+    "fetch": "Fetch",
+    "pull": "Pull",
+    "push": "Push",
+    "openPalette": "Command Palette",
+    "openRepo": "Open Repository…"
+  },
+  "theme": {
+    "system": "Appearance: System",
+    "light": "Appearance: Light",
+    "dark": "Appearance: Dark"
   }
 }

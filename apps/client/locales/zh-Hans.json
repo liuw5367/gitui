@@ -218,5 +218,32 @@
     "ours": "当前分支",
     "theirs": "对方分支",
     "resolved": "标记已解决"
+  },
+  "palette": {
+    "placeholder": "输入命令",
+    "empty": "没有匹配的命令",
+    "open": "命令面板"
+  },
+  "command": {
+    "closeTab": "关闭标签页",
+    "refresh": "刷新",
+    "changes": "显示变更",
+    "history": "显示历史",
+    "toggleTheme": "切换外观",
+    "toggleLanguage": "切换语言",
+    "inspector": "显示/隐藏检查器",
+    "repoManager": "仓库管理",
+    "welcome": "回到欢迎页",
+    "compare": "切换对比模式",
+    "fetch": "获取",
+    "pull": "拉取",
+    "push": "推送",
+    "openPalette": "命令面板",
+    "openRepo": "打开仓库…"
+  },
+  "theme": {
+    "system": "外观：跟随系统",
+    "light": "外观：浅色",
+    "dark": "外观：深色"
   }
 }

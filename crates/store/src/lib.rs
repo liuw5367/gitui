@@ -125,6 +125,25 @@ pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
     let _ = write_lines(&changelists_file(dir), &lines);
 }
 
+fn appearance_file(dir: &Path) -> PathBuf {
+    return dir.join("appearance.txt");
+}
+
+/// 读取外观偏好；未设置时返回 `None`（跟随系统）。
+pub fn load_appearance(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(appearance_file(dir)).ok()?;
+    let value = text.trim();
+    if value.is_empty() {
+        return None;
+    }
+    return Some(value.to_string());
+}
+
+/// 保存外观偏好。
+pub fn save_appearance(dir: &Path, appearance: &str) {
+    let _ = write_lines(&appearance_file(dir), &[appearance.to_string()]);
+}
+
 fn recent_file(dir: &Path) -> PathBuf {
     return dir.join("recent.txt");
 }
@@ -313,6 +332,14 @@ mod tests {
         let paths = load_recent(dir.path());
         assert_eq!(paths.len(), MAX_RECENT);
         assert_eq!(paths[0].path, "/repo-19");
+    }
+
+    #[test]
+    fn appearance_round_trips() {
+        let dir = TempDir::new("appearance");
+        assert_eq!(load_appearance(dir.path()), None);
+        save_appearance(dir.path(), "dark");
+        assert_eq!(load_appearance(dir.path()), Some("dark".to_string()));
     }
 
     #[test]

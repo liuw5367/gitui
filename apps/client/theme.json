@@ -64,7 +64,8 @@
       "ok": "#1F7A45",
       "purple": "#7C5CD6",
       "win-border": "rgba(0,0,0,0.16)",
-      "blue": "#007AFF"
+      "blue": "#007AFF",
+      "overlay": "rgba(0,0,0,0.12)"
     },
     "dark": {
       "background": "#1B1B1D",
@@ -125,7 +126,8 @@
       "ok": "#6FD39A",
       "purple": "#BFA0FF",
       "win-border": "rgba(255,255,255,0.14)",
-      "blue": "#0A84FF"
+      "blue": "#0A84FF",
+      "overlay": "rgba(0,0,0,0.42)"
     }
   }
 }
