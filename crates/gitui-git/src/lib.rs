@@ -587,6 +587,11 @@ impl Repo {
         Ok(stdout)
     }
 
+    /// Staged diff for one path.
+    pub fn diff_staged(&self, path: &str) -> Result<String, GitError> {
+        self.git(&["diff", "--cached", "--", path])
+    }
+
     /// Unstaged diff for one path.
     pub fn diff_unstaged(&self, path: &str) -> Result<String, GitError> {
         self.git(&["diff", "--", path])
@@ -648,6 +653,40 @@ impl Repo {
             )));
         }
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    /// Unstage one staged hunk of a path by reverse-applying a single-hunk patch.
+    pub fn unstage_hunk(&self, path: &str, index: usize) -> Result<(), GitError> {
+        let diff = self.diff_staged(path)?;
+        let mut header = String::new();
+        let mut hunks: Vec<String> = Vec::new();
+        let mut current: Option<String> = None;
+        for line in diff.lines() {
+            if line.starts_with("@@") {
+                if let Some(hunk) = current.take() {
+                    hunks.push(hunk);
+                }
+                current = Some(format!("{line}\n"));
+            } else if let Some(hunk) = current.as_mut() {
+                hunk.push_str(line);
+                hunk.push('\n');
+            } else {
+                header.push_str(line);
+                header.push('\n');
+            }
+        }
+        if let Some(hunk) = current {
+            hunks.push(hunk);
+        }
+        let hunk = hunks
+            .get(index)
+            .ok_or_else(|| GitError(format!("hunk {index} not found for {path}")))?;
+        let patch = format!("{header}{hunk}");
+        self.git_with_input(
+            &["apply", "--cached", "--reverse", "--unidiff-zero"],
+            &patch,
+        )?;
+        Ok(())
     }
 
     fn git_with_input(&self, args: &[&str], input: &str) -> Result<String, GitError> {
@@ -1125,6 +1164,27 @@ mod tests {
         assert_eq!(hunk_count(&repo.diff_unstaged("a.txt").unwrap()), 1);
         let cached = repo.git(&["diff", "--cached", "--", "a.txt"]).unwrap();
         assert_eq!(hunk_count(&cached), 1);
+    }
+
+    #[test]
+    fn unstages_a_single_hunk() {
+        let fixture = TempRepo::new();
+        let original: String = (1..=30).map(|line| format!("line {line}\n")).collect();
+        fs::write(fixture.path.join("a.txt"), &original).unwrap();
+        run(&fixture.path, &["add", "a.txt"]);
+        run(&fixture.path, &["commit", "-qm", "base"]);
+        let modified = original
+            .replace("line 2\n", "line 2 changed\n")
+            .replace("line 29\n", "line 29 changed\n");
+        fs::write(fixture.path.join("a.txt"), modified).unwrap();
+        let repo = Repo::open(fixture.path()).unwrap();
+        repo.stage_hunk("a.txt", 0).unwrap();
+        repo.stage_hunk("a.txt", 0).unwrap();
+        let hunk_count = |patch: &str| patch.lines().filter(|line| line.starts_with("@@")).count();
+        assert_eq!(hunk_count(&repo.diff_staged("a.txt").unwrap()), 2);
+        repo.unstage_hunk("a.txt", 0).unwrap();
+        assert_eq!(hunk_count(&repo.diff_staged("a.txt").unwrap()), 1);
+        assert_eq!(hunk_count(&repo.diff_unstaged("a.txt").unwrap()), 1);
     }
 
     #[test]
