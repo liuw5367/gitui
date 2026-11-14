@@ -76,6 +76,12 @@ pub(crate) struct Actions {
     pub(crate) stage_all: Arc<dyn Fn()>,
     pub(crate) unstage_all: Arc<dyn Fn()>,
     pub(crate) commit: Arc<dyn Fn()>,
+    /// 跳过钩子提交（强确认）。
+    pub(crate) commit_without_hooks: Arc<dyn Fn()>,
+    /// 提交面板的三个开关：`amend` / `signoff` / `pushAfter`。
+    pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
+    /// 打开或关闭钩子完整日志弹层。
+    pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
     pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
     pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
@@ -676,22 +682,100 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let commit: Arc<dyn Fn()> = {
+    // 提交：成功后按「Push after commit」决定是否立刻推送。
+    let commit_inner: Arc<dyn Fn(bool)> = {
         let tabs = tabs;
         let active = active;
         let commit_summary = commit_summary;
         let commit_description = commit_description;
-        Arc::new(move || {
+        let notice = notice;
+        let language = language;
+        Arc::new(move |no_verify: bool| {
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
                 tab.summary = commit_summary.get_untracked();
                 tab.description = commit_description.get_untracked();
-                model::commit_staged(tab);
+                model::commit_staged_with(tab, no_verify);
                 if tab.hook_ok {
                     commit_summary.set(String::new());
                     commit_description.set(String::new());
                 }
+                let push_after = tab.push_after_commit && tab.hook_ok;
+                if push_after {
+                    tab.push_after_commit = false;
+                }
+                tabs.set(list.clone());
+                if push_after {
+                    let mut list = list;
+                    if let Some(tab) = list.get_mut(current) {
+                        model::sync(tab, model::Sync::Push);
+                        tabs.set(list);
+                    }
+                    interactions::notify(
+                        notice,
+                        i18n::t(language.get_untracked().as_str(), "commit.pushed"),
+                    );
+                }
+            }
+        })
+    };
+
+    let commit: Arc<dyn Fn()> = {
+        let commit_inner = commit_inner.clone();
+        Arc::new(move || commit_inner(false))
+    };
+
+    // 跳过钩子：先强确认再提交（`--no-verify`）。
+    let commit_without_hooks: Arc<dyn Fn()> = {
+        let commit_inner = commit_inner.clone();
+        let language = language;
+        Arc::new(move || {
+            let language_now = language.get_untracked();
+            let pending = interactions::confirm(
+                i18n::t(language_now.as_str(), "confirm.noVerifyTitle"),
+                i18n::t(language_now.as_str(), "confirm.noVerifyMessage"),
+                "no_verify",
+                i18n::t(language_now.as_str(), "confirm.noVerifyAction"),
+                true,
+            );
+            let commit_inner = commit_inner.clone();
+            spawn(async move {
+                if pending.await {
+                    commit_inner(true);
+                }
+            });
+        })
+    };
+
+    // 面板上的三个开关（设计板 10）。
+    let set_commit_option: Arc<dyn Fn(&'static str, bool)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |kind: &'static str, value: bool| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                match kind {
+                    "amend" => tab.amend = value,
+                    "signoff" => tab.signoff = value,
+                    "pushAfter" => tab.push_after_commit = value,
+                    _ => return,
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    // 钩子完整日志弹层。
+    let toggle_hook_log: Arc<dyn Fn(bool)> = {
+        let tabs = tabs;
+        let active = active;
+        Arc::new(move |open: bool| {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                tab.hook_open = open;
                 tabs.set(list);
             }
         })
@@ -1499,6 +1583,9 @@ pub fn App() -> impl IntoElement {
         stage_all,
         unstage_all,
         commit,
+        commit_without_hooks,
+        set_commit_option,
+        toggle_hook_log,
         resolve_conflict,
         abort_operation,
         run_command,
@@ -1675,9 +1762,43 @@ pub fn App() -> impl IntoElement {
         let filter_open = filter_open;
         move |_| filter_open.set(true)
     });
+    // Esc 层层退出：先关最上面的浮层，再退到过滤器；都不开时什么也不做。
     on_key("escape", {
         let filter_open = filter_open;
-        move |_| filter_open.set(false)
+        let palette_open = palette_open;
+        let changelist_open = changelist_open;
+        let sync_state = sync_state;
+        let form_state = form_state;
+        let tabs = tabs;
+        let active = active;
+        move |_| {
+            if form_state.get_untracked().is_some() {
+                form_state.set(None);
+                return;
+            }
+            if sync_state.get_untracked().is_some() {
+                sync_state.set(None);
+                return;
+            }
+            if palette_open.get_untracked() {
+                palette_open.set(false);
+                return;
+            }
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current)
+                && tab.hook_open
+            {
+                tab.hook_open = false;
+                tabs.set(list);
+                return;
+            }
+            if changelist_open.get_untracked() {
+                changelist_open.set(false);
+                return;
+            }
+            filter_open.set(false);
+        }
     });
 
     let identity_cmd = std::process::Command::new("git")
@@ -1780,6 +1901,11 @@ pub fn App() -> impl IntoElement {
                     }
                 })),
         )
+        .child(screens::hook_sheet(
+            language,
+            current_tab,
+            actions.clone(),
+        ))
         .child(screens::sync_dialog(
             language,
             current_tab,

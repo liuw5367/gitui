@@ -121,7 +121,9 @@
     "open": "打开",
     "done": "完成",
     "search": "搜索",
-    "loading": "加载中…"
+    "loading": "加载中…",
+    "close": "关闭",
+    "copy": "复制"
   },
   "repoManager": {
     "title": "仓库管理",
@@ -220,7 +222,17 @@
     "hooksHint": "钩子通过后才能提交",
     "nothingStaged": "先暂存改动再提交",
     "hooksPassed": "钩子通过",
-    "hooksFailed": "钩子失败"
+    "hooksFailed": "钩子失败",
+    "amend": "改写上一条提交",
+    "signoff": "追加 sign-off",
+    "pushAfter": "提交后推送",
+    "amendAction": "改写提交",
+    "retryHooks": "重试钩子",
+    "withoutHooks": "跳过钩子提交",
+    "viewLog": "查看完整日志",
+    "logTitle": "钩子输出",
+    "pushed": "已提交并推送",
+    "askAgent": "让 Agent 起草"
   },
   "changelists": {
     "default": "默认清单",
@@ -254,7 +266,10 @@
     "dropAction": "丢弃",
     "closeTitle": "关闭 %{name}？",
     "closeMessage": "该仓库有 %{count} 个未提交的改动。关闭标签页不会删除磁盘上的改动。",
-    "closeAction": "关闭"
+    "closeAction": "关闭",
+    "noVerifyTitle": "跳过钩子提交？",
+    "noVerifyMessage": "本次提交会跳过 pre-commit 与 commit-msg 钩子，它们本来能拦下的问题（格式、测试、说明规范）都不会被检查。",
+    "noVerifyAction": "仍然提交"
   },
   "toast": {
     "copied": "已复制到剪贴板",

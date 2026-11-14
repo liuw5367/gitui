@@ -32,7 +32,12 @@ pub(crate) fn commit_panel(
     let hook_log = tab.hook_log.clone();
     let hook_ok = tab.hook_ok;
     let commit = actions.commit.clone();
-    let can_commit = staged_count > 0;
+    let amend = tab.amend;
+    let signoff = tab.signoff;
+    let push_after = tab.push_after_commit;
+    let hook_actions = actions.clone();
+    // 「改写上一条」时不需要暂存内容：只改提交说明也是合法操作。
+    let can_commit = staged_count > 0 || amend;
     let mut staged_rows: Vec<AnyElement> = Vec::new();
     for entry in &staged {
         let name = entry.path.rsplit('/').next().unwrap_or(&entry.path).to_string();
@@ -188,6 +193,29 @@ pub(crate) fn commit_panel(
                         .child(
                             view()
                                 .w_full()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(8.0))
+                                .child(
+                                    text(move || {
+                                        i18n::t(language.get().as_str(), "commit.askAgent")
+                                    })
+                                    .text_size(px(10.0))
+                                    .line_height(px(13.0))
+                                    .text_color(move || design::accent()),
+                                )
+                                .on_press({
+                                    let set_mode = actions.set_mode.clone();
+                                    let propose = actions.propose_plan.clone();
+                                    move || {
+                                        set_mode(crate::Mode::Agent);
+                                        propose();
+                                    }
+                                }),
+                        )
+                        .child(
+                            view()
+                                .w_full()
                                 .flex_col()
                                 .rounded(px(metrics::RADIUS_CONTROL))
                                 .border_1()
@@ -217,7 +245,8 @@ pub(crate) fn commit_panel(
                             let Some(log) = hook_log.clone() else {
                                 return view().w_full().h(px(0.0)).into_element();
                             };
-                            return hook_box(language, log, hook_ok).into_element();
+                            return hook_box(language, log, hook_ok, hook_actions.clone())
+                                .into_element();
                         })),
                 )),
         )
@@ -229,8 +258,44 @@ pub(crate) fn commit_panel(
                 .gap(px(4.0))
                 .border_t_1()
                 .border_color(move || design::line())
+                .child(
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .gap(px(3.0))
+                        .child(checkbox_row(
+                            language,
+                            "commit.amend",
+                            amend,
+                            {
+                                let set_commit_option = actions.set_commit_option.clone();
+                                move || set_commit_option("amend", !amend)
+                            },
+                        ))
+                        .child(checkbox_row(
+                            language,
+                            "commit.signoff",
+                            signoff,
+                            {
+                                let set_commit_option = actions.set_commit_option.clone();
+                                move || set_commit_option("signoff", !signoff)
+                            },
+                        ))
+                        .child(checkbox_row(
+                            language,
+                            "commit.pushAfter",
+                            push_after,
+                            {
+                                let set_commit_option = actions.set_commit_option.clone();
+                                move || set_commit_option("pushAfter", !push_after)
+                            },
+                        )),
+                )
                 .child(widgets::primary_button(
                     move || {
+                        if amend {
+                            return i18n::t(language.get().as_str(), "commit.amendAction");
+                        }
                         i18n::with_arguments(
                             language.get().as_str(),
                             "commit.action",
@@ -283,9 +348,76 @@ fn field_label(
         );
 }
 
+/// 一行复选：14px 方框加标签，与设计板的 `check` 行一致。
+fn checkbox_row(
+    language: Signal<SharedString>,
+    key: &'static str,
+    checked: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h(px(18.0))
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .on_press(on_press)
+        .child(
+            view()
+                .w(px(12.0))
+                .h(px(12.0))
+                .items_center()
+                .justify_center()
+                .rounded(px(3.0))
+                .border_1()
+                .border_color(move || design::line_strong())
+                .bg(move || {
+                    if checked {
+                        design::accent()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .child(
+                    text(move || {
+                        if checked {
+                            "✓".to_string()
+                        } else {
+                            String::new()
+                        }
+                    })
+                    .text_size(px(8.0))
+                    .text_color(move || design::content()),
+                ),
+        )
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(10.5))
+                .line_height(px(14.0))
+                .text_color(move || design::text2()),
+        );
+}
+
 /// 钩子输出块：成功绿点、失败红点，命令输出等宽显示。
-fn hook_box(language: Signal<SharedString>, log: String, ok: bool) -> impl IntoElement {
+///
+/// 失败时常驻三个动作：重新提交（等价重跑钩子）、跳过钩子提交（强确认）、
+/// 查看完整日志（弹层，避免长输出把面板挤爆）。
+fn hook_box(
+    language: Signal<SharedString>,
+    log: String,
+    ok: bool,
+    actions: Actions,
+) -> impl IntoElement {
     let has_log = !log.trim().is_empty();
+    // 面板里只显示末尾若干行，完整内容在 `View full log` 弹层。
+    let preview: String = {
+        let lines: Vec<&str> = log.lines().collect();
+        let start = lines.len().saturating_sub(6);
+        lines[start..].join("\n")
+    };
+    let retry = actions.commit.clone();
+    let without_hooks = actions.commit_without_hooks.clone();
+    let open_log = actions.toggle_hook_log.clone();
     return view()
         .w_full()
         .flex_col()
@@ -338,12 +470,49 @@ fn hook_box(language: Signal<SharedString>, log: String, ok: bool) -> impl IntoE
         .child(
             view().w_full().when(has_log, |this| {
                 this.child(
-                    text(log)
+                    text(preview)
                         .text_size(px(9.5))
                         .line_height(px(14.0))
                         .font_family("SF Mono")
-                        .text_color(move || design::text2()),
+                        .text_color(move || design::text2())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
             }),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .when(!ok, |this| {
+                    this.child(widgets::small_button(
+                        {
+                            let language = language;
+                            move || i18n::t(language.get().as_str(), "commit.retryHooks")
+                        },
+                        {
+                            let retry = retry.clone();
+                            move || retry()
+                        },
+                    ))
+                    .child(widgets::small_button(
+                        {
+                            let language = language;
+                            move || i18n::t(language.get().as_str(), "commit.withoutHooks")
+                        },
+                        {
+                            let without_hooks = without_hooks.clone();
+                            move || without_hooks()
+                        },
+                    ))
+                })
+                .child(widgets::small_button(
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "commit.viewLog")
+                    },
+                    move || open_log(true),
+                )),
         );
 }

@@ -75,6 +75,12 @@ pub struct Tab {
     pub hook_log: Option<String>,
     /// 最近一次提交是否成功。
     pub hook_ok: bool,
+    /// 提交面板的三个开关（设计板 10）。成功后归位。
+    pub amend: bool,
+    pub signoff: bool,
+    pub push_after_commit: bool,
+    /// 钩子完整日志弹层是否打开。
+    pub hook_open: bool,
     /// 打开失败时的错误详情；成功时为 `None`。
     pub error: Option<String>,
 }
@@ -809,12 +815,25 @@ pub fn discard_change(tab: &mut Tab, index: usize) {
 
 /// 提交暂存区；无论成败都保留钩子输出。
 pub fn commit_staged(tab: &mut Tab) {
+    return commit_staged_with(tab, false);
+}
+
+/// 提交暂存区；`no_verify` 为真时跳过钩子（界面走强确认）。
+///
+/// 面板上的「改写上一条」与「sign-off」来自 `Tab` 的开关，成功后归位，
+/// 避免下一次提交意外沿用。
+pub fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
     let summary = tab.summary.trim().to_string();
     if summary.is_empty() {
         tab.hook_log = Some("提交说明不能为空".to_string());
         tab.hook_ok = false;
         return;
     }
+    let options = git::CommitOptions {
+        amend: tab.amend,
+        signoff: tab.signoff,
+        no_verify,
+    };
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
@@ -822,7 +841,7 @@ pub fn commit_staged(tab: &mut Tab) {
             return;
         }
     };
-    match repo.commit(summary.as_str(), tab.description.as_str()) {
+    match repo.commit_with(summary.as_str(), tab.description.as_str(), &options) {
         Ok(outcome) => {
             tab.hook_ok = true;
             tab.hook_log = Some(if outcome.log.is_empty() {
@@ -832,6 +851,8 @@ pub fn commit_staged(tab: &mut Tab) {
             });
             tab.summary.clear();
             tab.description.clear();
+            tab.amend = false;
+            tab.signoff = false;
             refresh_changes(tab);
             // 提交后历史新增一条，重新读取以显示。
             let filter = tab.filter.clone();
@@ -1059,6 +1080,49 @@ mod tests {
             tab.commits.first().map(|commit| commit.summary.as_str()),
             Some("Working tree and commit")
         );
+    }
+
+    #[test]
+    fn amend_reuses_the_last_commit_and_resets_the_switch() {
+        let repo = TempRepo::new("amend");
+        let path = repo.path.display().to_string();
+        let mut tab = load_tab(&path, &LogFilter::default());
+        let before = tab.commits.len();
+
+        // 只改说明、不动内容：amend 不需要暂存内容。
+        tab.summary = "Rewritten".to_string();
+        tab.amend = true;
+        commit_staged(&mut tab);
+
+        assert!(tab.hook_ok, "改写应成功：{:?}", tab.hook_log);
+        assert_eq!(tab.commits.len(), before, "改写不新增提交");
+        assert_eq!(tab.commits[0].summary, "Rewritten");
+        assert!(!tab.amend, "开关成功后应归位");
+    }
+
+    #[test]
+    fn commit_without_hooks_bypasses_a_failing_hook() {
+        let repo = TempRepo::new("skip-hooks");
+        let path = repo.path.display().to_string();
+        let hook = repo.path.join(".git/hooks/pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\nexit 1\n").expect("hook");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        std::fs::write(repo.path.join("a.txt"), "changed\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        stage_all_or_none(&mut tab, true);
+        tab.summary = "Blocked".to_string();
+
+        commit_staged(&mut tab);
+        assert!(!tab.hook_ok, "钩子应拦住普通提交");
+
+        commit_staged_with(&mut tab, true);
+        assert!(tab.hook_ok, "跳过钩子应成功：{:?}", tab.hook_log);
+        assert_eq!(tab.commits[0].summary, "Blocked");
     }
 
     #[test]

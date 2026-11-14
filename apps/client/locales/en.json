@@ -121,7 +121,9 @@
     "open": "Open",
     "done": "Done",
     "search": "Search",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "close": "Close",
+    "copy": "Copy"
   },
   "repoManager": {
     "title": "Repository Manager",
@@ -220,7 +222,17 @@
     "hooksHint": "Hooks must pass before committing",
     "nothingStaged": "Stage a change to commit",
     "hooksPassed": "Hooks passed",
-    "hooksFailed": "Hooks failed"
+    "hooksFailed": "Hooks failed",
+    "amend": "Amend last commit",
+    "signoff": "Sign off",
+    "pushAfter": "Push after commit",
+    "amendAction": "Amend Commit",
+    "retryHooks": "Retry hooks",
+    "withoutHooks": "Commit without hooks",
+    "viewLog": "View full log",
+    "logTitle": "Hook output",
+    "pushed": "Committed and pushed",
+    "askAgent": "Ask Agent to draft"
   },
   "changelists": {
     "default": "Default Changelist",
@@ -254,7 +266,10 @@
     "dropAction": "Drop",
     "closeTitle": "Close %{name}?",
     "closeMessage": "This repository has %{count} uncommitted changes. Closing the tab leaves them on disk.",
-    "closeAction": "Close"
+    "closeAction": "Close",
+    "noVerifyTitle": "Commit without hooks?",
+    "noVerifyMessage": "The pre-commit and commit-msg hooks are skipped for this commit. Anything they would have caught (formatting, tests, message rules) is not checked.",
+    "noVerifyAction": "Commit anyway"
   },
   "toast": {
     "copied": "Copied to clipboard",

@@ -5,6 +5,7 @@
 
 mod changes_view;
 mod form_dialog;
+mod hook_sheet;
 mod palette;
 mod refs_view;
 mod settings;
@@ -14,6 +15,7 @@ mod workspace;
 
 pub(crate) use changes_view::changes_view;
 pub(crate) use form_dialog::{form_dialog, FormKind, FormState};
+pub(crate) use hook_sheet::hook_sheet;
 pub(crate) use palette::palette;
 pub(crate) use refs_view::{refs_view, RefsTab};
 pub(crate) use settings::{settings, Section as SettingsSection};
