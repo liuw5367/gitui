@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::Repo;
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
 use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -954,7 +954,44 @@ pub fn App() -> impl IntoElement {
     });
     let history = history(commits, selected, select_commit);
 
-    let diff_pane = diff_view(selected, diff);
+    let cherry_pick_action = Arc::new({
+        let reload_pick = reload_for_branch.clone();
+        move |sha: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.cherry_pick(&sha))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_pick();
+            }
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                reload_pick();
+            }
+        }
+    });
+    let revert_action = Arc::new({
+        let reload_revert = reload_for_branch.clone();
+        move |sha: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.revert(&sha))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_revert();
+            }
+            Err(err) => {
+                error.set(SharedString::from(err.to_string()));
+                reload_revert();
+            }
+        }
+    });
+    let diff_pane = diff_view(
+        selected,
+        diff,
+        DiffActions {
+            cherry_pick: cherry_pick_action,
+            revert: revert_action,
+        },
+    );
 
     let main = view()
         .flex_1()
