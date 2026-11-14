@@ -1,14 +1,26 @@
-# gitui — M1 read-only (slice 1)
+# gitui — local Git client (M1/M2)
 
 **Rust only. NSH 0.5.x. No TSX, no JS, no HTML UI.**
 
-Slice 1 opens one repository and shows:
+## Works
 
-- branch + staged/unstaged counts + raw `git status --porcelain=v2`
-- the 15 newest commits
-- the selected commit's patch, read-only
+- repository path input + Open
+- recent repositories (persisted)
+- repository tabs (open / activate / close, session persisted)
+- status + 15 commits + read-only diff
+- Stage All / Unstage All
+- per-file Stage / Unstage
+- commit message + Commit / No hooks / Amend
+- commit and hook output panel
 
-There are **no write operations**: no stage, commit, push, merge, settings or tabs.
+## Not yet
+
+- fetch / pull / push
+- merge / rebase conflict editor
+- branches / tags / stashes UI
+- settings
+- per-hunk staging
+- hook step list / retry UI
 
 ## Run
 
@@ -16,23 +28,17 @@ There are **no write operations**: no stage, commit, push, merge, settings or ta
 GITUI_REPO=/path/to/repo nsh run
 ```
 
-Without `GITUI_REPO`, the current directory is opened.
+Or type a path in the header and press **Open**.
 
 ## Verify
 
 ```sh
 nsh check
-GITUI_REPO=/path/to/repo nsh test nsh.json --trace
+nsh test nsh.json --trace
 ```
 
-## Layout
+## Crates
 
 - `src/lib.rs` — NSH Rust UI
 - `src/main.rs` — macOS window
-- `gitui-git` — read-only status/log/diff crate
-
-## Next
-
-- repository path input (open any repo)
-- tabs / recent repositories
-- then S-5 auth and S-4 performance before M2
+- `../../crates/gitui-git` — Git CLI: status/log/diff/stage/commit/amend/no-verify

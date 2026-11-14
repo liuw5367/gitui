@@ -336,7 +336,7 @@ pub fn App() -> impl IntoElement {
         .px_3()
         .bg(move || theme().background)
         .child(
-            text("gitui · M1 read-only")
+            text("gitui · local")
                 .text_size(px(13.0))
                 .text_color(move || theme().foreground),
         )
@@ -772,7 +772,7 @@ pub fn App() -> impl IntoElement {
         .px_3()
         .bg(move || theme().background)
         .child(
-            text("NSH + Rust · read-only")
+            text("NSH + Rust · local")
                 .text_size(px(9.0))
                 .text_color(move || theme().foreground),
         )
@@ -783,7 +783,7 @@ pub fn App() -> impl IntoElement {
         )
         .child(view().flex_1())
         .child(
-            text("M1 slice 1")
+            text("M1/M2")
                 .text_size(px(9.0))
                 .text_color(move || theme().primary),
         );
