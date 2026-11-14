@@ -1,7 +1,7 @@
 //! Bottom status bar.
 
+use crate::design;
 use gitui_git::Commit;
-use nsh_base::theme;
 use nsh_core::prelude::*;
 
 pub(crate) fn statusbar(commits: Signal<Vec<Commit>>) -> impl IntoElement {
@@ -11,21 +11,23 @@ pub(crate) fn statusbar(commits: Signal<Vec<Commit>>) -> impl IntoElement {
         .items_center()
         .gap_3()
         .px_3()
-        .bg(move || theme().background)
+        .bg(move || design::statusbar())
+        .border_t_1()
+        .border_color(move || design::line())
         .child(
-            text("NSH + Rust · local")
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
+            text("gitui · local")
+                .text_size(px(10.5))
+                .text_color(move || design::text3()),
         )
         .child(
             text(move || format!("{} commits", commits.get().len()))
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
+                .text_size(px(10.5))
+                .text_color(move || design::text3()),
         )
         .child(view().flex_1())
         .child(
-            text("M1/M2")
-                .text_size(px(9.0))
-                .text_color(move || theme().primary),
+            text("M4")
+                .text_size(px(10.5))
+                .text_color(move || design::text2()),
         )
 }

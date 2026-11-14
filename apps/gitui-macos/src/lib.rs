@@ -3,13 +3,14 @@
 //! Slice 1: open the current repository, show status, recent history and the
 //! selected commit's patch. No staging, commit, push or settings.
 
+mod design;
 mod model;
 mod sections;
 mod widgets;
 
 use gitui_git::Repo;
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
+use sections::{diff_view, history, statusbar, titlebar, toolbar, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, IdentityActions, StashActions, StatusActions};
 use nsh_base::theme;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -21,6 +22,9 @@ fn native(registry: &mut Registry) {
 
 #[component]
 pub fn App() -> impl IntoElement {
+    let tokens = nsh_base::theme_overrides(design::THEME_JSON)
+        .expect("the design tokens parse");
+    nsh_core::element::set_tokens(tokens);
     let initial_path = std::env::var("GITUI_REPO").unwrap_or_else(|_| {
         std::env::current_dir()
             .unwrap_or_default()
@@ -206,6 +210,7 @@ pub fn App() -> impl IntoElement {
     };
     let activate_for_close = activate.clone();
     let activate_tabs: Arc<dyn Fn(usize)> = Arc::new(move |index| activate(index));
+    let titlebar = titlebar(tabs, active, activate_tabs);
     let close_active = move || {
         let index = active.get_untracked();
         let len = tabs.get_untracked().len();
@@ -269,7 +274,7 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
-    let header = header(
+    let toolbar = toolbar(
         path_input,
         branch,
         ahead,
@@ -329,8 +334,6 @@ pub fn App() -> impl IntoElement {
     });
     let operation_banner =
         crate::sections::operation_banner(operation, continue_action, skip_action, abort_action);
-
-    let tab_bar = crate::sections::tabs(tabs, active, activate_tabs);
 
     let open_recent = Arc::new(move |path: String| {
         path_input.set(path);
@@ -1026,9 +1029,9 @@ pub fn App() -> impl IntoElement {
         .flex_1()
         .bg(move || theme().background)
         .text_color(move || theme().foreground)
-        .child(header)
+        .child(titlebar)
+        .child(toolbar)
         .child(operation_banner)
-        .child(tab_bar)
         .child(recent_bar)
         .child(commit_bar)
         .child(stashes_bar)

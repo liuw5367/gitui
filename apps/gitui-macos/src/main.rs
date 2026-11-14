@@ -18,7 +18,7 @@ fn main() -> impl std::process::Termination {
             title: "gitui".to_owned(),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             app_id: "com.example.gitui".to_owned(),
-            size: (1280, 820),
+            size: (1440, 900),
             ..Default::default()
         },
     )

@@ -16,7 +16,7 @@ pub(crate) fn mini_button(
         .on_press(on_press)
         .child(
             text(label)
-                .text_size(px(8.5))
+                .text_size(px(10.5))
                 .text_color(move || {
                     if primary {
                         theme().primary_foreground
@@ -61,7 +61,7 @@ pub(crate) fn header_button(
         .on_press(on_press)
         .child(
             text(label)
-                .text_size(px(11.0))
+                .text_size(px(12.0))
                 .text_color(move || {
                     if primary {
                         theme().primary_foreground
