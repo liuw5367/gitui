@@ -1076,6 +1076,7 @@ pub fn App() -> impl IntoElement {
 
     view()
         .flex_1()
+        .relative()
         .bg(move || theme().background)
         .text_color(move || theme().foreground)
         .child(titlebar)
