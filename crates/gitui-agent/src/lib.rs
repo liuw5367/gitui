@@ -82,6 +82,93 @@ impl AgentPermissions {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PlanStep {
+    StageAll,
+    Commit { message: String },
+    Push,
+}
+
+impl PlanStep {
+    pub fn tool(&self) -> AgentTool {
+        match self {
+            PlanStep::StageAll => AgentTool::Stage,
+            PlanStep::Commit { .. } => AgentTool::Commit,
+            PlanStep::Push => AgentTool::Push,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AgentPlan {
+    pub steps: Vec<PlanStep>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PlanError {
+    EmptyPlan,
+    TooManySteps,
+    EmptyCommitMessage,
+    Denied(AgentTool),
+}
+
+impl std::fmt::Display for PlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PlanError::EmptyPlan => write!(f, "plan has no steps"),
+            PlanError::TooManySteps => write!(f, "plan has too many steps"),
+            PlanError::EmptyCommitMessage => write!(f, "commit message is empty"),
+            PlanError::Denied(tool) => write!(f, "permission denied for {tool:?}"),
+        }
+    }
+}
+
+impl AgentPlan {
+    pub fn validate(&self, permissions: &AgentPermissions) -> Result<(), PlanError> {
+        if self.steps.is_empty() {
+            return Err(PlanError::EmptyPlan);
+        }
+        if self.steps.len() > 12 {
+            return Err(PlanError::TooManySteps);
+        }
+        for step in &self.steps {
+            if let PlanStep::Commit { message } = step {
+                if message.trim().is_empty() {
+                    return Err(PlanError::EmptyCommitMessage);
+                }
+            }
+            if permissions.decide(step.tool()) == Decision::Deny {
+                return Err(PlanError::Denied(step.tool()));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuditEvent {
+    pub summary: String,
+    pub allowed: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AuditLog {
+    events: Vec<AuditEvent>,
+}
+
+impl AuditLog {
+    pub fn append(&mut self, summary: impl Into<String>, allowed: bool) {
+        self.events.push(AuditEvent {
+            summary: summary.into(),
+            allowed,
+        });
+    }
+
+    pub fn events(&self) -> &[AuditEvent] {
+        &self.events
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,4 +214,47 @@ mod tests {
         };
         assert_eq!(permissions.max_automation(), Automation::Commit);
     }
+    #[test]
+    fn plan_requires_approval_and_permissions() {
+        let permissions = AgentPermissions::default();
+        let plan = AgentPlan {
+            steps: vec![
+                PlanStep::Commit {
+                    message: "fix".to_string(),
+                },
+                PlanStep::Push,
+            ],
+        };
+        assert_eq!(
+            plan.validate(&permissions),
+            Err(PlanError::Denied(AgentTool::Commit))
+        );
+    }
+
+    #[test]
+    fn plan_rejects_empty_commit_message() {
+        let permissions = AgentPermissions {
+            commit: true,
+            ..AgentPermissions::default()
+        };
+        let plan = AgentPlan {
+            steps: vec![PlanStep::Commit {
+                message: "  ".to_string(),
+            }],
+        };
+        assert_eq!(
+            plan.validate(&permissions),
+            Err(PlanError::EmptyCommitMessage)
+        );
+    }
+
+    #[test]
+    fn audit_log_is_append_only_from_api() {
+        let mut log = AuditLog::default();
+        log.append("commit staged", true);
+        log.append("push origin/main", false);
+        assert_eq!(log.events().len(), 2);
+        assert!(!log.events()[1].allowed);
+    }
+
 }

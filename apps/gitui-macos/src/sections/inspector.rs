@@ -4,7 +4,7 @@ use crate::design;
 use crate::sections::CommitActions;
 use crate::widgets::header_button;
 use crate::{InspectorTab, Mode};
-use gitui_agent::AgentPermissions;
+use gitui_agent::{AgentPermissions, AgentPlan, PlanStep};
 use gitui_git::StatusEntry;
 use nsh_base::input;
 use nsh_core::prelude::*;
@@ -215,6 +215,52 @@ pub(crate) fn inspector(
                         .child(
                             text("Configure in Settings → Agent.")
                                 .text_size(px(9.5))
+                                .text_color(move || design::text3()),
+                        )
+                        .child(
+                            text("Proposed plan")
+                                .text_size(px(10.5))
+                                .text_color(move || design::text2()),
+                        )
+                        .child(
+                            text(move || {
+                                format!("1. Commit {} staged file(s)", staged.get())
+                            })
+                            .text_size(px(9.5))
+                            .text_color(move || design::text()),
+                        )
+                        .child(
+                            text(move || {
+                                if permissions.get().push {
+                                    format!("2. Push {}", branch.get())
+                                } else {
+                                    "2. Push · blocked by policy".to_string()
+                                }
+                            })
+                            .text_size(px(9.5))
+                            .text_color(move || design::text()),
+                        )
+                        .child(
+                            text(move || {
+                                let plan = AgentPlan {
+                                    steps: vec![
+                                        PlanStep::Commit {
+                                            message: message.get(),
+                                        },
+                                        PlanStep::Push,
+                                    ],
+                                };
+                                match plan.validate(&permissions.get()) {
+                                    Ok(()) => "Plan ready · approval required".to_string(),
+                                    Err(err) => err.to_string(),
+                                }
+                            })
+                            .text_size(px(9.0))
+                            .text_color(move || design::text3()),
+                        )
+                        .child(
+                            text("Approve & Run is disabled until the agent runtime is wired.")
+                                .text_size(px(9.0))
                                 .text_color(move || design::text3()),
                         )
                         .child(view().flex_1())
