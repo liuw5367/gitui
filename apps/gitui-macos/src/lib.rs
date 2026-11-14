@@ -1788,6 +1788,12 @@ pub fn App() -> impl IntoElement {
                     open(path);
                 })
             },
+            remove_recent: Arc::new(move |path: String| {
+                let mut list = recent.get_untracked();
+                list.retain(|item| item.as_str() != path);
+                recent.set(list.clone());
+                save_recent(list.as_slice());
+            }),
         },
     );
     let reflog_panel = reflog_panel(

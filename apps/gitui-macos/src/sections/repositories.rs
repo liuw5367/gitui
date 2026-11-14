@@ -1,7 +1,7 @@
 //! Repositories / recent repos sheet.
 
 use crate::design;
-use crate::widgets::header_button;
+use crate::widgets::{header_button, mini_button};
 use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -11,6 +11,7 @@ pub(crate) struct RepositoriesActions {
     pub(crate) close: Arc<dyn Fn()>,
     pub(crate) open: Arc<dyn Fn()>,
     pub(crate) open_recent: Arc<dyn Fn(String)>,
+    pub(crate) remove_recent: Arc<dyn Fn(String)>,
 }
 
 pub(crate) fn repositories_panel(
@@ -83,11 +84,13 @@ pub(crate) fn repositories_panel(
                             |path: &SharedString| path.clone(),
                             move |path, _| {
                                 let open_recent = actions.open_recent.clone();
+                                let remove_recent = actions.remove_recent.clone();
+                                let remove_path = path.get().to_string();
                                 view()
                                     .h(px(32.0))
-                                    .flex_col()
-                                    .justify_center()
-                                    .gap_0()
+                                    .flex_row()
+                                    .items_center()
+                                    .gap_2()
                                     .px_1()
                                     .rounded(px(5.0))
                                     .border_b_1()
@@ -95,9 +98,13 @@ pub(crate) fn repositories_panel(
                                     .on_press(move || open_recent(path.get().to_string()))
                                     .child(
                                         text(move || path.get())
+                                            .flex_1()
                                             .text_size(px(10.5))
                                             .text_color(move || design::text()),
                                     )
+                                    .child(mini_button("Remove", false, move || {
+                                        remove_recent(remove_path.clone())
+                                    }))
                             },
                         ))
                         .child(view().flex_1())
