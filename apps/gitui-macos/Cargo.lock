@@ -1111,6 +1111,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gitui-agent"
+version = "0.1.0"
+
+[[package]]
 name = "gitui-git"
 version = "0.1.0"
 
@@ -2252,6 +2256,7 @@ name = "nsh-app-gitui"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "gitui-agent",
  "gitui-git",
  "nsh-base",
  "nsh-core",

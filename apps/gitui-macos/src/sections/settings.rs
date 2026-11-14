@@ -2,6 +2,7 @@
 
 use crate::design;
 use crate::model::short_name;
+use gitui_agent::{AgentPermissions, Automation};
 use crate::widgets::header_button;
 use crate::SettingsTab;
 use nsh_base::input;
@@ -63,12 +64,104 @@ fn section(title: &'static str, subtitle: &'static str) -> impl IntoElement {
         )
 }
 
+fn permission_row(
+    label: &'static str,
+    detail: &'static str,
+    enabled: Arc<dyn Fn() -> bool>,
+    toggle: Arc<dyn Fn()>,
+) -> impl IntoElement {
+    let text_enabled = enabled.clone();
+    let color_enabled = enabled.clone();
+    view()
+        .h(px(42.0))
+        .flex_row()
+        .items_center()
+        .gap_2()
+        .border_b_1()
+        .border_color(move || design::line_soft())
+        .child(
+            view()
+                .flex_col()
+                .child(
+                    text(label)
+                        .text_size(px(11.0))
+                        .text_color(move || design::text()),
+                )
+                .child(
+                    text(detail)
+                        .text_size(px(9.5))
+                        .text_color(move || design::text3()),
+                ),
+        )
+        .child(view().flex_1())
+        .child(
+            view()
+                .h(px(22.0))
+                .px_2()
+                .rounded(px(4.0))
+                .bg(move || {
+                    if enabled() {
+                        design::primary()
+                    } else {
+                        design::panel2()
+                    }
+                })
+                .on_press(move || toggle())
+                .child(
+                    text(move || if text_enabled() { "On" } else { "Off" })
+                        .text_size(px(10.0))
+                        .text_color(move || {
+                            if color_enabled() {
+                                design::primary_foreground()
+                            } else {
+                                design::text2()
+                            }
+                        }),
+                ),
+        )
+}
+
+fn automation_button(
+    label: &'static str,
+    target: Automation,
+    permissions: Signal<AgentPermissions>,
+) -> impl IntoElement {
+    view()
+        .h(px(22.0))
+        .px_2()
+        .rounded(px(4.0))
+        .bg(move || {
+            if permissions.get().automation == target {
+                design::primary()
+            } else {
+                design::panel2()
+            }
+        })
+        .on_press(move || {
+            let mut next = permissions.get_untracked();
+            next.automation = target;
+            permissions.set(next);
+        })
+        .child(
+            text(label)
+                .text_size(px(10.0))
+                .text_color(move || {
+                    if permissions.get().automation == target {
+                        design::primary_foreground()
+                    } else {
+                        design::text2()
+                    }
+                }),
+        )
+}
+
 pub(crate) fn settings_panel(
     open: Signal<bool>,
     tab: Signal<SettingsTab>,
     identity_name: Signal<String>,
     identity_email: Signal<String>,
     recent: Signal<Vec<SharedString>>,
+    permissions: Signal<AgentPermissions>,
     actions: SettingsActions,
 ) -> impl IntoElement {
     view()
@@ -148,6 +241,10 @@ pub(crate) fn settings_panel(
                                     move |next| on_tab(next)
                                 })))
                                 .child(nav_item("Git", SettingsTab::Git, tab, Arc::new({
+                                    let on_tab = Arc::new(move |next| tab.set(next));
+                                    move |next| on_tab(next)
+                                })))
+                                .child(nav_item("Agent", SettingsTab::Agent, tab, Arc::new({
                                     let on_tab = Arc::new(move |next| tab.set(next));
                                     move |next| on_tab(next)
                                 })))
@@ -256,6 +353,113 @@ pub(crate) fn settings_panel(
                                             text("Hooks run from .git/hooks. Use No hooks in the commit inspector to bypass once.")
                                                 .text_size(px(10.0))
                                                 .text_color(move || design::text3()),
+                                        ),
+                                )
+                                .child(
+                                    view()
+                                        .h(move || {
+                                            if tab.get() == SettingsTab::Agent {
+                                                px(420.0)
+                                            } else {
+                                                px(0.0)
+                                            }
+                                        })
+                                        .flex_col()
+                                        .gap_1()
+                                        .child(section("Agent", "Permissions for the future agent runtime."))
+                                        .child(
+                                            text("Agent execution is not enabled in this build; this policy is session-only.")
+                                                .text_size(px(10.0))
+                                                .text_color(move || design::text3()),
+                                        )
+                                        .child(
+                                            view()
+                                                .h(px(38.0))
+                                                .flex_row()
+                                                .items_center()
+                                                .gap_2()
+                                                .border_b_1()
+                                                .border_color(move || design::line_soft())
+                                                .child(
+                                                    text("Read repository")
+                                                        .flex_1()
+                                                        .text_size(px(11.0))
+                                                        .text_color(move || design::text()),
+                                                )
+                                                .child(
+                                                    text("On")
+                                                        .text_size(px(10.0))
+                                                        .text_color(move || design::text3()),
+                                                ),
+                                        )
+                                        .child(permission_row(
+                                            "Stage files",
+                                            "Move working-tree changes into the Git index.",
+                                            Arc::new(move || permissions.get().stage),
+                                            Arc::new(move || {
+                                                let mut next = permissions.get_untracked();
+                                                next.stage = !next.stage;
+                                                permissions.set(next);
+                                            }),
+                                        ))
+                                        .child(permission_row(
+                                            "Create commits",
+                                            "Commit staged changes on the current branch.",
+                                            Arc::new(move || permissions.get().commit),
+                                            Arc::new(move || {
+                                                let mut next = permissions.get_untracked();
+                                                next.commit = !next.commit;
+                                                permissions.set(next);
+                                            }),
+                                        ))
+                                        .child(permission_row(
+                                            "Push to remote",
+                                            "Send commits to the configured upstream.",
+                                            Arc::new(move || permissions.get().push),
+                                            Arc::new(move || {
+                                                let mut next = permissions.get_untracked();
+                                                next.push = !next.push;
+                                                permissions.set(next);
+                                            }),
+                                        ))
+                                        .child(permission_row(
+                                            "Force push",
+                                            "Overwrite remote history. Not recommended.",
+                                            Arc::new(move || permissions.get().force_push),
+                                            Arc::new(move || {
+                                                let mut next = permissions.get_untracked();
+                                                next.force_push = !next.force_push;
+                                                permissions.set(next);
+                                            }),
+                                        ))
+                                        .child(permission_row(
+                                            "Discard changes",
+                                            "Permanently delete uncommitted changes.",
+                                            Arc::new(move || permissions.get().discard),
+                                            Arc::new(move || {
+                                                let mut next = permissions.get_untracked();
+                                                next.discard = !next.discard;
+                                                permissions.set(next);
+                                            }),
+                                        ))
+                                        .child(
+                                            view()
+                                                .flex_row()
+                                                .items_center()
+                                                .gap_2()
+                                                .child(
+                                                    text("Automation")
+                                                        .flex_1()
+                                                        .text_size(px(11.0))
+                                                        .text_color(move || design::text()),
+                                                )
+                                                .child(automation_button("Off", Automation::Off, permissions))
+                                                .child(automation_button("Commit", Automation::Commit, permissions))
+                                                .child(automation_button(
+                                                    "Commit & Push",
+                                                    Automation::CommitAndPush,
+                                                    permissions,
+                                                )),
                                         ),
                                 )
                                 .child(

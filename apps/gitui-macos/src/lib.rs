@@ -8,6 +8,7 @@ mod model;
 mod sections;
 mod widgets;
 
+use gitui_agent::AgentPermissions;
 use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
 use sections::{changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
@@ -71,6 +72,7 @@ pub(crate) enum InspectTab {
 pub(crate) enum SettingsTab {
     General,
     Git,
+    Agent,
     Credentials,
     Shortcuts,
     About,
@@ -191,6 +193,7 @@ pub fn App() -> impl IntoElement {
     let sync_log = signal(SharedString::from(""));
     let settings_open = signal(false);
     let settings_tab = signal(SettingsTab::General);
+    let agent_permissions = signal(AgentPermissions::default());
     let refs_open = signal(false);
     let refs_tab = signal(RefsTab::Branches);
     let open_refs: Arc<dyn Fn()> = Arc::new(move || {
@@ -1043,6 +1046,7 @@ pub fn App() -> impl IntoElement {
         identity_name,
         identity_email,
         recent,
+        agent_permissions,
         SettingsActions {
             close: close_settings,
             save_identity: save_identity_action,
