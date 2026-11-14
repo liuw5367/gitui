@@ -486,7 +486,32 @@ pub fn App() -> impl IntoElement {
                     }
                 }
             }
+        }))
+        .child(header_button("No hooks", false, {
+            let reload_no_verify = reload_for_commit.clone();
+            move || {
+                let text = message.get_untracked().trim().to_string();
+                if text.is_empty() {
+                    error.set(SharedString::from("Commit message is empty"));
+                    return;
+                }
+                match Repo::open(repo_path.get_untracked().to_string().as_str())
+                    .and_then(|repo| repo.commit_no_verify(&text))
+                {
+                    Ok(_) => {
+                        message.set(String::new());
+                        error.set(SharedString::from(""));
+                        commit_log.set(SharedString::from(""));
+                        reload_no_verify();
+                    }
+                    Err(err) => {
+                        error.set(SharedString::from(err.to_string()));
+                        commit_log.set(SharedString::from(err.to_string()));
+                    }
+                }
+            }
         }));
+
 
     let status_pane = view()
         .w(px(250.0))
