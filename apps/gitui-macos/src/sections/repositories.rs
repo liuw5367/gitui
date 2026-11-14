@@ -12,12 +12,14 @@ pub(crate) struct RepositoriesActions {
     pub(crate) open: Arc<dyn Fn()>,
     pub(crate) open_recent: Arc<dyn Fn(String)>,
     pub(crate) remove_recent: Arc<dyn Fn(String)>,
+    pub(crate) clear_recent: Arc<dyn Fn()>,
 }
 
 pub(crate) fn repositories_panel(
     open: Signal<bool>,
     recent: Signal<Vec<SharedString>>,
     path_input: Signal<String>,
+    error: Signal<SharedString>,
     actions: RepositoriesActions,
 ) -> impl IntoElement {
     view()
@@ -62,6 +64,10 @@ pub(crate) fn repositories_panel(
                                 .text_size(px(13.0))
                                 .text_color(move || design::text()),
                         )
+                        .child(header_button("Clear", false, {
+                            let action = actions.clear_recent.clone();
+                            move || action()
+                        }))
                         .child(header_button("Close", false, {
                             let action = actions.close.clone();
                             move || action()
@@ -78,6 +84,17 @@ pub(crate) fn repositories_panel(
                             text("Recent")
                                 .text_size(px(10.0))
                                 .text_color(move || design::text3()),
+                        )
+                        .child(
+                            text(move || {
+                                if recent.get().is_empty() {
+                                    "No recent repositories".to_string()
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .text_size(px(10.0))
+                            .text_color(move || design::text3()),
                         )
                         .child(each(
                             recent,
@@ -108,6 +125,11 @@ pub(crate) fn repositories_panel(
                             },
                         ))
                         .child(view().flex_1())
+                        .child(
+                            text(move || error.get())
+                                .text_size(px(9.5))
+                                .text_color(move || design::danger()),
+                        )
                         .child(
                             view()
                                 .flex_row()

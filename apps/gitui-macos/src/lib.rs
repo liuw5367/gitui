@@ -177,7 +177,11 @@ pub fn App() -> impl IntoElement {
     let audit_lines = signal(Vec::<String>::new());
     let audit_error = signal(SharedString::from(""));
     let repositories_open = signal(false);
-    let open_repositories: Arc<dyn Fn()> = Arc::new(move || repositories_open.set(true));
+    let repo_sheet_error = signal(SharedString::from(""));
+    let open_repositories: Arc<dyn Fn()> = Arc::new(move || {
+        repo_sheet_error.set(SharedString::from(""));
+        repositories_open.set(true);
+    });
     let palette_open = signal(false);
     let palette_query = signal(String::new());
     let open_palette: Arc<dyn Fn()> = Arc::new(move || {
@@ -1772,13 +1776,20 @@ pub fn App() -> impl IntoElement {
         repositories_open,
         recent,
         path_input,
+        repo_sheet_error,
         RepositoriesActions {
             close: Arc::new(move || repositories_open.set(false)),
             open: {
                 let open = repositories_open_action.clone();
                 Arc::new(move || {
-                    repositories_open.set(false);
-                    open();
+                    let path = path_input.get_untracked();
+                    match Repo::open(&path) {
+                        Ok(_) => {
+                            repositories_open.set(false);
+                            open();
+                        }
+                        Err(err) => repo_sheet_error.set(SharedString::from(err.to_string())),
+                    }
                 })
             },
             open_recent: {
@@ -1793,6 +1804,11 @@ pub fn App() -> impl IntoElement {
                 list.retain(|item| item.as_str() != path);
                 recent.set(list.clone());
                 save_recent(list.as_slice());
+            }),
+            clear_recent: Arc::new(move || {
+                recent.set(Vec::new());
+                save_recent(&[]);
+                repo_sheet_error.set(SharedString::from(""));
             }),
         },
     );
