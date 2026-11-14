@@ -368,7 +368,7 @@ pub(crate) fn settings_panel(
                                         .gap_1()
                                         .child(section("Agent", "Permissions for the future agent runtime."))
                                         .child(
-                                            text("Agent execution is not enabled in this build; this policy is session-only.")
+                                            text("Agent provider is not connected; manual plan approval is available. Policy is session-only.")
                                                 .text_size(px(10.0))
                                                 .text_color(move || design::text3()),
                                         )

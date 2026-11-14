@@ -196,7 +196,7 @@ pub(crate) fn inspector(
                                 .text_color(move || design::text()),
                         )
                         .child(
-                            text("Policy only · execution is not enabled in this build.")
+                            text("Provider not connected · manual plan approval available.")
                                 .text_size(px(9.5))
                                 .text_color(move || design::text3()),
                         )
