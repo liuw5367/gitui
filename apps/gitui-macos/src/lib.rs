@@ -194,7 +194,6 @@ pub fn App() -> impl IntoElement {
         let open = open_palette.clone();
         move |_| open()
     });
-    on_key("escape", move |_| palette_open.set(false));
     let open_audit: Arc<dyn Fn()> = Arc::new(move || {
         audit_lines.set(crate::audit::read_recent(200));
         audit_error.set(SharedString::from(""));
@@ -261,6 +260,10 @@ pub fn App() -> impl IntoElement {
     let focus_mode = signal(false);
     let toggle_focus: Arc<dyn Fn()> = Arc::new(move || {
         focus_mode.set(!focus_mode.get_untracked());
+    });
+    on_key("escape", move |_| {
+        palette_open.set(false);
+        focus_mode.set(false);
     });
     let sync_open = signal(false);
     let sync_kind = signal(SyncKind::Fetch);
