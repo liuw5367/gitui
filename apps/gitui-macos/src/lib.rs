@@ -3,7 +3,7 @@
 //! Slice 1: open the current repository, show status, recent history and the
 //! selected commit's patch. No staging, commit, push or settings.
 
-use gitui_git::{Commit, Repo};
+use gitui_git::{Commit, Repo, StatusEntry};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
@@ -15,6 +15,7 @@ struct Loaded {
     staged: usize,
     unstaged: usize,
     status_lines: Vec<SharedString>,
+    status_entries: Vec<StatusEntry>,
     commits: Vec<Commit>,
     selected: SharedString,
     diff: SharedString,
@@ -45,6 +46,7 @@ fn load(path: &str) -> Loaded {
                 staged: status.staged,
                 unstaged: status.unstaged,
                 status_lines: status.lines.into_iter().map(SharedString::from).collect(),
+                status_entries: status.entries,
                 commits,
                 selected: SharedString::from(selected),
                 diff: SharedString::from(diff),
@@ -58,6 +60,7 @@ fn load(path: &str) -> Loaded {
             staged: 0,
             unstaged: 0,
             status_lines: Vec::new(),
+            status_entries: Vec::new(),
             commits: Vec::new(),
             diff: SharedString::from(format!("Could not open repository:\n{error}")),
             error: SharedString::from(error.to_string()),
@@ -142,6 +145,30 @@ fn save_session(active: usize, tabs: &[Loaded]) {
     let _ = std::fs::write(file, lines.join("\n"));
 }
 
+fn mini_button(
+    label: &'static str,
+    primary: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    view()
+        .px_2()
+        .py_1()
+        .rounded(px(3.0))
+        .bg(move || if primary { theme().primary } else { theme().background })
+        .on_press(on_press)
+        .child(
+            text(label)
+                .text_size(px(8.5))
+                .text_color(move || {
+                    if primary {
+                        theme().primary_foreground
+                    } else {
+                        theme().primary
+                    }
+                }),
+        )
+}
+
 fn header_button(
     label: &'static str,
     primary: bool,
@@ -212,6 +239,7 @@ pub fn App() -> impl IntoElement {
     let staged = signal(active_tab.staged);
     let unstaged = signal(active_tab.unstaged);
     let status_lines = signal(active_tab.status_lines.clone());
+    let status_entries = signal(active_tab.status_entries.clone());
     let commits = signal(active_tab.commits.clone());
     let selected = signal(active_tab.selected.clone());
     let diff = signal(active_tab.diff.clone());
@@ -246,6 +274,7 @@ pub fn App() -> impl IntoElement {
         staged.set(loaded.staged);
         unstaged.set(loaded.unstaged);
         status_lines.set(loaded.status_lines);
+        status_entries.set(loaded.status_entries);
         commits.set(loaded.commits);
         selected.set(first);
         diff.set(loaded.diff);
@@ -265,6 +294,7 @@ pub fn App() -> impl IntoElement {
     let reload_for_stage = reload.clone();
     let reload_for_unstage = reload.clone();
     let reload_for_commit = reload.clone();
+    let reload_for_entry = reload.clone();
     let activate = move |index: usize| {
         let Some(tab) = tabs.get_untracked().get(index).cloned() else {
             return;
@@ -276,6 +306,7 @@ pub fn App() -> impl IntoElement {
         staged.set(tab.staged);
         unstaged.set(tab.unstaged);
         status_lines.set(tab.status_lines);
+        status_entries.set(tab.status_entries);
         commits.set(tab.commits);
         selected.set(tab.selected);
         diff.set(tab.diff);
@@ -513,7 +544,7 @@ pub fn App() -> impl IntoElement {
         )
         .child(
             text(move || {
-                if status_lines.get().is_empty() {
+                if status_entries.get().is_empty() {
                     "Clean working tree".to_string()
                 } else {
                     String::new()
@@ -523,14 +554,55 @@ pub fn App() -> impl IntoElement {
             .text_color(move || theme().foreground),
         )
         .child(each(
-            status_lines,
-            |line: &SharedString| line.clone(),
-            |line, _| {
-                view().h(px(18.0)).child(
-                    text(move || line.get())
-                        .text_size(px(9.5))
-                        .text_color(move || theme().foreground),
-                )
+            status_entries,
+            |entry: &StatusEntry| entry.path.clone(),
+            move |entry, _| {
+                let path = entry.get().path.clone();
+                let staged = entry.get().is_staged();
+                let unstaged = entry.get().is_unstaged();
+                let reload_entry = reload_for_entry.clone();
+                let mut row = view()
+                    .h(px(36.0))
+                    .flex_row()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        text(move || short_name(&entry.get().path))
+                            .text_size(px(9.0))
+                            .text_color(move || theme().foreground)
+                            .flex_1(),
+                    );
+                if unstaged {
+                    let path = path.clone();
+                    let reload = reload_entry.clone();
+                    row = row.child(mini_button("Stage", true, move || {
+                        match Repo::open(repo_path.get_untracked().to_string().as_str())
+                            .and_then(|repo| repo.stage_path(&path))
+                        {
+                            Ok(()) => {
+                                error.set(SharedString::from(""));
+                                reload();
+                            }
+                            Err(err) => error.set(SharedString::from(err.to_string())),
+                        }
+                    }));
+                }
+                if staged {
+                    let path = path.clone();
+                    let reload = reload_entry.clone();
+                    row = row.child(mini_button("Unstage", false, move || {
+                        match Repo::open(repo_path.get_untracked().to_string().as_str())
+                            .and_then(|repo| repo.unstage_path(&path))
+                        {
+                            Ok(()) => {
+                                error.set(SharedString::from(""));
+                                reload();
+                            }
+                            Err(err) => error.set(SharedString::from(err.to_string())),
+                        }
+                    }));
+                }
+                row
             },
         ));
 
