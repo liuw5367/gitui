@@ -929,17 +929,10 @@ pub fn App() -> impl IntoElement {
             }
         }
     });
-    let hunks_bar = crate::sections::hunks_bar(
-        selected_file,
-        hunk_indices,
-        staged_hunk_indices,
-        file_patch,
-        staged_patch,
-        HunkActions {
-            stage: stage_hunk_action,
-            unstage: unstage_hunk_action,
-        },
-    );
+    let hunk_actions = HunkActions {
+        stage: stage_hunk_action,
+        unstage: unstage_hunk_action,
+    };
     let save_identity_action = Arc::new({
         let reload_identity = reload_for_branch.clone();
         move || {
@@ -1140,12 +1133,19 @@ pub fn App() -> impl IntoElement {
         }
     });
     let diff_pane = diff_view(
+        mode,
         selected,
         diff,
+        selected_file,
+        file_patch,
+        staged_patch,
+        hunk_indices,
+        staged_hunk_indices,
         DiffActions {
             cherry_pick: cherry_pick_action,
             revert: revert_action,
         },
+        hunk_actions,
     );
 
     let changes = changes_list(
@@ -1209,7 +1209,6 @@ pub fn App() -> impl IntoElement {
         .child(toolbar)
         .child(operation_banner)
         .child(recent_bar)
-        .child(hunks_bar)
         .child(conflict_panel)
         .child(main)
         .child(sync_panel)

@@ -25,7 +25,7 @@ pub(crate) use header::HeaderActions;
 pub(crate) use operation::operation_banner;
 pub(crate) use settings::{settings_panel, SettingsActions};
 pub(crate) use history::history;
-pub(crate) use hunks::{hunks_bar, HunkActions};
+pub(crate) use hunks::HunkActions;
 pub(crate) use inspector::inspector;
 pub(crate) use recent::recent_bar;
 pub(crate) use stashes::StashActions;
