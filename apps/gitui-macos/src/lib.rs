@@ -9,7 +9,7 @@ mod widgets;
 
 use gitui_git::{Branch, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session, short_name};
-use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions};
+use sections::{diff_view, header, history, statusbar, CommitActions, ConflictActions, HeaderActions, StatusActions};
 use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
@@ -429,260 +429,118 @@ pub fn App() -> impl IntoElement {
         },
     );
 
-    let status_pane = view()
-        .w(px(250.0))
-        .flex_col()
-        .gap_2()
-        .p_2()
-        .child(
-            text("Working tree")
-                .text_size(px(11.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            text(move || format!("{} staged · {} unstaged", staged.get(), unstaged.get()))
-                .text_size(px(10.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            text(move || branch.get())
-                .text_size(px(10.0))
-                .text_color(move || theme().primary),
-        )
-        .child(
-            view()
-                .flex_row()
-                .gap_2()
-                .child(header_button("Stage All", true, {
-                    let reload_stage = reload_for_stage.clone();
-                    move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                        .and_then(|repo| repo.stage_all())
-                    {
-                        Ok(()) => {
-                            error.set(SharedString::from(""));
-                            reload_stage();
-                        }
-                        Err(err) => error.set(SharedString::from(err.to_string())),
-                    }
-                }))
-                .child(header_button("Unstage All", false, {
-                    let reload_unstage = reload_for_unstage.clone();
-                    move || match Repo::open(repo_path.get_untracked().to_string().as_str())
-                        .and_then(|repo| repo.unstage_all())
-                    {
-                        Ok(()) => {
-                            error.set(SharedString::from(""));
-                            reload_unstage();
-                        }
-                        Err(err) => error.set(SharedString::from(err.to_string())),
-                    }
-                })),
-        )
-        .child(
-            text("Branches")
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            view()
-                .flex_row()
-                .items_center()
-                .gap_1()
-                .child(
-                    input()
-                        .value(branch_name)
-                        .on_change(move |text: &str| branch_name.set(text.to_string()))
-                        .placeholder("new-branch")
-                        .text_size(px(9.0))
-                        .flex_1(),
-                )
-                .child(mini_button("New", true, {
-                    let reload_branch = reload_for_branch.clone();
-                    move || {
-                        let name = branch_name.get_untracked().trim().to_string();
-                        if name.is_empty() {
-                            error.set(SharedString::from("Branch name is empty"));
-                            return;
-                        }
-                        match Repo::open(repo_path.get_untracked().to_string().as_str())
-                            .and_then(|repo| repo.create_branch(&name))
-                        {
-                            Ok(_) => {
-                                branch_name.set(String::new());
-                                error.set(SharedString::from(""));
-                                reload_branch();
-                            }
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    }
-                })),
-        )
-        .child(each(
-            branches,
-            |branch: &Branch| branch.name.clone(),
-            move |branch, _| {
-                let name = branch.get().name.clone();
-                let current = branch.get().current;
-                let reload_branch = reload_for_branch.clone();
-                view()
-                    .h(px(18.0))
-                    .px_1()
-                    .rounded(px(3.0))
-                    .bg(move || {
-                        if branch.get().current {
-                            theme().primary
-                        } else {
-                            theme().background
-                        }
-                    })
-                    .on_press(move || {
-                        if current {
-                            return;
-                        }
-                        match Repo::open(repo_path.get_untracked().to_string().as_str())
-                            .and_then(|repo| repo.checkout(&name))
-                        {
-                            Ok(_) => {
-                                error.set(SharedString::from(""));
-                                reload_branch();
-                            }
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    })
-                    .child(
-                        text(move || branch.get().name)
-                            .text_size(px(9.0))
-                            .text_color(move || {
-                                if branch.get().current {
-                                    theme().primary_foreground
-                                } else {
-                                    theme().foreground
-                                }
-                            }),
-                    )
-            },
-        ))
-        .child(
-            text(move || {
-                if conflicts.get().is_empty() {
-                    String::new()
-                } else {
-                    "Conflicts".to_string()
+    let stage_all_action = Arc::new({
+        let reload_stage = reload_for_stage.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.stage_all())
+        {
+            Ok(()) => {
+                error.set(SharedString::from(""));
+                reload_stage();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let unstage_all_action = Arc::new({
+        let reload_unstage = reload_for_unstage.clone();
+        move || match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.unstage_all())
+        {
+            Ok(()) => {
+                error.set(SharedString::from(""));
+                reload_unstage();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let stage_path_action = Arc::new({
+        let reload_entry = reload_for_entry.clone();
+        move |path: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.stage_path(&path))
+        {
+            Ok(()) => {
+                error.set(SharedString::from(""));
+                reload_entry();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let unstage_path_action = Arc::new({
+        let reload_entry = reload_for_entry.clone();
+        move |path: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.unstage_path(&path))
+        {
+            Ok(()) => {
+                error.set(SharedString::from(""));
+                reload_entry();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let checkout_action = Arc::new({
+        let reload_branch = reload_for_branch.clone();
+        move |name: String| match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.checkout(&name))
+        {
+            Ok(_) => {
+                error.set(SharedString::from(""));
+                reload_branch();
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let create_branch_action = Arc::new({
+        let reload_branch = reload_for_branch.clone();
+        move |name: String| {
+            if name.is_empty() {
+                error.set(SharedString::from("Branch name is empty"));
+                return;
+            }
+            match Repo::open(repo_path.get_untracked().to_string().as_str())
+                .and_then(|repo| repo.create_branch(&name))
+            {
+                Ok(_) => {
+                    branch_name.set(String::new());
+                    error.set(SharedString::from(""));
+                    reload_branch();
                 }
-            })
-            .text_size(px(9.0))
-            .text_color(move || theme().foreground),
-        )
-        .child(each(
-            conflicts,
-            |path: &String| path.clone(),
-            move |path, _| {
-                view()
-                    .h(px(18.0))
-                    .px_1()
-                    .rounded(px(3.0))
-                    .bg(move || {
-                        if conflict_path.get() == path.get() {
-                            theme().primary
-                        } else {
-                            theme().background
-                        }
-                    })
-                    .on_press(move || {
-                        let selected = path.get();
-                        match Repo::open(repo_path.get_untracked().to_string().as_str())
-                            .and_then(|repo| repo.conflict_stages(&selected))
-                        {
-                            Ok(stages) => {
-                                conflict_path.set(selected.clone());
-                                conflict_result.set(stages.ours.clone());
-                                conflict_stages.set(Some(stages));
-                                error.set(SharedString::from(""));
-                            }
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    })
-                    .child(
-                        text(move || path.get())
-                            .text_size(px(9.0))
-                            .text_color(move || {
-                                if conflict_path.get() == path.get() {
-                                    rgb(0xffffff)
-                                } else {
-                                    rgb(0xff3b30)
-                                }
-                            }),
-                    )
-            },
-        ))
-        .child(
-            text(move || error.get())
-                .text_size(px(9.0))
-                .text_color(|| rgb(0xff3b30)),
-        )
-        .child(
-            text(move || {
-                if status_entries.get().is_empty() {
-                    "Clean working tree".to_string()
-                } else {
-                    String::new()
-                }
-            })
-            .text_size(px(9.0))
-            .text_color(move || theme().foreground),
-        )
-        .child(each(
-            status_entries,
-            |entry: &StatusEntry| entry.path.clone(),
-            move |entry, _| {
-                let path = entry.get().path.clone();
-                let staged = entry.get().is_staged();
-                let unstaged = entry.get().is_unstaged();
-                let reload_entry = reload_for_entry.clone();
-                let mut row = view()
-                    .h(px(36.0))
-                    .flex_row()
-                    .items_center()
-                    .gap_1()
-                    .child(
-                        text(move || short_name(&entry.get().path))
-                            .text_size(px(9.0))
-                            .text_color(move || theme().foreground)
-                            .flex_1(),
-                    );
-                if unstaged {
-                    let path = path.clone();
-                    let reload = reload_entry.clone();
-                    row = row.child(mini_button("Stage", true, move || {
-                        match Repo::open(repo_path.get_untracked().to_string().as_str())
-                            .and_then(|repo| repo.stage_path(&path))
-                        {
-                            Ok(()) => {
-                                error.set(SharedString::from(""));
-                                reload();
-                            }
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    }));
-                }
-                if staged {
-                    let path = path.clone();
-                    let reload = reload_entry.clone();
-                    row = row.child(mini_button("Unstage", false, move || {
-                        match Repo::open(repo_path.get_untracked().to_string().as_str())
-                            .and_then(|repo| repo.unstage_path(&path))
-                        {
-                            Ok(()) => {
-                                error.set(SharedString::from(""));
-                                reload();
-                            }
-                            Err(err) => error.set(SharedString::from(err.to_string())),
-                        }
-                    }));
-                }
-                row
-            },
-        ));
+                Err(err) => error.set(SharedString::from(err.to_string())),
+            }
+        }
+    });
+    let select_conflict_action = Arc::new(move |selected: String| {
+        match Repo::open(repo_path.get_untracked().to_string().as_str())
+            .and_then(|repo| repo.conflict_stages(&selected))
+        {
+            Ok(stages) => {
+                conflict_path.set(selected);
+                conflict_result.set(stages.ours.clone());
+                conflict_stages.set(Some(stages));
+                error.set(SharedString::from(""));
+            }
+            Err(err) => error.set(SharedString::from(err.to_string())),
+        }
+    });
+    let status_pane = crate::sections::status_pane(
+        branch,
+        staged,
+        unstaged,
+        status_entries,
+        branches,
+        conflicts,
+        conflict_path,
+        error,
+        branch_name,
+        StatusActions {
+            stage_all: stage_all_action,
+            unstage_all: unstage_all_action,
+            stage_path: stage_path_action,
+            unstage_path: unstage_path_action,
+            checkout: checkout_action,
+            create_branch: create_branch_action,
+            select_conflict: select_conflict_action,
+        },
+    );
 
     let select_commit = Arc::new(move |sha: String| {
         selected.set(SharedString::from(sha.clone()));
