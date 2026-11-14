@@ -17,11 +17,12 @@ pub(crate) fn hunks_bar(
     hunk_indices: Signal<Vec<usize>>,
     staged_hunk_indices: Signal<Vec<usize>>,
     patch: Signal<SharedString>,
+    staged_patch: Signal<SharedString>,
     actions: HunkActions,
 ) -> impl IntoElement {
     view()
         .h(move || {
-            if patch.get().is_empty() {
+            if patch.get().is_empty() && staged_patch.get().is_empty() {
                 px(30.0)
             } else {
                 px(150.0)
@@ -100,7 +101,13 @@ pub(crate) fn hunks_bar(
         )
         .child(
             editor()
-                .value(move || Some(patch.get()))
+                .value(move || {
+                    if patch.get().is_empty() {
+                        Some(staged_patch.get())
+                    } else {
+                        Some(patch.get())
+                    }
+                })
                 .read_only(true)
                 .language("diff")
                 .font_size(9.0)

@@ -71,6 +71,7 @@ pub fn App() -> impl IntoElement {
     let hunk_indices = signal(Vec::<usize>::new());
     let staged_hunk_indices = signal(Vec::<usize>::new());
     let file_patch = signal(SharedString::from(""));
+    let staged_patch = signal(SharedString::from(""));
     let tag_name = signal(String::new());
     let branch_name = signal(String::new());
     let conflict_path = signal(active_tab.conflict_path.clone());
@@ -719,6 +720,7 @@ pub fn App() -> impl IntoElement {
                         let staged_count =
                             staged.lines().filter(|line| line.starts_with("@@")).count();
                         staged_hunk_indices.set((0..staged_count).collect());
+                        staged_patch.set(SharedString::from(staged));
                     }
                 }
                 error.set(SharedString::from(""));
@@ -753,6 +755,7 @@ pub fn App() -> impl IntoElement {
                             let staged_count =
                                 staged.lines().filter(|line| line.starts_with("@@")).count();
                             staged_hunk_indices.set((0..staged_count).collect());
+                            staged_patch.set(SharedString::from(staged));
                         }
                     }
                     reload_hunk();
@@ -784,6 +787,7 @@ pub fn App() -> impl IntoElement {
                             let staged_count =
                                 staged.lines().filter(|line| line.starts_with("@@")).count();
                             staged_hunk_indices.set((0..staged_count).collect());
+                            staged_patch.set(SharedString::from(staged));
                         }
                     }
                     reload_hunk();
@@ -797,6 +801,7 @@ pub fn App() -> impl IntoElement {
         hunk_indices,
         staged_hunk_indices,
         file_patch,
+        staged_patch,
         HunkActions {
             stage: stage_hunk_action,
             unstage: unstage_hunk_action,
