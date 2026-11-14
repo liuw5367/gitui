@@ -12,7 +12,7 @@ mod widgets;
 use gitui_agent::{AgentPermissions, AgentPlan, LocalPlanner, PlanStep, Planner};
 use gitui_git::{BlameLine, Commit, ReflogEntry, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session};
-use sections::{agent_panel, audit_panel, changes_list, diff_view, history, inspect_panel, inspector, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
+use sections::{agent_panel, audit_panel, changes_list, diff_view, history, inspect_panel, inspector, palette_panel, refs_panel, reflog_panel, settings_panel, statusbar, sync_panel, titlebar, toolbar, AgentActions, AuditActions, ChangesActions, CommitActions, ConflictActions, DiffActions, HeaderActions, HunkActions, InspectActions, PaletteCommand, RefsActions, ReflogActions, StashActions, StatusActions, SyncActions, SettingsActions};
 use nsh_base::theme;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop;
@@ -154,6 +154,12 @@ pub fn App() -> impl IntoElement {
     let audit_open = signal(false);
     let audit_lines = signal(Vec::<String>::new());
     let audit_error = signal(SharedString::from(""));
+    let palette_open = signal(false);
+    let palette_query = signal(String::new());
+    let open_palette: Arc<dyn Fn()> = Arc::new(move || {
+        palette_query.set(String::new());
+        palette_open.set(true);
+    });
     let open_audit: Arc<dyn Fn()> = Arc::new(move || {
         audit_lines.set(crate::audit::read_recent(200));
         audit_error.set(SharedString::from(""));
@@ -439,10 +445,11 @@ pub fn App() -> impl IntoElement {
             push: push_action,
         },
         mode,
-        set_mode,
+        set_mode.clone(),
         open_sync.clone(),
         open_settings.clone(),
         open_refs.clone(),
+        open_palette.clone(),
     );
 
     let sync_close: Arc<dyn Fn()> = Arc::new(move || sync_open.set(false));
@@ -1592,6 +1599,67 @@ pub fn App() -> impl IntoElement {
             },
         },
     );
+    let palette_close: Arc<dyn Fn()> = Arc::new(move || palette_open.set(false));
+    let palette_commands = vec![
+        PaletteCommand {
+            label: "History mode",
+            hint: "show commits",
+            action: {
+                let set = set_mode.clone();
+                Arc::new(move || set(Mode::History))
+            },
+        },
+        PaletteCommand {
+            label: "Changes mode",
+            hint: "show working tree",
+            action: {
+                let set = set_mode.clone();
+                Arc::new(move || set(Mode::Changes))
+            },
+        },
+        PaletteCommand {
+            label: "Sync",
+            hint: "fetch, pull, push",
+            action: open_sync.clone(),
+        },
+        PaletteCommand {
+            label: "Refs",
+            hint: "branches, tags, remotes",
+            action: open_refs.clone(),
+        },
+        PaletteCommand {
+            label: "Reflog",
+            hint: "recent HEAD movements",
+            action: open_reflog.clone(),
+        },
+        PaletteCommand {
+            label: "Compare",
+            hint: "diff two refs",
+            action: open_compare.clone(),
+        },
+        PaletteCommand {
+            label: "File history",
+            hint: "history and blame",
+            action: open_file_history.clone(),
+        },
+        PaletteCommand {
+            label: "Agent plan",
+            hint: "local stage/commit/push",
+            action: open_agent.clone(),
+        },
+        PaletteCommand {
+            label: "Settings",
+            hint: "preferences and permissions",
+            action: open_settings.clone(),
+        },
+        PaletteCommand {
+            label: "Audit log",
+            hint: "agent activity",
+            action: open_audit.clone(),
+        },
+    ];
+    let palette_panel = palette_panel(palette_open, palette_query, palette_commands, palette_close);
+
     let reflog_panel = reflog_panel(
         reflog_open,
         reflog_entries,
@@ -1653,6 +1721,7 @@ pub fn App() -> impl IntoElement {
         .child(refs_panel)
         .child(agent_panel)
         .child(audit_panel)
+        .child(palette_panel)
         .child(settings_panel)
         .child(statusbar)
 }
