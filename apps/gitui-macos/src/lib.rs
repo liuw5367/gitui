@@ -4,80 +4,13 @@
 //! selected commit's patch. No staging, commit, push or settings.
 
 mod model;
+mod widgets;
 
 use gitui_git::{Branch, Commit, Repo, StatusEntry};
 use model::{load, load_recent, load_session, save_recent, save_session, short_name, Loaded};
+use widgets::{conflict_pane, header_button, mini_button};
 use nsh_base::{editor, input, theme};
 use nsh_core::prelude::*;
-
-fn mini_button(
-    label: &'static str,
-    primary: bool,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    view()
-        .px_2()
-        .py_1()
-        .rounded(px(3.0))
-        .bg(move || if primary { theme().primary } else { theme().background })
-        .on_press(on_press)
-        .child(
-            text(label)
-                .text_size(px(8.5))
-                .text_color(move || {
-                    if primary {
-                        theme().primary_foreground
-                    } else {
-                        theme().primary
-                    }
-                }),
-        )
-}
-
-fn conflict_pane(title: &'static str, value: impl Fn() -> String + 'static) -> impl IntoElement {
-    view()
-        .flex_1()
-        .flex_col()
-        .gap_1()
-        .child(
-            text(title)
-                .text_size(px(9.0))
-                .text_color(move || theme().foreground),
-        )
-        .child(
-            editor()
-                .value(move || Some(SharedString::from(value())))
-                .read_only(true)
-                .font_size(10.0)
-                .line_height(15.0)
-                .flex_1(),
-        )
-}
-
-
-fn header_button(
-    label: &'static str,
-    primary: bool,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    view()
-        .px_3()
-        .py_2()
-        .rounded(px(5.0))
-        .bg(move || if primary { theme().primary } else { theme().background })
-        .on_press(on_press)
-        .child(
-            text(label)
-                .text_size(px(11.0))
-                .text_color(move || {
-                    if primary {
-                        theme().primary_foreground
-                    } else {
-                        theme().primary
-                    }
-                }),
-        )
-}
 
 #[native_module("gitui/native")]
 fn native(registry: &mut Registry) {
