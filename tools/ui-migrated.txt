@@ -14,3 +14,5 @@ workspace/agent.rs
 screens/conflict_view.rs
 screens/sync_dialog.rs
 screens/form_dialog.rs
+workspace/sidebar.rs
+screens/hook_sheet.rs

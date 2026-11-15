@@ -18,25 +18,11 @@ pub(crate) fn hook_sheet(
 ) -> impl IntoElement {
     let close = actions.toggle_hook_log.clone();
     let copy_text = actions.copy_text.clone();
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(120)
-        .items_center()
-        .justify_center()
-        .bg(move || {
-            let open = tab.get().map(|tab| tab.hook_open).unwrap_or(false);
-            if open {
-                design::token("overlay")
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press({
-            let close = close.clone();
-            move || close(false)
-        })
-        .child(dynamic(move || -> AnyElement {
+    let dismiss = close.clone();
+    return crate::ui::dialog::scrim(
+        move || tab.get().map(|tab| tab.hook_open).unwrap_or(false),
+        120,
+        dynamic(move || -> AnyElement {
             let Some(tab) = tab.get() else {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             };
@@ -49,7 +35,8 @@ pub(crate) fn hook_sheet(
             let close_button = close.clone();
             let copy_text = copy_text.clone();
             let log_for_copy = log.clone();
-            return view()
+            return crate::ui::dialog::modality(
+                view()
                 .w(px(560.0))
                 .h(px(420.0))
                 .flex_col()
@@ -57,7 +44,6 @@ pub(crate) fn hook_sheet(
                 .border_1()
                 .border_color(move || design::line())
                 .bg(move || design::token("popover"))
-                .on_press(|| {})
                 .child(
                     view()
                         .w_full()
@@ -74,7 +60,7 @@ pub(crate) fn hook_sheet(
                             text(move || {
                                 i18n::t(language_value.get().as_str(), "commit.logTitle")
                             })
-                            .text_size(px(12.5))
+                            .text_size(px(crate::ui::BODY))
                             .font_weight(FontWeight(600))
                             .line_height(px(16.0))
                             .text_color(move || design::text()),
@@ -93,13 +79,16 @@ pub(crate) fn hook_sheet(
                     view().w_full().flex_1().min_h_0().p(px(12.0)).child(
                         scroll().w_full().h_full().child(
                             text(log)
-                                .text_size(px(10.0))
-                                .line_height(px(15.0))
-                                .font_family("SF Mono")
+                                .text_size(px(crate::ui::CODE))
+                                .line_height(px(crate::ui::CODE_LINE))
                                 .text_color(move || design::text2()),
                         ),
                     ),
                 )
-                .into_element();
-        }))
+                .into_element(),
+            )
+            .into_element();
+        }),
+        move || dismiss(false),
+    );
 }

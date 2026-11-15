@@ -155,6 +155,8 @@ mod guard_tests {
         "screens/conflict_view.rs",
         "screens/sync_dialog.rs",
         "screens/form_dialog.rs",
+        "workspace/sidebar.rs",
+        "screens/hook_sheet.rs",
     ];
 
     fn src_root() -> PathBuf {

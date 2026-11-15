@@ -146,14 +146,14 @@ fn group(
                 .child(widgets::icon("chev-down", 10.0, design::text3))
                 .child(
                     text(move || i18n::t(language.get().as_str(), key))
-                        .text_size(px(10.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .font_weight(FontWeight(600))
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
                 .child(
                     text(count.to_string())
-                        .text_size(px(10.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 ),
         )
@@ -236,7 +236,7 @@ fn branch_row(
         ))
         .child(
             text(name)
-                .text_size(px(13.0))
+                .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text())
                 .flex_1()
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -252,7 +252,7 @@ fn branch_row(
                 }
                 return track;
             })
-            .text_size(px(9.5))
+            .text_size(px(crate::ui::SECONDARY))
             .text_color(move || design::text3()),
         )
         .into_element();
@@ -271,7 +271,7 @@ fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) ->
         .child(widgets::icon(icon, 11.0, color))
         .child(
             text(label)
-                .text_size(px(12.5))
+                .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
                 .flex_1()
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
