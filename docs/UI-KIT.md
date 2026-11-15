@@ -43,6 +43,7 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 | `table` | `ui/table.rs` | `nsh_base::data_table` | 行高 28、表头 28 | 行选中、键盘导航、虚拟化 | 列定义 + 列式行数据 + 自定义单元格回调；`DataTableColumn`/`DataTableSelection` 是 non_exhaustive，先用 `default()` 再逐字段赋值；列与行的映射是纯函数，有单测 |
 | `tabs` | `ui/tabs.rs` | `nsh_base::tabs` + `tab` | 行高 28 | 选中、focus-visible | 面板内互斥视图（检查器三页签、同步三页签）；选中项底部 2pt 强调线 |
 | `badge` / `count` / `kbd` | `ui/badge.rs` | `view` + `text` | `Tone`：Neutral / Accent / Success / Warning / Danger | — | 徽章 18 高；键帽 18 高 |
+| `split` | `ui/split.rs` | `nsh_base` 的 `h_resizable`/`v_resizable` | 横向 / 纵向；`Pane::fixed(内容, 宽)` / `Pane::flex(内容)`，可 `.min()` / `.max()` | 拖拽、键盘、最小尺寸 | 拖拽与把手聚焦由 nsh 提供；`Pane` 只声明尺寸约束 |
 | `menu` | `ui/menu.rs` | 系统 `NSMenu` | `action` / `checkable` / `danger` / `divider` | 启用、勾选 | 只提供菜单项构造，不重画外观（系统菜单决定外观）；危险项的区分靠「选择后弹确认」而非颜色 |
 | `key_value` | `ui/key_value.rs` | `view` + `text` | 行高 24，标签列 96 | — | 左标签 11pt + 右值 13pt；等宽值（SHA、路径）由 `mono` 标记走 12pt `ui::MONO` |
 | `pane_header` / `section_label` / `empty` / `skeleton_row` | `ui/section.rs` | `view` + `text` | 行高 28 / 24 | — | 面板标题条、分组标题、空态、骨架行 |
