@@ -7,7 +7,6 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets;
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -449,33 +448,45 @@ fn hook_box(
                 .items_center()
                 .gap(px(6.0))
                 .when(!ok, |this| {
-                    this.child(widgets::small_button(
+                    this.child(crate::ui::button::button(
+                                   
                         {
                             let language = language;
                             move || i18n::t(language.get().as_str(), "commit.retryHooks")
                         },
-                        {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                             let retry = retry.clone();
                             move || retry()
                         },
-                    ))
-                    .child(widgets::small_button(
+                               ))
+                    .child(crate::ui::button::button(
+                               
                         {
                             let language = language;
                             move || i18n::t(language.get().as_str(), "commit.withoutHooks")
                         },
-                        {
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               {
                             let without_hooks = without_hooks.clone();
                             move || without_hooks()
                         },
-                    ))
+                           ))
                 })
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "commit.viewLog")
                     },
-                    move || open_log(true),
-                )),
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           move || open_log(true),
+                       )),
         );
 }

@@ -10,7 +10,6 @@
 use crate::design;
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets;
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -184,12 +183,16 @@ pub(crate) fn inspector(
                 .gap(px(6.0))
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "files.copyPath")
                     },
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           {
                         let copy_text = actions.copy_text.clone();
                         let root = tab.path.clone();
                         let relative = selected_path.clone();
@@ -199,14 +202,18 @@ pub(crate) fn inspector(
                             }
                         }
                     },
-                ))
+                       ))
                 .child(view().flex_1())
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "files.openInEditor")
                     },
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           {
                         let open_editor = actions.open_editor.clone();
                         let root = tab.path.clone();
                         let relative = selected_path.clone();
@@ -216,7 +223,7 @@ pub(crate) fn inspector(
                             }
                         }
                     },
-                )),
+                       )),
         );
 }
 
@@ -391,39 +398,51 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
                         .gap(px(6.0))
                         .border_t_1()
                         .border_color(move || design::line())
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "files.copySha")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let copy_text = actions.copy_text.clone();
                                 let sha = sha_for_actions.clone();
                                 move || copy_text(sha.clone())
                             },
-                        ))
-                        .child(widgets::small_button(
+                               ))
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "files.cherryPick")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let cherry_pick = actions.cherry_pick.clone();
                                 let sha = sha_for_actions.clone();
                                 move || cherry_pick(sha.clone())
                             },
-                        ))
-                        .child(widgets::small_button(
+                               ))
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "files.revert")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let revert_commit = actions.revert_commit.clone();
                                 let sha = sha_for_actions.clone();
                                 move || revert_commit(sha.clone())
                             },
-                        )),
+                               )),
                 ),
         )
         .into_element();

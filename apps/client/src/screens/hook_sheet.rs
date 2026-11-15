@@ -6,7 +6,6 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets;
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -66,14 +65,22 @@ pub(crate) fn hook_sheet(
                             .text_color(move || design::text()),
                         )
                         .child(view().flex_1())
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             move || i18n::t(language_value.get().as_str(), "common.copy"),
-                            move || copy_text(log_for_copy.clone()),
-                        ))
-                        .child(widgets::small_button(
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   move || copy_text(log_for_copy.clone()),
+                               ))
+                        .child(crate::ui::button::button(
+                                   
                             move || i18n::t(language_value.get().as_str(), "common.close"),
-                            move || close_button(false),
-                        )),
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   move || close_button(false),
+                               )),
                 )
                 .child(
                     view().w_full().flex_1().min_h_0().p(px(12.0)).child(

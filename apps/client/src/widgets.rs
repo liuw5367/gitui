@@ -34,30 +34,6 @@ pub(crate) fn button(
         );
 }
 
-/// 小号按钮：`.btn.small`（高 22、字号 11）。
-pub(crate) fn small_button(
-    label: impl Fn() -> String + 'static,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    return view()
-        .h(px(metrics::BUTTON_SMALL_H))
-        .px(px(8.0))
-        .flex_row()
-        .items_center()
-        .justify_center()
-        .rounded(px(5.0))
-        .border_1()
-        .border_color(move || design::btn_border())
-        .bg(move || design::btn())
-        .hover(|style| style.bg(move || design::hover()))
-        .on_press(on_press)
-        .child(
-            text(move || label())
-                .text_size(px(11.0))
-                .text_color(move || design::text()),
-        );
-}
-
 /// 纯图标，不可点击：用于行内标记（分支、标签、文件）。
 pub(crate) fn icon(
     name: &'static str,

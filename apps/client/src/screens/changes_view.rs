@@ -453,14 +453,22 @@ fn changes_list(
                             .text_color(move || design::text())
                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
-                    .child(widgets::small_button(
+                    .child(crate::ui::button::button(
+                               
                         move || i18n::t(language.get().as_str(), "conflicts.ours"),
-                        move || ours(ours_path.clone(), true),
-                    ))
-                    .child(widgets::small_button(
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               move || ours(ours_path.clone(), true),
+                           ))
+                    .child(crate::ui::button::button(
+                               
                         move || i18n::t(language.get().as_str(), "conflicts.theirs"),
-                        move || theirs(theirs_path.clone(), false),
-                    ))
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               move || theirs(theirs_path.clone(), false),
+                           ))
                     .into_element(),
             );
         }
@@ -486,13 +494,17 @@ fn changes_list(
                             .text_color(move || design::danger()),
                         )
                         .child(view().flex_1())
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             move || i18n::t(language.get().as_str(), "conflicts.resolve"),
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let open_conflict = actions.open_conflict.clone();
                                 move || open_conflict()
                             },
-                        )),
+                               )),
                 )
                 .child(rows)
                 .into_element(),
@@ -781,13 +793,17 @@ fn hunk_header_row(
                 .text_color(move || design::text2())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
-        .child(crate::widgets::small_button(
+        .child(crate::ui::button::button(
+                          
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), label_key)
             },
-            move || apply(hunk_index, None, staged),
-        ))
+                          crate::ui::button::ButtonVariant::Secondary,
+                          crate::ui::button::ButtonSize::Small,
+                          false,
+                          move || apply(hunk_index, None, staged),
+                      ))
         .into_element();
 }
 
@@ -844,13 +860,17 @@ fn line_row_with_piece(
                 .text_color(move || foreground)
                 .text_overflow(nsh_core::EllipsizeMode::Clip),
         )
-        .child(crate::widgets::small_button(
+        .child(crate::ui::button::button(
+                          
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), label_key)
             },
-            move || apply(hunk_index, Some(line_index), staged),
-        ))
+                          crate::ui::button::ButtonVariant::Secondary,
+                          crate::ui::button::ButtonSize::Small,
+                          false,
+                          move || apply(hunk_index, Some(line_index), staged),
+                      ))
         .into_element();
 }
 
@@ -976,9 +996,13 @@ fn changelist_pop(
                             move |text: &str| new_name.set(text.to_string()),
                         )),
                 )
-                .child(crate::widgets::small_button(
+                .child(crate::ui::button::button(
+                                  
                     move || i18n::t(language.get().as_str(), "changelists.create"),
-                    {
+                                  crate::ui::button::ButtonVariant::Secondary,
+                                  crate::ui::button::ButtonSize::Small,
+                                  false,
+                                  {
                         let create = create.clone();
                         let open = open;
                         move || {
@@ -990,7 +1014,7 @@ fn changelist_pop(
                             open.set(false);
                         }
                     },
-                )),
+                              )),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "changelists.footHint"))

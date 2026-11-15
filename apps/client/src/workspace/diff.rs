@@ -87,13 +87,17 @@ pub(crate) fn diff(
                 .child(fold_toggle(language, options, toggle_option.clone()))
                 .child(wrap_toggle(language, options, toggle_option.clone()))
                 .child(space_toggle(language, options, toggle_option.clone()))
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "diff.export")
                     },
-                    move || export_patch(),
-                ))
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           move || export_patch(),
+                       ))
                 .child(mode_toggle(language, split_view, set_split_mode.clone()))
                 .child(crate::ui::button::icon_button(
                     "copy",

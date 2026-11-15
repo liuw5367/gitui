@@ -498,13 +498,17 @@ fn general(
                     .text_size(px(crate::ui::BODY))
                     .text_color(move || design::text()),
                 )
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     move || i18n::t(language.get().as_str(), "settings.switchLanguage"),
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           {
                         let toggle_language = toggle_language.clone();
                         move || toggle_language()
                     },
-                ))
+                       ))
                 .into_element(),
         ))
         // 日期格式：四种预设 + 自定义 pattern + 实时预览（设计板 23）。
@@ -736,20 +740,28 @@ fn general(
                         .line_height(px(15.0))
                         .text_color(move || design::text2()),
                 )
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     move || i18n::t(language.get().as_str(), "settings.editIdentity"),
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           {
                         let open_form = open_identity.clone();
                         move || open_form()
                     },
-                ))
-                .child(widgets::small_button(
+                       ))
+                .child(crate::ui::button::button(
+                           
                     move || i18n::t(language.get().as_str(), "settings.useGlobalIdentity"),
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           {
                         let clear = clear_identity.clone();
                         move || clear()
                     },
-                ))
+                       ))
                 .into_element(),
         ))
         .child(section_block(
@@ -1072,26 +1084,34 @@ fn git_page(
                         .flex_row()
                         .items_center()
                         .gap(px(6.0))
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "settings.choose")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let choose = choose.clone();
                                 move || choose()
                             },
-                        ))
-                        .child(widgets::small_button(
+                               ))
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "settings.detect")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let detect = detect.clone();
                                 move || detect()
                             },
-                        ))
+                               ))
                         .child(toggle_row(
                             language,
                             "settings.usePath",
@@ -1160,16 +1180,20 @@ fn git_page(
                             .text_color(move || design::text3()),
                         )
                         .child(view().flex_1())
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "settings.scanNow")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let add = add_found.clone();
                                 move || add()
                             },
-                        )),
+                               )),
                 )
                 .into_element(),
         ))
@@ -1263,13 +1287,17 @@ fn shortcuts_page(
                     .line_height(px(14.0))
                     .text_color(move || design::text2()),
                 )
-                .child(widgets::small_button(
+                .child(crate::ui::button::button(
+                           
                     move || i18n::t(language.get().as_str(), "shortcut.record"),
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Small,
+                           false,
+                           {
                         let record = record.clone();
                         move || record(id)
                     },
-                ))
+                       ))
                 .into_element(),
         );
     }
@@ -1452,16 +1480,20 @@ fn pending_row(
         .flex_row()
         .items_center()
         .gap(px(8.0))
-        .child(crate::widgets::small_button(
+        .child(crate::ui::button::button(
+                          
             move || i18n::t(language.get().as_str(), label_key),
-            move || {
+                          crate::ui::button::ButtonVariant::Secondary,
+                          crate::ui::button::ButtonSize::Small,
+                          false,
+                          move || {
                 let lang = language.get_untracked();
                 crate::interactions::notify(
                     notice,
                     i18n::t(lang.as_str(), "settings.credentialsPending"),
                 );
             },
-        ))
+                      ))
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.notConnected"))
                 .text_size(px(crate::ui::META))
