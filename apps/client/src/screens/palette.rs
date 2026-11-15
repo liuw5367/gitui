@@ -151,8 +151,8 @@ pub(crate) fn palette(
                             let language_now = language_now.clone();
                             move || i18n::t(language_now.as_str(), group)
                         })
-                            .text_size(px(9.5))
-                            .line_height(px(12.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .font_weight(FontWeight(600))
                             .text_color(move || design::text3()),
                     )
@@ -173,45 +173,32 @@ pub(crate) fn palette(
                 };
                 let run = on_open_repo.clone();
                 let open_signal = open_signal;
-                view()
-                    .w_full()
-                    .h(px(30.0))
-                    .px(px(10.0))
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(5.0))
-                    .bg(move || {
-                        if is_highlighted {
-                            design::selected()
-                        } else {
-                            AdaptiveColor::TRANSPARENT
-                        }
-                    })
-                    .hover(|style| style.bg(move || design::hover()))
-                    .on_press(move || {
+                crate::ui::row::row(
+                    move || label.clone(),
+                    None,
+                    Some(
+                        widgets::icon(
+                            if is_open { "folder" } else { "clock" },
+                            12.0,
+                            design::text3,
+                        )
+                        .into_element(),
+                    ),
+                    vec![
+                        text(hint.clone())
+                            .flex_shrink_0()
+                            .text_size(px(crate::ui::SECONDARY))
+                            .text_color(move || design::text3())
+                            .into_element(),
+                    ],
+                    is_highlighted,
+                    false,
+                    move || {
                         run(path.clone());
                         open_signal.set(false);
-                    })
-                    .child(widgets::icon(
-                        if is_open { "folder" } else { "clock" },
-                        12.0,
-                        design::text3,
-                    ))
-                    .child(
-                        text(label)
-                            .flex_1()
-                            .text_size(px(12.5))
-                            .text_color(move || design::text())
-                            .text_overflow(nsh_core::EllipsizeMode::Tail),
-                    )
-                    .child(
-                        text(hint)
-                            .flex_shrink_0()
-                            .text_size(px(10.0))
-                            .text_color(move || design::text3()),
-                    )
-                    .into_element()
+                    },
+                )
+                .into_element()
             }
             Row::Command(id) => {
                 let command = commands()
@@ -223,39 +210,24 @@ pub(crate) fn palette(
                 let label = i18n::t(language_now.as_str(), command.key);
                 let shortcut = command.shortcut;
                 let open_signal = open_signal;
-                view()
-                    .w_full()
-                    .h(px(30.0))
-                    .px(px(10.0))
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(5.0))
-                    .bg(move || {
-                        if is_highlighted {
-                            design::selected()
-                        } else {
-                            AdaptiveColor::TRANSPARENT
-                        }
-                    })
-                    .hover(|style| style.bg(move || design::hover()))
-                    .on_press(move || {
+                crate::ui::row::row(
+                    move || label.clone(),
+                    None,
+                    Some(widgets::icon("search", 12.0, design::text3).into_element()),
+                    vec![
+                        text(shortcut)
+                            .text_size(px(crate::ui::SECONDARY))
+                            .text_color(move || design::text3())
+                            .into_element(),
+                    ],
+                    is_highlighted,
+                    false,
+                    move || {
                         run(id);
                         open_signal.set(false);
-                    })
-                    .child(widgets::icon("search", 12.0, design::text3))
-                    .child(
-                        text(label)
-                            .flex_1()
-                            .text_size(px(12.5))
-                            .text_color(move || design::text()),
-                    )
-                    .child(
-                        text(shortcut)
-                            .text_size(px(10.0))
-                            .text_color(move || design::text3()),
-                    )
-                    .into_element()
+                    },
+                )
+                .into_element()
             }
         };
         children.push(element);
@@ -269,7 +241,7 @@ pub(crate) fn palette(
                 .items_center()
                 .child(
                     text(move || i18n::t(language_for_empty.as_str(), "palette.empty"))
-                        .text_size(px(11.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 )
                 .into_element(),
@@ -304,14 +276,12 @@ pub(crate) fn palette(
                         .gap(px(6.0))
                         .child(widgets::icon("search", 12.0, design::text3))
                         .child(
-                            nsh_base::input()
-                                .value(query)
-                                .on_change(move |text: &str| query.set(text.to_string()))
-                                .placeholder(move || {
-                                    i18n::t(language.get().as_str(), "palette.placeholder")
-                                })
-                                .text_size(px(12.5))
-                                .flex_1(),
+                            crate::ui::text_input::text_input(
+                                query,
+                                move || i18n::t(language.get().as_str(), "palette.placeholder"),
+                                false,
+                                move |text: &str| query.set(text.to_string()),
+                            ),
                         ),
                 )
                 .child(children),
