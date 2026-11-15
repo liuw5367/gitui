@@ -77,7 +77,7 @@ pub(crate) fn inspector(
                 .border_color(move || design::line())
                 .child(
                     text(summary)
-                        .text_size(px(13.0))
+                        .text_size(px(crate::ui::BODY))
                         .font_weight(FontWeight(600))
                         .line_height(px(17.0))
                         .text_color(move || design::text())
@@ -90,8 +90,8 @@ pub(crate) fn inspector(
                         short,
                         crate::dates::format(language.get_untracked().as_str(), timestamp, now)
                     ))
-                    .text_size(px(9.5))
-                    .font_family("SF Mono")
+                    .text_size(px(crate::ui::CODE))
+                    
                     .line_height(px(13.0))
                     .text_color(move || design::text3()),
                 )
@@ -111,8 +111,8 @@ pub(crate) fn inspector(
                                     &[("short", short.clone())],
                                 )
                             })
-                            .text_size(px(9.5))
-                            .line_height(px(12.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::accent()),
                         ),
                 ),
@@ -305,7 +305,7 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
             .justify_center()
             .child(
                 text(move || i18n::t(language.get().as_str(), "files.empty"))
-                    .text_size(px(10.5))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
             )
             .into_element();
@@ -357,14 +357,14 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
                 .gap(px(1.0))
                 .child(
                     text(move || i18n::t(language.get_untracked().as_str(), key))
-                        .text_size(px(9.0))
-                        .line_height(px(12.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(value)
-                        .text_size(px(10.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .line_height(px(14.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -451,24 +451,24 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                 .child(
                     text(short)
                         .w(px(52.0))
-                        .text_size(px(9.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .line_height(px(12.0))
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(number.to_string())
                         .w(px(26.0))
-                        .text_size(px(9.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .line_height(px(12.0))
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(text_value)
                         .flex_1()
-                        .text_size(px(10.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .line_height(px(13.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Clip),
@@ -491,16 +491,16 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                 .gap(px(6.0))
                 .child(
                     text(short)
-                        .text_size(px(9.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .line_height(px(12.0))
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(summary)
                         .flex_1()
-                        .text_size(px(10.0))
-                        .line_height(px(13.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
@@ -508,7 +508,7 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                     text(move || {
                         crate::dates::format(language.get().as_str(), timestamp, now)
                     })
-                    .text_size(px(9.0))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
                 )
                 .into_element(),
@@ -523,8 +523,8 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                 .justify_center()
                 .child(
                     text(move || i18n::t(language.get().as_str(), "files.blameHint"))
-                        .text_size(px(10.5))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 ),
         );
@@ -545,7 +545,7 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                     .border_color(move || design::line())
                     .child(
                         text(move || i18n::t(language.get().as_str(), "files.history"))
-                            .text_size(px(9.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .font_weight(FontWeight(600))
                             .line_height(px(13.0))
                             .text_color(move || design::text3()),

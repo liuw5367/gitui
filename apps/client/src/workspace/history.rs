@@ -257,7 +257,9 @@ pub(crate) fn history(
                                 columns: vec![crate::ui::table::Column {
                                     key: "commit",
                                     title: None,
-                                    width: None,
+                                    // 单列自绘整行：宽度要给足，否则图线/摘要/作者/时间
+                                    // 会被裁在 120pt 的默认列宽里看不出内容。
+                                    width: Some(1200.0),
                                     fixed: false,
                                 }],
                                 rows,
@@ -276,7 +278,7 @@ pub(crate) fn history(
                                     let has_refs = !commit.refs.is_empty();
                                     return view()
                                         .w_full()
-                                        .h_full()
+                                        .h(px(metrics::COMMIT_ROW_H))
                                         .flex_row()
                                         .items_center()
                                         .gap(px(8.0))

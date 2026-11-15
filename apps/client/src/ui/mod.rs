@@ -158,6 +158,7 @@ mod guard_tests {
         "workspace/sidebar.rs",
         "screens/hook_sheet.rs",
         "screens/rewrite_dialog.rs",
+        "workspace/inspector.rs",
     ];
 
     fn src_root() -> PathBuf {
