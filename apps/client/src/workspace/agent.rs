@@ -191,43 +191,22 @@ pub(crate) fn agent_panel(
                                                 .flex_row()
                                                 .items_center()
                                                 .gap(px(6.0))
-                                                // 用 view 而不是 small_button：菜单要开在点击处，
-                                                // 需要 PressEvent 的 page_position。
-                                                .child(
-                                                    view()
-                                                        .h(px(crate::metrics::BUTTON_SMALL_H))
-                                                        .px(px(8.0))
-                                                        .items_center()
-                                                        .justify_center()
-                                                        .rounded(px(5.0))
-                                                        .border_1()
-                                                        .border_color(move || design::btn_border())
-                                                        .bg(move || design::btn())
-                                                        .hover(|style| {
-                                                            style.bg(move || design::hover())
-                                                        })
-                                                        .on_press({
-                                                            let add_step = add_step.clone();
-                                                            move |event: &PressEvent| {
-                                                                let items =
-                                                                    step_menu(language, add_step.clone());
-                                                                let _ = nsh_core::element::desktop::popup_menu_at(
-                                                                    items,
-                                                                    event.page_position,
-                                                                );
-                                                            }
-                                                        })
-                                                        .child(
-                                                            text(move || {
-                                                                i18n::t(
-                                                                    language.get().as_str(),
-                                                                    "agent.addStep",
-                                                                )
-                                                            })
-                                                            .text_size(px(crate::ui::BODY))
-                                                            .text_color(move || design::text()),
-                                                        ),
-                                                )
+                                                // 菜单要开在点击处，坐标由 ui::menu 取。
+                                                .child(crate::ui::menu::menu_button(
+                                                    move || {
+                                                        i18n::t(
+                                                            language.get().as_str(),
+                                                            "agent.addStep",
+                                                        )
+                                                    },
+                                                    None,
+                                                    {
+                                                        let add_step = add_step.clone();
+                                                        move || {
+                                                            step_menu(language, add_step.clone())
+                                                        }
+                                                    },
+                                                ))
                                                 .child(widgets::primary_button(
                                                     move || {
                                                         i18n::t(

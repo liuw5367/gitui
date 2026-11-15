@@ -10,3 +10,4 @@ screens/welcome.rs
 screens/settings.rs
 screens/refs_view.rs
 workspace/commit.rs
+workspace/agent.rs

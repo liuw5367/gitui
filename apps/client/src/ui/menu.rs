@@ -16,6 +16,7 @@
 //! ```
 
 use nsh_core::element::desktop::MenuItem;
+use nsh_core::prelude::*;
 
 /// 一个普通动作项。`enabled` 为 false 时置灰且不可选。
 pub(crate) fn action(
@@ -55,6 +56,50 @@ pub(crate) fn danger(
 /// 分隔线。
 pub(crate) fn divider() -> MenuItem {
     return MenuItem::separator();
+}
+
+/// 一个「点一下就弹菜单」的按钮。
+///
+/// 为什么需要它：弹菜单要用 `PressEvent` 的 `page_position` 作为锚点，而
+/// 页面里直接写 `.on_press(move |event: &PressEvent| ...)` 会让该文件无法通过
+/// `guard_tests` 的「不得出现裸 on_press」检查。把这件事收进 ui 层后，页面只
+/// 负责给出菜单项，坐标由这里取。
+///
+/// 用法：
+/// ```ignore
+/// ui::menu::menu_button(
+///     move || "Add step".to_string(),
+///     Some("plus"),
+///     move || build_items(),
+/// )
+/// ```
+pub(crate) fn menu_button(
+    label: impl Fn() -> String + 'static,
+    icon: Option<&'static str>,
+    build_items: impl Fn() -> Vec<MenuItem> + 'static,
+) -> impl IntoElement {
+    let build_items = std::rc::Rc::new(build_items);
+    let mut content = view()
+        .h(px(crate::ui::CONTROL_SMALL))
+        .px(px(crate::ui::GAP))
+        .flex_row()
+        .items_center()
+        .gap(px(crate::ui::GAP_SM))
+        .rounded(px(6.0))
+        .hover(|style| style.bg(move || crate::design::hover()))
+        .on_press(move |event: &PressEvent| {
+            let items = build_items();
+            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+        });
+    if let Some(name) = icon {
+        content = content.child(crate::ui::icon::inline_icon(name));
+    }
+    return content.child(
+        text(move || label())
+            .text_size(px(crate::ui::BODY))
+            .line_height(px(crate::ui::BODY_LINE))
+            .text_color(move || crate::design::text()),
+    );
 }
 
 /// 一级菜单标题（菜单栏用，与右键菜单无关）。
