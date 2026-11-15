@@ -11,8 +11,18 @@ use crate::widgets;
 use crate::Actions;
 use nsh_core::prelude::*;
 
-/// 左侧导航宽度（设计板 `.settings-side`）。
-const SIDE_W: f32 = 210.0;
+/// 左侧导航宽度（设计板 `.settings-side` 208）。
+const SIDE_W: f32 = 208.0;
+
+/// 侧栏分组（设计板 23 的 `.sg` 标题）。Agent 是我们新增的一页，归在应用设置里。
+const GROUPS: [(&str, &[Section]); 3] = [
+    (
+        "settings.groupApplication",
+        &[Section::General, Section::Shortcuts, Section::Agent],
+    ),
+    ("settings.groupGit", &[Section::Git, Section::Credentials]),
+    ("settings.groupAbout", &[Section::About]),
+];
 
 /// 设置页的分区。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,14 +36,17 @@ pub(crate) enum Section {
 }
 
 impl Section {
-    const ALL: [Section; 6] = [
-        Section::General,
-        Section::Git,
-        Section::Shortcuts,
-        Section::Agent,
-        Section::About,
-        Section::Credentials,
-    ];
+    /// 侧栏图标（与设计稿 23 的 `.si` 一致；`keys` / `lock` 取自设计 sprite）。
+    fn icon(self) -> &'static str {
+        return match self {
+            Section::General => "gear",
+            Section::Shortcuts => "keys",
+            Section::Git => "branch",
+            Section::Credentials => "lock",
+            Section::Agent => "sparkle",
+            Section::About => "info",
+        };
+    }
 
     fn key(self) -> &'static str {
         return match self {
@@ -181,37 +194,69 @@ fn side(
     section: Signal<Section>,
     set_section: std::sync::Arc<dyn Fn(Section)>,
 ) -> impl IntoElement {
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for item in Section::ALL {
-        let set_section = set_section.clone();
-        rows.push(
-            view()
-                .w_full()
-                .h(px(26.0))
-                .px(px(8.0))
-                .flex_row()
-                .items_center()
-                .rounded(px(metrics::RADIUS_CONTROL))
-                .bg(move || {
-                    if section.get() == item {
-                        design::selected()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .hover(|style| style.bg(move || design::hover()))
-                .on_press(move || set_section(item))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), item.key()))
-                        .text_size(px(12.0))
-                        .text_color(move || {
-                            if section.get() == item {
-                                design::text()
+    let mut groups: Vec<AnyElement> = Vec::new();
+    for (title_key, items) in GROUPS {
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for item in items {
+            let set_section = set_section.clone();
+            rows.push(
+                view()
+                    .w_full()
+                    .h(px(28.0))
+                    .px(px(8.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(7.0))
+                    .rounded(px(metrics::RADIUS_CONTROL))
+                    .bg(move || {
+                        if section.get() == *item {
+                            design::selected()
+                        } else {
+                            AdaptiveColor::TRANSPARENT
+                        }
+                    })
+                    .hover(|style| style.bg(move || design::hover()))
+                    .on_press(move || set_section(*item))
+                    // 图标在选中行用强调色，与设计稿的 `.settings-nav.on .si` 一致。
+                    .child(view().w(px(16.0)).items_center().justify_center().child(
+                        widgets::icon(item.icon(), 14.0, move || {
+                            if section.get() == *item {
+                                design::accent()
                             } else {
-                                design::text2()
+                                design::text3()
                             }
                         }),
+                    ))
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), item.key()))
+                            .text_size(px(12.0))
+                            .line_height(px(15.0))
+                            .text_color(move || design::text()),
+                    )
+                    .into_element(),
+            );
+        }
+        groups.push(
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(1.0))
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(24.0))
+                        .mt(px(8.0))
+                        .px(px(8.0))
+                        .items_center()
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), title_key))
+                                .text_size(px(10.5))
+                                .line_height(px(13.0))
+                                .font_weight(FontWeight(600))
+                                .text_color(move || design::text3()),
+                        ),
                 )
+                .child(rows)
                 .into_element(),
         );
     }
@@ -220,30 +265,51 @@ fn side(
         .h_full()
         .flex_shrink_0()
         .flex_col()
+        .p(px(8.0))
         .bg(move || design::sidebar())
         .border_r_1()
         .border_color(move || design::line())
+        // 顶部产品标记 + 名称 + 版本（设计稿 23 的 `.appmark` 一行）。
         .child(
             view()
                 .w_full()
-                .pt(px(12.0))
-                .pb(px(8.0))
-                .px(px(12.0))
-                .flex_col()
-                .gap(px(2.0))
+                .px(px(2.0))
+                .pt(px(4.0))
+                .pb(px(10.0))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
                 .child(
-                    text(move || i18n::t(language.get().as_str(), "settings.title"))
-                        .text_size(px(15.0))
-                        .font_weight(FontWeight(700))
-                        .text_color(move || design::text()),
+                    view()
+                        .w(px(28.0))
+                        .h(px(28.0))
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(7.0))
+                        .bg(move || design::accent2())
+                        .child(widgets::icon("branch", 15.0, || {
+                            design::token("primary-foreground")
+                        })),
                 )
                 .child(
-                    text(brand::version_line())
-                        .text_size(px(9.5))
-                        .text_color(move || design::text3()),
+                    view()
+                        .flex_col()
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "settings.title"))
+                                .text_size(px(12.0))
+                                .line_height(px(15.0))
+                                .font_weight(FontWeight(600))
+                                .text_color(move || design::text()),
+                        )
+                        .child(
+                            text(brand::version_line())
+                                .text_size(px(9.5))
+                                .line_height(px(12.0))
+                                .text_color(move || design::text3()),
+                        ),
                 ),
         )
-        .child(view().w_full().px(px(6.0)).child(rows));
+        .child(groups);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -300,6 +366,10 @@ fn main(
                         .text_color(move || design::text()),
                 )
                 .child(dynamic(move || -> AnyElement {
+                    // 读一次设置与 Agent 设置：任一项变化就整页重建，
+                    // 静态样式的复选/选择控件因此能立刻反映新值。
+                    let _ = settings_state.get();
+                    let _ = agent_settings.get();
                     match section.get() {
                         Section::General => general(
                             language,
@@ -927,48 +997,17 @@ fn toggle_row(
     checked: std::sync::Arc<dyn Fn() -> bool>,
     on_press: impl Fn() + 'static,
 ) -> AnyElement {
-    let checked_for_bg = checked.clone();
-    let checked_for_text = checked.clone();
-    return view()
-        .w_full()
-        .flex_row()
-        .items_center()
-        .gap(px(8.0))
-        .child(
-            view()
-                .w(px(14.0))
-                .h(px(14.0))
-                .items_center()
-                .justify_center()
-                .rounded(px(3.0))
-                .border_1()
-                .border_color(move || design::line_strong())
-                .bg(move || {
-                    if checked_for_bg() {
-                        design::accent()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press(on_press)
-                .child(
-                    text(move || {
-                        if checked_for_text() {
-                            "✓".to_string()
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .text_size(px(9.0))
-                    .text_color(move || design::content()),
-                ),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), label_key))
-                .text_size(px(11.5))
-                .text_color(move || design::text()),
-        )
-        .into_element();
+    // 原生 Checkbox：按压/键盘/无障碍由组件负责；`checked` 在构建时取值，
+    // 设置页在状态变化后整页重建，所以这里可以直接取。
+    let value = checked();
+    let toggle = move |_next: bool| on_press();
+    return crate::widgets::check(
+        move || i18n::t(language.get().as_str(), label_key),
+        value,
+        14.0,
+        toggle,
+    )
+    .into_element();
 }
 
 fn about(

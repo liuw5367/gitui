@@ -412,7 +412,10 @@
     "compactSingleChild": "压缩单子目录",
     "showWelcome": "显示欢迎页",
     "lastSession": "上次会话 · 将恢复 %{count} 个仓库",
-    "customized": "已自定义"
+    "customized": "已自定义",
+    "groupApplication": "应用",
+    "groupGit": "Git",
+    "groupAbout": "关于"
   },
   "refs": {
     "title": "引用",

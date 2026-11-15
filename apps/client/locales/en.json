@@ -412,7 +412,10 @@
     "compactSingleChild": "Compact single-child folders",
     "showWelcome": "Show Welcome",
     "lastSession": "Last session · %{count} repositories will be restored",
-    "customized": "Customized"
+    "customized": "Customized",
+    "groupApplication": "Application",
+    "groupGit": "Git",
+    "groupAbout": "About"
   },
   "refs": {
     "title": "Refs",

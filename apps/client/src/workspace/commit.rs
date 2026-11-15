@@ -355,47 +355,14 @@ fn checkbox_row(
     checked: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h(px(18.0))
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .on_press(on_press)
-        .child(
-            view()
-                .w(px(12.0))
-                .h(px(12.0))
-                .items_center()
-                .justify_center()
-                .rounded(px(3.0))
-                .border_1()
-                .border_color(move || design::line_strong())
-                .bg(move || {
-                    if checked {
-                        design::accent()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .child(
-                    text(move || {
-                        if checked {
-                            "✓".to_string()
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .text_size(px(8.0))
-                    .text_color(move || design::content()),
-                ),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(10.5))
-                .line_height(px(14.0))
-                .text_color(move || design::text2()),
-        );
+    // 原生 Checkbox：按压、键盘激活与无障碍状态由组件负责，样式由 widgets 统一。
+    let toggle = move |_next: bool| on_press();
+    return crate::widgets::check(
+        move || i18n::t(language.get().as_str(), key),
+        checked,
+        12.0,
+        toggle,
+    );
 }
 
 /// 钩子输出块：成功绿点、失败红点，命令输出等宽显示。

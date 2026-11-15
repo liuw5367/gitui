@@ -288,70 +288,32 @@ pub(crate) fn form_dialog(
         }));
 }
 
-/// 一行复选：原生 `Checkbox` 负责按压/键盘/无障碍，指示器由我们画（设计稿 14×14）。
+/// 一行复选：走 `widgets::check`（原生 Checkbox + 统一指示器）。
 fn flag_row(
     language: Signal<SharedString>,
     label_key: &'static str,
     form: FormState,
     state: Signal<Option<FormState>>,
 ) -> impl IntoElement {
-    let checked = form.flag;
-    let label = i18n::t(language.get_untracked().as_str(), label_key);
+    let toggle = {
+        let form = form.clone();
+        move |next: bool| {
+            let mut updated = form.clone();
+            updated.flag = next;
+            state.set(Some(updated));
+        }
+    };
     return view()
         .w_full()
         .h(px(22.0))
         .flex_row()
         .items_center()
-        .gap(px(7.0))
-        .child(
-            nsh_base::checkbox()
-                .checked(checked)
-                .accessibility_label(label)
-                .on_change({
-                    let form = form.clone();
-                    move |next: &bool| {
-                        let mut updated = form.clone();
-                        updated.flag = *next;
-                        state.set(Some(updated));
-                    }
-                })
-                .indicator_style(move |style| {
-                    let style = style
-                        .w(px(14.0))
-                        .h(px(14.0))
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(3.0))
-                        .border_1();
-                    if checked {
-                        style
-                            .bg(move || design::accent2())
-                            .border_color(move || design::accent2())
-                    } else {
-                        style
-                            .bg(move || design::field())
-                            .border_color(move || design::field_border())
-                    }
-                })
-                .indicator(dynamic(move || -> AnyElement {
-                    if !checked {
-                        return view().w(px(0.0)).h(px(0.0)).into_element();
-                    }
-                    return view()
-                        .w(px(9.0))
-                        .h(px(9.0))
-                        .child(crate::widgets::icon("check", 9.0, || {
-                            design::token("primary-foreground")
-                        }))
-                        .into_element();
-                })),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), label_key))
-                .text_size(px(10.5))
-                .line_height(px(14.0))
-                .text_color(move || design::text2()),
-        );
+        .child(crate::widgets::check(
+            move || i18n::t(language.get().as_str(), label_key),
+            form.flag,
+            14.0,
+            toggle,
+        ));
 }
 
 fn field(
