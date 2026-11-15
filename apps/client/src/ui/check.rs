@@ -7,6 +7,44 @@ use crate::design::{self, metrics};
 use crate::ui;
 use nsh_core::prelude::*;
 
+/// 可点的方框标记：外观同 [`indicator`]，但自己是按压目标。
+///
+/// 用于表格单元格里的「暂存」开关——点击它只切换暂存，不选中行（`data_table`
+/// 会把按压交给该单元格视图，它吞掉后就不触发行选中）。
+pub(crate) fn indicator_action(
+    checked: bool,
+    label: impl Into<SharedString>,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return nsh_base::button()
+        .accessibility_label(Some(label.into()))
+        .w(px(12.0))
+        .h(px(12.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(3.0))
+        .border_1()
+        .border_color(move || design::line_strong())
+        .bg(move || {
+            if checked {
+                design::accent()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press(move || on_press())
+        .child(
+            text(if checked {
+                "✓".to_string()
+            } else {
+                String::new()
+            })
+            .text_size(px(ui::META))
+            .text_color(move || design::content()),
+        );
+}
+
 /// 复选行：左侧 14pt 指示器 + 13pt 文案。
 /// 一个 12×12 的方框标记：选中时填强调色并画对勾。
 ///

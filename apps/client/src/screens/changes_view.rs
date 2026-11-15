@@ -260,6 +260,7 @@ fn changes_list(
                     let select_for_press = select_change.clone();
                     let changes_for_press = tab.changes.clone();
                     let rows_for_press = rows.clone();
+                    let toggle_for_render = toggle_stage.clone();
                     let rows_for_menu = rows.clone();
                     let toggle_for_menu = toggle_stage.clone();
                     let discard_for_menu = discard_change.clone();
@@ -278,6 +279,7 @@ fn changes_list(
                         let changes_for_menu = changes_for_menu.clone();
                         let select_for_press = select_for_press.clone();
                         let rows_for_press = rows_for_press.clone();
+                        let toggle_for_render = toggle_for_render.clone();
                         let rows_for_menu = rows_for_menu.clone();
                         let toggle_for_menu = toggle_for_menu.clone();
                         let discard_for_menu = discard_for_menu.clone();
@@ -334,8 +336,14 @@ fn changes_list(
                                                 .flex_row()
                                                 .items_center()
                                                 .gap(px(6.0))
-                                                .child(crate::ui::check::indicator(
+                                                .child(crate::ui::check::indicator_action(
                                                     entry_is_staged(is_staged),
+                                                    name.clone(),
+                                                    {
+                                                        let toggle = toggle_for_render.clone();
+                                                        let index = index;
+                                                        move || toggle(index as usize)
+                                                    },
                                                 ))
                                                 .child(
                                                     text(name)
@@ -513,46 +521,31 @@ fn changes_list(
                         .font_weight(FontWeight(600))
                         .text_color(move || design::text()),
                 )
-                .child(
-                    view()
-                        .h(px(18.0))
-                        .px(px(6.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .rounded(px(4.0))
-                        .border_1()
-                        .border_color(move || design::line_soft())
-                        .on_press(move || {
-                            changelist_open.set(!changelist_open.get_untracked())
+                .child(crate::ui::row::row(
+                    move || {
+                        tab.active_changelist.clone().unwrap_or_else(|| {
+                            i18n::t(language.get().as_str(), "changelists.default")
                         })
-                        .child(
-                            view()
-                                .w(px(6.0))
-                                .h(px(6.0))
-                                .rounded(px(3.0))
-                                .bg(move || design::accent()),
-                        )
-                        .child(
-                            text(move || {
-                                tab.active_changelist
-                                    .clone()
-                                    .unwrap_or_else(|| {
-                                        i18n::t(
-                                            language.get().as_str(),
-                                            "changelists.default",
-                                        )
-                                    })
-                            })
+                    },
+                    None,
+                    Some(
+                        view()
+                            .w(px(6.0))
+                            .h(px(6.0))
+                            .rounded(px(3.0))
+                            .bg(move || design::accent())
+                            .into_element(),
+                    ),
+                    vec![
+                        text(total.to_string())
                             .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::text2()),
-                        )
-                        .child(
-                            text(total.to_string())
-                                .text_size(px(crate::ui::SECONDARY))
-                                .text_color(move || design::text3()),
-                        ),
-                )
+                            .text_color(move || design::text3())
+                            .into_element(),
+                    ],
+                    false,
+                    false,
+                    move || changelist_open.set(!changelist_open.get_untracked()),
+                ))
                 .child(view().flex_1())
                 .child(
                     text(move || {
@@ -891,24 +884,10 @@ fn changelist_pop(
             i18n::t(language.get_untracked().as_str(), "changelists.default")
         });
         rows.push(
-            view()
-                .w_full()
-                .h(px(24.0))
-                .px(px(6.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .rounded(px(4.0))
-                .bg(move || {
-                    if is_active {
-                        design::selected()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .hover(|style| style.bg(move || design::hover()))
-                .on_press(move || set_active(name_for_active.clone()))
-                .child(
+            crate::ui::row::row(
+                move || label.clone(),
+                None,
+                Some(
                     view()
                         .w(px(6.0))
                         .h(px(6.0))
@@ -919,38 +898,37 @@ fn changelist_pop(
                             } else {
                                 design::line_strong()
                             }
-                        }),
-                )
-                .child(
-                    text(label)
-                        .flex_1()
-                        .text_size(px(crate::ui::BODY))
-                        .line_height(px(14.0))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
+                        })
+                        .into_element(),
+                ),
+                vec![
                     text(count.to_string())
                         .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3()),
-                )
-                .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "changelists.moveHere"),
-                    crate::ui::button::ButtonVariant::Ghost,
-                    crate::ui::button::ButtonSize::Small,
-                    selected.is_none(),
-                    {
-                        let move_to = move_to.clone();
-                        let selected = selected.clone();
-                        let name_for_move = name_for_move.clone();
-                        move || {
-                            if let Some(path) = selected.clone() {
-                                move_to(path, name_for_move.clone());
+                        .text_color(move || design::text3())
+                        .into_element(),
+                    crate::ui::button::button(
+                        move || i18n::t(language.get().as_str(), "changelists.moveHere"),
+                        crate::ui::button::ButtonVariant::Ghost,
+                        crate::ui::button::ButtonSize::Small,
+                        selected.is_none(),
+                        {
+                            let move_to = move_to.clone();
+                            let selected = selected.clone();
+                            let name_for_move = name_for_move.clone();
+                            move || {
+                                if let Some(path) = selected.clone() {
+                                    move_to(path, name_for_move.clone());
+                                }
                             }
-                        }
-                    },
-                ))
-                .into_element(),
+                        },
+                    )
+                    .into_element(),
+                ],
+                is_active,
+                false,
+                move || set_active(name_for_active.clone()),
+            )
+            .into_element(),
         );
     }
 
