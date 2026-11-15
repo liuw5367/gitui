@@ -213,7 +213,7 @@ pub(crate) fn palette(
                 crate::ui::row::row(
                     move || label.clone(),
                     None,
-                    Some(widgets::icon("search", 12.0, design::text3).into_element()),
+                    Some(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3).into_element()),
                     vec![
                         text(shortcut)
                             .text_size(px(crate::ui::SECONDARY))
@@ -274,7 +274,7 @@ pub(crate) fn palette(
                         .flex_row()
                         .items_center()
                         .gap(px(6.0))
-                        .child(widgets::icon("search", 12.0, design::text3))
+                        .child(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3))
                         .child(
                             crate::ui::text_input::text_input(
                                 query,

@@ -1300,7 +1300,7 @@ fn shortcuts_page(
                 .border_1()
                 .border_color(move || design::field_border())
                 .bg(move || design::field())
-                .child(widgets::icon("search", 12.0, design::text3))
+                .child(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3))
                 .child(
                     nsh_base::input()
                         .value(query)

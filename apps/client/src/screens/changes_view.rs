@@ -112,7 +112,7 @@ pub(crate) fn changes_view(
                         .px(px(11.0))
                         .border_b_1()
                         .border_color(move || design::line())
-                        .child(widgets::icon("file", 12.0, design::text3))
+                        .child(crate::ui::icon::icon_view("file", crate::ui::icon::IconSize::Button, design::text3))
                         .child(
                             text(label)
                                 .text_size(px(crate::ui::CODE))

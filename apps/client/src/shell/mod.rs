@@ -118,7 +118,7 @@ pub(crate) fn titlebar(
                             let open = open.clone();
                             move || open()
                         })
-                        .child(widgets::icon("plus", 12.0, design::text2)),
+                        .child(crate::ui::icon::icon_view("plus", crate::ui::icon::IconSize::Button, design::text2)),
                 ),
         )
         .child(
@@ -255,7 +255,7 @@ pub(crate) fn toolbar(
                 .border_1()
                 .border_color(move || design::field_border())
                 .bg(move || design::field())
-                .child(widgets::icon("search", 12.0, design::text3))
+                .child(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3))
                 .child(
                     input()
                         .value(history_query)
@@ -366,7 +366,7 @@ pub(crate) fn state_banner(
                     .items_center()
                     .gap(px(8.0))
                     .bg(move || design::panel2())
-                    .child(widgets::icon("info", 12.0, design::danger))
+                    .child(crate::ui::icon::icon_view("info", crate::ui::icon::IconSize::Button, design::danger))
                     .child(
                         text(move || {
                             i18n::with_arguments(
@@ -679,7 +679,7 @@ pub(crate) fn op_banner(
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
-                .child(widgets::icon("info", 12.0, design::warn))
+                .child(crate::ui::icon::icon_view("info", crate::ui::icon::IconSize::Button, design::warn))
                 .child(
                     text(move || {
                         let operation = tab
