@@ -1,6 +1,9 @@
-//! diff 视图：`.diffbar` 38 高，正文 SF Mono 11/19，行号与正负行配色。
+//! diff 视图：顶部工具栏（导出、复制、三个显示开关）+ 正文。
 //!
-//! 补丁解析在 `domain::diff`；这里只负责排版与配色。
+//! 正文自 P2 起交给 `ui::diff_surface`（包装 `nsh_base::DiffView`），等宽 12 / 行高
+//! 18、行号与正负行配色都由它负责。本文件只剩工具栏与开关。
+//!
+//! 补丁解析在 `domain::diff`。
 
 use crate::design::{self, metrics};
 use crate::i18n;
@@ -63,21 +66,21 @@ pub(crate) fn diff(
                 .child(widgets::icon("diff", 12.0, design::text3))
                 .child(
                     text(file_label)
-                        .text_size(px(11.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
                     text(label)
-                        .text_size(px(9.5))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(format!("+{} −{}", additions, deletions))
-                        .text_size(px(9.5))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
@@ -196,7 +199,7 @@ fn empty_state(language: Signal<SharedString>) -> impl IntoElement {
         .justify_center()
         .child(
             text(move || i18n::t(language.get().as_str(), "history.diffEmpty"))
-                .text_size(px(11.0))
+                .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3()),
         );
 }
@@ -238,28 +241,17 @@ fn mode_button(
     active: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return view()
-        .h(px(16.0))
-        .px(px(6.0))
-        .items_center()
-        .rounded(px(4.0))
-        .bg(move || {
-            if active {
-                design::content()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press(on_press)
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(9.5))
-                .text_color(move || {
-                    if active {
-                        design::text()
-                    } else {
-                        design::text3()
-                    }
-                }),
-        );
+    // Unified / Split 二选一：选中的用 Secondary 表达，未选中用 Ghost。
+    let variant = if active {
+        crate::ui::button::ButtonVariant::Secondary
+    } else {
+        crate::ui::button::ButtonVariant::Ghost
+    };
+    return crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), key),
+        variant,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        on_press,
+    );
 }
