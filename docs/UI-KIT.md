@@ -31,13 +31,17 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 
 | 组件 | 文件 | 基于 | 变体 / 尺寸 | 状态 | 说明 |
 |---|---|---|---|---|---|
-| `button` | `ui/button.rs` | `nsh_base::button` | `Primary` / `Secondary` / `Ghost` / `Danger`；`Small` 22 / `Regular` 28 / `Large` 32 | hover、pressed、focus-visible、disabled | 文字按钮；`label` 是闭包，语言切换后取新文案 |
+| `button` | `ui/button.rs` | `nsh_base::button` | `Primary` / `Secondary` / `Ghost` / `Danger`；`Small` 22 / `Toolbar` 26 / `Regular` 28 / `Large` 32 | hover、pressed、focus-visible、disabled | 文字按钮；`label` 是闭包，语言切换后取新文案。`Toolbar` 档内距 9、`BODY` 字号、`BODY_LINE` 行高，对应设计稿工具栏项 |
+| `button_icon` | `ui/button.rs` | `nsh_base::button` | 同 `button` | 同上 | 图标 + 文案的按钮（工具栏的 Fetch/Pull/Push）；与 `button` 同一套变体 |
 | `icon_button` | `ui/button.rs` | `nsh_base::button` | 同上 | 同上 | 图标按钮；`label` 同时作为 `accessibility_label` 与提示文案 |
+| `v_separator` | `ui/mod.rs` | `view` | 1×16 | — | 竖直分隔线（工具栏、分段之间）；与水平的 `separator` 成对 |
 | `icon_view` | `ui/icon.rs` | `svg` | `Button` 12 / `Inline` 13 / `Toolbar` 16 | — | 设计稿 sprite；`inline_icon`、`toolbar_icon` 是默认色的简写；`brand_mark` 是唯一允许自定义点数的品牌图标 |
 | `text_input` | `ui/text_input.rs` | `nsh_base::input` | 单行 28 | focus-visible、invalid | 值受控于 `Signal<String>`；`text_input_bound` 用于值在结构体信号里的字段，`search_field` 是带放大镜与键帽的搜索框 |
 | `text_area` | `ui/text_input.rs` | `nsh_base::input(multiline)` | 自定义高度 | focus-visible、invalid | 提交说明、附注、冲突结果 |
 | `field` | `ui/field.rs` | `view` + `text` | — | invalid | 标签 13 + 控件 + 帮助/错误 11；错误与帮助互斥 |
 | `check_row` | `ui/check.rs` | `nsh_base::checkbox` | 行高 28 | checked、disabled | 整行是按压目标，14pt 指示器 |
+| `indicator` | `ui/check.rs` | `view` | 12×12 | — | 方框标记，**没有自己的按压**；用于表格单元格等「不能整行勾选」的场合 |
+| `indicator_action` | `ui/check.rs` | `nsh_base::button` | 12×12 | checked | 可点的方框（外观同 `indicator`）；点它只切换开关、不选中行——`data_table` 会把按压交给单元格视图，吞掉后不触发行选中 |
 | `switch_row` | `ui/check.rs` | `nsh_base::switch` | 38×22 轨道 | checked、disabled | 左侧文案 + 可选说明，右侧开关 |
 | `segmented` | `ui/segmented.rs` | `nsh_base::tabs` + `tab` | 高 28 | 选中、hover、focus-visible | 设计稿 `.seg` 的对等物；选中段用卡片底色 |
 | `table` | `ui/table.rs` | `nsh_base::data_table` | 行高 28、表头 28 | 行选中、键盘导航、虚拟化 | 列定义 + 列式行数据 + 自定义单元格回调；`DataTableColumn`/`DataTableSelection` 是 non_exhaustive，先用 `default()` 再逐字段赋值；列与行的映射是纯函数，有单测 |
