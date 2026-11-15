@@ -163,7 +163,7 @@ fn match_body(
                     .justify_center()
                     .child(
                         text(move || i18n::t(language.get().as_str(), "history.empty"))
-                            .text_size(px(12.0))
+                            .text_size(px(crate::ui::BODY))
                             .text_color(move || design::text3()),
                     )
                     .into_element();
@@ -399,7 +399,7 @@ fn error_panel(
         .child(crate::widgets::icon("info", 20.0, design::danger))
         .child(
             text(move || i18n::t(language.get().as_str(), "error.title"))
-                .text_size(px(13.0))
+                .text_size(px(crate::ui::BODY))
                 .font_weight(FontWeight(600))
                 .text_color(move || design::text()),
         )
@@ -408,7 +408,7 @@ fn error_panel(
                 let detail = detail.clone();
                 move || detail.as_str().to_string()
             })
-            .text_size(px(11.0))
+            .text_size(px(crate::ui::SECONDARY))
             .text_color(move || design::text2()),
         )
         .child(

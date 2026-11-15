@@ -170,6 +170,8 @@ mod guard_tests {
         "workspace/inspector.rs",
         "screens/changes_view.rs",
         "workspace/history.rs",
+        "screens/blame_view.rs",
+        "screens/workspace.rs",
     ];
 
     fn src_root() -> PathBuf {
