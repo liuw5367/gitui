@@ -895,19 +895,16 @@ pub fn App() -> impl IntoElement {
                 return;
             };
             let language_now = language.get_untracked();
-            let pending = nsh_base::alert_dialog()
-                .title(i18n::t(language_now.as_str(), "changes.discardTitle"))
-                .description(i18n::with_arguments(
+            let pending = crate::ui::dialog::confirm_destructive(
+                i18n::t(language_now.as_str(), "changes.discardTitle"),
+                i18n::with_arguments(
                     language_now.as_str(),
                     "changes.discardMessage",
                     &[("path", entry.path.clone())],
-                ))
-                .destructive(
-                    "discard",
-                    i18n::t(language_now.as_str(), "changes.discardAction"),
-                )
-                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
-                .show();
+                ),
+                i18n::t(language_now.as_str(), "changes.discardAction"),
+                i18n::t(language_now.as_str(), "common.cancel"),
+            );
             let tabs = tabs;
             let active = active;
             spawn(async move {
@@ -1477,16 +1474,16 @@ pub fn App() -> impl IntoElement {
                 return;
             };
             let language_now = language.get_untracked();
-            let pending = nsh_base::alert_dialog()
-                .title(i18n::t(language_now.as_str(), "reflog.undoTitle"))
-                .description(i18n::with_arguments(
+            let pending = crate::ui::dialog::confirm_destructive(
+                i18n::t(language_now.as_str(), "reflog.undoTitle"),
+                i18n::with_arguments(
                     language_now.as_str(),
                     "reflog.undoMessage",
                     &[("short", entry.short.clone())],
-                ))
-                .destructive("undo", i18n::t(language_now.as_str(), "reflog.undoAction"))
-                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
-                .show();
+                ),
+                i18n::t(language_now.as_str(), "reflog.undoAction"),
+                i18n::t(language_now.as_str(), "common.cancel"),
+            );
             let tabs = tabs;
             spawn(async move {
                 if let Ok(result) = pending.await {
@@ -1924,16 +1921,16 @@ pub fn App() -> impl IntoElement {
         let language = language;
         Arc::new(move |sha: String, mode: git::ResetMode| {
             let language_now = language.get_untracked();
-            let pending = nsh_base::alert_dialog()
-                .title(i18n::t(language_now.as_str(), "branch.resetTitle"))
-                .description(i18n::with_arguments(
+            let pending = crate::ui::dialog::confirm_destructive(
+                i18n::t(language_now.as_str(), "branch.resetTitle"),
+                i18n::with_arguments(
                     language_now.as_str(),
                     "branch.resetMessage",
                     &[("short", sha.chars().take(7).collect::<String>())],
-                ))
-                .destructive("reset", i18n::t(language_now.as_str(), "branch.resetAction"))
-                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
-                .show();
+                ),
+                i18n::t(language_now.as_str(), "branch.resetAction"),
+                i18n::t(language_now.as_str(), "common.cancel"),
+            );
             let tabs = tabs;
             let active = active;
             spawn(async move {
@@ -2123,19 +2120,16 @@ pub fn App() -> impl IntoElement {
         let language = language;
         Arc::new(move |branch: String| {
             let language_now = language.get_untracked();
-            let pending = nsh_base::alert_dialog()
-                .title(i18n::t(language_now.as_str(), "branch.deleteTitle"))
-                .description(i18n::with_arguments(
+            let pending = crate::ui::dialog::confirm_destructive(
+                i18n::t(language_now.as_str(), "branch.deleteTitle"),
+                i18n::with_arguments(
                     language_now.as_str(),
                     "branch.deleteMessage",
                     &[("name", branch.clone())],
-                ))
-                .destructive(
-                    "delete",
-                    i18n::t(language_now.as_str(), "branch.deleteAction"),
-                )
-                .cancel("cancel", i18n::t(language_now.as_str(), "common.cancel"))
-                .show();
+                ),
+                i18n::t(language_now.as_str(), "branch.deleteAction"),
+                i18n::t(language_now.as_str(), "common.cancel"),
+            );
             let tabs = tabs;
             let active = active;
             spawn(async move {

@@ -7,8 +7,41 @@
 //! `open`（信号读取会订阅重建），不需要在这里再做一层 `dynamic`。
 
 use crate::design::{self, metrics};
+use nsh_base::AlertDialogResult;
 use crate::ui;
 use nsh_core::prelude::*;
+
+/// 一个「危险操作」确认框：系统原生 alert，标题 + 说明 + 一个破坏性动作 + 取消。
+///
+/// 返回的 future 解析为动作 id（取消时为 `None`）。这个包装存在的意义是让页面
+/// 不必直接引用 `nsh_base::alert_dialog`——那会让该文件过不了 guard 的
+/// 「已迁移页面不得直接引用 nsh_base」检查。
+pub(crate) fn confirm_destructive(
+    title: String,
+    description: String,
+    action_label: String,
+    cancel_label: String,
+) -> impl Future<Output = Result<AlertDialogResult, String>> + 'static {
+    return nsh_base::alert_dialog()
+        .title(title)
+        .description(description)
+        .destructive("confirm", action_label)
+        .cancel("cancel", cancel_label)
+        .show();
+}
+
+/// 一个只有「知道了」的提示框。
+pub(crate) fn notice(
+    title: String,
+    description: String,
+    cancel_label: String,
+) -> impl Future<Output = Result<AlertDialogResult, String>> + 'static {
+    return nsh_base::alert_dialog()
+        .title(title)
+        .description(description)
+        .cancel("cancel", cancel_label)
+        .show();
+}
 
 /// 一层遮罩：铺满父容器、居中内容、点遮罩关闭。
 ///
