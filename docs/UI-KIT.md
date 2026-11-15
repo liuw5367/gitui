@@ -40,6 +40,7 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 | `check_row` | `ui/check.rs` | `nsh_base::checkbox` | 行高 28 | checked、disabled | 整行是按压目标，14pt 指示器 |
 | `switch_row` | `ui/check.rs` | `nsh_base::switch` | 38×22 轨道 | checked、disabled | 左侧文案 + 可选说明，右侧开关 |
 | `segmented` | `ui/segmented.rs` | `nsh_base::tabs` + `tab` | 高 28 | 选中、hover、focus-visible | 设计稿 `.seg` 的对等物；选中段用卡片底色 |
+| `tabs` | `ui/tabs.rs` | `nsh_base::tabs` + `tab` | 行高 28 | 选中、focus-visible | 面板内互斥视图（检查器三页签、同步三页签）；选中项底部 2pt 强调线 |
 | `badge` / `count` / `kbd` | `ui/badge.rs` | `view` + `text` | `Tone`：Neutral / Accent / Success / Warning / Danger | — | 徽章 18 高；键帽 18 高 |
 | `pane_header` / `section_label` / `empty` / `skeleton_row` | `ui/section.rs` | `view` + `text` | 行高 28 / 24 | — | 面板标题条、分组标题、空态、骨架行 |
 | `banner` / `progress` / `card` | `ui/feedback.rs` | `nsh_base::progress` | `BannerTone`：Info / Warning / Danger | 确定与不确定进度 | 状态条收敛为一条横幅，颜色之外必有文案 |
@@ -76,7 +77,7 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 | 组件 | 落地阶段 | 对应 nsh_base |
 |---|---|---|
 | `table`（历史、Refs、Blame、快捷键） | P2 | `data_table` |
-| `tabs`（检查器三页签、同步三页签） | P2 | `tabs` + `tab` |
+| ~~`tabs`~~ 已完成 | P2 | `nsh_base::tabs` + `tab` |
 | `toolbar`（工作区工具栏，高 52） | P2 | `toolbar` + `toolbar_group` |
 | `split`（检查器、冲突三栏） | P2 / P4 | `h_resizable` / `v_resizable` |
 | `diff_surface`（diff 与 fold/wrap 开关） | P3 | `diff` |

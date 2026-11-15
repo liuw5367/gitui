@@ -25,16 +25,6 @@ pub(crate) enum InspectorTab {
     Blame,
 }
 
-impl InspectorTab {
-    fn key(self) -> &'static str {
-        return match self {
-            InspectorTab::Files => "files.title",
-            InspectorTab::Info => "files.info",
-            InspectorTab::Blame => "files.blame",
-        };
-    }
-}
-
 pub(crate) fn inspector(
     language: Signal<SharedString>,
     tab: Tab,
@@ -130,30 +120,47 @@ pub(crate) fn inspector(
         .child(
             view()
                 .w_full()
-                .h(px(26.0))
-                .flex_row()
-                .items_center()
-                .gap(px(10.0))
-                .px(px(12.0))
-                .border_b_1()
-                .border_color(move || design::line_soft())
-                .child(inspector_tab(
-                    language,
-                    InspectorTab::Files,
-                    selected_tab,
-                    set_tab.clone(),
-                ))
-                .child(inspector_tab(
-                    language,
-                    InspectorTab::Info,
-                    selected_tab,
-                    set_tab.clone(),
-                ))
-                .child(inspector_tab(
-                    language,
-                    InspectorTab::Blame,
-                    selected_tab,
-                    set_tab.clone(),
+                .h(px(crate::ui::ROW))
+                .px(px(crate::ui::GAP_LG))
+                .child(crate::ui::tabs::tabs(
+                    vec![
+                        crate::ui::tabs::TabItem {
+                            id: "files",
+                            label: Box::new({
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.title")
+                            }),
+                        },
+                        crate::ui::tabs::TabItem {
+                            id: "info",
+                            label: Box::new({
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.info")
+                            }),
+                        },
+                        crate::ui::tabs::TabItem {
+                            id: "blame",
+                            label: Box::new({
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.blame")
+                            }),
+                        },
+                    ],
+                    match selected_tab.get_untracked() {
+                        InspectorTab::Files => "files",
+                        InspectorTab::Info => "info",
+                        InspectorTab::Blame => "blame",
+                    },
+                    {
+                        let set_tab = set_tab.clone();
+                        move |id| {
+                            set_tab(match id {
+                                "info" => InspectorTab::Info,
+                                "blame" => InspectorTab::Blame,
+                                _ => InspectorTab::Files,
+                            })
+                        }
+                    },
                 )),
         )
         .child(dynamic(move || -> AnyElement {
@@ -210,31 +217,6 @@ pub(crate) fn inspector(
                         }
                     },
                 )),
-        );
-}
-
-fn inspector_tab(
-    language: Signal<SharedString>,
-    which: InspectorTab,
-    selected: Signal<InspectorTab>,
-    set_selected: std::sync::Arc<dyn Fn(InspectorTab)>,
-) -> impl IntoElement {
-    return view()
-        .h(px(20.0))
-        .items_center()
-        .rounded(px(4.0))
-        .on_press(move || set_selected(which))
-        .child(
-            text(move || i18n::t(language.get().as_str(), which.key()))
-                .text_size(px(10.5))
-                .line_height(px(13.0))
-                .text_color(move || {
-                    if selected.get() == which {
-                        design::text()
-                    } else {
-                        design::text3()
-                    }
-                }),
         );
 }
 

@@ -23,6 +23,7 @@ pub(crate) mod icon;
 pub(crate) mod row;
 pub(crate) mod section;
 pub(crate) mod segmented;
+pub(crate) mod tabs;
 pub(crate) mod text_input;
 
 
