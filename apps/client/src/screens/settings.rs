@@ -183,10 +183,13 @@ fn titlebar(language: Signal<SharedString>, actions: Actions) -> impl IntoElemen
                 .text_color(move || design::text()),
         )
         .child(view().flex_1())
-        .child(widgets::icon_button(
-            "chev_left",
-            13.0,
-            design::text2,
+        .child(crate::ui::button::icon_button_tuned(
+            "chev-left",
+            move || i18n::t(language.get().as_str(), "common.close"),
+            crate::ui::button::ButtonSize::Small,
+            Some(crate::ui::icon::IconSize::Inline),
+            None,
+            false,
             move || go_welcome(),
         ));
 }
