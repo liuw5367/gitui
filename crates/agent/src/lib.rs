@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn settings_pairs_round_trip() {
-        let mut settings = Settings::default();
+        let settings = Settings::default();
         let pairs = settings.write_pairs();
         assert_eq!(pairs.len(), 3);
 
