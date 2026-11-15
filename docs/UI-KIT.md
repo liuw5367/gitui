@@ -33,8 +33,8 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 |---|---|---|---|---|---|
 | `button` | `ui/button.rs` | `nsh_base::button` | `Primary` / `Secondary` / `Ghost` / `Danger`；`Small` 22 / `Regular` 28 / `Large` 32 | hover、pressed、focus-visible、disabled | 文字按钮；`label` 是闭包，语言切换后取新文案 |
 | `icon_button` | `ui/button.rs` | `nsh_base::button` | 同上 | 同上 | 图标按钮；`label` 同时作为 `accessibility_label` 与提示文案 |
-| `icon_view` | `ui/icon.rs` | `svg` | `Button` 12 / `Inline` 13 / `Toolbar` 16 | — | 设计稿 sprite；`inline_icon`、`toolbar_icon` 是默认色的简写 |
-| `text_input` | `ui/text_input.rs` | `nsh_base::input` | 单行 28 | focus-visible、invalid | 值受控于 `Signal<String>` |
+| `icon_view` | `ui/icon.rs` | `svg` | `Button` 12 / `Inline` 13 / `Toolbar` 16 | — | 设计稿 sprite；`inline_icon`、`toolbar_icon` 是默认色的简写；`brand_mark` 是唯一允许自定义点数的品牌图标 |
+| `text_input` | `ui/text_input.rs` | `nsh_base::input` | 单行 28 | focus-visible、invalid | 值受控于 `Signal<String>`；`text_input_bound` 用于值在结构体信号里的字段，`search_field` 是带放大镜与键帽的搜索框 |
 | `text_area` | `ui/text_input.rs` | `nsh_base::input(multiline)` | 自定义高度 | focus-visible、invalid | 提交说明、附注、冲突结果 |
 | `field` | `ui/field.rs` | `view` + `text` | — | invalid | 标签 13 + 控件 + 帮助/错误 11；错误与帮助互斥 |
 | `check_row` | `ui/check.rs` | `nsh_base::checkbox` | 行高 28 | checked、disabled | 整行是按压目标，14pt 指示器 |
@@ -44,7 +44,7 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 | `pane_header` / `section_label` / `empty` / `skeleton_row` | `ui/section.rs` | `view` + `text` | 行高 28 / 24 | — | 面板标题条、分组标题、空态、骨架行 |
 | `banner` / `progress` / `card` | `ui/feedback.rs` | `nsh_base::progress` | `BannerTone`：Info / Warning / Danger | 确定与不确定进度 | 状态条收敛为一条横幅，颜色之外必有文案 |
 | `dialog` | `ui/dialog.rs` | `view` + 遮罩层 | 宽度由调用方给定，最大高 760 | — | 页头 44 + 正文 16 内边距 + 页脚 48；点遮罩关闭 |
-| `row` | `ui/row.rs` | `nsh_base::button` | 单行 28 / 双行 44 | 选中、hover、focus-visible、disabled | 列表行；前后槽放图标与徽章 |
+| `row` | `ui/row.rs` | `nsh_base::button` | 单行 28 / 双行 44 | 选中、hover、focus-visible、disabled | 列表行；前后槽放图标与徽章，副标题可指定等宽 |
 | `gallery` | `ui/gallery.rs` | 上述全部 | — | — | 组件画廊：全部变体与状态并排显示 |
 
 刻度常量集中在 `design/metrics.rs` 的 `native` 模块，`ui` 里的常量是它的别名，页面不直接引用数字。

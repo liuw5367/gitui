@@ -10,7 +10,7 @@ use nsh_core::prelude::*;
 /// 一行列表项。
 pub(crate) fn row(
     caption: impl Fn() -> String + 'static,
-    subtitle: Option<Box<dyn Fn() -> String>>,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
     leading: Option<AnyElement>,
     trailing: Vec<AnyElement>,
     selected: bool,
@@ -71,14 +71,16 @@ pub(crate) fn row(
                 .text_color(move || foreground)
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         );
-    if let Some(hint) = subtitle {
-        labels = labels.child(
-            text(move || hint())
-                .text_size(px(ui::SECONDARY))
-                .line_height(px(ui::SECONDARY_LINE))
-                .text_color(move || design::text3())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        );
+    if let Some((hint, mono)) = subtitle {
+        let mut line = text(move || hint())
+            .text_size(px(ui::SECONDARY))
+            .line_height(px(ui::SECONDARY_LINE))
+            .text_color(move || design::text3())
+            .text_overflow(nsh_core::EllipsizeMode::Tail);
+        if mono {
+            line = line.font_family(ui::MONO);
+        }
+        labels = labels.child(line);
     }
     element = element.child(labels);
     for item in trailing {

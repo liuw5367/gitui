@@ -46,6 +46,26 @@ pub(crate) fn icon_view(
     return holder;
 }
 
+/// 品牌标记：欢迎页的应用图标，按传入点数绘制。
+///
+/// 这是唯一允许自定义点数的图标：它属于品牌元素，不属于界面图标体系（12/13/16）。
+pub(crate) fn brand_mark(
+    name: &'static str,
+    points: f32,
+    color: impl Fn() -> AdaptiveColor + 'static,
+) -> impl IntoElement {
+    let mut holder = view().w(px(points)).h(px(points)).flex_shrink_0();
+    if let Some(source) = icons::icon(name) {
+        holder = holder.child(
+            svg(source)
+                .w(px(points))
+                .h(px(points))
+                .text_color(move || color()),
+        );
+    }
+    return holder;
+}
+
 /// 行内默认色图标（三级文字色）。
 pub(crate) fn inline_icon(name: &'static str) -> impl IntoElement {
     return icon_view(name, IconSize::Inline, design::text3);

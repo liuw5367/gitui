@@ -42,6 +42,10 @@ pub(crate) const META: f32 = native::FONT_META;
 pub(crate) const CODE: f32 = native::FONT_CODE;
 /// 代码行高。
 pub(crate) const CODE_LINE: f32 = native::LINE_CODE;
+/// 页面主标题（欢迎页英雄区）。
+pub(crate) const TITLE_LARGE: f32 = 26.0;
+/// 面板与侧栏标题。
+pub(crate) const TITLE: f32 = 15.0;
 /// 等宽字体族。
 pub(crate) const MONO: &str = "SF Mono";
 
@@ -134,7 +138,7 @@ mod guard_tests {
     use std::path::{Path, PathBuf};
 
     /// 已迁移的页面文件（相对 `src/`）。P0 只有 ui 层自己。
-    const MIGRATED: &[&str] = &[];
+    const MIGRATED: &[&str] = &["screens/welcome.rs"];
 
     fn src_root() -> PathBuf {
         return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");

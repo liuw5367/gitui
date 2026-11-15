@@ -5,11 +5,19 @@
 //! 欢迎页：欢迎页本身就是入口页，打开仓库后进入多标签主窗口。
 //!
 //! 状态：有最近仓库（01）、没有仓库（02）、克隆中、克隆失败。
+//!
+//! 界面全部由 `crate::ui` 组合：字号与控件高度取原生刻度，颜色取自 `design`。
+//! 设计稿的协议切换（HTTPS / SSH）没有后端含义（协议由 URL 决定），这里不放置
+//! 无法生效的控件；差异记在 `docs/DESIGN-HANDOFF.md` 的偏离清单。
 
-use crate::design::{self, metrics};
+use crate::design;
 use crate::i18n;
-use crate::widgets::{self, kbd};
+use crate::ui;
+use crate::ui::badge::Tone;
+use crate::ui::button::{button, ButtonSize, ButtonVariant};
 use crate::{Actions, RepoForm};
+use nsh_core::prelude::*;
+use store::RecentRepo;
 
 /// Init 表单的附带文件（设计板 03）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -29,14 +37,20 @@ pub(crate) struct CloneOptions {
     pub recurse_submodules: bool,
     pub open_after_clone: bool,
 }
-use nsh_base::input;
-use nsh_core::prelude::*;
-use store::RecentRepo;
 
 /// 打开时间距今不足这些秒时归入“今天”。
 const TODAY_SECONDS: i64 = 24 * 60 * 60;
 /// 归入“最近 7 天”的上限。
 const WEEK_SECONDS: i64 = 7 * 24 * 60 * 60;
+
+/// 欢迎页左栏宽度（设计板 01 的 `.wside`）。
+const SIDE_WIDTH: f32 = 312.0;
+/// 右栏内容的最大宽度（设计板 01 的 `.wsection`）。
+const MAIN_MAX_WIDTH: f32 = 600.0;
+/// 右栏内边距：上、左右、下。
+const MAIN_PAD: (f32, f32, f32) = (40.0, 48.0, 28.0);
+/// 英雄区应用标记的边长。
+const APP_MARK: f32 = 64.0;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn welcome(
@@ -70,9 +84,9 @@ pub(crate) fn welcome(
                     scroll().w_full().h_full().child(
                         view()
                             .w_full()
-                            .pt(px(metrics::WELCOME_MAIN_PAD.0))
-                            .pb(px(metrics::WELCOME_MAIN_PAD.2))
-                            .px(px(metrics::WELCOME_MAIN_PAD.1))
+                            .pt(px(MAIN_PAD.0))
+                            .pb(px(MAIN_PAD.2))
+                            .px(px(MAIN_PAD.1))
                             .flex_col()
                             .child(hero(language))
                             .child(entry_section(
@@ -87,15 +101,19 @@ pub(crate) fn welcome(
                                 cloning,
                                 actions.clone(),
                             ))
-                            .child(tip(language))
-                            .child(view().h(px(24.0)).w_full()),
+                            .child(tip(language)),
                     ),
                 )
-                .child(cloning_indicator(language, cloning, clone_progress, actions.cancel_clone.clone())),
+                .child(cloning_indicator(
+                    language,
+                    cloning,
+                    clone_progress,
+                    actions.cancel_clone.clone(),
+                )),
         );
 }
 
-/// 克隆进行中的提示（替换此前的半透明遮罩：遮罩既挡不住点击，也看不出在做什么）。
+/// 克隆进行中的提示：浮在右下角，不遮挡表单。
 fn cloning_indicator(
     language: Signal<SharedString>,
     cloning: Signal<bool>,
@@ -104,19 +122,23 @@ fn cloning_indicator(
 ) -> impl IntoElement {
     return view()
         .absolute()
-        .bottom(px(16.0))
-        .right(px(16.0))
-        .h(move || if cloning.get() { px(26.0) } else { px(0.0) })
-        .px(px(10.0))
+        .bottom(px(ui::GAP_XL))
+        .right(px(ui::GAP_XL))
+        .h(move || if cloning.get() { px(36.0) } else { px(0.0) })
         .flex_row()
         .items_center()
-        .gap(px(6.0))
-        .rounded(px(6.0))
+        .gap(px(ui::GAP))
+        .px(px(ui::GAP_LG))
+        .rounded(px(8.0))
         .border_1()
         .border_color(move || design::line())
         .bg(move || design::panel())
         .overflow_hidden()
-        .child(widgets::icon("refresh", 12.0, design::accent))
+        .child(ui::icon::icon_view(
+            "refresh",
+            ui::icon::IconSize::Inline,
+            design::accent,
+        ))
         .child(
             text(move || {
                 if !cloning.get() {
@@ -129,12 +151,16 @@ fn cloning_indicator(
                     stage
                 }
             })
-            .text_size(px(10.5))
+            .text_size(px(ui::SECONDARY))
+            .line_height(px(ui::SECONDARY_LINE))
             .text_color(move || design::text2())
             .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
-        .child(widgets::small_button(
+        .child(button(
             move || i18n::t(language.get().as_str(), "common.cancel"),
+            ButtonVariant::Secondary,
+            ButtonSize::Small,
+            false,
             {
                 let cancel = cancel.clone();
                 move || cancel()
@@ -152,22 +178,23 @@ fn sidebar(
     let choose_folder = actions.choose_folder.clone();
     let now = store::now_unix();
     return view()
-        .w(px(metrics::WELCOME_SIDE_W))
+        .w(px(SIDE_WIDTH))
         .h_full()
         .flex_shrink_0()
         .flex_col()
         .bg(move || design::sidebar())
         .border_r_1()
         .border_color(move || design::line())
+        // 标题 + 打开按钮
         .child(
             view()
                 .w_full()
-                .pt(px(metrics::WELCOME_SIDE_TOP_PAD.0))
-                .pb(px(metrics::WELCOME_SIDE_TOP_PAD.2))
-                .px(px(metrics::WELCOME_SIDE_TOP_PAD.1))
+                .pt(px(ui::GAP_LG))
+                .pb(px(ui::GAP_SM))
+                .px(px(ui::GAP_LG))
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
+                .gap(px(ui::GAP))
                 .child(
                     view()
                         .flex_1()
@@ -177,9 +204,9 @@ fn sidebar(
                             text(move || {
                                 i18n::t(language.get().as_str(), "welcome.repositories")
                             })
-                            .text_size(px(metrics::FONT_WELCOME_SIDE_TITLE))
-                            .font_weight(FontWeight(700))
-                            .line_height(px(21.0))
+                            .text_size(px(ui::TITLE))
+                            .line_height(px(20.0))
+                            .font_weight(FontWeight::SEMIBOLD)
                             .text_color(move || design::text()),
                         )
                         .child(
@@ -190,84 +217,62 @@ fn sidebar(
                                     &[("count", recent.get().len().to_string())],
                                 )
                             })
-                            .text_size(px(10.5))
-                            .line_height(px(14.0))
+                            .text_size(px(ui::META))
+                            .line_height(px(ui::SECONDARY_LINE))
                             .text_color(move || design::text3()),
                         ),
                 )
-                .child(widgets::small_button(
+                .child(button(
                     move || i18n::t(language.get().as_str(), "welcome.openFolder"),
+                    ButtonVariant::Ghost,
+                    ButtonSize::Small,
+                    false,
                     {
                         let choose_folder = choose_folder.clone();
                         move || choose_folder()
                     },
                 )),
         )
+        // 搜索
         .child(
             view()
-                .mx(px(12.0))
-                .mt(px(2.0))
-                .mb(px(8.0))
-                .h(px(metrics::FIELD_H))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .rounded(px(metrics::RADIUS_CONTROL))
-                .border_1()
-                .border_color(move || design::field_border())
-                .bg(move || design::field())
-                .child(widgets::icon("search", 12.0, design::text3))
-                .child(
-                    input()
-                        .value(query)
-                        .on_change(move |value: &str| query.set(value.to_string()))
-                        .placeholder(move || i18n::t(language.get().as_str(), "welcome.search"))
-                        .text_size(px(12.0))
-                        .flex_1(),
-                )
-                .child(kbd("⌘F")),
+                .w_full()
+                .px(px(ui::GAP_LG))
+                .pb(px(ui::GAP_SM))
+                .child(ui::text_input::search_field(
+                    query,
+                    move || i18n::t(language.get().as_str(), "welcome.search"),
+                    Some("⌘F"),
+                    move |_text| {},
+                )),
         )
         .child(
             view()
+                .w_full()
                 .flex_1()
                 .min_h_0()
-                .px(px(metrics::SIDE_SCROLL_PAD.1))
+                .px(px(ui::GAP_SM))
                 .child(
                     scroll().w_full().h_full().child(
                         view()
                             .w_full()
+                            .py(px(ui::GAP_XS))
                             .flex_col()
                             .child(dynamic(move || -> AnyElement {
                                 if recent.get().is_empty() {
-                                    return view()
-                                        .w_full()
-                                        .mt(px(16.0))
-                                        .px(px(8.0))
-                                        .flex_col()
-                                        .gap(px(4.0))
-                                        .child(
-                                            text(move || {
-                                                i18n::t(
-                                                    language.get().as_str(),
-                                                    "welcome.noRecent",
-                                                )
-                                            })
-                                            .text_size(px(11.5))
-                                            .text_color(move || design::text2()),
-                                        )
-                                        .child(
-                                            text(move || {
-                                                i18n::t(
-                                                    language.get().as_str(),
-                                                    "welcome.noRecentHint",
-                                                )
-                                            })
-                                            .text_size(px(10.0))
-                                            .line_height(px(15.0))
-                                            .text_color(move || design::text3()),
-                                        )
-                                        .into_element();
+                                    return ui::section::empty(
+                                        move || {
+                                            i18n::t(language.get().as_str(), "welcome.noRecent")
+                                        },
+                                        Some(Box::new(move || {
+                                            i18n::t(
+                                                language.get().as_str(),
+                                                "welcome.noRecentHint",
+                                            )
+                                        })),
+                                        None,
+                                    )
+                                    .into_element();
                                 }
                                 return view()
                                     .w_full()
@@ -297,25 +302,28 @@ fn sidebar(
                     ),
                 ),
         )
+        // 底部：版本与更新入口（更新检查尚未实现，只显示版本，不做假按钮）
         .child(
             view()
                 .w_full()
-                .py(px(10.0))
-                .px(px(14.0))
+                .h(px(36.0))
                 .flex_row()
                 .items_center()
-                .gap(px(6.0))
+                .gap(px(ui::GAP))
+                .px(px(ui::GAP_LG))
                 .border_t_1()
                 .border_color(move || design::line())
                 .child(
                     text(crate::brand::version_line())
-                        .text_size(px(9.5))
+                        .text_size(px(ui::META))
+                        .line_height(px(ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
                 .child(
                     text(move || i18n::t(language.get().as_str(), "welcome.checkUpdates"))
-                        .text_size(px(9.5))
+                        .text_size(px(ui::META))
+                        .line_height(px(ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 ),
         );
@@ -334,22 +342,11 @@ fn repo_group(
 ) -> impl IntoElement {
     return view()
         .w_full()
-        .mt(px(metrics::WELCOME_GROUP_GAP))
-        .px(px(6.0))
+        .mt(px(ui::GAP_SM))
         .flex_col()
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::WELCOME_GROUP_LABEL_H))
-                .px(px(8.0))
-                .items_center()
-                .child(
-                    text(move || i18n::t(language.get().as_str(), label_key))
-                        .text_size(px(9.5))
-                        .font_weight(FontWeight(600))
-                        .text_color(move || design::text3()),
-                ),
-        )
+        .child(ui::section::section_label(move || {
+            i18n::t(language.get().as_str(), label_key)
+        }))
         .child(each(
             recent,
             |repo: &RecentRepo| repo.path.clone(),
@@ -359,69 +356,54 @@ fn repo_group(
                     && age < to_seconds
                     && matches_query(&repo.get().path, &query.get());
                 let open_path = open_path.clone();
-                view()
+                return view()
                     .w_full()
                     .h(move || {
                         if visible {
-                            px(metrics::WELCOME_REPO_H)
+                            px(44.0)
                         } else {
                             px(0.0)
                         }
                     })
-                    .flex_row()
-                    .items_center()
-                    .gap(px(9.0))
-                    .px(px(8.0))
-                    .rounded(px(7.0))
                     .overflow_hidden()
-                    .hover(|style| style.bg(move || design::hover()))
-                    .on_press(move || open_path(repo.get().path.clone()))
-                    .child(
-                        view()
-                            .w(px(metrics::WELCOME_REPO_ICON))
-                            .h(px(metrics::WELCOME_REPO_ICON))
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(7.0))
-                            .border_1()
-                            .border_color(move || design::line())
-                            .bg(move || design::panel())
-                            .child(widgets::icon("folder", 13.0, design::text2)),
-                    )
-                    .child(
-                        view()
-                            .flex_1()
-                            .min_w_0()
-                            .flex_col()
-                            .gap(px(1.0))
-                            .child(
-                                text(move || last_segment(&repo.get().path))
-                                    .text_size(px(12.0))
-                                    .font_weight(FontWeight(600))
-                                    .line_height(px(15.0))
-                                    .text_color(move || design::text())
-                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
-                            )
-                            .child(
-                                text(move || home_path(&repo.get().path))
-                                    .text_size(px(9.5))
-                                    .line_height(px(12.0))
-                                    .font_family("SF Mono")
-                                    .text_color(move || design::text3())
-                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
-                            ),
-                    )
-                    .child(
-                        text(move || {
-                            crate::dates::format(
-                                language.get().as_str(),
-                                repo.get().opened_at,
-                                now,
-                            )
-                        })
-                        .text_size(px(9.0))
-                        .text_color(move || design::text3()),
-                    )
+                    .child(ui::row::row(
+                        move || last_segment(&repo.get().path),
+                        Some((
+                            Box::new(move || home_path(&repo.get().path)),
+                            true,
+                        )),
+                        Some(
+                            view()
+                                .w(px(26.0))
+                                .h(px(26.0))
+                                .flex_shrink_0()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(6.0))
+                                .border_1()
+                                .border_color(move || design::line())
+                                .bg(move || design::panel())
+                                .child(ui::icon::icon_view(
+                                    "folder",
+                                    ui::icon::IconSize::Inline,
+                                    design::text2,
+                                ))
+                                .into_element(),
+                        ),
+                        vec![
+                            ui::meta(move || {
+                                crate::dates::format(
+                                    language.get().as_str(),
+                                    repo.get().opened_at,
+                                    now,
+                                )
+                            })
+                            .into_element(),
+                        ],
+                        false,
+                        false,
+                        move || open_path(repo.get().path.clone()),
+                    ));
             },
         ));
 }
@@ -431,17 +413,17 @@ fn hero(language: Signal<SharedString>) -> impl IntoElement {
         .w_full()
         .flex_row()
         .items_center()
-        .gap(px(16.0))
+        .gap(px(ui::GAP_XL))
         .child(
             view()
-                .w(px(metrics::WELCOME_APPMARK))
-                .h(px(metrics::WELCOME_APPMARK))
+                .w(px(APP_MARK))
+                .h(px(APP_MARK))
                 .flex_shrink_0()
                 .items_center()
                 .justify_center()
-                .rounded(px(metrics::RADIUS_APPMARK))
-                .bg(move || design::accent2())
-                .child(widgets::icon("branch", 30.0, || {
+                .rounded(px(14.0))
+                .bg(move || design::token("primary-bg"))
+                .child(ui::icon::brand_mark("branch", 30.0, || {
                     design::token("primary-foreground")
                 })),
         )
@@ -451,16 +433,16 @@ fn hero(language: Signal<SharedString>) -> impl IntoElement {
                 .flex_col()
                 .child(
                     text(move || i18n::t(language.get().as_str(), "app.name"))
-                        .text_size(px(metrics::FONT_WELCOME_TITLE))
-                        .font_weight(FontWeight(700))
-                        .line_height(px(34.0))
+                        .text_size(px(ui::TITLE_LARGE))
+                        .line_height(px(32.0))
+                        .font_weight(FontWeight::BOLD)
                         .text_color(move || design::text()),
                 )
                 .child(
                     text(move || i18n::t(language.get().as_str(), "app.tagline"))
-                        .mt(px(4.0))
-                        .text_size(px(12.5))
-                        .line_height(px(17.0))
+                        .mt(px(ui::GAP_XS))
+                        .text_size(px(ui::BODY))
+                        .line_height(px(ui::BODY_LINE))
                         .text_color(move || design::text2()),
                 ),
         );
@@ -481,11 +463,16 @@ fn entry_section(
     actions: Actions,
 ) -> impl IntoElement {
     let set_form = actions.set_repo_form.clone();
+    let selected = match form.get_untracked() {
+        RepoForm::Open => "open",
+        RepoForm::Clone => "clone",
+        RepoForm::Init => "init",
+    };
     return view()
         .w_full()
-        .max_w(px(metrics::WELCOME_MAX_W))
-        .mt(px(metrics::WELCOME_SECTION_GAP.0))
-        .pt(px(metrics::WELCOME_SECTION_GAP.1))
+        .max_w(px(MAIN_MAX_WIDTH))
+        .mt(px(28.0))
+        .pt(px(20.0))
         .border_t_1()
         .border_color(move || design::line())
         .flex_col()
@@ -494,26 +481,55 @@ fn entry_section(
                 .w_full()
                 .flex_row()
                 .items_center()
-                .gap(px(10.0))
-                .child(segment(language, form, set_form))
+                .gap(px(ui::GAP_LG))
+                .child(ui::segmented::segmented(
+                    vec![
+                        ui::segmented::Segment {
+                            id: "open",
+                            label: Box::new(move || {
+                                i18n::t(language.get().as_str(), "repoManager.tabOpen")
+                            }),
+                        },
+                        ui::segmented::Segment {
+                            id: "clone",
+                            label: Box::new(move || {
+                                i18n::t(language.get().as_str(), "repoManager.tabClone")
+                            }),
+                        },
+                        ui::segmented::Segment {
+                            id: "init",
+                            label: Box::new(move || {
+                                i18n::t(language.get().as_str(), "repoManager.tabInit")
+                            }),
+                        },
+                    ],
+                    selected,
+                    {
+                        let set_form = set_form.clone();
+                        move |id| {
+                            set_form(match id {
+                                "clone" => RepoForm::Clone,
+                                "init" => RepoForm::Init,
+                                _ => RepoForm::Open,
+                            })
+                        }
+                    },
+                ))
                 .child(view().flex_1())
-                .child(
-                    text(move || match form.get() {
+                .child(ui::meta(move || {
+                    match form.get() {
                         RepoForm::Open => "git open".to_string(),
                         RepoForm::Clone => "git clone".to_string(),
                         RepoForm::Init => "git init".to_string(),
-                    })
-                    .text_size(px(9.5))
-                    .font_family("SF Mono")
-                    .text_color(move || design::text3()),
-                ),
+                    }
+                })),
         )
         .child(
             view()
                 .w_full()
-                .mt(px(12.0))
+                .mt(px(ui::GAP_LG))
                 .flex_col()
-                .gap(px(9.0))
+                .gap(px(ui::GAP_SM))
                 .child(
                     text(move || {
                         i18n::t(
@@ -525,9 +541,9 @@ fn entry_section(
                             },
                         )
                     })
-                    .text_size(px(13.0))
-                    .font_weight(FontWeight(600))
-                    .line_height(px(18.0))
+                    .text_size(px(ui::BODY))
+                    .line_height(px(ui::BODY_LINE))
+                    .font_weight(FontWeight::SEMIBOLD)
                     .text_color(move || design::text()),
                 )
                 .child(
@@ -541,8 +557,8 @@ fn entry_section(
                             },
                         )
                     })
-                    .text_size(px(10.5))
-                    .line_height(px(15.0))
+                    .text_size(px(ui::SECONDARY))
+                    .line_height(px(ui::SECONDARY_LINE))
                     .text_color(move || design::text3()),
                 )
                 .child(dynamic(move || -> AnyElement {
@@ -567,123 +583,24 @@ fn entry_section(
         );
 }
 
-fn segment(
-    language: Signal<SharedString>,
-    form: Signal<RepoForm>,
-    set_form: std::sync::Arc<dyn Fn(RepoForm)>,
-) -> impl IntoElement {
-    let mut items: Vec<AnyElement> = Vec::new();
-    for (kind, key) in [
-        (RepoForm::Open, "repoManager.tabOpen"),
-        (RepoForm::Clone, "repoManager.tabClone"),
-        (RepoForm::Init, "repoManager.tabInit"),
-    ] {
-        let set_form = set_form.clone();
-        items.push(
-            view()
-                .h(px(22.0))
-                .px(px(10.0))
-                .items_center()
-                .justify_center()
-                .rounded(px(5.0))
-                .bg(move || {
-                    if form.get() == kind {
-                        design::content()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press(move || set_form(kind))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), key))
-                        .text_size(px(11.5))
-                        .line_height(px(15.0))
-                        .text_color(move || {
-                            if form.get() == kind {
-                                design::text()
-                            } else {
-                                design::text2()
-                            }
-                        }),
-                )
-                .into_element(),
-        );
-    }
-    return view()
-        .h(px(metrics::SEG_H))
-        .flex_row()
-        .items_center()
-        .gap(px(2.0))
-        .p(px(2.0))
-        .rounded(px(7.0))
-        .border_1()
-        .border_color(move || design::line_soft())
-        .bg(move || design::panel2())
-        .child(items);
-}
-
-fn field_label(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
-    return text(move || i18n::t(language.get().as_str(), key))
-        .text_size(px(11.0))
-        .font_weight(FontWeight(600))
-        .line_height(px(15.0))
-        .text_color(move || design::text2());
-}
-
-fn text_field(value: Signal<String>, placeholder: &'static str) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h(px(metrics::FIELD_H))
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .px(px(8.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .border_1()
-        .border_color(move || design::field_border())
-        .bg(move || design::field())
-        .child(
-            input()
-                .value(value)
-                .on_change(move |text: &str| value.set(text.to_string()))
-                .placeholder(placeholder)
-                .text_size(px(12.0))
-                .flex_1(),
-        );
-}
-
 fn open_form(language: Signal<SharedString>, actions: Actions) -> impl IntoElement {
     let choose_folder = actions.choose_folder.clone();
-    let choose_folder_two = actions.choose_folder.clone();
     return view()
         .w_full()
-        .flex_col()
-        .gap(px(10.0))
-        .child(
-            text(move || i18n::t(language.get().as_str(), "repoManager.openHint"))
-                .text_size(px(10.5))
-                .line_height(px(15.0))
-                .text_color(move || design::text2()),
-        )
-        .child(
-            view()
-                .flex_row()
-                .gap(px(8.0))
-                .child(widgets::primary_button(
-                    move || i18n::t(language.get().as_str(), "welcome.openFolder"),
-                    {
-                        let choose_folder = choose_folder.clone();
-                        move || choose_folder()
-                    },
-                ))
-                .child(widgets::button(
-                    move || i18n::t(language.get().as_str(), "repoManager.title"),
-                    {
-                        let choose_folder_two = choose_folder_two.clone();
-                        move || choose_folder_two()
-                    },
-                )),
-        );
+        .pt(px(ui::GAP_SM))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP))
+        .child(button(
+            move || i18n::t(language.get().as_str(), "welcome.openFolder"),
+            ButtonVariant::Primary,
+            ButtonSize::Regular,
+            false,
+            {
+                let choose_folder = choose_folder.clone();
+                move || choose_folder()
+            },
+        ));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -698,137 +615,169 @@ fn clone_form(
 ) -> impl IntoElement {
     let choose_folder = actions.choose_folder.clone();
     let clone_repository = actions.clone_repository.clone();
+    let set_url = clone_url;
+    let set_destination = clone_destination;
     return view()
         .w_full()
+        .pt(px(ui::GAP_SM))
         .flex_col()
-        .gap(px(9.0))
+        .gap(px(ui::GAP_LG))
+        .child(ui::field::field(
+            move || i18n::t(language.get().as_str(), "welcome.url"),
+            ui::text_input::text_input(
+                set_url,
+                move || "https://github.com/owner/repo.git".to_string(),
+                false,
+                move |text| set_url.set(text.to_string()),
+            ),
+            None,
+            None,
+        ))
         .child(
             view()
                 .w_full()
                 .flex_row()
                 .items_end()
-                .gap(px(9.0))
+                .gap(px(ui::GAP))
                 .child(
                     view()
                         .flex_1()
                         .min_w_0()
-                        .flex_col()
-                        .gap(px(5.0))
-                        .child(field_label(language, "welcome.url"))
-                        .child(text_field(clone_url, "https://github.com/owner/repo.git")),
+                        .child(ui::field::field(
+                            move || i18n::t(language.get().as_str(), "welcome.destination"),
+                            ui::text_input::text_input(
+                                set_destination,
+                                move || "~/Developer/repo".to_string(),
+                                false,
+                                move |text| set_destination.set(text.to_string()),
+                            ),
+                            None,
+                            None,
+                        )),
                 )
-                .child(protocol_toggle(language)),
-        )
-        .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_end()
-                .gap(px(9.0))
-                .child(
-                    view()
-                        .flex_1()
-                        .min_w_0()
-                        .flex_col()
-                        .gap(px(5.0))
-                        .child(field_label(language, "welcome.destination"))
-                        .child(text_field(clone_destination, "~/Developer/repo")),
-                )
-                .child(widgets::button(
+                .child(button(
                     move || i18n::t(language.get().as_str(), "welcome.choose"),
+                    ButtonVariant::Secondary,
+                    ButtonSize::Regular,
+                    false,
                     {
                         let choose_folder = choose_folder.clone();
                         move || choose_folder()
                     },
                 )),
         )
-        // 选项行：分支、深度、子模块、克隆后打开（设计板 03）。
         .child(
             view()
                 .w_full()
                 .flex_row()
                 .items_end()
-                .gap(px(9.0))
+                .gap(px(ui::GAP))
                 .child(
                     view()
                         .flex_1()
                         .min_w_0()
-                        .flex_col()
-                        .gap(px(5.0))
-                        .child(field_label(language, "welcome.branch"))
-                        .child(
-                            view()
-                                .w_full()
-                                .h(px(metrics::FIELD_H))
-                                .px(px(7.0))
-                                .items_center()
-                                .rounded(px(metrics::RADIUS_CONTROL))
-                                .border_1()
-                                .border_color(move || design::field_border())
-                                .bg(move || design::field())
-                                .child(
-                                    nsh_base::input()
-                                        .value({
-                                        let options = options;
-                                        move || options.get().branch
-                                    })
-                                        .on_change(move |text: &str| {
-                                            let mut next = options.get_untracked();
-                                            next.branch = text.to_string();
-                                            options.set(next);
-                                        })
-                                        .placeholder(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "welcome.branchHint",
-                                            )
-                                        })
-                                        .text_size(px(11.0))
-                                        .flex_1(),
-                                ),
-                        ),
+                        .child(ui::field::field(
+                            move || i18n::t(language.get().as_str(), "welcome.branch"),
+                            ui::text_input::text_input_bound(
+                                {
+                                    let options = options;
+                                    move || options.get().branch
+                                },
+                                move || {
+                                    i18n::t(language.get().as_str(), "welcome.branchHint")
+                                },
+                                false,
+                                move |text| {
+                                    let mut next = options.get_untracked();
+                                    next.branch = text;
+                                    options.set(next);
+                                },
+                            ),
+                            None,
+                            None,
+                        )),
                 )
                 .child(
                     view()
-                        .w(px(170.0))
+                        .w(px(220.0))
                         .flex_col()
-                        .gap(px(5.0))
-                        .child(field_label(language, "welcome.depth"))
-                        .child(depth_toggle(language, options)),
+                        .gap(px(ui::GAP_XS))
+                        .child(ui::field::label(move || {
+                            i18n::t(language.get().as_str(), "welcome.depth")
+                        }))
+                        .child(ui::segmented::segmented(
+                            vec![
+                                ui::segmented::Segment {
+                                    id: "full",
+                                    label: Box::new(move || {
+                                        i18n::t(language.get().as_str(), "welcome.depthFull")
+                                    }),
+                                },
+                                ui::segmented::Segment {
+                                    id: "one",
+                                    label: Box::new(move || {
+                                        i18n::t(language.get().as_str(), "welcome.depthOne")
+                                    }),
+                                },
+                                ui::segmented::Segment {
+                                    id: "fifty",
+                                    label: Box::new(move || {
+                                        i18n::t(language.get().as_str(), "welcome.depthFifty")
+                                    }),
+                                },
+                            ],
+                            match options.get_untracked().depth {
+                                1 => "one",
+                                50 => "fifty",
+                                _ => "full",
+                            },
+                            move |id| {
+                                let mut next = options.get_untracked();
+                                next.depth = match id {
+                                    "one" => 1,
+                                    "fifty" => 50,
+                                    _ => 0,
+                                };
+                                next.depth_custom.clear();
+                                options.set(next);
+                            },
+                        )),
                 ),
         )
         .child(
             view()
+                .w_full()
                 .flex_row()
                 .items_center()
-                .gap(px(14.0))
-                .child(check_line(
-                    language,
-                    "welcome.recurse",
+                .gap(px(ui::GAP_XL))
+                .child(ui::check::check_row(
+                    move || i18n::t(language.get().as_str(), "welcome.recurse"),
                     options.get_untracked().recurse_submodules,
-                    move || {
-                        let mut next = options.get_untracked();
-                        next.recurse_submodules = !next.recurse_submodules;
-                        options.set(next);
+                    false,
+                    move |next| {
+                        let mut options_next = options.get_untracked();
+                        options_next.recurse_submodules = next;
+                        options.set(options_next);
                     },
                 ))
-                .child(check_line(
-                    language,
-                    "welcome.openAfterClone",
+                .child(ui::check::check_row(
+                    move || i18n::t(language.get().as_str(), "welcome.openAfterClone"),
                     options.get_untracked().open_after_clone,
-                    move || {
-                        let mut next = options.get_untracked();
-                        next.open_after_clone = !next.open_after_clone;
-                        options.set(next);
+                    false,
+                    move |next| {
+                        let mut options_next = options.get_untracked();
+                        options_next.open_after_clone = next;
+                        options.set(options_next);
                     },
                 )),
         )
         .child(
             view()
+                .w_full()
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
-                .child(widgets::primary_button(
+                .gap(px(ui::GAP))
+                .child(button(
                     move || {
                         if cloning.get() {
                             i18n::t(language.get().as_str(), "welcome.cloneWorking")
@@ -836,129 +785,34 @@ fn clone_form(
                             i18n::t(language.get().as_str(), "welcome.clone")
                         }
                     },
+                    ButtonVariant::Primary,
+                    ButtonSize::Regular,
+                    cloning.get_untracked(),
                     {
                         let clone_repository = clone_repository.clone();
                         move || clone_repository()
                     },
                 ))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "welcome.cloneHint"))
-                        .text_size(px(10.5))
-                        .text_color(move || design::text3()),
-                ),
+                .child(ui::secondary(move || {
+                    i18n::t(language.get().as_str(), "welcome.cloneHint")
+                })),
         )
-        .child(error_line(error));
-}
-
-/// 深度三选一：完整 / 浅 1 / 浅 50。
-fn depth_toggle(language: Signal<SharedString>, options: Signal<CloneOptions>) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h(px(metrics::FIELD_H))
-        .flex_row()
-        .items_center()
-        .gap(px(2.0))
-        .p(px(2.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .border_1()
-        .border_color(move || design::field_border())
-        .bg(move || design::panel2())
-        .child(
-            [0u32, 1, 50]
-                .iter()
-                .map(|depth| {
-                    let depth = *depth;
-                    let active = options.get_untracked().depth == depth;
-                    let label = match depth {
-                        0 => "welcome.depthFull",
-                        1 => "welcome.depthOne",
-                        _ => "welcome.depthFifty",
-                    };
-                    let language = language;
+        .child(dynamic(move || -> AnyElement {
+            match error.get() {
+                Some(message) => {
                     return view()
-                        .flex_1()
-                        .h(px(18.0))
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(4.0))
-                        .bg(move || {
-                            if active {
-                                design::content()
-                            } else {
-                                AdaptiveColor::TRANSPARENT
-                            }
-                        })
-                        .on_press(move || {
-                            let mut next = options.get_untracked();
-                            next.depth = depth;
-                            next.depth_custom.clear();
-                            options.set(next);
-                        })
+                        .w_full()
                         .child(
-                            text(move || i18n::t(language.get().as_str(), label))
-                                .text_size(px(9.5))
-                                .line_height(px(12.0))
-                                .text_color(move || {
-                                    if active {
-                                        design::text()
-                                    } else {
-                                        design::text3()
-                                    }
-                                }),
+                            text(move || message.clone())
+                                .text_size(px(ui::SECONDARY))
+                                .line_height(px(ui::SECONDARY_LINE))
+                                .text_color(move || design::danger()),
                         )
                         .into_element();
-                })
-                .collect::<Vec<AnyElement>>(),
-        );
-}
-
-/// 一行复选（12px 方框 + 文案）。
-fn check_line(
-    language: Signal<SharedString>,
-    key: &'static str,
-    checked: bool,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    return view()
-        .h(px(18.0))
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .on_press(on_press)
-        .child(
-            view()
-                .w(px(12.0))
-                .h(px(12.0))
-                .items_center()
-                .justify_center()
-                .rounded(px(3.0))
-                .border_1()
-                .border_color(move || design::line_strong())
-                .bg(move || {
-                    if checked {
-                        design::accent()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .child(
-                    text(move || {
-                        if checked {
-                            "✓".to_string()
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .text_size(px(8.0))
-                    .text_color(move || design::content()),
-                ),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(10.5))
-                .line_height(px(14.0))
-                .text_color(move || design::text2()),
-        );
+                }
+                None => return view().w_full().h(px(0.0)).into_element(),
+            }
+        }));
 }
 
 fn init_form(
@@ -969,139 +823,112 @@ fn init_form(
     actions: Actions,
 ) -> impl IntoElement {
     let init_repository = actions.init_repository.clone();
+    let path = init_path;
     return view()
         .w_full()
+        .pt(px(ui::GAP_SM))
         .flex_col()
-        .gap(px(9.0))
-        .child(field_label(language, "repoManager.initPath"))
-        .child(text_field(init_path, "~/Developer/new-repo"))
+        .gap(px(ui::GAP_LG))
+        .child(ui::field::field(
+            move || i18n::t(language.get().as_str(), "repoManager.initPath"),
+            ui::text_input::text_input(
+                path,
+                move || "~/Developer/new-repo".to_string(),
+                false,
+                move |text| path.set(text.to_string()),
+            ),
+            None,
+            None,
+        ))
         .child(
             view()
+                .w_full()
                 .flex_row()
                 .items_center()
-                .gap(px(14.0))
-                .child(check_line(
-                    language,
-                    "welcome.gitignore",
+                .gap(px(ui::GAP_XL))
+                .child(ui::check::check_row(
+                    move || i18n::t(language.get().as_str(), "welcome.gitignore"),
                     files.get_untracked().gitignore,
-                    move || {
-                        let mut next = files.get_untracked();
-                        next.gitignore = !next.gitignore;
-                        files.set(next);
+                    false,
+                    move |next| {
+                        let mut updated = files.get_untracked();
+                        updated.gitignore = next;
+                        files.set(updated);
                     },
                 ))
-                .child(check_line(
-                    language,
-                    "welcome.readme",
+                .child(ui::check::check_row(
+                    move || i18n::t(language.get().as_str(), "welcome.readme"),
                     files.get_untracked().readme,
-                    move || {
-                        let mut next = files.get_untracked();
-                        next.readme = !next.readme;
-                        files.set(next);
+                    false,
+                    move |next| {
+                        let mut updated = files.get_untracked();
+                        updated.readme = next;
+                        files.set(updated);
                     },
                 )),
         )
-        .child(widgets::primary_button(
+        .child(button(
             move || i18n::t(language.get().as_str(), "repoManager.initAction"),
+            ButtonVariant::Primary,
+            ButtonSize::Regular,
+            false,
             {
                 let init_repository = init_repository.clone();
                 move || init_repository()
             },
         ))
-        .child(error_line(error));
-}
-
-fn error_line(error: Signal<Option<String>>) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h(move || {
-            if error.get().is_some() {
-                px(18.0)
-            } else {
-                px(0.0)
+        .child(dynamic(move || -> AnyElement {
+            match error.get() {
+                Some(message) => {
+                    return view()
+                        .w_full()
+                        .child(
+                            text(move || message.clone())
+                                .text_size(px(ui::SECONDARY))
+                                .line_height(px(ui::SECONDARY_LINE))
+                                .text_color(move || design::danger()),
+                        )
+                        .into_element();
+                }
+                None => return view().w_full().h(px(0.0)).into_element(),
             }
-        })
-        .overflow_hidden()
-        .items_center()
-        .child(
-            text(move || error.get().unwrap_or_default())
-                .text_size(px(10.5))
-                .line_height(px(15.0))
-                .text_color(move || design::danger()),
-        );
-}
-
-fn protocol_toggle(language: Signal<SharedString>) -> impl IntoElement {
-    return view()
-        .h(px(20.0))
-        .flex_shrink_0()
-        .flex_row()
-        .items_center()
-        .gap(px(2.0))
-        .p(px(2.0))
-        .rounded(px(5.0))
-        .bg(move || design::panel2())
-        .child(
-            view()
-                .h(px(16.0))
-                .px(px(6.0))
-                .items_center()
-                .justify_center()
-                .rounded(px(4.0))
-                .bg(move || design::content())
-                .child(
-                    text("HTTPS")
-                        .text_size(px(9.5))
-                        .line_height(px(12.0))
-                        .text_color(move || design::text()),
-                ),
-        )
-        .child(
-            view().h(px(16.0)).px(px(6.0)).items_center().justify_center().child(
-                text("SSH")
-                    .text_size(px(9.5))
-                    .line_height(px(12.0))
-                    .text_color(move || {
-                        let _ = language;
-                        design::text3()
-                    }),
-            ),
-        );
+        }));
 }
 
 fn tip(language: Signal<SharedString>) -> impl IntoElement {
     return view()
         .w_full()
-        .max_w(px(metrics::WELCOME_MAX_W))
-        .mt(px(metrics::WELCOME_TIP_TOP))
-        .py(px(10.0))
-        .px(px(12.0))
-        .flex_row()
-        .items_start()
-        .gap(px(8.0))
-        .rounded(px(metrics::RADIUS_PANEL))
-        .border_1()
-        .border_color(move || design::line())
-        .bg(move || design::panel())
-        .child(
+        .max_w(px(MAIN_MAX_WIDTH))
+        .mt(px(24.0))
+        .child(ui::feedback::card(
             view()
-                .mt(px(1.0))
-                .flex_shrink_0()
-                .child(widgets::icon("info", 12.0, design::accent)),
-        )
-        .child(
-            text(move || {
-                let language = language.get();
-                format!(
-                    "{}  {}",
-                    i18n::t(language.as_str(), "welcome.tipTitle"),
-                    i18n::t(language.as_str(), "welcome.tipBody")
+                .w_full()
+                .flex_row()
+                .items_start()
+                .gap(px(ui::GAP))
+                .p(px(ui::GAP_LG))
+                .child(ui::icon::icon_view(
+                    "info",
+                    ui::icon::IconSize::Inline,
+                    design::accent,
+                ))
+                .child(
+                    text(move || {
+                        let language = language.get();
+                        format!(
+                            "{}  {}",
+                            i18n::t(language.as_str(), "welcome.tipTitle"),
+                            i18n::t(language.as_str(), "welcome.tipBody")
+                        )
+                    })
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(ui::SECONDARY))
+                    .line_height(px(ui::SECONDARY_LINE))
+                    .text_color(move || design::text2()),
                 )
-            })
-            .text_size(px(10.5))
-            .line_height(px(15.0))
-            .text_color(move || design::text2()),
-        );
+                .child(ui::badge::badge(move || "K".to_string(), Tone::Neutral)),
+        ));
 }
 
 fn matches_query(path: &str, query: &str) -> bool {

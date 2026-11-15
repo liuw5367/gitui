@@ -14,7 +14,8 @@ mod model;
 mod screens;
 mod shell;
 mod shortcuts;
-// ui 层先建立，P1 起页面逐个迁入；迁完删除这条 allow。
+// ui 层已建立；P1–P7 逐组迁入后仍有为后续阶段准备的组件，P8 收尾时
+// 全部组件都有使用者，届时删除这条 allow 并保持零警告。
 #[allow(dead_code)]
 mod ui;
 mod widgets;
