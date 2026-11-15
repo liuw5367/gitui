@@ -178,7 +178,7 @@ fn titlebar(language: Signal<SharedString>, actions: Actions) -> impl IntoElemen
         .window_drag(true)
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.title"))
-                .text_size(px(12.5))
+                .text_size(px(crate::ui::TITLE))
                 .font_weight(FontWeight(600))
                 .text_color(move || design::text()),
         )
@@ -231,7 +231,7 @@ fn side(
                     ))
                     .child(
                         text(move || i18n::t(language.get().as_str(), item.key()))
-                            .text_size(px(12.0))
+                            .text_size(px(crate::ui::BODY))
                             .line_height(px(15.0))
                             .text_color(move || design::text()),
                     )
@@ -298,7 +298,7 @@ fn side(
                         .flex_col()
                         .child(
                             text(move || i18n::t(language.get().as_str(), "settings.title"))
-                                .text_size(px(12.0))
+                                .text_size(px(crate::ui::BODY))
                                 .line_height(px(15.0))
                                 .font_weight(FontWeight(600))
                                 .text_color(move || design::text()),
@@ -364,7 +364,7 @@ fn main(
                 .gap(px(18.0))
                 .child(
                     text(move || i18n::t(language.get().as_str(), section.get().key()))
-                        .text_size(px(17.0))
+                        .text_size(px(crate::ui::TITLE_LARGE))
                         .font_weight(FontWeight(700))
                         .text_color(move || design::text()),
                 )
@@ -472,7 +472,7 @@ fn general(
                 .on_press(move || set_theme(mode))
                 .child(
                     text(move || i18n::t(language.get().as_str(), theme_key(mode)))
-                        .text_size(px(11.5))
+                        .text_size(px(crate::ui::BODY))
                         .text_color(move || design::text()),
                 )
                 .into_element(),
@@ -515,7 +515,7 @@ fn general(
                             "English".to_string()
                         }
                     })
-                    .text_size(px(11.5))
+                    .text_size(px(crate::ui::BODY))
                     .text_color(move || design::text()),
                 )
                 .child(widgets::small_button(
@@ -1313,7 +1313,7 @@ fn shortcuts_page(
                 .child(
                     text(label)
                         .flex_1()
-                        .text_size(px(11.5))
+                        .text_size(px(crate::ui::BODY))
                         .line_height(px(15.0))
                         .text_color(move || design::text()),
                 )
@@ -1388,7 +1388,7 @@ fn shortcuts_page(
                         .placeholder(move || {
                             i18n::t(language.get().as_str(), "shortcut.search")
                         })
-                        .text_size(px(12.0))
+                        .text_size(px(crate::ui::BODY))
                         .flex_1(),
                 ),
         )
@@ -1504,7 +1504,7 @@ fn credentials_page(
                             &[("count", keys.to_string())],
                         )
                     })
-                    .text_size(px(11.0))
+                    .text_size(px(crate::ui::SECONDARY))
                     .line_height(px(15.0))
                     .text_color(move || design::text2()),
                 )
@@ -1566,7 +1566,7 @@ fn disabled_row(language: Signal<SharedString>, label_key: &'static str) -> AnyE
                 .opacity(0.45)
                 .child(
                     text(move || i18n::t(language.get().as_str(), label_key))
-                        .text_size(px(11.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .line_height(px(14.0))
                         .text_color(move || design::text()),
                 ),
@@ -1616,7 +1616,7 @@ fn agent_page(
                         i18n::t(language.get().as_str(), agent_action_key(action))
                     })
                     .flex_1()
-                    .text_size(px(11.5))
+                    .text_size(px(crate::ui::BODY))
                     .line_height(px(15.0))
                     .text_color(move || design::text()),
                 )
