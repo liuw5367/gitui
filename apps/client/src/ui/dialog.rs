@@ -10,6 +10,43 @@ use crate::design::{self, metrics};
 use crate::ui;
 use nsh_core::prelude::*;
 
+/// 一层遮罩：铺满父容器、居中内容、点遮罩关闭。
+///
+/// 与 [`modality`] 配对使用：遮罩负责「点外面关掉」，`modality` 负责「点里面
+/// 不要关掉」。两者一起，自搭弹层的页面也不必出现裸 `.on_press`。
+pub(crate) fn scrim(
+    visible: impl Fn() -> bool + 'static,
+    z_index: i32,
+    content: impl IntoElement,
+    on_dismiss: impl Fn() + 'static,
+) -> impl IntoElement {
+    let on_dismiss = std::rc::Rc::new(on_dismiss);
+    return view()
+        .absolute()
+        .inset(px(0.0))
+        .z_index(z_index)
+        .items_center()
+        .justify_center()
+        .bg(move || {
+            if visible() {
+                crate::design::token("overlay")
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press(move || on_dismiss())
+        .child(content);
+}
+
+/// 让内容区截获按压、不再上浮到遮罩。
+///
+/// 自搭弹层的面板需要它：不加的话点正文会穿透到遮罩，把对话框关掉。`dialog`
+/// 内部已自动这么做；这里单独导出，是为了让还没换成 `dialog` 的弹层也不必在
+/// 页面里写裸 `.on_press(|| {})`（那样该文件就无法通过 guard 的检查）。
+pub(crate) fn modality(content: impl IntoElement) -> impl IntoElement {
+    return view().on_press(|| {}).child(content);
+}
+
 /// 一个模态对话框。
 pub(crate) fn dialog(
     open: bool,

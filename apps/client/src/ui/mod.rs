@@ -153,6 +153,7 @@ mod guard_tests {
         "workspace/commit.rs",
         "workspace/agent.rs",
         "screens/conflict_view.rs",
+        "screens/sync_dialog.rs",
     ];
 
     fn src_root() -> PathBuf {

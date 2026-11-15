@@ -43,24 +43,11 @@ pub(crate) fn sync_dialog(
     on_run: std::sync::Arc<dyn Fn(Sync)>,
     on_close: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(110)
-        .items_center()
-        .justify_center()
-        .bg(move || {
-            if state.get().is_some() {
-                design::token("overlay")
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press({
-            let on_close = on_close.clone();
-            move || on_close()
-        })
-        .child(dynamic(move || -> AnyElement {
+    let dismiss = on_close.clone();
+    return crate::ui::dialog::scrim(
+        move || state.get().is_some(),
+        110,
+        dynamic(move || -> AnyElement {
             let Some(dialog) = state.get() else {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             };
@@ -89,7 +76,8 @@ pub(crate) fn sync_dialog(
             let set_kind = set_kind.clone();
             let set_option = set_option.clone();
 
-            return view()
+            return crate::ui::dialog::modality(
+                view()
                 .w(px(metrics::SYNC_SHEET_W))
                 .max_w(px(760.0))
                 .h(px(metrics::SYNC_SHEET_H))
@@ -99,7 +87,6 @@ pub(crate) fn sync_dialog(
                 .border_color(move || design::line())
                 .bg(move || design::content())
                 .overflow_hidden()
-                .on_press(|| {})
                 .child(
                     view()
                         .w_full()
@@ -419,8 +406,12 @@ pub(crate) fn sync_dialog(
                             .into_element();
                         })),
                 )
-                .into_element();
-        }));
+                .into_element(),
+            )
+            .into_element();
+        }),
+        move || dismiss(),
+    );
 }
 
 /// 一行复选：由 ui::check_row 提供方框、选中态与键盘操作。

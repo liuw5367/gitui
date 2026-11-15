@@ -12,3 +12,4 @@ screens/refs_view.rs
 workspace/commit.rs
 workspace/agent.rs
 screens/conflict_view.rs
+screens/sync_dialog.rs
