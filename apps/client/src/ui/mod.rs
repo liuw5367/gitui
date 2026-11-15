@@ -24,6 +24,7 @@ pub(crate) mod key_value;
 pub(crate) mod menu;
 pub(crate) mod row;
 pub(crate) mod section;
+pub(crate) mod setting_row;
 pub(crate) mod split;
 pub(crate) mod segmented;
 pub(crate) mod tabs;
