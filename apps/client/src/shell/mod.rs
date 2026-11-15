@@ -152,7 +152,7 @@ pub(crate) fn titlebar(
                             None => String::new(),
                         }
                     })
-                    .text_size(px(11.0))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
                 )
                 .child(
@@ -175,7 +175,7 @@ pub(crate) fn titlebar(
                                     "中".to_string()
                                 }
                             })
-                            .text_size(px(11.0))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text2()),
                         ),
                 )
@@ -261,7 +261,7 @@ pub(crate) fn toolbar(
                         .value(history_query)
                         .on_change(move |value: &str| history_query.set(value.to_string()))
                         .placeholder(move || i18n::t(language.get().as_str(), "history.filter"))
-                        .text_size(px(12.0))
+                        .text_size(px(crate::ui::BODY))
                         .flex_1(),
                 )
                 .child(widgets::kbd("⌘F")),
@@ -380,8 +380,8 @@ pub(crate) fn state_banner(
                             )
                         })
                         .flex_1()
-                        .text_size(px(10.5))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
@@ -444,8 +444,8 @@ pub(crate) fn state_banner(
                     .child({
                         let language_now = language_now.clone();
                         text(move || i18n::t(language_now.as_str(), message_key))
-                            .text_size(px(10.5))
-                            .line_height(px(14.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text2())
                     })
                     .child(view().flex_1())
@@ -494,8 +494,8 @@ pub(crate) fn state_banner(
                                     )
                                 }
                             })
-                            .text_size(px(10.5))
-                            .line_height(px(14.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text2()),
                         )
                         .child(view().flex_1())
@@ -548,8 +548,8 @@ pub(crate) fn state_banner(
                                     )
                                 }
                             })
-                            .text_size(px(10.5))
-                            .line_height(px(14.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text2()),
                         )
                         .child(view().flex_1())
@@ -616,9 +616,8 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
                             .and_then(|tab| tab.sync_message)
                             .unwrap_or_default()
                     })
-                    .text_size(px(10.5))
-                    .line_height(px(14.0))
-                    .font_family("SF Mono")
+                    .text_size(px(crate::ui::CODE))
+                    .line_height(px(crate::ui::CODE_LINE))
                     .text_color(move || match tab.get() {
                         Some(tab) if tab.sync_failed => design::danger(),
                         _ => design::text2(),
@@ -631,7 +630,7 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
                             .map(|tab| tab.branch.clone())
                             .unwrap_or_default()
                     })
-                    .text_size(px(9.5))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
                 )
                 .into_element();
@@ -697,7 +696,7 @@ pub(crate) fn op_banner(
                             ],
                         )
                     })
-                    .text_size(px(11.0))
+                    .text_size(px(crate::ui::SECONDARY))
                     .line_height(px(15.0))
                     .text_color(move || design::text()),
                 )
@@ -734,8 +733,8 @@ pub(crate) fn statusbar(
                     .map(|tab| tab.branch)
                     .unwrap_or_default();
             })
-            .text_size(px(10.5))
-            .line_height(px(14.0))
+            .text_size(px(crate::ui::SECONDARY))
+            .line_height(px(crate::ui::SECONDARY_LINE))
             .text_color(move || design::text3()),
         )
         .child(view().flex_1())
@@ -752,8 +751,8 @@ pub(crate) fn statusbar(
                 .child(widgets::icon("check", 10.0, design::ok))
                 .child(
                     text(message)
-                        .text_size(px(10.5))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text2())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
@@ -771,20 +770,20 @@ pub(crate) fn statusbar(
                     &[("count", count.to_string())],
                 );
             })
-            .text_size(px(10.5))
-            .line_height(px(14.0))
+            .text_size(px(crate::ui::SECONDARY))
+            .line_height(px(crate::ui::SECONDARY_LINE))
             .text_color(move || design::text3()),
         )
         .child(
             text("UTF-8")
-                .text_size(px(10.5))
-                .line_height(px(14.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
             text("LF")
-                .text_size(px(10.5))
-                .line_height(px(14.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         );
 }
@@ -816,7 +815,7 @@ fn mode_tab(
         .on_press(on_press)
         .child(
             text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(11.5))
+                .text_size(px(crate::ui::BODY))
                 .text_color(move || {
                     if active_text() {
                         design::text()
@@ -830,7 +829,7 @@ fn mode_tab(
             this.child(dynamic(move || -> AnyElement {
                 match count.as_ref() {
                     Some(count) => text(count().to_string())
-                        .text_size(px(9.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3())
                         .into_element(),
                     None => view().w(px(0.0)).into_element(),
