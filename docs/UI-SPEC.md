@@ -13,6 +13,8 @@
 
 ### 0.1 Regions
 
+区域划分与信息层级以设计板为准；字号、行高、控件高度按 [DESIGN-HANDOFF.md](DESIGN-HANDOFF.md) §2.4 的原生刻度，控件实现来自应用的 `ui` 层（[UI-KIT.md](UI-KIT.md)）。
+
 | Region | NSH/AppKit | Rules |
 |---|---|---|
 | Window | NSWindow via NSH | 1 window, multiple repo tabs; min 1100×700; restore size/position |
@@ -137,7 +139,7 @@ Up/Down selects commits; Left/Right folds/expands files; `Space` preview; `⌘C`
 
 - Header: `Hooks` + status + duration + `View full log`.
 - Steps: `pre-commit`, `prepare-commit-msg`, `commit-msg`, `post-commit`; passed/failed/skipped/running/cancelled.
-- Log: monospace, 8.5–11 px, scroll, max 1 MB live; full log in temp file.
+- Log: monospace 12 px, scroll, max 1 MB live; full log in temp file.
 - Actions: **Retry hooks**, **Commit without hooks** (danger, confirm, `--no-verify`), **Cancel** while running.
 - Post-commit failure: yellow warning, commit still successful; no rollback.
 - Hook error must include command, exit code, stderr excerpt; redact tokens/URLs.

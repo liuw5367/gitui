@@ -10,7 +10,7 @@
 
 ## 1. Principles
 
-- **Native first**: AppKit controls/behaviour, system font, SF Symbols, standard menus, sheets, focus, VoiceOver.
+- **Native first**: 行为来自 NSH 的原生元素与 AppKit 后端（输入、菜单、告警、滚动、窗口）；外观由 `ui` 层按系统刻度实现；字体为系统字体；图标用 SVG sprite（见 §4）。原生菜单、sheet、焦点与 VoiceOver 语义优先。
 - **Dense but legible**: Git client density is intentional; do not inflate rows to “web app” sizes.
 - **Hierarchy through weight/colour**, not uppercase micro-labels or boxes everywhere.
 - **One accent**: system blue; no second primary blue; destructive is a separate semantic colour.
@@ -47,19 +47,17 @@
 
 | Role | Size | Weight | Notes |
 |---|---|---|---|
-| Window title | 13 | semibold | titlebar |
-| Body / labels | 13 | regular | native default |
-| Secondary | 11 | regular | help/description |
-| Metadata | 9.5–10.5 | regular | 设计稿实测：`.wglabel` 9.5、`.statusbar` 10.5、`.wrepo .wt` 9 |
-| Table header | 9.5–10.5 | semibold | 设计稿实测：`.commit-cols` 9.5/600、`.refs-cols` 10/500（sentence case） |
-| Section header | 11–12 | semibold | sentence case |
-| Code/diff | 11–12 | regular | SF Mono; 10.5 minimum |
-| Button | 12–13 | medium | 22/24 px height |
-| Badge | 9.5–10.5 | medium | no all-caps except known acronyms |
+| Body / labels | 13 | regular | `ui::BODY`，行高 18 |
+| Secondary | 11 | regular | `ui::SECONDARY`，帮助与说明，行高 15 |
+| Metadata / table header | 11 | medium | `ui::META`，sentence case |
+| Section header | 11 | medium | `ui::section_label` |
+| Code / diff | 12 | regular | `ui::CODE`，SF Mono，行高 18 |
+| Button | 11（Small）/ 13（Regular、Large） | medium | 高度 22 / 28 / 32 |
+| Badge | 11 | medium | 高度 18，不用全大写（除已知缩写） |
 
-- Font: system SF Pro Text; code SF Mono. No custom display font.
-- 设计稿在徽章、元数据与菜单项使用 8.5–9.5px；按“完全还原”实现，不在实现侧抬高字号（见 `plans.local/2026-11-14-design-parity-build.md` D-E）。
-- Line height: 1.3–1.5; diff 1.5.
+- Font: system UI font; code SF Mono. No custom display font.
+- 字号以系统刻度为准，不再采用设计稿的 8.5–10.5px（见 §2.4 与 §12）。界面中不存在低于 11pt 的用户可见文字。
+- Line height: 正文 18/13，代码 18/12。
 
 ### 2.3 Spacing / shape
 
@@ -67,15 +65,16 @@
 |---|---|
 | Base unit | 4 |
 | Gaps | 4 / 6 / 8 / 12 / 16 |
-| Row height (tables/lists) | 25（侧栏）/ 28（提交行） |
-| Sidebar row | 25 |
-| Button height | 22 small / 24 regular / 28 large |
-| Field height | 26（`.field` 实测覆盖为 26） |
-| Segmented height | 23–24 |
+| Row height (tables/lists) | 28；紧凑行 24（菜单项、快捷键行） |
+| Sidebar row | 28 |
+| Button height | 22 small / 28 regular / 32 large |
+| Field height | 28 |
+| Segmented height | 28 |
 | Menu item | 24 |
-| Toolbar | 44（`.toolbar.v2` 实测） |
-| Titlebar | 38（无 tabs）/ 44（with-tabs） |
-| Radius | 6 controls / 8 panels / 10 window |
+| Toolbar | 52 |
+| Titlebar | 44（自绘仓库页签；系统窗口按钮区不重绘） |
+| Status bar | 24 |
+| Radius | 6 controls / 10 panels / 12 window |
 | Hairline | 1 px (0.5 pt on Retina) |
 
 - No gratuitous pills/cards; use separators and spacing.
@@ -83,6 +82,29 @@
 - Menus: NSMenu; 6–7 px radius; 24 px items; vibrancy.
 
 ---
+
+### 2.4 原生刻度
+
+字号、行高、控件高度与区域高度以 macOS 系统刻度为准，设计 CSS 只决定结构与层级；颜色仍取自设计稿的变量（`theme.json`）。常量集中在 `apps/client/src/design/metrics.rs` 的 `native` 模块，`ui` 层的常量是它的别名。
+
+| 项 | 值 |
+|---|---|
+| 正文 / 行高 | 13 / 18 |
+| 次要文字 / 行高 | 11 / 15 |
+| 元数据、表头 | 11，500 字重 |
+| 代码 / 行高 | 12 / 18 |
+| 控件高 | 22 / 28 / 32 |
+| 行高 | 28；紧凑 24 |
+| 工具栏 | 52 |
+| 标题栏 | 44 |
+| 状态栏 | 24 |
+| 侧栏 | 232 |
+| 圆角 | 6 / 10 / 12 |
+| 图标 | 12 / 13 / 16 |
+
+### 2.5 颜色
+
+颜色只来自 `theme.json`（设计 CSS 的 `:root` 与 `.theme-dark`）。语义角色（正文、次要、分隔、选中、焦点、控件底与描边）在 `design/mod.rs` 里以函数暴露，`ui` 层只调用这些函数；页面不写颜色。系统材质（`macos_backdrop`）本版未使用，侧栏与工具栏用设计稿的底色，记入 §12 偏离清单。
 
 ## 3. Control mapping
 
@@ -108,35 +130,16 @@
 | traffic lights | system standard window buttons |
 
 - Do not recreate AppKit controls with custom drawing unless the design requires a diff/graph/editor.
-- Use SF Symbols for icons; inline SVG is canvas-only.
+- 图标用设计稿的 SVG sprite；`ui::icon_view` 统一三档尺寸。
 
 ---
 
 ## 4. Icons
 
-- Use SF Symbols with consistent weight (regular/medium) and optical size.
-- Suggested symbols:
-  - repo/branch: `arrow.triangle.branch`
-  - commit: `point.3.connected.trianglepath.dotted`
-  - history: `clock.arrow.circlepath`
-  - changes: `plus.forwardslash.minus`
-  - sync: `arrow.triangle.2.circlepath`
-  - fetch: `arrow.down.circle`
-  - pull: `arrow.down.to.line`
-  - push: `arrow.up.to.line`
-  - merge: `arrow.triangle.merge`
-  - conflict: `exclamationmark.triangle`
-  - hook: `terminal`
-  - tag: `tag`
-  - remote: `network`
-  - stash: `archivebox`
-  - settings: `gearshape`
-  - agent: `sparkles`
-  - search: `magnifyingglass`
-  - close: `xmark`
-  - more: `ellipsis`
-- Icon sizes: 13–16 in toolbars/rows; 12 in buttons; 16–18 toolbar.
-- Every icon-only button: accessibility label + tooltip.
+- 图标使用设计稿的 SVG sprite（`apps/client/src/design/icons.rs`），尺寸只有三档：按钮内 12、行内 13、工具栏与页头 16，线宽 1.5。
+- NSH 0.5.0 没有 SF Symbols 的接口（只有 iOS 导航栏的 header symbol），因此不采用 SF Symbols。图标的语义命名对齐 SF Symbols，便于将来替换。
+- 每个图标按钮必须有可见提示与无障碍名称；`ui::icon_button` 的 `label` 同时承担两者。
+- 不新增第四档尺寸；需要更小的字形时改图形本身，不改字号。
 
 ---
 
@@ -246,9 +249,25 @@
 - [ ] Every screen has loading/empty/error/disabled states.
 - [ ] Every action maps to a Rust service command and a use case.
 - [ ] Buttons 22/24; rows 28–30; no 8 px labels.
-- [ ] All icons SF Symbols; labels/tooltips.
+- [ ] 图标只用三档尺寸；图标按钮有可见提示与无障碍名称。
 - [ ] Light/dark checked; contrast/focus checked.
 - [ ] English/zh-Hans strings; +30% length checked.
 - [ ] Destructive confirmations; no silent force/discard.
 - [ ] Hook panel shows status, log, retry, bypass confirmation.
 - [ ] No TSX/JS/HTML in production.
+
+---
+
+## 12. 偏离清单
+
+设计稿与实现之间的每一处可见差异登记在这里，逐组补充；没有登记的差异视为缺陷。列含义：画板值与实现值、原因、能否回退。
+
+| # | 位置 | 画板值 | 实现值 | 原因 | 可回退 |
+|---|---|---|---|---|---|
+| 1 | 全库字号 | 8.5–10.5pt | 11–13pt（§2.4） | 设计稿字号低于系统刻度，11pt 是可读下限 | 是（改 `native` 常量） |
+| 2 | 行高 | 侧栏 25、提交行 28、菜单 24 | 28、28、24 | 系统列表行高 | 是 |
+| 3 | 控件高 | 按钮 24/22、字段 26、分段 26 | 28/22、28、28 | 系统控件高度 | 是 |
+| 4 | 工具栏 | 44（`.toolbar.v2`） | 52 | 系统工具栏高度 | 是 |
+| 5 | 圆角 | 控件 6、面板 8、窗口 10 | 6、10、12 | 系统外观 | 是 |
+| 6 | 图标 | 内联 SVG sprite，多档尺寸 | 同一 sprite，三档 12/13/16 | nsh 0.5.0 无 SF Symbols 接口 | 否（需自绘字形） |
+| 7 | 侧栏与工具栏材质 | 设计稿为纯色 | 纯色，未用 `macos_backdrop` | 保持与设计稿一致的底色；材质留到需要时再评估 | 是 |

@@ -1,0 +1,7 @@
+# 已迁到 ui 层的页面文件（相对 apps/client/src/）。
+#
+# 每完成一组就往这里追加该组的文件；P8 时应覆盖 screens/、workspace/、shell/ 下的
+# 全部界面文件。tools/check-ui.sh 会检查这些文件不再直接引用 nsh_base、不再出现
+# 裸 on_press、字号字面量与自带色板。
+#
+# P0：只有 ui 层本身，页面从 P1 开始迁。

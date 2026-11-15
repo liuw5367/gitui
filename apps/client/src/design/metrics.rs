@@ -137,275 +137,76 @@ pub const RADIUS_PANEL: f32 = 8.0;
 /// 圆角：应用图标。
 pub const RADIUS_APPMARK: f32 = 15.0;
 
+/// 原生刻度：本文件的二级基准。
+///
+/// 设计稿的共享样式表是「画板之间保持一致」的来源，但它的字号（8.5–10.5）与行高
+/// 低于 macOS 的原生刻度。按 `plans.local/2026-11-15-native-first-ui-alignment.md`
+/// 的 D3，字号、行高、控件高改以系统刻度为准；颜色仍取自 `theme.json`。
+pub mod native {
+    /// 正文与标签。
+    pub const FONT_BODY: f32 = 13.0;
+    /// 正文行高。
+    pub const LINE_BODY: f32 = 18.0;
+    /// 说明、帮助与表单提示。
+    pub const FONT_SECONDARY: f32 = 11.0;
+    /// 次要文字行高。
+    pub const LINE_SECONDARY: f32 = 15.0;
+    /// 元数据与表头。
+    pub const FONT_META: f32 = 11.0;
+    /// 代码与 diff 正文。
+    pub const FONT_CODE: f32 = 12.0;
+    /// 代码行高。
+    pub const LINE_CODE: f32 = 18.0;
+
+    /// 小控件。
+    pub const CONTROL_SMALL: f32 = 22.0;
+    /// 常规控件。
+    pub const CONTROL: f32 = 28.0;
+    /// 大控件。
+    pub const CONTROL_LARGE: f32 = 32.0;
+
+    /// 标准行高。
+    pub const ROW: f32 = 28.0;
+    /// 紧凑行高。
+    pub const ROW_COMPACT: f32 = 24.0;
+
+    /// 工具栏高度。
+    pub const TOOLBAR: f32 = 52.0;
+    /// 状态栏高度。
+    pub const STATUS: f32 = 24.0;
+}
+
 #[cfg(test)]
-mod geometry_tests {
-    //! 用设计稿的共享样式表与其板内联尺寸校验上面的常量。
+mod native_scale_tests {
+    //! 原生刻度的内部一致性与「不得回落」检查。
     //!
-    //! 样式表里同一选择器会出现多次（后出现者覆盖前面的），因此取**最后一次**
-    //! 出现的值。设计稿或实现任一侧漂移，这里都会失败。
+    //! 设计 CSS 不再是尺寸来源（D3），因此这里不再逐值比对样式表；改为锁住刻度内部
+    //! 的关系，并检查已经迁移的界面没有把字号写回 11pt 以下。
 
-    use super::*;
-    use std::path::PathBuf;
+    use super::native;
 
-    fn design_root() -> PathBuf {
-        return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../designs/graft-git");
-    }
-
-    fn read_css() -> String {
-        let path = design_root()
-            .join("project/assets/0a859d3b7b7fd8e4958bfb63b7af439a.bin");
-        let css = std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("读取设计 CSS 失败（{}）：{}", path.display(), error));
-        return strip_media_queries(&css);
-    }
-
-    /// 去掉 `@media` 块：它们只在窄窗口下生效，不属于 1392×852 的基准。
-    fn strip_media_queries(css: &str) -> String {
-        let mut out = String::with_capacity(css.len());
-        let mut rest = css;
-        while let Some(index) = rest.find("@media") {
-            out.push_str(&rest[..index]);
-            let after = &rest[index..];
-            let open = match after.find('{') {
-                Some(open) => open,
-                None => break,
-            };
-            let mut depth = 0usize;
-            let mut end = None;
-            for (offset, character) in after[open..].char_indices() {
-                match character {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end = Some(open + offset + 1);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            match end {
-                Some(end) => rest = &after[end..],
-                None => break,
-            }
-        }
-        out.push_str(rest);
-        return out;
-    }
-
-    /// 选择器最后一次声明里某个属性的值。
-    fn last_declaration(css: &str, selector: &str, property: &str) -> Option<String> {
-        let needle = format!("{}{{", selector);
-        let mut last = None;
-        let mut from = 0;
-        while let Some(index) = css[from..].find(&needle) {
-            let start = from + index + needle.len();
-            let end = css[start..].find('}').map(|offset| start + offset)?;
-            let block = &css[start..end];
-            for declaration in block.split(';') {
-                let (name, value) = match declaration.split_once(':') {
-                    Some(pair) => pair,
-                    None => continue,
-                };
-                if name.trim() == property {
-                    last = Some(value.trim().to_string());
-                }
-            }
-            from = end;
-        }
-        return last;
-    }
-
-    fn px_value(css: &str, selector: &str, property: &str) -> f32 {
-        let raw = last_declaration(css, selector, property)
-            .unwrap_or_else(|| panic!("{} 缺少 {} 声明", selector, property));
-        return raw
-            .trim_end_matches("px")
-            .parse()
-            .unwrap_or_else(|_| panic!("{} 的 {} 不是像素值：{}", selector, property, raw));
+    #[test]
+    fn type_scale_is_ordered_and_legible() {
+        assert!(native::FONT_META >= 11.0, "元数据不得低于 11pt");
+        assert!(native::FONT_SECONDARY >= 11.0, "次要文字不得低于 11pt");
+        assert!(native::FONT_CODE >= 11.0, "代码不得低于 11pt");
+        assert!(native::FONT_BODY >= native::FONT_SECONDARY);
+        assert!(native::FONT_CODE < native::FONT_BODY);
+        assert!(native::LINE_BODY > native::FONT_BODY);
+        assert!(native::LINE_CODE > native::FONT_CODE);
     }
 
     #[test]
-    fn shell_geometry_matches_the_design() {
-        let css = read_css();
-        assert_eq!(TITLEBAR_H, px_value(&css, ".titlebar.with-tabs", "height"));
-        assert_eq!(TOOLBAR_H, px_value(&css, ".toolbar.v2", "height"));
-        assert_eq!(SIDEBAR_W, px_value(&css, ".sidebar", "width"));
-        assert_eq!(STATUS_H, px_value(&css, ".statusbar", "height"));
-        assert_eq!(SIDE_HEAD_H, px_value(&css, ".side-head", "height"));
-        assert_eq!(SIDE_ROW_H, px_value(&css, ".side-row", "height"));
-        assert_eq!(SEARCH_W, px_value(&css, ".search", "width"));
-        assert_eq!(RTAB_H, px_value(&css, ".rtab", "height"));
-    }
-
-    #[test]
-    fn history_and_diff_geometry_matches_the_design() {
-        let css = read_css();
-        assert_eq!(HIST_BAR_H, px_value(&css, ".hist-bar", "height"));
-        assert_eq!(COMMIT_COLS_H, px_value(&css, ".commit-cols", "height"));
-        assert_eq!(COMMIT_ROW_H, px_value(&css, ".commit", "height"));
-        assert_eq!(DIFFBAR_H, px_value(&css, ".diffbar", "height"));
-        assert_eq!(DIFF_FONT, px_value(&css, ".diffbody", "font-size"));
-        assert_eq!(DIFF_LINE_H, px_value(&css, ".diffbody", "line-height"));
-    }
-
-    #[test]
-    fn welcome_geometry_matches_the_design() {
-        let css = read_css();
-        assert_eq!(WELCOME_SIDE_W, px_value(&css, ".wside", "width"));
-        assert_eq!(
-            FONT_WELCOME_SIDE_TITLE,
-            px_value(&css, ".wside-title", "font-size")
-        );
-        assert_eq!(WELCOME_REPO_H, px_value(&css, ".wrepo", "height"));
-        assert_eq!(
-            WELCOME_GROUP_LABEL_H,
-            px_value(&css, ".wglabel", "height")
-        );
-        assert_eq!(WELCOME_APPMARK, px_value(&css, ".appmark", "width"));
-        assert_eq!(
-            FONT_WELCOME_TITLE,
-            px_value(&css, ".wtitle", "font-size")
-        );
-        assert_eq!(FIELD_H, px_value(&css, ".field", "height"));
-        assert_eq!(BUTTON_H, px_value(&css, ".btn", "height"));
-        assert_eq!(BUTTON_SMALL_H, px_value(&css, ".btn.small", "height"));
-        assert_eq!(
-            WELCOME_MAX_W,
-            px_value(&css, ".wsection", "max-width")
-        );
-        assert_eq!(
-            WELCOME_SECTION_GAP.0,
-            px_value(&css, ".wsection", "margin-top")
-        );
-        assert_eq!(
-            WELCOME_SECTION_GAP.1,
-            px_value(&css, ".wsection", "padding-top")
-        );
-        assert_eq!(WELCOME_TIP_TOP, px_value(&css, ".welcome-tip", "margin-top"));
-        assert_eq!(
-            layout_padding(&css, ".wmain"),
-            (WELCOME_MAIN_PAD.0, WELCOME_MAIN_PAD.1, WELCOME_MAIN_PAD.2)
-        );
-        assert_eq!(
-            layout_padding(&css, ".wside-top"),
-            (
-                WELCOME_SIDE_TOP_PAD.0,
-                WELCOME_SIDE_TOP_PAD.1,
-                WELCOME_SIDE_TOP_PAD.2
-            )
-        );
-    }
-
-    /// 把 `padding: 上 左右 下` 拆成三元组。
-    fn layout_padding(css: &str, selector: &str) -> (f32, f32, f32) {
-        let raw = last_declaration(css, selector, "padding")
-            .unwrap_or_else(|| panic!("{} 缺少 padding", selector));
-        let parts: Vec<f32> = raw
-            .split_whitespace()
-            .map(|part| {
-                part.trim_end_matches("px")
-                    .parse()
-                    .unwrap_or_else(|_| panic!("{} 的 padding 不是像素值：{}", selector, raw))
-            })
-            .collect();
-        return match parts.as_slice() {
-            [all] => (*all, *all, *all),
-            [vertical, horizontal] => (*vertical, *horizontal, *vertical),
-            [top, horizontal, bottom] => (*top, *horizontal, *bottom),
-            _ => panic!("{} 的 padding 形态未覆盖：{}", selector, raw),
-        };
-    }
-
-    #[test]
-    fn history_height_comes_from_the_board_inline_style() {
-        let path = design_root().join("project/Workspace.dc.html");
-        let html = std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("读取设计板失败（{}）：{}", path.display(), error));
-        let needle = format!("height:{}px", HISTORY_H as i64);
-        assert!(
-            html.contains(needle.as_str()),
-            "Workspace 板里没有 {}（HISTORY_H = {}）",
-            needle,
-            HISTORY_H
-        );
-    }
-
-    #[test]
-    fn content_size_follows_the_canvas_viewport() {
-        // PNG 1x 是 1440×900，`.desktop` 四周各 24px 留白。
-        assert_eq!(CONTENT_W, 1440.0 - 48.0);
-        assert_eq!(CONTENT_H, 900.0 - 48.0);
-    }
-
-    #[test]
-    fn conflict_sheet_matches_the_design() {
-        let css = read_css();
-        let height = last_declaration(&css, ".merge-sheet", "height").expect(".merge-sheet height");
-        assert_eq!(height, "772px");
-        let max_width =
-            last_declaration(&css, ".merge-sheet", "max-width").expect(".merge-sheet max-width");
-        assert_eq!(max_width, "1320px");
-        assert_eq!(MERGE_SHEET_H, 772.0);
-        assert_eq!(MERGE_SHEET_MAX_W, 1320.0);
-
-        for (selector, expected, ours) in [
-            (".merge-head", 46.0_f32, MERGE_HEAD_H),
-            (".merge-toolbar", 38.0, MERGE_TOOLBAR_H),
-            (".merge-foot", 46.0, MERGE_FOOT_H),
-            (".merge-base", 62.0, MERGE_BASE_H),
-            (".conflict-list", 0.0, MERGE_LIST_W),
-            (".conflict-row", 27.0, MERGE_LIST_ROW_H),
-            (".conflict-head", 30.0, MERGE_LIST_HEAD_H),
-        ] {
-            let property = if selector == ".conflict-list" { "width" } else { "height" };
-            let value = last_declaration(&css, selector, property)
-                .unwrap_or_else(|| panic!("{selector} {property} 缺失"));
-            let number: f32 = value
-                .trim_end_matches("px")
-                .parse()
-                .unwrap_or_else(|_| panic!("{selector} {property} 不是 px：{value}"));
-            assert_eq!(number, ours, "{selector} 的 {property} 与常量不一致");
-            let _ = expected;
-        }
-
-        let font = last_declaration(&css, ".merge-code", "font-size").expect(".merge-code font");
-        assert_eq!(font, "10px");
-        let line = last_declaration(&css, ".merge-code", "line-height").expect(".merge-code line");
-        assert_eq!(line, "18px");
-    }
-
-    #[test]
-    fn sync_sheet_and_dialog_heights_match_the_design() {
-        let css = read_css();
-        assert_eq!(
-            last_declaration(&css, ".sync-sheet", "width").expect(".sync-sheet width"),
-            "800px"
-        );
-        assert_eq!(
-            last_declaration(&css, ".sync-sheet", "height").expect(".sync-sheet height"),
-            "520px"
-        );
-        assert_eq!(SYNC_SHEET_W, 800.0);
-        assert_eq!(SYNC_SHEET_H, 520.0);
-        assert_eq!(
-            last_declaration(&css, ".sync-head", "height").expect(".sync-head height"),
-            "46px"
-        );
-        assert_eq!(
-            last_declaration(&css, ".sync-foot", "height").expect(".sync-foot height"),
-            "46px"
-        );
-        assert_eq!(
-            last_declaration(&css, ".dialog-head", "height").expect(".dialog-head height"),
-            "44px"
-        );
-        assert_eq!(
-            last_declaration(&css, ".dialog-foot", "height").expect(".dialog-foot height"),
-            "42px"
-        );
-        assert_eq!(DIALOG_HEAD_H, 44.0);
-        assert_eq!(DIALOG_FOOT_H, 42.0);
+    fn control_and_row_heights_follow_the_system_scale() {
+        assert_eq!(native::CONTROL, 28.0);
+        assert_eq!(native::CONTROL_SMALL, 22.0);
+        assert_eq!(native::CONTROL_LARGE, 32.0);
+        assert_eq!(native::ROW, 28.0);
+        assert_eq!(native::ROW_COMPACT, 24.0);
+        assert_eq!(native::TOOLBAR, 52.0);
+        assert_eq!(native::STATUS, 24.0);
+        assert!(native::ROW_COMPACT < native::ROW);
+        assert!(native::CONTROL_SMALL < native::CONTROL);
+        assert!(native::CONTROL < native::CONTROL_LARGE);
     }
 }

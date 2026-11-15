@@ -14,6 +14,9 @@ mod model;
 mod screens;
 mod shell;
 mod shortcuts;
+// ui 层先建立，P1 起页面逐个迁入；迁完删除这条 allow。
+#[allow(dead_code)]
+mod ui;
 mod widgets;
 mod workspace;
 
@@ -263,6 +266,13 @@ pub fn App() -> impl IntoElement {
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
     let palette_open = signal(false);
+    // 组件画廊（P0 的验收入口）：⌘⇧D 打开，Esc 关闭。P6 并入命令面板。
+    // `GITUI_GALLERY=1` 用于截图验收：不依赖键盘自动化也能直接看到组件层。
+    let gallery_open = signal(
+        std::env::var("GITUI_GALLERY")
+            .map(|value| value == "1")
+            .unwrap_or(false),
+    );
     let settings_state = signal(store::load_settings(&store_dir));
     {
         // 日期格式是全局显示偏好，装进 dates 模块供各视图直接读取。
@@ -3189,6 +3199,11 @@ pub fn App() -> impl IntoElement {
             }
         });
     }
+    // 组件画廊：调试入口，独立于命令注册表，避免 P0 就改动快捷键清单。
+    on_key("mod+shift+d", move |_| {
+        gallery_open.set(!gallery_open.get_untracked());
+    });
+
     // 命令面板的键盘导航：↑↓ 移动高亮，↵ 执行，打开面板时高亮回到第一行。
     on_key("down", {
         let palette_open = palette_open;
@@ -3287,7 +3302,12 @@ pub fn App() -> impl IntoElement {
         let tabs = tabs;
         let active = active;
         let recording = recording_shortcut;
+        let gallery_open = gallery_open;
         move |_| {
+            if gallery_open.get_untracked() {
+                gallery_open.set(false);
+                return;
+            }
             // 录制中按 Esc 只取消录制，不继续关下面的浮层。
             if recording.get_untracked().is_some() {
                 recording.set(None);
@@ -3541,7 +3561,8 @@ pub fn App() -> impl IntoElement {
                 palette_selected,
             )
             .into_element();
-        }));
+        }))
+        .child(ui::gallery::gallery(gallery_open));
 }
 
 /// 构建原生菜单。`language` 取当前语言，切换语言后重建即可。
