@@ -14,9 +14,10 @@
 5. [ARCHITECTURE.md](ARCHITECTURE.md) — Rust modules, services, sequences, threading.
 6. [TEST-PLAN.md](TEST-PLAN.md) — fixtures, layered tests, R-ID traceability.
 7. [DESIGN-HANDOFF.md](DESIGN-HANDOFF.md) — canvas → NSH/AppKit mapping, native scale, tokens, icons, deviation list.
-8. [UI-KIT.md](UI-KIT.md) — the app's `ui` component layer: inventory, API rules, states.
-9. [AGENT-THREAT-MODEL.md](AGENT-THREAT-MODEL.md) — v0.2 Agent security boundary.
-10. [adr/](adr/README.md) — seven accepted architecture decisions.
+8. [UI-KIT.md](UI-KIT.md) — the app's `ui` component layer: inventory, signatures, selection rules.
+9. [BOARD-PARITY.md](BOARD-PARITY.md) — per-board control inventory vs implementation, and the components still missing.
+10. [AGENT-THREAT-MODEL.md](AGENT-THREAT-MODEL.md) — v0.2 Agent security boundary.
+11. [adr/](adr/README.md) — seven accepted architecture decisions.
 
 ## Source-of-truth rules
 
@@ -55,5 +56,6 @@
 | TEST-PLAN | QA + tech lead | new fixture/test/release gate |
 | DESIGN-HANDOFF | Design | token/control/board change |
 | UI-KIT | Client | component added, changed or retired |
+| BOARD-PARITY | Client | board migrated, component landed, or gap closed |
 | AGENT-THREAT-MODEL | Security + tech lead | Agent capability change |
 | ADR | Tech lead | irreversible or cross-cutting decision |
