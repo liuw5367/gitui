@@ -429,7 +429,9 @@
     "customized": "Customized",
     "groupApplication": "Application",
     "groupGit": "Git",
-    "groupAbout": "About"
+    "groupAbout": "About",
+    "credentialsPending": "Signing in isn't connected yet — it arrives with the remote/credential work",
+    "notConnected": "Not connected"
   },
   "refs": {
     "title": "Refs",

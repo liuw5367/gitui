@@ -212,6 +212,8 @@ fn permissions_block(
         AgentAction::Pull,
         AgentAction::Push,
         AgentAction::Discard,
+        AgentAction::ReadFiles,
+        AgentAction::ForcePush,
     ] {
         let set_permission = set_permission.clone();
         rows.push(

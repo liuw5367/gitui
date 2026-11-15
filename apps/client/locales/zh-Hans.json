@@ -429,7 +429,9 @@
     "customized": "已自定义",
     "groupApplication": "应用",
     "groupGit": "Git",
-    "groupAbout": "关于"
+    "groupAbout": "关于",
+    "credentialsPending": "登录尚未接入，会随远程与凭据功能一起提供",
+    "notConnected": "未接入"
   },
   "refs": {
     "title": "引用",

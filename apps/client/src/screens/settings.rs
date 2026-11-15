@@ -94,6 +94,7 @@ pub(crate) fn settings(
     set_review: std::sync::Arc<dyn Fn(u32)>,
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
     shortcuts: ShortcutUi,
+    notice: Signal<Option<String>>,
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -131,6 +132,7 @@ pub(crate) fn settings(
                     set_review,
                     toggle_protected,
                     shortcuts,
+                    notice,
                     actions,
                 )),
         )
@@ -334,6 +336,7 @@ fn main(
     set_review: std::sync::Arc<dyn Fn(u32)>,
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
     shortcuts: ShortcutUi,
+    notice: Signal<Option<String>>,
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
@@ -414,7 +417,7 @@ fn main(
                         )
                         .into_element(),
                         Section::Credentials => {
-                            credentials_page(language, git_info.clone()).into_element()
+                            credentials_page(language, git_info.clone(), notice).into_element()
                         }
                         Section::Agent => agent_page(
                             language,
@@ -1454,6 +1457,7 @@ fn shortcuts_page(
 fn credentials_page(
     language: Signal<SharedString>,
     info: (String, String, String),
+    notice: Signal<Option<String>>,
 ) -> AnyElement {
     let (_, _, helper) = info;
     let helper_text = if helper.trim().is_empty() {
@@ -1483,7 +1487,7 @@ fn credentials_page(
                         .line_height(px(15.0))
                         .text_color(move || design::text()),
                 )
-                .child(disabled_row(language, "settings.signIn"))
+                .child(pending_row(language, "settings.signIn", notice))
                 .into_element(),
         ))
         .child(section_block(
@@ -1513,6 +1517,35 @@ fn credentials_page(
                 )
                 .into_element(),
         ))
+        .into_element();
+}
+
+/// 可点但尚未接入的按钮：点一下在状态栏说明原因，不写假数据。
+fn pending_row(
+    language: Signal<SharedString>,
+    label_key: &'static str,
+    notice: Signal<Option<String>>,
+) -> AnyElement {
+    return view()
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .child(crate::widgets::small_button(
+            move || i18n::t(language.get().as_str(), label_key),
+            move || {
+                let lang = language.get_untracked();
+                crate::interactions::notify(
+                    notice,
+                    i18n::t(lang.as_str(), "settings.credentialsPending"),
+                );
+            },
+        ))
+        .child(
+            text(move || i18n::t(language.get().as_str(), "settings.notConnected"))
+                .text_size(px(9.5))
+                .line_height(px(13.0))
+                .text_color(move || design::text3()),
+        )
         .into_element();
 }
 

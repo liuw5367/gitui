@@ -3314,6 +3314,7 @@ pub fn App() -> impl IntoElement {
                                 record: record_shortcut.clone(),
                                 restore: restore_shortcuts.clone(),
                             },
+                            notice,
                             actions_for_view.clone(),
                         )
                         .into_element(),
