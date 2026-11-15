@@ -40,32 +40,8 @@ pub(crate) struct TableSpec {
 
 /// 一张虚拟化表格。
 pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
-    let mut columns: Vec<DataTableColumn> = Vec::new();
-    for column in &spec.columns {
-        // `DataTableColumn` 是 non_exhaustive：只能先 default 再逐字段赋值。
-        let mut spec_column = DataTableColumn::default();
-        spec_column.key = SharedString::from(column.key);
-        spec_column.title = column.title.map(SharedString::from);
-        spec_column.width = column.width.map(Points);
-        spec_column.fixed = if column.fixed {
-            ColumnFixed::Left
-        } else {
-            ColumnFixed::None
-        };
-        spec_column.resizable = Some(false);
-        spec_column.movable = Some(false);
-        spec_column.align = DataTableAlign::Start;
-        columns.push(spec_column);
-    }
-    let mut data = DataTableRows::new(spec.rows.len());
-    for (index, column) in spec.columns.iter().enumerate() {
-        let values: Vec<String> = spec
-            .rows
-            .iter()
-            .map(|row| row.get(index).cloned().unwrap_or_default())
-            .collect();
-        data = data.texts(column.key, values);
-    }
+    let columns = columns_of(&spec.columns);
+    let data = rows_of(&spec.columns, &spec.rows);
     let render = spec.render;
     let on_select = std::rc::Rc::new(spec.on_select);
     return nsh_base::data_table()
@@ -103,4 +79,81 @@ pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
                 on_select(row as usize);
             }
         });
+}
+
+/// 把列定义转成 `data_table` 的列。
+///
+/// `DataTableColumn` 是 `#[non_exhaustive]`，只能先 `default()` 再逐字段赋值。
+fn columns_of(spec: &[Column]) -> Vec<DataTableColumn> {
+    let mut columns = Vec::with_capacity(spec.len());
+    for column in spec {
+        let mut built = DataTableColumn::default();
+        built.key = SharedString::from(column.key);
+        built.title = column.title.map(SharedString::from);
+        built.width = column.width.map(Points);
+        built.fixed = if column.fixed {
+            ColumnFixed::Left
+        } else {
+            ColumnFixed::None
+        };
+        built.resizable = Some(false);
+        built.movable = Some(false);
+        built.align = DataTableAlign::Start;
+        columns.push(built);
+    }
+    return columns;
+}
+
+/// 把行数据按列键喂给 `data_table`；缺的格子补空串，多出的列忽略。
+fn rows_of(columns: &[Column], rows: &[Vec<String>]) -> DataTableRows {
+    let mut data = DataTableRows::new(rows.len());
+    for (index, column) in columns.iter().enumerate() {
+        let values: Vec<String> = rows
+            .iter()
+            .map(|row| row.get(index).cloned().unwrap_or_default())
+            .collect();
+        data = data.texts(column.key, values);
+    }
+    return data;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn column(key: &'static str, width: Option<f32>, fixed: bool) -> Column {
+        return Column {
+            key,
+            title: Some(key),
+            width,
+            fixed,
+        };
+    }
+
+    #[test]
+    fn columns_keep_order_widths_and_fixed_side() {
+        let columns = columns_of(&[
+            column("graph", Some(64.0), true),
+            column("summary", None, false),
+        ]);
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0].key.as_ref(), "graph");
+        assert_eq!(columns[0].width, Some(Points(64.0)));
+        assert_eq!(columns[0].fixed, ColumnFixed::Left);
+        assert_eq!(columns[1].key.as_ref(), "summary");
+        assert_eq!(columns[1].width, None);
+        assert_eq!(columns[1].fixed, ColumnFixed::None);
+    }
+
+    #[test]
+    fn rows_map_by_column_index_and_tolerate_short_rows() {
+        let columns = [column("a", None, false), column("b", None, false)];
+        let rows = vec![
+            vec!["1".to_string(), "2".to_string()],
+            vec!["3".to_string()],
+        ];
+        let data = rows_of(&columns, &rows);
+        // 行数取自行数据；短行补空串、不 panic、不越界。
+        assert_eq!(data.len(), 2);
+    }
 }
