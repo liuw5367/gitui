@@ -8,6 +8,9 @@
 # 用法：
 #   tools/shots.sh gallery            # 组件画廊（GITUI_GALLERY=1，并关掉欢迎窗口）
 #
+# 只截应用窗口：先用 tools/winid.swift 取窗口 id，再 screencapture -l 精确截取。
+# 整屏截图会截到最前面的别的程序（曾经截到编辑器并误判「界面空白」）。
+#
 # 两个环境变量的作用：
 #   GITUI_GALLERY=1     打开组件画廊（主窗口的覆盖层）
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
@@ -38,25 +41,26 @@ echo "启动应用（HOME=$home_dir）…"
   echo $! >"$home_dir/run-$name.pid"
 )
 
-# 先等构建完成、应用进程出现，再等界面稳定后截图。
-# 固定 sleep 不可靠：冷构建要 60s 以上，热构建只要几秒，截图会落在两种时刻。
-for _ in $(seq 1 180); do
-  if pgrep -f "nsh-app-nsh-app" >/dev/null 2>&1; then
-    break
-  fi
+# 取窗口 id：最大的那个窗口就是主窗口。
+bin="/tmp/winid"
+if [ ! -x "$bin" ]; then
+  mkdir -p "$root/.swift-cache"
+  CLANG_MODULE_CACHE_PATH="$root/.swift-cache" SWIFT_MODULE_CACHE_PATH="$root/.swift-cache" \
+    swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
+fi
+for _ in $(seq 1 60); do
+  window_id="$("$bin" nsh-app --id 2>/dev/null || true)"
+  [ -n "${window_id:-}" ] && break
   sleep 1
 done
-if ! pgrep -f "nsh-app-nsh-app" >/dev/null 2>&1; then
-  echo "应用进程在 180s 内没有出现，看日志：${home_dir#"$root"/}/run-$name.log" >&2
+if [ -z "${window_id:-}" ]; then
+  echo "取不到 gitui 窗口 id，截图取消。" >&2
+  echo "日志：${home_dir#"$root"/}/run-$name.log" >&2
   exit 1
 fi
 sleep "$settle_seconds"
-# 已知限制：这里截的是整屏，而 `screencapture -x` 抓的是当时最前面的窗口。
-# 本环境拿不到窗口 id（Apple Events 未授权），也无法把 gitui 提到前台，
-# 因此当编辑器/浏览器在前台时，截到的是它们而不是 gitui。
-# 产物只能人工确认是 gitui 窗口后才可作为证据。
-screencapture -x "$out"
-echo "截图：${out#"$root"/}"
+screencapture -x -l"$window_id" "$out"
+echo "截图：${out#"$root"/}（窗口 id $window_id）"
 
 if [ -f "$home_dir/run-$name.pid" ]; then
   kill "$(cat "$home_dir/run-$name.pid")" 2>/dev/null || true
