@@ -68,6 +68,9 @@ dev-dist
 target/
 crates/*/Cargo.lock
 
+# 本地临时产物（fixtures/gen-repo.sh 等）
+.tmp/
+
 # 渲染验证用的本地 HOME（tools/shots.sh 创建）
 .nsh-home/
 

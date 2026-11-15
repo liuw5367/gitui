@@ -46,7 +46,7 @@
 <div class="desktop">
   <div class="window">
 
-    <div class="titlebar with-tabs">
+    <div class="titlebar with-tabs" style="height:40px">
       <div class="lights" aria-hidden="true">
         <span class="light red"></span><span class="light yellow"></span><span class="light green"></span>
       </div>
@@ -70,9 +70,7 @@
         <a class="tabadd" href="Welcome.dc.html" aria-label="Open repository">
           <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
         </a>
-        <a class="tab-overflow" href="CommandPalette.dc.html" aria-label="Switch repository">
-          <svg width="11" height="11" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-        </a>
+
       </div>
       <div class="title-right">
         <span class="status-dot"></span>
@@ -142,14 +140,43 @@
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            Remotes <span class="count">1</span>
+            Remotes <span class="count">2</span>
           </div>
-          <button class="side-row" type="button">
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
             <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
-            <span class="nm">origin</span><span class="count">8</span>
+            <span class="nm" style="flex:1;min-width:0">origin</span><span class="count">8</span>
           </button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/main</span></button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="https://github.com/gitui/gitui.git">https://github.com/gitui/gitui.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span><span class="count">↑2</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/release/1.4</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">5 more branches…</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui.git">git@github.com:gitui/gitui.git</span>
+            <span class="sub">push</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">6 more branches…</span></button>
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
+            <span class="nm" style="flex:1;min-width:0">upstream</span><span class="count">3</span>
+          </button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui-upstream.git">git@github.com:gitui/gitui-upstream.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/next</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/release/1.4</span></button>
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
@@ -212,150 +239,16 @@
 
       <div class="main">
 
-        <div class="changeslist" style="height:330px">
-          <div class="changes-bar">
-            <span class="hist-title">Changes</span>
-            <a class="cl-select" href="Changes.dc.html">
-              <span class="cl-dot"></span>
-              <span>Commit composer</span><span class="cl-count">3</span>
-              <svg class="chev" width="9" height="9" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-            </a>
-            <a class="cl-plus" href="Changes.dc.html" aria-label="Manage changelists">
-              <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
-            </a>
-            <span class="spacer"></span>
-            <span class="hist-count">12 changes</span>
-            <button class="chipbtn" type="button">
-              <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-check"></use></svg>
-              Stage All
-            </button>
-            <button class="iconbtn" type="button" aria-label="Filter changes"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-filter"></use></svg></button>
-          </div>
-
-          <div class="cl-pop">
-            <div class="cl-pop-head">
-              Changelists
-              <button class="add" type="button">
-                <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
-                New
-              </button>
-            </div>
-            <a class="cl-row active" href="Changes.dc.html">
-              <span class="cl-radio"></span>
-              <span>Commit composer</span>
-              <span class="cl-pc">3 files</span>
-              <span class="cl-more">…</span>
-            </a>
-            <a class="cl-row" href="Changes.dc.html">
-              <span class="cl-radio"></span>
-              <span>Default Changelist</span>
-              <span class="cl-pc">6 files</span>
-              <span class="cl-more">…</span>
-            </a>
-            <a class="cl-row" href="Changes.dc.html">
-              <span class="cl-radio"></span>
-              <span>Agent cleanup</span>
-              <span class="cl-pc">3 files</span>
-              <span class="cl-more">…</span>
-            </a>
-            <div class="msep"></div>
-            <button class="cl-row" type="button">
-              Move 3 selected files to…
-              <span class="cl-pc">⌥M</span>
-            </button>
-            <button class="cl-row" type="button">Rename Changelist…</button>
-            <div class="cl-pop-foot">
-              <span class="hint">Filters only — staging commits</span>
-              <button class="btn small primary" type="button">Set Active</button>
-            </div>
-          </div>
-
-          <div class="changes-cols"><span></span><span>Path</span><span class="r">Status</span><span class="r">Changes</span></div>
-
-          <div class="cl-group active">
-            <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            <span class="cl-dot"></span>
-            <span class="cl-name">Commit composer</span>
-            <span class="cl-count">3</span>
-            <span class="spacer"></span>
-            <button class="cl-more" type="button" aria-label="Commit composer changelist options">…</button>
-          </div>
-
-          <div class="change-row on">
-            <span class="ck"><input type="checkbox" checked="" aria-label="Stage src/ui/CommitPanel.tsx"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/ui/</span><span style="color:var(--text)">CommitPanel.tsx</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+42</span> <span class="minus">−17</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" checked="" aria-label="Stage src/ui/AgentPanel.tsx"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/ui/</span><span style="color:var(--text)">AgentPanel.tsx</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+18</span> <span class="minus">−6</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" checked="" aria-label="Stage src/git/commit.ts"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/git/</span><span style="color:var(--text)">commit.ts</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+9</span> <span class="minus">−2</span></span>
-          </div>
-
-          <div class="cl-group">
-            <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            <span class="cl-dot"></span>
-            <span class="cl-name">Default Changelist</span>
-            <span class="cl-count">6</span>
-            <span class="spacer"></span>
-            <button class="cl-more" type="button" aria-label="Default Changelist options">…</button>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage src/styles/tokens.css"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/styles/</span><span style="color:var(--text)">tokens.css</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+14</span> <span class="minus">−8</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage src/app/router.ts"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/app/</span><span style="color:var(--text)">router.ts</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+6</span> <span class="minus">−3</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage tests/commit.test.ts"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">tests/</span><span style="color:var(--text)">commit.test.ts</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+11</span> <span class="minus">−5</span></span>
-          </div>
-
-                    <div class="cl-group">
-            <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-right"></use></svg>
-            <span class="cl-dot"></span>
-            <span class="cl-name">Agent cleanup</span>
-            <span class="cl-count">3</span>
-            <span class="spacer"></span>
-            <button class="cl-more" type="button" aria-label="Agent cleanup changelist options">…</button>
-          </div>
-
+        <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--line);background:var(--panel)">
+          <a class="chipbtn" href="Workspace.dc.html" aria-label="Back to commit list">
+            <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-left"></use></svg>
+            Commits
+          </a>
+          <span class="badge-soft">Commit composer</span>
+          <span class="hist-count">src/ui/CommitPanel.tsx</span>
+          <span class="spacer"></span>
+          <span class="hist-count">12 files · +149 −90</span>
         </div>
-
-        <div class="splitter" role="separator" aria-label="Resize changes and diff"></div>
 
         <div class="diffpane">
           <div class="diffbar">
@@ -465,6 +358,134 @@
 
         <div class="insp-body" style="padding:0;background:var(--panel)">
           <div class="form" style="min-height:100%">
+            <div class="staged-box" style="border-radius:7px;position:relative;overflow:visible">
+              <div class="staged-head">
+                <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-branch"></use></svg>
+                Changelists
+                <span class="n">12 files</span>
+                <span class="spacer"></span>
+                <button class="iconbtn" type="button" aria-label="New changelist"><svg width="12" height="12" viewBox="0 0 16 16"><use href="#i-plus"></use></svg></button>
+                <button class="iconbtn" type="button" aria-label="Changelist options"><svg width="12" height="12" viewBox="0 0 16 16"><use href="#i-more"></use></svg></button>
+              </div>
+
+              <div style="max-height:252px;overflow:auto">
+                <div class="fgroup" role="group" aria-label="Commit composer changelist" style="color:var(--text);justify-content:flex-start">
+                  <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+                  <span style="width:7px;height:7px;border-radius:50%;background:var(--accent)" aria-hidden="true"></span>
+                  <span style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Commit composer</span>
+                  <span class="count">3</span>
+                  <span class="spacer"></span>
+                  <button class="cl-more" type="button" aria-label="Commit composer options">…</button>
+                </div>
+                <div class="file-row on" style="height:28px">
+                  <span class="fi" style="width:18px"><input type="checkbox" checked="" aria-label="Unstage CommitPanel.tsx"></span>
+                  <span class="fn">CommitPanel.tsx</span><span class="st m">M</span>
+                  <span class="nums"><span class="plus">+42</span><span class="minus">−17</span></span>
+                  <button class="iconbtn" type="button" aria-label="CommitPanel.tsx actions" style="width:18px;height:18px;font-size:12px">…</button>
+                </div>
+                <div class="file-row" style="height:28px">
+                  <span class="fi" style="width:18px"><input type="checkbox" checked="" aria-label="Unstage AgentPanel.tsx"></span>
+                  <span class="fn">AgentPanel.tsx</span><span class="st m">M</span>
+                  <span class="nums"><span class="plus">+18</span><span class="minus">−6</span></span>
+                  <button class="iconbtn" type="button" aria-label="AgentPanel.tsx actions" style="width:18px;height:18px;font-size:12px">…</button>
+                </div>
+                <div class="file-row" style="height:28px">
+                  <span class="fi" style="width:18px"><input type="checkbox" checked="" aria-label="Unstage commit.ts"></span>
+                  <span class="fn">commit.ts</span><span class="st m">M</span>
+                  <span class="nums"><span class="plus">+9</span><span class="minus">−2</span></span>
+                  <button class="iconbtn" type="button" aria-label="commit.ts actions" style="width:18px;height:18px;font-size:12px">…</button>
+                </div>
+
+                <div class="fgroup" role="group" aria-label="Default Changelist" style="color:var(--text);justify-content:flex-start;border-top:2px solid var(--accent)">
+                  <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+                  <span style="width:7px;height:7px;border-radius:50%;background:var(--text3)" aria-hidden="true"></span>
+                  <span style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Default Changelist</span>
+                  <span class="count">6</span>
+                  <span class="spacer"></span>
+                  <button class="cl-more" type="button" aria-label="Default Changelist options">…</button>
+                </div>
+
+                <div class="file-row" style="height:28px;opacity:.55;outline:1px dashed var(--accent);outline-offset:-2px">
+                  <span class="fi" style="width:18px"><input type="checkbox" aria-label="Stage tokens.css"></span>
+                  <span class="fn">tokens.css</span><span class="st m">M</span>
+                  <span class="nums"><span class="plus">+14</span><span class="minus">−8</span></span>
+                  <button class="iconbtn" type="button" aria-label="tokens.css actions" style="width:18px;height:18px;font-size:12px">…</button>
+                </div>
+                <div class="file-row" style="height:28px">
+                  <span class="fi" style="width:18px"><input type="checkbox" aria-label="Stage router.ts"></span>
+                  <span class="fn">router.ts</span><span class="st m">M</span>
+                  <span class="nums"><span class="plus">+6</span><span class="minus">−3</span></span>
+                  <button class="iconbtn" type="button" aria-label="router.ts actions" style="width:18px;height:18px;font-size:12px">…</button>
+                </div>
+                <div class="file-row" style="height:28px">
+                  <span class="fi" style="width:18px"><input type="checkbox" aria-label="Stage commit.test.ts"></span>
+                  <span class="fn">commit.test.ts</span><span class="st m">M</span>
+                  <span class="nums"><span class="plus">+11</span><span class="minus">−5</span></span>
+                  <button class="iconbtn" type="button" aria-label="commit.test.ts actions" style="width:18px;height:18px;font-size:12px">…</button>
+                </div>
+                <div style="height:22px;display:flex;align-items:center;padding:0 8px 0 20px;font-size:9.5px;color:var(--text3)">3 more files…</div>
+
+                <div class="fgroup" role="group" aria-label="Agent cleanup changelist" style="color:var(--text);justify-content:flex-start">
+                  <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-right"></use></svg>
+                  <span style="width:7px;height:7px;border-radius:50%;background:var(--text3)" aria-hidden="true"></span>
+                  <span style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Agent cleanup</span>
+                  <span class="count">3</span>
+                  <span class="spacer"></span>
+                  <button class="cl-more" type="button" aria-label="Agent cleanup options">…</button>
+                </div>
+              </div>
+
+              <div role="separator" aria-label="Resize changelist panel" aria-orientation="horizontal" style="height:9px;flex:none;display:flex;align-items:center;justify-content:center;gap:3px;border-top:1px solid var(--line-soft);background:var(--panel-2);cursor:row-resize">
+                <span style="width:2px;height:2px;border-radius:50%;background:var(--line-strong)"></span>
+                <span style="width:2px;height:2px;border-radius:50%;background:var(--line-strong)"></span>
+                <span style="width:2px;height:2px;border-radius:50%;background:var(--line-strong)"></span>
+                <span style="width:2px;height:2px;border-radius:50%;background:var(--line-strong)"></span>
+              </div>
+
+              <div style="height:24px;display:flex;align-items:center;gap:5px;padding:0 8px;border-top:1px solid var(--line-soft);font-size:9.5px;color:var(--text3)">
+                <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-more"></use></svg>
+                Drag files onto another changelist to move them
+              </div>
+
+              <div class="cl-pop" style="top:34px;left:8px;width:288px" role="dialog" aria-label="Changelists">
+                <div class="cl-pop-head">
+                  Changelists
+                  <button class="add" type="button">
+                    <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
+                    New
+                  </button>
+                </div>
+                <a class="cl-row active" href="Changes.dc.html">
+                  <span class="cl-radio"></span>
+                  <span>Commit composer</span>
+                  <span class="cl-pc">3 files</span>
+                  <span class="cl-more">…</span>
+                </a>
+                <a class="cl-row" href="Changes.dc.html">
+                  <span class="cl-radio"></span>
+                  <span>Default Changelist</span>
+                  <span class="cl-pc">6 files</span>
+                  <span class="cl-more">…</span>
+                </a>
+                <a class="cl-row" href="Changes.dc.html">
+                  <span class="cl-radio"></span>
+                  <span>Agent cleanup</span>
+                  <span class="cl-pc">3 files</span>
+                  <span class="cl-more">…</span>
+                </a>
+                <div class="msep"></div>
+                <button class="cl-row" type="button">
+                  Move 3 selected files to…
+                  <span class="cl-pc">⌥M</span>
+                </button>
+                <button class="cl-row" type="button">Rename Changelist…</button>
+                <div class="cl-pop-foot">
+                  <span class="hint">Filters only — staging commits</span>
+                  <button class="btn small primary" type="button">Set Active</button>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)">
               <svg width="12" height="12" viewBox="0 0 16 16" style="color:var(--accent)" aria-hidden="true"><use href="#i-branch"></use></svg>
               Commit to <b style="color:var(--text)">main</b>
@@ -500,29 +521,6 @@
               <span class="sp"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-sparkle"></use></svg></span>
               Draft a message from staged files
               <a class="go" href="Agent.dc.html" style="background:none">Ask Agent</a>
-            </div>
-
-            <div class="staged-box">
-              <div class="staged-head">
-                <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-check"></use></svg>
-                Staged files
-                <span class="n">3 files</span>
-              </div>
-              <div class="staged-file">
-                <span style="color:var(--text3)">src/ui/</span>CommitPanel.tsx
-                <span class="st m">M</span>
-                <span class="plus">+42</span><span class="minus">−17</span>
-              </div>
-              <div class="staged-file">
-                <span style="color:var(--text3)">src/ui/</span>AgentPanel.tsx
-                <span class="st m">M</span>
-                <span class="plus">+18</span><span class="minus">−6</span>
-              </div>
-              <div class="staged-file">
-                <span style="color:var(--text3)">src/git/</span>commit.ts
-                <span class="st m">M</span>
-                <span class="plus">+9</span><span class="minus">−2</span>
-              </div>
             </div>
 
             <div style="display:flex;flex-direction:column;gap:2px">

@@ -47,7 +47,7 @@
 <div class="desktop">
   <div class="window">
 
-    <div class="titlebar with-tabs">
+    <div class="titlebar with-tabs" style="height:40px">
       <div class="lights" aria-hidden="true">
         <span class="light red"></span><span class="light yellow"></span><span class="light green"></span>
       </div>
@@ -71,9 +71,7 @@
         <a class="tabadd" href="Welcome.dc.html" aria-label="Open repository">
           <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
         </a>
-        <a class="tab-overflow" href="CommandPalette.dc.html" aria-label="Switch repository">
-          <svg width="11" height="11" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-        </a>
+
       </div>
       <div class="title-right">
         <span class="status-dot"></span>
@@ -145,14 +143,43 @@
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            Remotes <span class="count">1</span>
+            Remotes <span class="count">2</span>
           </div>
-          <button class="side-row" type="button">
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
             <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
-            <span class="nm">origin</span><span class="count">8</span>
+            <span class="nm" style="flex:1;min-width:0">origin</span><span class="count">8</span>
           </button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/main</span></button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="https://github.com/gitui/gitui.git">https://github.com/gitui/gitui.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span><span class="count">↑2</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/release/1.4</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">5 more branches…</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui.git">git@github.com:gitui/gitui.git</span>
+            <span class="sub">push</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">6 more branches…</span></button>
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
+            <span class="nm" style="flex:1;min-width:0">upstream</span><span class="count">3</span>
+          </button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui-upstream.git">git@github.com:gitui/gitui-upstream.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/next</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/release/1.4</span></button>
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
@@ -213,59 +240,27 @@
         </div>
       </aside>
 
-      <div class="main" style="display:flex;flex-direction:row">
-        <div class="fhist-pane">
-          <div class="fhist-bar">
-            <span class="tt">File history</span>
-            <span class="fp">src/git/diff-engine.ts</span>
-            <span class="spacer"></span>
-            <button class="iconbtn" type="button" aria-label="Filter history"><svg width="12" height="12" viewBox="0 0 16 16"><use href="#i-filter"></use></svg></button>
+      <div class="main">
+        <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--line);background:var(--panel)">
+          <a class="chipbtn" href="Workspace.dc.html" aria-label="Back to commit list">
+            <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-left"></use></svg>
+            Commits
+          </a>
+          <span class="fp">src/git/diff-engine.ts</span>
+          <span class="hash">3f2a1c9</span>
+          <span class="spacer"></span>
+          <div class="seg tiny" role="group" aria-label="Blame or diff">
+            <button class="on" type="button">Blame</button>
+            <button type="button">Diff</button>
           </div>
-          <div class="fhist-cols"><span>Commit</span><span>Description</span><span>Author</span><span class="r">When</span></div>
-          <div class="fhist-scroll">
-            <button class="fhist-row on" type="button">
-              <span class="fhist-hash">3f2a1c9</span>
-              <span class="fhist-msg">Fix diff hunk alignment</span>
-              <span class="fhist-author">Mia Chen</span><span class="fhist-date">2h</span>
-            </button>
-            <button class="fhist-row" type="button">
-              <span class="fhist-hash">a37c6b1</span>
-              <span class="fhist-msg">Add split/unified toggle</span>
-              <span class="fhist-author">Jonas Weber</span><span class="fhist-date">2h</span>
-            </button>
-            <button class="fhist-row" type="button">
-              <span class="fhist-hash">b81c4a7</span>
-              <span class="fhist-msg">Cache parsed diffs</span>
-              <span class="fhist-author">Priya Nair</span><span class="fhist-date">4h</span>
-            </button>
-            <button class="fhist-row" type="button">
-              <span class="fhist-hash">e19a3f2</span>
-              <span class="fhist-msg">Extract hunk builder</span>
-              <span class="fhist-author">Mia Chen</span><span class="fhist-date">1d</span>
-            </button>
-            <button class="fhist-row" type="button">
-              <span class="fhist-hash">9c0b1e4</span>
-              <span class="fhist-msg">Handle empty diff input</span>
-              <span class="fhist-author">Sam Okafor</span><span class="fhist-date">2d</span>
-            </button>
-            <button class="fhist-row" type="button">
-              <span class="fhist-hash">77e2a90</span>
-              <span class="fhist-msg">Initial diff engine</span>
-              <span class="fhist-author">Mia Chen</span><span class="fhist-date">3d</span>
-            </button>
-          </div>
+          <span class="tb-sep"></span>
+          <button class="iconbtn" type="button" aria-label="Collapse all hunks"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-fold"></use></svg></button>
+          <button class="iconbtn" type="button" aria-label="Toggle word wrap"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-wrap"></use></svg></button>
+          <span class="tb-sep"></span>
+          <span class="hint tnum">16 lines · last change 2h ago</span>
         </div>
 
         <div class="blamepane">
-          <div class="blamebar">
-            <span class="badge-soft">Blame</span>
-            <span class="fp">src/git/diff-engine.ts</span>
-            <span class="hash">3f2a1c9</span>
-            <span class="spacer"></span>
-            <span class="hint">16 lines · last change 2h ago</span>
-            <a class="btn small" href="CommitFiles.dc.html">Files</a>
-            <button class="btn small" type="button">Copy</button>
-          </div>
           <div class="blamecode">
             <div class="blame-line"><span class="blame-gutter"><span class="bh">e19a3f2</span><span class="ba">Mia Chen</span></span><span class="blame-ln">18</span><span class="blame-src"><span class="k">export function</span> buildHunks(lines: <span class="k">string</span>[], context = <span class="s">3</span>) {</span></div>
             <div class="blame-line"><span class="blame-gutter"><span class="bh">e19a3f2</span><span class="ba">Mia Chen</span></span><span class="blame-ln">19</span><span class="blame-src">  <span class="k">const</span> hunks: Hunk[] = [];</span></div>
@@ -286,6 +281,76 @@
           </div>
         </div>
       </div>
+
+      <aside class="insp">
+        <div class="insp-tabs" role="tablist" aria-label="File panel" style="padding-right:8px">
+          <a class="itab" href="CommitFiles.dc.html" role="tab" aria-selected="false">Changes <span class="n">7</span></a>
+          <button class="itab on" type="button" role="tab" aria-selected="true">History</button>
+          <span class="spacer"></span>
+          <button class="iconbtn" type="button" aria-label="Filter file history"><svg width="12" height="12" viewBox="0 0 16 16"><use href="#i-filter"></use></svg></button>
+        </div>
+
+        <div class="insp-body" style="padding:0">
+          <div style="display:flex;align-items:center;gap:6px;padding:9px 10px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10px;color:var(--text2)">
+            <svg width="12" height="12" viewBox="0 0 16 16" style="color:var(--text3)" aria-hidden="true"><use href="#i-file"></use></svg>
+            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis">src/git/diff-engine.ts</span>
+            <span class="spacer"></span>
+            <span class="hint">6 commits</span>
+          </div>
+
+          <button class="fhist-row on" type="button" style="grid-template-columns:1fr auto;height:40px;padding:0 10px">
+            <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Fix diff hunk alignment</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3)"><span class="fhist-hash">3f2a1c9</span><span>·</span><span>Mia Chen</span></span>
+            </span>
+            <span class="fhist-date">2h</span>
+          </button>
+          <button class="fhist-row" type="button" style="grid-template-columns:1fr auto;height:40px;padding:0 10px">
+            <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Add split/unified toggle</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3)"><span class="fhist-hash">a37c6b1</span><span>·</span><span>Jonas Weber</span></span>
+            </span>
+            <span class="fhist-date">2h</span>
+          </button>
+          <button class="fhist-row" type="button" style="grid-template-columns:1fr auto;height:40px;padding:0 10px">
+            <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Cache parsed diffs</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3)"><span class="fhist-hash">b81c4a7</span><span>·</span><span>Priya Nair</span></span>
+            </span>
+            <span class="fhist-date">4h</span>
+          </button>
+          <button class="fhist-row" type="button" style="grid-template-columns:1fr auto;height:40px;padding:0 10px">
+            <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Extract hunk builder</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3)"><span class="fhist-hash">e19a3f2</span><span>·</span><span>Mia Chen</span></span>
+            </span>
+            <span class="fhist-date">1d</span>
+          </button>
+          <button class="fhist-row" type="button" style="grid-template-columns:1fr auto;height:40px;padding:0 10px">
+            <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Handle empty diff input</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3)"><span class="fhist-hash">9c0b1e4</span><span>·</span><span>Sam Okafor</span></span>
+            </span>
+            <span class="fhist-date">2d</span>
+          </button>
+          <button class="fhist-row" type="button" style="grid-template-columns:1fr auto;height:40px;padding:0 10px">
+            <span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <span style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Initial diff engine</span>
+              <span style="display:flex;align-items:center;gap:5px;font-size:9px;color:var(--text3)"><span class="fhist-hash">77e2a90</span><span>·</span><span>Mia Chen</span></span>
+            </span>
+            <span class="fhist-date">3d</span>
+          </button>
+        </div>
+
+        <div class="insp-foot">
+          <button class="btn small" type="button">
+            <svg width="12" height="12" viewBox="0 0 16 16"><use href="#i-external"></use></svg>
+            Open in Editor
+          </button>
+          <span class="spacer"></span>
+          <button class="iconbtn" type="button" aria-label="Copy file path"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-copy"></use></svg></button>
+        </div>
+      </aside>
 
 
 

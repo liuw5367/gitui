@@ -46,7 +46,7 @@
 <div class="desktop">
   <div class="window">
 
-    <div class="titlebar with-tabs">
+    <div class="titlebar with-tabs" style="height:40px">
       <div class="lights" aria-hidden="true">
         <span class="light red"></span><span class="light yellow"></span><span class="light green"></span>
       </div>
@@ -70,9 +70,7 @@
         <a class="tabadd" href="Welcome.dc.html" aria-label="Open repository">
           <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
         </a>
-        <a class="tab-overflow" href="CommandPalette.dc.html" aria-label="Switch repository">
-          <svg width="11" height="11" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-        </a>
+
       </div>
       <div class="title-right">
         <span class="status-dot"></span>
@@ -142,14 +140,43 @@
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            Remotes <span class="count">1</span>
+            Remotes <span class="count">2</span>
           </div>
-          <button class="side-row" type="button">
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
             <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
-            <span class="nm">origin</span><span class="count">8</span>
+            <span class="nm" style="flex:1;min-width:0">origin</span><span class="count">8</span>
           </button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/main</span></button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="https://github.com/gitui/gitui.git">https://github.com/gitui/gitui.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span><span class="count">↑2</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/release/1.4</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">5 more branches…</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui.git">git@github.com:gitui/gitui.git</span>
+            <span class="sub">push</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">6 more branches…</span></button>
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
+            <span class="nm" style="flex:1;min-width:0">upstream</span><span class="count">3</span>
+          </button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui-upstream.git">git@github.com:gitui/gitui-upstream.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/next</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/release/1.4</span></button>
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
@@ -315,34 +342,41 @@
 
           <div class="merge-note"><span class="sw"></span>4 empty folders merged into their parents</div>
 
+          <div class="fgroup"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-folder"></use></svg>src/git</div>
           <button class="file-row on" type="button" aria-current="true">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/git/diff-engine.ts</span>
+            <span class="fn">diff-engine.ts</span>
           </button>
           <button class="file-row" type="button">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/git/hunk.ts</span>
+            <span class="fn">hunk.ts</span>
           </button>
           <button class="file-row" type="button">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/git/render.ts</span>
+            <span class="fn">render.ts</span>
+          </button>
+
+          <div class="fgroup"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-folder"></use></svg>src/ui</div>
+          <button class="file-row" type="button">
+            <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
+            <span class="fn">DiffView.tsx</span>
           </button>
           <button class="file-row" type="button">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/ui/DiffView.tsx</span>
+            <span class="fn">CommitPanel.tsx</span>
           </button>
           <button class="file-row" type="button">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/ui/CommitPanel.tsx</span>
+            <span class="fn">theme.ts</span>
           </button>
+
+          <div class="fgroup"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-folder"></use></svg>src/styles</div>
           <button class="file-row" type="button">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/ui/theme.ts</span>
+            <span class="fn">tokens.css</span>
           </button>
-          <button class="file-row" type="button">
-            <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
-            <span class="fn">src/styles/tokens.css</span>
-          </button>
+
+          <div class="fgroup"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-folder"></use></svg>repository</div>
           <button class="file-row" type="button">
             <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
             <span class="fn">package.json</span>

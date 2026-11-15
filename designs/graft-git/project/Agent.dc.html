@@ -48,7 +48,7 @@
 <div class="desktop">
   <div class="window">
 
-    <div class="titlebar with-tabs">
+    <div class="titlebar with-tabs" style="height:40px">
       <div class="lights" aria-hidden="true">
         <span class="light red"></span><span class="light yellow"></span><span class="light green"></span>
       </div>
@@ -72,9 +72,7 @@
         <a class="tabadd" href="Welcome.dc.html" aria-label="Open repository">
           <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
         </a>
-        <a class="tab-overflow" href="CommandPalette.dc.html" aria-label="Switch repository">
-          <svg width="11" height="11" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-        </a>
+
       </div>
       <div class="title-right">
         <span class="status-dot"></span>
@@ -144,14 +142,43 @@
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            Remotes <span class="count">1</span>
+            Remotes <span class="count">2</span>
           </div>
-          <button class="side-row" type="button">
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
             <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
-            <span class="nm">origin</span><span class="count">8</span>
+            <span class="nm" style="flex:1;min-width:0">origin</span><span class="count">8</span>
           </button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/main</span></button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="https://github.com/gitui/gitui.git">https://github.com/gitui/gitui.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span><span class="count">↑2</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/release/1.4</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">5 more branches…</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui.git">git@github.com:gitui/gitui.git</span>
+            <span class="sub">push</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">6 more branches…</span></button>
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
+            <span class="nm" style="flex:1;min-width:0">upstream</span><span class="count">3</span>
+          </button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui-upstream.git">git@github.com:gitui/gitui-upstream.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/next</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/release/1.4</span></button>
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
@@ -214,113 +241,16 @@
 
       <div class="main">
 
-        <div class="changeslist" style="height:350px">
-          <div class="changes-bar">
-            <span class="hist-title">Changes</span>
-            <button class="cl-select" type="button">
-              <span class="cl-dot"></span>
-              <span>Wrapped-line fix</span><span class="cl-count">3</span>
-              <svg class="chev" width="9" height="9" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-            </button>
-            <button class="cl-plus" type="button" aria-label="New changelist">
-              <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
-            </button>
-            <span class="spacer"></span>
-            <span class="hist-count">12 changes</span>
-            <button class="chipbtn" type="button">
-              <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-check"></use></svg>
-              Stage All
-            </button>
-            <button class="iconbtn" type="button" aria-label="Filter changes"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-filter"></use></svg></button>
-          </div>
-
-          <div class="changes-cols"><span></span><span>Path</span><span class="r">Status</span><span class="r">Changes</span></div>
-
-          <div class="cl-group active">
-            <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            <span class="cl-dot"></span>
-            <span class="cl-name">Wrapped-line fix</span>
-            <span class="cl-count">3</span>
-            <span class="spacer"></span>
-            <button class="cl-more" type="button" aria-label="Wrapped-line fix changelist options">…</button>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" checked="" aria-label="Stage src/git/diff-engine.ts"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/git/</span><span style="color:var(--text)">diff-engine.ts</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+18</span> <span class="minus">−7</span></span>
-          </div>
-
-          <div class="change-row on">
-            <span class="ck"><input type="checkbox" checked="" aria-label="Stage src/ui/DiffView.tsx"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/ui/</span><span style="color:var(--text)">DiffView.tsx</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+31</span> <span class="minus">−18</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" checked="" aria-label="Stage tests/diff-engine.test.ts"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">tests/</span><span style="color:var(--text)">diff-engine.test.ts</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+27</span> <span class="minus">−13</span></span>
-          </div>
-
-          <div class="cl-group">
-            <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            <span class="cl-dot"></span>
-            <span class="cl-name">Default Changelist</span>
-            <span class="cl-count">9</span>
-            <span class="spacer"></span>
-            <button class="cl-more" type="button" aria-label="Default Changelist options">…</button>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage src/ui/CommitPanel.tsx"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/ui/</span><span style="color:var(--text)">CommitPanel.tsx</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+42</span> <span class="minus">−17</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage src/ui/AgentPanel.tsx"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/ui/</span><span style="color:var(--text)">AgentPanel.tsx</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+18</span> <span class="minus">−6</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage src/styles/tokens.css"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text3)">src/styles/</span><span style="color:var(--text)">tokens.css</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+14</span> <span class="minus">−8</span></span>
-          </div>
-
-          <div class="change-row">
-            <span class="ck"><input type="checkbox" aria-label="Stage README.md"></span>
-            <button class="nmbtn" type="button" style="font-family:var(--mono);font-size:10.5px">
-              <span style="color:var(--text)">README.md</span>
-            </button>
-            <span class="sst" style="color:var(--warn)">M</span>
-            <span class="stat"><span class="plus">+3</span> <span class="minus">−1</span></span>
-          </div>
-          <div style="height:22px;display:flex;align-items:center;padding:0 8px 0 32px;font-size:9.5px;color:var(--text3)">5 more files in Default Changelist…</div>
-
+        <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--line);background:var(--panel)">
+          <a class="chipbtn" href="Workspace.dc.html" aria-label="Back to commit list">
+            <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-left"></use></svg>
+            Commits
+          </a>
+          <span class="badge-soft">Wrapped-line fix</span>
+          <span class="hist-count">src/ui/DiffView.tsx</span>
+          <span class="spacer"></span>
+          <span class="hist-count">12 files · +149 −90</span>
         </div>
-
-        <div class="splitter" role="separator" aria-label="Resize changes and diff"></div>
 
         <div class="diffpane">
           <div class="diffbar">

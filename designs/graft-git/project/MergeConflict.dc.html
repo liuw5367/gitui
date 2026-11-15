@@ -46,7 +46,7 @@
 <div class="desktop">
   <div class="window" style="position:relative">
 
-    <div class="titlebar with-tabs">
+    <div class="titlebar with-tabs" style="height:40px">
       <div class="lights" aria-hidden="true">
         <span class="light red"></span><span class="light yellow"></span><span class="light green"></span>
       </div>
@@ -70,9 +70,7 @@
         <a class="tabadd" href="Welcome.dc.html" aria-label="Open repository">
           <svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-plus"></use></svg>
         </a>
-        <a class="tab-overflow" href="CommandPalette.dc.html" aria-label="Switch repository">
-          <svg width="11" height="11" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-        </a>
+
       </div>
       <div class="title-right">
         <span class="status-dot"></span>
@@ -144,14 +142,43 @@
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-            Remotes <span class="count">1</span>
+            Remotes <span class="count">2</span>
           </div>
-          <button class="side-row" type="button">
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
             <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
-            <span class="nm">origin</span><span class="count">8</span>
+            <span class="nm" style="flex:1;min-width:0">origin</span><span class="count">8</span>
           </button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/main</span></button>
-          <button class="side-row ind1" type="button"><span class="nm">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="https://github.com/gitui/gitui.git">https://github.com/gitui/gitui.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span><span class="count">↑2</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/release/1.4</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">5 more branches…</span></button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui.git">git@github.com:gitui/gitui.git</span>
+            <span class="sub">push</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">origin/feature/agent</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0;color:var(--text3)">6 more branches…</span></button>
+          <button class="side-row" type="button" aria-expanded="true">
+            <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="di"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-globe"></use></svg></span>
+            <span class="nm" style="flex:1;min-width:0">upstream</span><span class="count">3</span>
+          </button>
+          <button class="side-row ind1" type="button" aria-expanded="true">
+            <svg class="chev" width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
+            <span class="nm" style="flex:1;min-width:0;font-size:10.5px" title="git@github.com:gitui/gitui-upstream.git">git@github.com:gitui/gitui-upstream.git</span>
+            <span class="sub">fetch</span>
+          </button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/main</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/next</span></button>
+          <button class="side-row ind1" type="button" style="padding-left:38px"><span class="nm" style="flex:1;min-width:0">upstream/release/1.4</span></button>
 
           <div class="side-head">
             <svg class="chev" width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
@@ -214,129 +241,15 @@
 
       <div class="main">
 
-        <div class="hist" style="height:326px">
-          <div class="hist-bar">
-            <span class="hist-title">History</span>
-            <a class="chipbtn" href="HistoryFilter.dc.html">
-              <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-branch"></use></svg>
-              main <span class="cl-count">2</span>
-              <svg width="9" height="9" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-            </a>
-            <span class="hist-count">128 commits</span>
-            <a class="chipbtn" href="HistoryFilter.dc.html">
-              <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-clock"></use></svg>
-              Any time
-              <svg width="9" height="9" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg>
-            </a>
-            <span class="spacer"></span>
-            <a class="chipbtn" href="DiffFocus.dc.html">
-              <svg width="10" height="10" viewBox="0 0 16 16"><use href="#i-split"></use></svg>
-              Compare
-            </a>
-            <a class="chipbtn" href="HistoryFilter.dc.html">All authors <svg width="9" height="9" viewBox="0 0 16 16"><use href="#i-chev-down"></use></svg></a>
-            <a class="iconbtn" href="HistoryFilter.dc.html" aria-label="Filter commits">
-              <svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-filter"></use></svg>
-            </a>
-          </div>
-
-          <div class="commit-cols"><span></span><span>Description</span><span>Author</span><span class="cd">Date</span></div>
-
-          <button class="commit sel" type="button" aria-current="true">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M15 19V38" stroke="var(--g1)" stroke-width="1.5"></path>
-                <circle cx="15" cy="19" r="3.6" fill="var(--g1)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm">
-              <span class="msg">Fix diff hunk alignment on wrapped lines</span>
-              <span class="refs"><span class="ref branch">main</span><span class="ref remote">origin/main</span></span>
-            </span>
-            <span class="ca">Mia Chen</span>
-            <span class="cd">2h</span>
-          </button>
-
-          <button class="commit" type="button">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M15 0V38" stroke="var(--g1)" stroke-width="1.5"></path>
-                <circle cx="15" cy="19" r="3.4" fill="var(--g1)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm"><span class="msg">Add split/unified toggle to diff viewer</span></span>
-            <span class="ca">Jonas Weber</span>
-            <span class="cd">5h</span>
-          </button>
-
-          <button class="commit" type="button">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M15 0V38" stroke="var(--g1)" stroke-width="1.5"></path>
-                <circle cx="15" cy="19" r="3.4" fill="var(--g1)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm">
-              <span class="msg">Release 1.4.0</span>
-              <span class="refs"><span class="ref tag">v1.4.0</span><span class="ref tag">latest</span></span>
-            </span>
-            <span class="ca">Mia Chen</span>
-            <span class="cd">1d</span>
-          </button>
-
-          <button class="commit" type="button">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M15 0V38" stroke="var(--g1)" stroke-width="1.5"></path>
-                <circle cx="15" cy="19" r="3.4" fill="var(--g1)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm"><span class="msg">Cache parsed diffs per commit</span></span>
-            <span class="ca">Priya Nair</span>
-            <span class="cd">2d</span>
-          </button>
-
-          <button class="commit" type="button">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M15 0V19" stroke="var(--g1)" stroke-width="1.5"></path>
-                <path d="M15 19C15 28 21 33.5 33 38" stroke="var(--g2)" stroke-width="1.5" fill="none"></path>
-                <circle cx="15" cy="19" r="3.4" fill="var(--g1)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm"><span class="msg">Merge branch 'feature/agent'</span></span>
-            <span class="ca">Mia Chen</span>
-            <span class="cd">3d</span>
-          </button>
-
-          <button class="commit" type="button">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M33 0V38" stroke="var(--g2)" stroke-width="1.5"></path>
-                <circle cx="33" cy="19" r="3.4" fill="var(--g2)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm">
-              <span class="msg">Agent: propose commits with approval</span>
-              <span class="refs"><span class="ref branch">feature/agent</span></span>
-            </span>
-            <span class="ca">Priya Nair</span>
-            <span class="cd">4d</span>
-          </button>
-
-          <button class="commit" type="button">
-            <span class="cg">
-              <svg width="64" height="38" viewBox="0 0 64 38" fill="none" aria-hidden="true">
-                <path d="M33 0V38" stroke="var(--g2)" stroke-width="1.5"></path>
-                <circle cx="33" cy="19" r="3.4" fill="var(--g2)" stroke="var(--content)" stroke-width="1.5"></circle>
-              </svg>
-            </span>
-            <span class="cm"><span class="msg">Add hunk-level staging</span></span>
-            <span class="ca">Sam Okafor</span>
-            <span class="cd">5d</span>
-          </button>
+        <div style="height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid var(--line);background:var(--panel)">
+          <a class="chipbtn" href="Workspace.dc.html" aria-label="Back to commit list">
+            <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-left"></use></svg>
+            Commits
+          </a>
+          <span class="hist-count">Fix diff hunk alignment on wrapped lines</span>
+          <span class="spacer"></span>
+          <span class="hist-count">7 files</span>
         </div>
-
-        <div class="splitter" role="separator" aria-label="Resize history and diff"></div>
 
         <div class="diffpane">
           <div class="diffbar">
@@ -586,26 +499,23 @@
             </div>
           </div>
           <div class="mtp-body">
-            <button class="mtp-dir" type="button" style="padding-left:6px">
-              <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-              <span>src</span><span class="cnt">3</span>
+            <div class="fgroup"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-folder"></use></svg>src/git</div>
+            <button class="file-row on" type="button">
+              <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
+              <span class="fn">diff.ts</span><span class="st m">U</span>
+              <span class="nums"><span class="minus">2 conflicts</span></span>
             </button>
-            <button class="mtp-dir" type="button" style="padding-left:18px">
-              <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-              <span>git</span><span class="cnt">2</span>
+            <button class="file-row" type="button">
+              <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
+              <span class="fn">merge.ts</span><span class="st m">U</span>
+              <span class="nums"><span class="minus">1 conflict</span></span>
             </button>
-            <button class="mtp-file on" type="button" style="padding-left:30px">
-              <span class="dot"></span> diff.ts <span class="cnt">2</span>
-            </button>
-            <button class="mtp-file" type="button" style="padding-left:30px">
-              <span class="dot"></span> merge.ts <span class="cnt">1</span>
-            </button>
-            <button class="mtp-dir" type="button" style="padding-left:18px">
-              <svg width="9" height="9" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg>
-              <span>ui</span><span class="cnt">1</span>
-            </button>
-            <button class="mtp-file resolved" type="button" style="padding-left:30px">
-              <span class="dot"></span> DiffView.tsx <span class="cnt">0</span>
+
+            <div class="fgroup"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-chev-down"></use></svg><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-folder"></use></svg>src/ui</div>
+            <button class="file-row" type="button">
+              <span class="fi"><svg width="13" height="13" viewBox="0 0 16 16"><use href="#i-file"></use></svg></span>
+              <span class="fn">DiffView.tsx</span><span class="st a">R</span>
+              <span class="nums"><span style="color:var(--ok)">resolved</span></span>
             </button>
           </div>
         </div>

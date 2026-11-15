@@ -100,6 +100,15 @@
       "x": 3040,
       "y": 1400
     },
+    "FileDiffFocus.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "04b · File diff (focused)",
+      "w": 1440,
+      "x": 4560,
+      "y": 1400
+    },
     "HistoryFilter.dc.html": {
       "expand": "fill",
       "h": 900,
@@ -153,15 +162,6 @@
       "x": 3040,
       "y": 14780
     },
-    "RepoManager.dc.html": {
-      "expand": "fill",
-      "h": 900,
-      "is_interactive": true,
-      "title": "03 · Repository manager",
-      "w": 1440,
-      "x": 3040,
-      "y": 0
-    },
     "RepositoryStates.dc.html": {
       "expand": "fill",
       "h": 1000,
@@ -187,6 +187,15 @@
       "title": "26 · Settings · About",
       "w": 1440,
       "x": 0,
+      "y": 13380
+    },
+    "SettingsAgent.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "23b · Settings · Agent",
+      "w": 1440,
+      "x": 3040,
       "y": 13380
     },
     "SettingsCredentials.dc.html": {
@@ -252,11 +261,20 @@
       "x": 0,
       "y": 0
     },
-    "WelcomeEmpty.dc.html": {
+    "WelcomeInit.dc.html": {
       "expand": "fill",
       "h": 900,
       "is_interactive": true,
-      "title": "02 · Welcome (empty)",
+      "title": "01c · Welcome · Init",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "WelcomeOpen.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "01b · Welcome · Open",
       "w": 1440,
       "x": 1520,
       "y": 0
@@ -265,7 +283,7 @@
       "expand": "fill",
       "h": 900,
       "is_interactive": true,
-      "title": "04 · History & diff",
+      "title": "04 · Commits",
       "w": 1440,
       "x": 0,
       "y": 1400
@@ -342,8 +360,8 @@
     },
     "group-review": {
       "kind": "title1",
-      "maxW": 4480,
-      "text": "04–09 · Review — history, filters, compare, refs, commit info",
+      "maxW": 6000,
+      "text": "04–09 · Review — commit list, filters, file diff, compare, refs, commit info",
       "w": 240,
       "x": 0,
       "y": 1140
@@ -359,7 +377,7 @@
     "group-start": {
       "kind": "title1",
       "maxW": 4480,
-      "text": "01–03 · Start — open, clone, or create a repository",
+      "text": "01 · Start — clone, open, init; the empty state sits on 01b",
       "w": 240,
       "x": 0,
       "y": -260
@@ -375,9 +393,10 @@
   },
   "order": [
     "Welcome.dc.html",
-    "WelcomeEmpty.dc.html",
-    "RepoManager.dc.html",
+    "WelcomeOpen.dc.html",
+    "WelcomeInit.dc.html",
     "Workspace.dc.html",
+    "FileDiffFocus.dc.html",
     "HistoryFilter.dc.html",
     "DiffFocus.dc.html",
     "CompareRefs.dc.html",
@@ -397,6 +416,7 @@
     "ContextMenu.dc.html",
     "Menus.dc.html",
     "Settings.dc.html",
+    "SettingsAgent.dc.html",
     "SettingsGit.dc.html",
     "SettingsShortcuts.dc.html",
     "SettingsAbout.dc.html",
