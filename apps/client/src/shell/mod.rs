@@ -77,8 +77,8 @@ pub(crate) fn titlebar(
                             .on_press(move || activate(index.get()))
                             .child(
                                 text(move || tab.get().label())
-                                    .text_size(px(11.5))
-                                    .line_height(px(16.0))
+                                    .text_size(px(crate::ui::BODY))
+                                    .line_height(px(crate::ui::BODY_LINE))
                                     .text_color(move || {
                                         if is_active() {
                                             design::text()
@@ -99,8 +99,8 @@ pub(crate) fn titlebar(
                                     .on_press(move || close(index.get()))
                                     .child(
                                         text("×")
-                                            .text_size(px(11.0))
-                                            .line_height(px(14.0))
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .line_height(px(crate::ui::SECONDARY_LINE))
                                             .text_color(move || design::text3()),
                                     ),
                             )

@@ -109,7 +109,7 @@ pub const BUTTON_SMALL_H: f32 = 22.0;
 /// 控件高度：`.tbtn` 在 `.toolbar.v2` 内。
 pub const TBTN_H: f32 = 26.0;
 /// 仓库标签（`.rtab`）高度。
-pub const RTAB_H: f32 = 27.0;
+pub const RTAB_H: f32 = native::ROW;
 /// 分段控件（`.seg`）高度。
 pub const SEG_H: f32 = 26.0;
 /// 搜索框（`.search`）宽度与高度。
