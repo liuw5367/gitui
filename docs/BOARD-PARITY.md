@@ -47,7 +47,7 @@
 
 | 板 | 画板要求的主要控件 | 现有实现 | 缺口 |
 |---|---|---|---|
-| 18 Files at commit | `btn`×2、`seg`、`badge-soft` | 检查器 Files 页已换 `ui::table` | ✅ 已就绪；视图切换仍是自绘分段（P5 剩余） |
+| 18 Files at commit | `btn`×2、`seg`、`badge-soft` | 检查器三页签用 `ui::tabs`，Files 页用 `ui::table` | ✅ 已就绪 |
 | 19 Blame & file history ✅ | `blame-gutter`×16、`blame-src`×16、`blame-line`×16、`bh`/`ba`/`nm`×18、`tbtn`×6、`side-head`、`statusbar` | `inspector.rs` 的 `blame_body`（侧栏 320 宽）已有同样的三段结构：`short`(52) + `line` + `text`，数据来自 `tab.blame`（`short`/`author`/`timestamp`/`line`/`text` 齐备） | ✅ 已实现主区宽版：新增 `Mode::Blame` + `screens/blame_view.rs`。左栏文件历史（`.fhist`，260 宽）+ 右栏 `.blamebar`（Blame 徽章、路径、行数、Copy 按钮）+ `.blamecode`（短 hash + 作者 | 行号 | 代码）。入口：`GITUI_MODE=blame`（验收用），工具栏不占分段——画板本身的入口是 `.blamebar` 的 Files 按钮 |
 
 ### P6 Navigation 组
@@ -81,14 +81,11 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 |---|---|---|
 | ~~`ui::banner`~~ 已就绪并接入（5 处使用） | 板 16 | `banner_sized(tone, height, icon, message, actions)`；`sync_banner` 因等宽字号例外 |
 | `ui::segmented` 未接入 | 板 18/23 的分段 | 组件已建，页面用 `ui::button` 循环代替（行为一致） |
-| `ui::split` 未接入 | 板 14 冲突三栏 | 组件已建，冲突页仍是自绘 overlay |
 | 主区宽版 blame | 板 19 | 功能缺失，不只是样式 |
 | 过滤面板 `ui::field` | 板 05 | 未迁移 |
 | `widgets.rs` 与 `ui` 合并 | 全局 | 97 处调用跨 20+ 文件，且图标尺寸用 8 种，需分批 |
 
-### 旧表（保留供对照）
-
-原计划的组件清单，均已就绪：
+### 原计划的组件清单（均已就绪并接入）
 
 | 组件 | 首次需要 | 基于 | 说明 |
 |---|---|---|---|
