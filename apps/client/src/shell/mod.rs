@@ -486,66 +486,55 @@ pub(crate) fn state_banner(
             match current.head.clone() {
                 git::HeadState::Detached { sha } => {
                     let short: String = sha.chars().take(7).collect();
-                    return view()
-                        .w_full()
-                        .h(px(26.0))
-                        .px(px(12.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .bg(move || design::accent_soft())
-                        .child(widgets::icon("branch", 11.0, design::accent))
-                        .child(
-                            text({
-                                let language_now = language_now.clone();
-                                move || {
-                                    i18n::with_arguments(
-                                        language_now.as_str(),
-                                        "state.detached",
-                                        &[("short", short.clone())],
-                                    )
-                                }
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::text2()),
-                        )
-                        .child(view().flex_1())
-                        .child(crate::ui::button::button(
-                                   
-                            {
-                                let language_now = language_now.clone();
-                                move || i18n::t(language_now.as_str(), "state.createBranch")
-                            },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
-                                let create_branch = create_branch.clone();
-                                let sha = sha.clone();
-                                move || {
-                                    create_branch(
-                                        crate::screens::FormKind::NewBranch,
-                                        sha.clone(),
-                                    )
-                                }
-                            },
-                               ))
-                        .child(crate::ui::button::button(
-                                   
-                            {
-                                let language_now = language_now.clone();
-                                move || i18n::t(language_now.as_str(), "state.checkoutMain")
-                            },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
-                                let checkout_main = checkout_main.clone();
-                                move || checkout_main()
-                            },
-                               ))
-                        .into_element();
+                    return crate::ui::feedback::banner_sized(
+                        crate::ui::feedback::BannerTone::Highlight,
+                        26.0,
+                        Some("branch"),
+                        {
+                            let language_now = language_now.clone();
+                            move || {
+                                i18n::with_arguments(
+                                    language_now.as_str(),
+                                    "state.detached",
+                                    &[("short", short.clone())],
+                                )
+                            }
+                        },
+                        vec![
+                            crate::ui::button::button(
+                                {
+                                    let language_now = language_now.clone();
+                                    move || i18n::t(language_now.as_str(), "state.createBranch")
+                                },
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                {
+                                    let create_branch = create_branch.clone();
+                                    let sha = sha.clone();
+                                    move || {
+                                        create_branch(crate::screens::FormKind::NewBranch, sha.clone())
+                                    }
+                                },
+                            )
+                            .into_element(),
+                            crate::ui::button::button(
+                                {
+                                    let language_now = language_now.clone();
+                                    move || i18n::t(language_now.as_str(), "state.checkoutMain")
+                                },
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                {
+                                    let checkout_main = checkout_main.clone();
+                                    move || checkout_main()
+                                },
+                            )
+                            .into_element(),
+                        ],
+                    )
+                    .into_element();
                 }
                 git::HeadState::Unborn { branch } => {
                     return crate::ui::feedback::banner_sized(

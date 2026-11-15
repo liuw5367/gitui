@@ -37,7 +37,7 @@
 |---|---|---|---|
 | 14 Merge conflict | `btn`×10、`seg`×2、`merge-pane`×3、`merge-code`×3 | `conflict_view.rs`（487 行），字号/mono 已清零，冲突 chip 用 `ui::button` | ⚠️ 整屏 overlay 与三栏仍是自绘；`ui::split` 已建但未接入（P4 剩余） |
 | 15 Sync & auth | `checkrow`×3、`btn`×4 | `sync_dialog.rs`（517 行），遮罩与吞点击用 `ui::dialog::scrim`/`modality`，选项用 `ui::button`/`ui::check_row` | ✅ 主体就绪；未换 `ui::tabs` |
-| 16 Repository states | `pill`×18、`mini-*`（8 类 ×6） | `shell/mod.rs` 三条横幅各写一套 | ❌ `ui::banner` 未建（P4 剩余） |
+| 16 Repository states | `pill`×18、`mini-*`（8 类 ×6） | 三条横幅已收敛到 `ui::feedback::banner_sized`：操作条（Accent/28）、仓库状态四个分支（Neutral/26 ×3、Highlight/26 ×1） | ✅ 已就绪。`sync_banner` 例外：消息是 git 输出，用 `CODE` 等宽字号，改成横幅的 `SECONDARY` 会丢对齐 |
 | 17 Reflog & undo | `commit`×3、`btn`×3、`kbd` | `refs_view.rs` 的 Reflog 段已用 `ui::menu`；撤销确认走 `ui::dialog::confirm_destructive` | ✅ 基本就绪 |
 | 28 Sync · Fetch | `checkrow`×3、`btn`×4 | 同步弹窗 Fetch 选项用 `ui::check_row` | ✅ 已就绪 |
 | 29 Sync · Pull | `seg`×2、`checkrow`×2、`btn`×4 | Pull 三选用 `ui::button` 变体 | ✅ 已就绪（未抽 `ui::segmented`） |
@@ -79,7 +79,7 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 
 | 缺什么 | 影响 | 说明 |
 |---|---|---|
-| `ui::banner` 未建 | 板 16 三条横幅各写一套 | 需要「三态 + 动作槽」的设计，不只是样式 |
+| ~~`ui::banner`~~ 已就绪并接入（5 处使用） | 板 16 | `banner_sized(tone, height, icon, message, actions)`；`sync_banner` 因等宽字号例外 |
 | `ui::segmented` 未接入 | 板 18/23 的分段 | 组件已建，页面用 `ui::button` 循环代替（行为一致） |
 | `ui::split` 未接入 | 板 14 冲突三栏 | 组件已建，冲突页仍是自绘 overlay |
 | 主区宽版 blame | 板 19 | 功能缺失，不只是样式 |

@@ -17,6 +17,8 @@ pub(crate) enum BannerTone {
     Accent,
     /// 中性提示（仓库打不开、空仓库等）：`panel-2` 底 + 主文本色。
     Neutral,
+    /// 需要注意但不算错误（游离头等）：`accent-soft` 底 + 强调色前景。
+    Highlight,
 }
 
 impl BannerTone {
@@ -27,6 +29,7 @@ impl BannerTone {
             BannerTone::Danger => design::del_bg(),
             BannerTone::Accent => design::token("tag-bg"),
             BannerTone::Neutral => design::panel2(),
+            BannerTone::Highlight => design::accent_soft(),
         };
     }
 
@@ -36,6 +39,7 @@ impl BannerTone {
             BannerTone::Warning => design::warn(),
             BannerTone::Danger => design::del_fg(),
             BannerTone::Accent | BannerTone::Neutral => design::text(),
+            BannerTone::Highlight => design::accent(),
         };
     }
 }
