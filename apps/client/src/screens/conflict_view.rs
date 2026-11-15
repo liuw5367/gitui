@@ -36,8 +36,8 @@ fn pane(language: Signal<SharedString>, title_key: &'static str, body: String) -
                 .border_color(move || design::line_soft())
                 .child(
                     text(move || i18n::t(language.get().as_str(), title_key))
-                        .text_size(px(10.0))
-                        .line_height(px(13.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 ),
         )
@@ -46,9 +46,8 @@ fn pane(language: Signal<SharedString>, title_key: &'static str, body: String) -
                 scroll().w_full().h_full().child(
                     view().w_full().p(px(7.0)).child(
                         text(body)
-                            .text_size(px(metrics::MERGE_CODE_FONT))
-                            .line_height(px(metrics::MERGE_CODE_LINE_H))
-                            .font_family("SF Mono")
+                            .text_size(px(crate::ui::CODE))
+                            .line_height(px(crate::ui::CODE_LINE))
                             .text_color(move || design::text2()),
                     ),
                 ),
@@ -152,33 +151,19 @@ pub(crate) fn conflict_view(
                     let select = select.clone();
                     let active = chip_index == index;
                     let name = path.rsplit('/').next().unwrap_or(path).to_string();
-                    return view()
-                        .h(px(20.0))
-                        .px(px(8.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .bg(move || {
-                            if active {
-                                design::accent_soft()
-                            } else {
-                                AdaptiveColor::TRANSPARENT
-                            }
-                        })
-                        .on_press(move || select(chip_index))
-                        .child(
-                            text(name)
-                                .text_size(px(10.0))
-                                .line_height(px(13.0))
-                                .font_family("SF Mono")
-                                .text_color(move || {
-                                    if active {
-                                        design::accent()
-                                    } else {
-                                        design::text2()
-                                    }
-                                }),
-                        )
-                        .into_element();
+                    let variant = if active {
+                        crate::ui::button::ButtonVariant::Secondary
+                    } else {
+                        crate::ui::button::ButtonVariant::Ghost
+                    };
+                    return crate::ui::button::button(
+                        move || name.clone(),
+                        variant,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || select(chip_index),
+                    )
+                    .into_element();
                 })
                 .collect();
 
@@ -215,7 +200,7 @@ pub(crate) fn conflict_view(
                                     text(move || {
                                         i18n::t(language_value.get().as_str(), "conflicts.title")
                                     })
-                                    .text_size(px(13.0))
+                                    .text_size(px(crate::ui::BODY))
                                     .font_weight(FontWeight(600))
                                     .line_height(px(17.0))
                                     .text_color(move || design::text()),
@@ -228,8 +213,8 @@ pub(crate) fn conflict_view(
                                             &[("count", unresolved.to_string())],
                                         )
                                     })
-                                    .text_size(px(10.0))
-                                    .line_height(px(13.0))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
                                     .text_color(move || design::danger()),
                                 )
                                 .child(view().flex_1())
@@ -248,9 +233,8 @@ pub(crate) fn conflict_view(
                                 ))
                                 .child(
                                     text(move || format!("{} / {}", index + 1, total.max(1)))
-                                        .text_size(px(10.0))
-                                        .line_height(px(13.0))
-                                        .font_family("SF Mono")
+                                        .text_size(px(crate::ui::CODE))
+                                        .line_height(px(crate::ui::CODE_LINE))
                                         .text_color(move || design::text3()),
                                 )
                                 .child(widgets::small_button(
@@ -302,7 +286,7 @@ pub(crate) fn conflict_view(
                                                     "conflicts.files",
                                                 )
                                             })
-                                            .text_size(px(9.5))
+                                            .text_size(px(crate::ui::SECONDARY))
                                             .font_weight(FontWeight(600))
                                             .line_height(px(12.0))
                                             .text_color(move || design::text2()),
@@ -351,8 +335,8 @@ pub(crate) fn conflict_view(
                                                     "conflicts.result",
                                                 )
                                             })
-                                            .text_size(px(10.0))
-                                            .line_height(px(13.0))
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .line_height(px(crate::ui::SECONDARY_LINE))
                                             .text_color(move || design::text2()),
                                         ),
                                 )
@@ -364,9 +348,8 @@ pub(crate) fn conflict_view(
                                                 .on_change(move |value: &str| {
                                                     result.set(value.to_string())
                                                 })
-                                                .text_size(px(metrics::MERGE_CODE_FONT))
-                                                .line_height(px(metrics::MERGE_CODE_LINE_H))
-                                                .font_family("SF Mono")
+                                                .text_size(px(crate::ui::CODE))
+                                                .line_height(px(crate::ui::CODE_LINE))
                                                 .flex_1(),
                                         ),
                                     ),
@@ -402,7 +385,7 @@ pub(crate) fn conflict_view(
                                                 "conflicts.basePane",
                                             )
                                         })
-                                        .text_size(px(9.5))
+                                        .text_size(px(crate::ui::SECONDARY))
                                         .px(px(8.0))
                                         .py(px(4.0))
                                         .text_color(move || design::text3()),
@@ -410,9 +393,8 @@ pub(crate) fn conflict_view(
                                     .child(
                                         view().w_full().p(px(7.0)).child(
                                             text(base)
-                                                .text_size(px(9.5))
-                                                .line_height(px(14.0))
-                                                .font_family("SF Mono")
+                                                .text_size(px(crate::ui::CODE))
+                                                .line_height(px(crate::ui::CODE_LINE))
                                                 .text_color(move || design::text2()),
                                         ),
                                     ),
