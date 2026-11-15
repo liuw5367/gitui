@@ -13,6 +13,7 @@
 #
 # 两个环境变量的作用：
 #   GITUI_GALLERY=1     打开组件画廊（主窗口的覆盖层）
+#   GITUI_SYNC=1        启动即打开同步面板（验收弹层用）
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
 #                       会把画廊挡在后面，截出来就是一片白
 #   tools/shots.sh welcome            # 欢迎页
@@ -37,6 +38,7 @@ echo "启动应用（HOME=$home_dir）…"
   HOME="$home_dir" \
   GITUI_NO_WELCOME=1 \
   GITUI_GALLERY="$([ "$name" = "gallery" ] && echo 1 || echo 0)" \
+  GITUI_SYNC="${GITUI_SYNC:-0}" \
     nsh run >"$home_dir/run-$name.log" 2>&1 &
   echo $! >"$home_dir/run-$name.pid"
 )

@@ -304,7 +304,13 @@ pub fn App() -> impl IntoElement {
     // 冲突视图：可编辑的结果区与 base 显隐。
     let conflict_result = signal(String::new());
     let conflict_base_open = signal(false);
-    let sync_state = signal(Option::<screens::SyncDialogState>::None);
+    // 验收开关：`GITUI_SYNC=1` 启动即打开同步面板，用于截图核对弹层外观
+    // （遮罩深浅、圆角、阴影、关闭行为）。与 GITUI_GALLERY 同思路。
+    let sync_state = signal(if std::env::var("GITUI_SYNC").map(|v| v == "1").unwrap_or(false) {
+        Some(screens::SyncDialogState::new(crate::model::Sync::Fetch))
+    } else {
+        None
+    });
     let agent_plan = signal(Option::<agent::Plan>::None);
     let agent_policies = signal({
         let mut policies = agent::Policies::default();
