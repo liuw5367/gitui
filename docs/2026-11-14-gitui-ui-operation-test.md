@@ -5,11 +5,12 @@
 **画布**: 30 页，`designs/graft-git/`  
 **本地预览**: `http://127.0.0.1:4720/design/AnB97zSAOiuT2MFJiXb15j/`  
 **用途**: 手工验收 30 页设计画板的操作路径、按钮目标、弹窗/选择/确认类型、点击后的状态反馈。  
-**源文档**: [SPEC.md](../SPEC.md)、[USE-CASES.md](../docs/USE-CASES.md)、[UI-SPEC.md](../docs/UI-SPEC.md)、[TEST-PLAN.md](../docs/TEST-PLAN.md)  
-**当前代码**: P1（Welcome、Open Repository、Workspace 只读历史/Diff）；其余页面处于设计验证阶段。
+**源文档**: [SPEC.md](../SPEC.md)、[USE-CASES.md](USE-CASES.md)、[UI-SPEC.md](UI-SPEC.md)、[TEST-PLAN.md](TEST-PLAN.md)  
+**配套功能文档**: [功能、Git 支持与页面状态](2026-11-15-gitui-feature-state-model.md)  
+**当前代码**: 全部计划阶段已实现；15 Sync / 27 Credentials 为 PARTIAL；16/22 为 N/A-DESIGN；auth sign-in 为 BLOCKED；179 项测试通过，详见第 9 节。
 
-> 本文件是设计画板的工作副本，不是需求源。与 `SPEC.md`、`docs/USE-CASES.md`、`docs/UI-SPEC.md`、`docs/TEST-PLAN.md` 冲突时，以这些文档为准。  
-> 本文件放在 `files.local/`，避免与正在修改的产品代码和正式文档混合。测试通过后，结论再合并到正式文档。
+> 本文件是设计画板交互验收清单，不是需求源。与 `SPEC.md`、`docs/USE-CASES.md`、`docs/UI-SPEC.md`、`docs/TEST-PLAN.md` 冲突时，以这些文档为准。  
+> 本文件位于 `docs/`；第 3 节是画布操作清单，第 9 节是当前实现对照。稳定行为以 `SPEC.md`、`USE-CASES.md`、`UI-SPEC.md` 为准。
 
 ---
 
@@ -23,11 +24,12 @@
 - 每页可见操作控件的目标页面、弹窗、菜单、选择控件、确认框或静态状态。
 - 关键操作的预期反馈，包括成功、失败、禁用、加载、空状态、认证失败、冲突和操作进行中。
 - 端到端测试场景、验收检查表和已知缺口。
+- 第 9 节的 2026-11-15 实现对照：逐板 PASS / PARTIAL / BLOCKED / N/A-DESIGN。
 
 本文件不覆盖：
 
 - Rust/NSH 实现细节、Git 命令参数、性能、网络、密钥存储和发布流程。
-- 像素级视觉回归。视觉规范参考 [DESIGN-HANDOFF.md](../docs/DESIGN-HANDOFF.md)。
+- 像素级视觉回归。视觉规范参考 [DESIGN-HANDOFF.md](./DESIGN-HANDOFF.md)。
 - 22 号组件页和 16 号状态页的生产交互。22 是菜单/弹窗规格，16 是状态画廊。
 
 ### 0.2 状态图例
@@ -91,6 +93,7 @@
 - 画布没有真实 Git 引擎、文件监听、持久化和网络请求。
 - 22 是组件规格，16 是状态参考，两者不能作为独立功能页验收。
 - 28、29 是真实 Sync sheet；30 是 Refs 管理器页面；其余页面为 App 页面。
+- 第 9 节不是画布限制，而是当前 Rust/NSH 实现的状态；两份内容不要互相替代。
 
 ### 0.6 测试记录方式
 
@@ -108,6 +111,7 @@
 
 `BLOCKED` 用于当前画板没有目标页面、没有确认框或没有真实执行；不能记为 `FAIL`，也不能当作已实现。  
 `N/A-DESIGN` 用于 22 的组件卡片和 16 的状态卡片。
+`PARTIAL` 用于入口存在但能力有限或真实流程延后的页面，例如 15、27。
 
 ---
 
@@ -880,37 +884,35 @@
 
 ## 7. 已知缺口与不测试项
 
-### 7.1 设计缺口
+### 7.1 已知实现缺口（2026-11-15）
 
-- **20 Interactive Rebase**：按 ADR-0007 延后；05/06/09/21/30 的 Rebase 入口只能记为 `BLOCKED`。
-- **22** 是组件规格页，不是独立功能页；不能把菜单卡片当作可执行入口。
-- **16** 是状态画廊；生产版本要把状态放回 04/06/15 的上下文。
-- **28/29/30** 已从卡片页改为真实 Sync sheet 和 Refs 管理器页面；仍需实现真实数据。
-- **登录/凭据**：04/15 的 `Sign in` 目标为 27，但 27 目前只有连接状态，没有登录表单。
-- **确认框**：Discard、Abort、Restore reflog、Delete branch/tag/remote、Remove SSH、Sign out、Force push、no-verify 尚无独立确认框。
-- **错误状态**：non-fast-forward、push rejected、clone/init 失败、missing repo、not-a-repo、hook full log 尚未画全。
-- **权限**：27 的凭据、SSH、系统配置为设计状态；不得在画布或测试记录中写入真实 token。
+- **Interactive Rebase（无独立画板）**：按 ADR-0007 延后；fixed-form `reword`、`squash`、`reset` 已实现，不是交互式 rebase。
+- **15 Sync / PARTIAL**：三个 tab 和选项已实现；没有进度条，真实凭据流程按决定延后。
+- **27 Credentials / PARTIAL**：凭据助手和 SSH 计数为只读；`Sign in` 可点但只说明“尚未连接”；auth sign-in 记为 `BLOCKED`。
+- **16 Repository states / N/A-DESIGN**：状态画廊；上下文 banner 尚未连接到 `ui::feedback::banner`。
+- **19 Blame**：检查器 Blame 页通过；主区仍缺 blame 入口（主区只有 4 个 Mode）。
+- **14 Merge**：冲突页通过；`ui::split` 尚未使用，页面使用自己的分栏。
+- **22 Menus & dialogs / N/A-DESIGN**：组件规格页，不是独立功能页。
+- **worktree / submodule**：仍为设计入口；09/30 覆盖 branches/tags/remotes/stashes，不包含这两类。
+- **组件层**：`widgets.rs` 与 `ui` 两套尺寸模型并存；原生 `DiffView` / `Command` / `Select` 尚未替换。
+- **证据**：逐板截图和像素比对未完成；当前证据是设计 CSS → 几何常量 → 实现的静态对照、几何测试和主题测试。
+- **其他**：Init 没有进度；A-04 的 `aria-label` 未全覆盖。
 
 ### 7.2 当前代码状态
 
-- 30 块画板全部有对应实现（22 为组件规格、16 为状态画廊，按其性质落进上下文；
-  15 的凭据真实流程按决定延后）。逐板对照见第 9 节。
-- 交互全部为真实 Git 操作或明确禁用；没有「画了按钮但不响应」的控件。
-- 截图与像素级比对仍未做（本环境无图形会话，`screencapture` 拿不到画面）；
-  当前证据是「设计 CSS → 几何常量 → 实现」的静态对照 + 几何测试，见第 9 节。
-- 测试结果区分 `PASS`（路径可点且行为真实）、`PARTIAL`（入口在、能力有限）、
-  `BLOCKED`（按 ADR 延后）、`N/A-DESIGN`（组件/画廊）。
+- 30 页均有对应页面；16、22 为 N/A-DESIGN；15、27 为 PARTIAL；09/30 覆盖 branches/tags/remotes/stashes，worktree/submodule 仍为设计入口。
+- `PASS` 路径使用真实 Git 操作；`PARTIAL`/`BLOCKED` 在 9.1/9.2 明确标注，不存在未说明的死按钮。
+- 截图与像素级比对仍未做（本环境无图形会话）；证据是几何测试和主题测试。
+- 结果使用 `PASS`、`PARTIAL`、`BLOCKED`、`N/A-DESIGN`；`FAIL` 仅用于真实行为错误。
 
 ### 7.3 不测试项
 
-- 真实 Git 命令执行、并发、性能和 100k commits。
-- 真实网络、OAuth、SSH、Keychain、签名和公证。
-- 像素级视觉回归、色彩对比度数值、VoiceOver 实际朗读。
-- 生产安装包和更新 feed。
+- 真实网络、OAuth、SSH、Keychain、签名和公证；15/27 的真实凭据流程尚未连接。
+- 100k commit / 1GB repo 性能；目前只有 20k commit 的微基准。
+- 像素级视觉回归、对比度数值、VoiceOver 实际朗读。
+- 生产安装包、更新 feed 和发布流程。
 
-这些项目由 [TEST-PLAN.md](../docs/TEST-PLAN.md)、[SPIKE-REPORT.md](../docs/SPIKE-REPORT.md) 和后续实现验证覆盖。
-
----
+第 9 节使用真实 Git 验证本地操作；网络、凭据和发布相关路径以 `PARTIAL` / `BLOCKED` 记录。
 
 ## 8. 维护约定
 
@@ -955,7 +957,7 @@
 | 24 | Settings · Git | PASS | 同一文件（Choose/Detect/PATH/扫描目录/Add found） |
 | 25 | Settings · Shortcuts | PASS | 搜索、录制改键、冲突提示、恢复默认（确认）；改键范围受 nsh 静态绑定限制 |
 | 26 | Settings · About | PASS | 版本 + 四个外链 |
-| 27 | Settings · Credentials | PARTIAL | 只读凭据助手与 SSH 计数；Sign in 可点但只说明「尚未接入」 |
+| 27 | Settings · Credentials | PARTIAL | 只读凭据助手与 SSH 计数；Sign in 可点但只说明「尚未使用」 |
 | 28 | Sync · Fetch | PASS | 同步弹窗 Fetch tab（prune/tags/all remotes） |
 | 29 | Sync · Pull | PASS | 同步弹窗 Pull tab（三种整合方式 + autostash + 非快进三选） |
 | 30 | Refs · Tags, Remotes, Stashes | PASS | 引用页各段行操作（标签推送/删除、远程编辑 URL/取回/移除、贮藏应用/弹出/丢弃） |
@@ -985,7 +987,7 @@
 | Not a repository | PASS | 横幅「在此初始化/打开上级目录/关闭」 |
 | Clone/Init error/progress | PASS | 克隆显示 git 的真实进度行并可取消（取消后删除半成品目录）；失败保留表单并显示原因 |
 | Hook full log | PASS | 完整输出弹层，可复制、可关闭 |
-| Auth sign-in | BLOCKED | 入口可点并说明「尚未接入」，不写 token |
+| Auth sign-in | BLOCKED | 入口可点并说明「尚未使用」，不写 token |
 | Tag/remote/stash create/edit | PASS | 表单齐备（远程编辑 URL、标签附注、贮藏含未跟踪） |
 
 ### 9.3 验收检查表
