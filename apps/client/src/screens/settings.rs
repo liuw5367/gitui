@@ -149,7 +149,7 @@ pub(crate) fn settings(
                 .bg(move || design::bar())
                 .child(
                     text(move || i18n::t(language.get().as_str(), "settings.savedAutomatically"))
-                        .text_size(px(10.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
@@ -252,8 +252,8 @@ fn side(
                         .items_center()
                         .child(
                             text(move || i18n::t(language.get().as_str(), title_key))
-                                .text_size(px(10.5))
-                                .line_height(px(13.0))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .font_weight(FontWeight(600))
                                 .text_color(move || design::text3()),
                         ),
@@ -305,8 +305,8 @@ fn side(
                         )
                         .child(
                             text(brand::version_line())
-                                .text_size(px(9.5))
-                                .line_height(px(12.0))
+                                .text_size(px(crate::ui::META))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text3()),
                         ),
                 ),
@@ -578,8 +578,8 @@ fn general(
                                                     style.key(),
                                                 )
                                             })
-                                            .text_size(px(10.0))
-                                            .line_height(px(13.0))
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .line_height(px(crate::ui::SECONDARY_LINE))
                                             .text_color(move || {
                                                 if active {
                                                     design::text()
@@ -639,8 +639,8 @@ fn general(
                             )],
                         )
                     })
-                    .text_size(px(9.5))
-                    .line_height(px(13.0))
+                    .text_size(px(crate::ui::META))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
                     .text_color(move || design::text3()),
                 )
                 .into_element(),
@@ -760,8 +760,8 @@ fn general(
                                         &[("count", count.clone())],
                                     )
                                 })
-                                .text_size(px(9.5))
-                                .line_height(px(13.0))
+                                .text_size(px(crate::ui::META))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text3()),
                             )
                             .child(rows),
@@ -848,8 +848,8 @@ fn general(
                                             text(move || {
                                                 i18n::t(language.get().as_str(), mode.key())
                                             })
-                                            .text_size(px(10.0))
-                                            .line_height(px(13.0))
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .line_height(px(crate::ui::SECONDARY_LINE))
                                             .text_color(move || {
                                                 if active {
                                                     design::text()
@@ -865,7 +865,7 @@ fn general(
                 )
                 .child(
                     text(move || i18n::t(language.get().as_str(), "settings.updaterUnavailable"))
-                        .text_size(px(9.5))
+                        .text_size(px(crate::ui::META))
                         .text_color(move || design::text3()),
                 )
                 .into_element(),
@@ -902,8 +902,8 @@ fn launch_choice(
         .on_press(on_press)
         .child(
             text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(10.0))
-                .line_height(px(13.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || {
                     if active {
                         design::text()
@@ -1034,8 +1034,8 @@ fn about(
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.aboutHint"))
-                .text_size(px(10.5))
-                .line_height(px(15.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
@@ -1232,8 +1232,8 @@ fn git_page(
                                     &[("count", found.to_string())],
                                 )
                             })
-                            .text_size(px(10.0))
-                            .line_height(px(13.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text3()),
                         )
                         .child(view().flex_1())
@@ -1267,8 +1267,8 @@ fn git_page(
                 )
                 .child(
                     text(move || i18n::t(language.get().as_str(), "settings.gitHelperNote"))
-                        .text_size(px(10.0))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 )
                 .into_element(),
@@ -1325,8 +1325,8 @@ fn shortcuts_page(
                             i18n::t(language.get().as_str(), "settings.customized")
                         }
                     })
-                    .text_size(px(9.5))
-                    .line_height(px(13.0))
+                    .text_size(px(crate::ui::META))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
                     .text_color(move || design::text3()),
                 )
                 .child(
@@ -1353,8 +1353,8 @@ fn shortcuts_page(
     if rows.is_empty() {
         rows.push(
             text(move || i18n::t(language.get().as_str(), "shortcut.searchEmpty"))
-                .text_size(px(10.5))
-                .line_height(px(15.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3())
                 .into_element(),
         );
@@ -1365,8 +1365,8 @@ fn shortcuts_page(
         .gap(px(10.0))
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.shortcutsHint"))
-                .text_size(px(10.5))
-                .line_height(px(15.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
@@ -1416,14 +1416,14 @@ fn shortcuts_page(
                         }
                         None => String::new(),
                     })
-                    .text_size(px(10.5))
-                    .line_height(px(15.0))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
                     .text_color(move || design::accent()),
                 )
                 .child(
                     text(move || error.get().unwrap_or_default())
-                        .text_size(px(10.5))
-                        .line_height(px(15.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::danger()),
                 ),
         )
@@ -1444,8 +1444,8 @@ fn shortcuts_page(
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "shortcut.catalogHint"))
-                .text_size(px(10.0))
-                .line_height(px(14.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .into_element();
@@ -1510,8 +1510,8 @@ fn credentials_page(
                 )
                 .child(
                     text(move || i18n::t(language.get().as_str(), "settings.sshAgentsNote"))
-                        .text_size(px(10.0))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 )
                 .into_element(),
@@ -1541,8 +1541,8 @@ fn pending_row(
         ))
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.notConnected"))
-                .text_size(px(9.5))
-                .line_height(px(13.0))
+                .text_size(px(crate::ui::META))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .into_element();
@@ -1573,8 +1573,8 @@ fn disabled_row(language: Signal<SharedString>, label_key: &'static str) -> AnyE
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.notImplemented"))
-                .text_size(px(9.5))
-                .line_height(px(13.0))
+                .text_size(px(crate::ui::META))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .into_element();
@@ -1628,7 +1628,7 @@ fn agent_page(
                             String::new()
                         }
                     })
-                    .text_size(px(9.0))
+                    .text_size(px(crate::ui::META))
                     .text_color(move || design::danger()),
                 )
                 .child(
@@ -1662,8 +1662,8 @@ fn agent_page(
                                     },
                                 )
                             })
-                            .text_size(px(10.0))
-                            .line_height(px(13.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text2()),
                         ),
                 )
@@ -1697,8 +1697,8 @@ fn agent_page(
             .on_press(move || set_automation(mode))
             .child(
                 text(move || i18n::t(language.get().as_str(), automation_key(mode)))
-                    .text_size(px(10.5))
-                    .line_height(px(14.0))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
                     .text_color(move || {
                         if active {
                             design::text()
@@ -1739,8 +1739,8 @@ fn agent_page(
                 .on_press(move || set_review(millis))
                 .child(
                     text(label)
-                        .text_size(px(10.0))
-                        .line_height(px(13.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || {
                             if active {
                                 design::text()
@@ -1792,7 +1792,7 @@ fn agent_page(
                                     String::new()
                                 }
                             })
-                            .text_size(px(8.0))
+                            .text_size(px(crate::ui::META))
                             .text_color(move || design::content()),
                         ),
                 )
@@ -1815,8 +1815,8 @@ fn agent_page(
         .gap(px(10.0))
         .child(
             text(move || i18n::t(language.get().as_str(), "agentPage.hint"))
-                .text_size(px(10.5))
-                .line_height(px(15.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .child(rows)
@@ -1843,8 +1843,8 @@ fn agent_page(
     return block
         .child(
             text(move || i18n::t(language.get().as_str(), "agentPage.boundary"))
-                .text_size(px(10.0))
-                .line_height(px(14.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .into_element();
