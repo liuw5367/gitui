@@ -940,7 +940,7 @@
 | 09 | Refs manager | PASS | `screens/refs_view.rs` 分段表 + 每行菜单 |
 | 10 | Staging & commit | PASS | `screens/changes_view.rs`、`workspace/commit.rs`（amend/sign-off/提交后推送、钩子三动作、hunk 与行级暂存） |
 | 11 | Changelists | PASS | 变更清单弹层（新建/设为当前/移入） |
-| 12 | Agent panel | PARTIAL | `workspace/agent.rs`（计划逐条执行、权限循环、审计；缺计划步骤增删与 Approve & Run 范围确认） |
+| 12 | Agent panel | PASS | `workspace/agent.rs`（计划逐条执行、步骤增删、「补一步…」、Approve & Run 先列范围、权限循环、审计） |
 | 13 | Agent permissions | PASS | 设置页 Agent 分区（9 个动作 + 自动化/预览/受保护分支） |
 | 14 | Merge conflict | PASS | `screens/conflict_view.rs`（左 224 文件列表、三栏、可编辑结果、标记解决、应用并继续、放弃） |
 | 15 | Sync & auth | PARTIAL | `screens/sync_dialog.rs`（三 tab + 全部选项 + 强推警告；凭据真实流程按决定延后） |
@@ -983,7 +983,7 @@
 | Checkout dirty branch | PASS | 贮藏并切换 / 带过去 / 取消 |
 | Missing repository | PASS | 横幅「重新定位…/关闭」 |
 | Not a repository | PASS | 横幅「在此初始化/打开上级目录/关闭」 |
-| Clone/Init error/progress | PARTIAL | 失败保留表单并显示原因；没有取消与进度条 |
+| Clone/Init error/progress | PARTIAL | 失败保留表单并显示原因；克隆中有进行中提示行；没有进度百分比与取消 |
 | Hook full log | PASS | 完整输出弹层，可复制、可关闭 |
 | Auth sign-in | BLOCKED | 入口可点并说明「尚未接入」，不写 token |
 | Tag/remote/stash create/edit | PASS | 表单齐备（远程编辑 URL、标签附注、贮藏含未跟踪） |
@@ -1012,5 +1012,5 @@
 - **逐板截图取证与像素比对**：本环境没有可捕获的图形会话。替代证据是几何测试
   （`design/metrics.rs` 直接解析设计 CSS）与主题色对照测试。
 - **原生 `DiffView` / `Command` / `Select` 组件替换**：见 `docs/ARCHITECTURE.md` 5.2。
-- **Agent 计划编辑与 Approve & Run 范围确认**（12 板）。
-- **Clone/Init 进度与取消**（03 板）。
+- **Clone/Init 进度与取消**（03 板）：需要 git 层可取消的子进程运行器（读线程 +
+  轮询 + kill + 清理半成品目录），单独一轮做，避免动到现有 clone 路径。
