@@ -64,6 +64,59 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 
 无障碍由 `nsh_base` 提供 role、选中与禁用状态；图标按钮由 `ui::icon_button` 传 `accessibility_label`。表格、树、页签、命令面板的 role 在各自组件落地时由对应 `nsh_base` 组件提供。
 
+## 4.5 签名与选用规则
+
+调用方按这张表选组件；同一用途出现第二种写法即为缺陷。
+
+### 文字
+
+| 用途 | 用 | 不要用 |
+|---|---|---|
+| 正文、标签、行标题 | `body(\|\| String)` | `text(..).text_size(px(13))` |
+| 说明、帮助、错误 | `secondary(..)` / `field::help` / `field::error` | 手写 11pt 灰字 |
+| 计数、时间、元数据 | `meta(..)` / `badge::count(..)` | 手写 9.5/10/10.5pt |
+| 代码、diff、路径 | `code(..)` | `text(..).font_family("SF Mono")` |
+
+### 动作
+
+| 用途 | 用 | 签名要点 |
+|---|---|---|
+| 主/次/幽灵/危险按钮 | `button::button(label, variant, size, disabled, on_press)` | `label` 是闭包，语言切换后重取 |
+| 纯图标按钮 | `button::icon_button(name, label, size, disabled, on_press)` | `label` 同时是无障碍名称，不可省 |
+| 行级点击 | `row::row(caption, subtitle, leading, trailing, selected, disabled, on_press)` | 替代裸 `view().on_press`；单行 28 / 双行 44 |
+| 页签切换 | `tabs::tabs(items, selected_id, on_select)` | 面板内互斥视图 |
+| 分段选择 | `segmented::segmented(items, selected_id, on_select)` | 表单里的 2–4 选一 |
+
+### 输入
+
+| 用途 | 用 | 说明 |
+|---|---|---|
+| 值在 `Signal<String>` 里 | `text_input::text_input(value, placeholder, invalid, on_change)` | 最常见 |
+| 值在结构体信号里 | `text_input::text_input_bound(get, placeholder, invalid, set)` | 提交说明的 `branch`、`depth_custom` 这类 |
+| 多行 | `text_input::text_area(value, placeholder, height, invalid, on_change)` | 说明、附注、冲突结果 |
+| 搜索 | `text_input::search_field(value, placeholder, shortcut, on_change)` | 自带放大镜与键帽 |
+| 带标签的字段 | `field::field(caption, control, help, error)` | 错误与帮助互斥，别两个都传 |
+
+### 结构
+
+| 用途 | 用 |
+|---|---|
+| 面板标题条（标题 + 计数 + 右侧动作） | `section::pane_header(caption, counter, actions)` |
+| 分组标题 | `section::section_label(caption)` |
+| 空态 | `section::empty(caption, description, action)` |
+| 加载骨架 | `section::skeleton_row(&[宽, 宽, ..])` |
+| 横幅（信息/警告/危险） | `feedback::banner(tone, message, actions)` |
+| 进度（确定/不确定） | `feedback::progress(Some(0.4))` / `progress(None)` |
+| 卡片容器 | `feedback::card(child)` |
+| 模态框 | `dialog::dialog(open, width, title, body, footer, on_dismiss)` |
+| 表格 | `table::table(TableSpec { .. })` |
+
+### 常被选错的三处
+
+1. **`tabs` 还是 `segmented`**：一屏内切换主视图用 `tabs`（有下划线指示）；表单里选一个值用 `segmented`（有底色块）。
+2. **`row` 还是 `button`**：整行可点用 `row`（含选中态与前后槽）；带边框的独立按钮用 `button`。
+3. **`field::field` 的 help 与 error**：两者都传会被 error 覆盖，只传一个；需要「有错时也不隐藏帮助」是新的需求，得先改组件。
+
 ## 5. 增改流程
 
 1. 先在 `ui/gallery.rs` 加该组件的全部变体与状态示例。
