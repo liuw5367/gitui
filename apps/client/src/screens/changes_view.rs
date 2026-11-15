@@ -922,35 +922,22 @@ fn changelist_pop(
                         .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 )
-                .child(
-                    view()
-                        .h(px(16.0))
-                        .px(px(4.0))
-                        .items_center()
-                        .rounded(px(3.0))
-                        .opacity({
-                            let selected = selected.clone();
-                            move || if selected.is_some() { 1.0_f32 } else { 0.4_f32 }
-                        })
-                        .when(selected.is_some(), |this| {
-                            let move_to = move_to.clone();
-                            let selected = selected.clone();
-                            let name_for_move = name_for_move.clone();
-                            this.on_press(move || {
-                                if let Some(path) = selected.clone() {
-                                    move_to(path, name_for_move.clone());
-                                }
-                            })
-                        })
-                        .child(
-                            text(move || {
-                                i18n::t(language.get().as_str(), "changelists.moveHere")
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(11.0))
-                            .text_color(move || design::accent()),
-                        ),
-                )
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "changelists.moveHere"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    selected.is_none(),
+                    {
+                        let move_to = move_to.clone();
+                        let selected = selected.clone();
+                        let name_for_move = name_for_move.clone();
+                        move || {
+                            if let Some(path) = selected.clone() {
+                                move_to(path, name_for_move.clone());
+                            }
+                        }
+                    },
+                ))
                 .into_element(),
         );
     }
@@ -992,16 +979,12 @@ fn changelist_pop(
                         .border_1()
                         .border_color(move || design::field_border())
                         .bg(move || design::field())
-                        .child(
-                            nsh_base::input()
-                                .value(new_name)
-                                .on_change(move |text: &str| new_name.set(text.to_string()))
-                                .placeholder(move || {
-                                    i18n::t(language.get().as_str(), "changelists.newName")
-                                })
-                                .text_size(px(crate::ui::BODY))
-                                .flex_1(),
-                        ),
+                        .child(crate::ui::text_input::text_input(
+                            new_name,
+                            move || i18n::t(language.get().as_str(), "changelists.newName"),
+                            false,
+                            move |text: &str| new_name.set(text.to_string()),
+                        )),
                 )
                 .child(crate::widgets::small_button(
                     move || i18n::t(language.get().as_str(), "changelists.create"),
