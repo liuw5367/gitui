@@ -5,7 +5,6 @@
 //!
 //! 侧栏数据是打开标签页时的快照：仓库变化由上层重新装载标签页触发重建。
 
-use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
@@ -229,9 +228,9 @@ fn branch_row(
             ];
             let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
         })
-        .child(widgets::icon(
+        .child(crate::ui::icon::icon_view(
             "branch",
-            12.0,
+            crate::ui::icon::IconSize::Button,
             if current { design::accent } else { design::text3 },
         ))
         .child(

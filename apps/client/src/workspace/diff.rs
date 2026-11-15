@@ -5,7 +5,6 @@
 //!
 //! 补丁解析在 `domain::diff`。
 
-use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use domain::diff::Patch;
@@ -154,9 +153,9 @@ fn diff_toggle(
         })
         .hover(|style| style.bg(move || design::hover()))
         .on_press(move || toggle(hint_key))
-        .child(widgets::icon(
+        .child(crate::ui::icon::icon_view(
             name,
-            11.0,
+            crate::ui::icon::IconSize::Compact,
             if active {
                 design::accent
             } else {
