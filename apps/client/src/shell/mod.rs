@@ -385,7 +385,8 @@ pub(crate) fn state_banner(
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
-                    .child(widgets::small_button(
+                    .child(crate::ui::button::button(
+                               
                         {
                             let language_now = language_now.clone();
                             move || {
@@ -399,30 +400,41 @@ pub(crate) fn state_banner(
                                 )
                             }
                         },
-                        move || {
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               move || {
                             if not_found {
                                 locate()
                             } else {
                                 init_here()
                             }
                         },
-                    ))
+                           ))
                     .when(!not_found, |this| {
-                        this.child(widgets::small_button(
+                        this.child(crate::ui::button::button(
+                                       
                             {
                                 let language_now = language_now.clone();
                                 move || i18n::t(language_now.as_str(), "state.openParent")
                             },
-                            move || open_parent(),
-                        ))
+                                       crate::ui::button::ButtonVariant::Secondary,
+                                       crate::ui::button::ButtonSize::Small,
+                                       false,
+                                       move || open_parent(),
+                                   ))
                     })
-                    .child(widgets::small_button(
+                    .child(crate::ui::button::button(
+                               
                         {
                             let language_now = language_now.clone();
                             move || i18n::t(language_now.as_str(), "common.close")
                         },
-                        move || close(active.get_untracked()),
-                    ))
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               move || close(active.get_untracked()),
+                           ))
                     .into_element();
             }
             // 优先级：需要登录 > 离线 > 游离头 > 空仓库。
@@ -449,26 +461,34 @@ pub(crate) fn state_banner(
                             .text_color(move || design::text2())
                     })
                     .child(view().flex_1())
-                    .child(widgets::small_button(
+                    .child(crate::ui::button::button(
+                               
                         {
                             let language_now = language_now.clone();
                             move || i18n::t(language_now.as_str(), "state.openCredentials")
                         },
-                        {
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               {
                             let open_settings = open_settings.clone();
                             move || open_settings()
                         },
-                    ))
-                    .child(widgets::small_button(
+                           ))
+                    .child(crate::ui::button::button(
+                               
                         {
                             let language_now = language_now.clone();
                             move || i18n::t(language_now.as_str(), "state.dismiss")
                         },
-                        {
+                               crate::ui::button::ButtonVariant::Secondary,
+                               crate::ui::button::ButtonSize::Small,
+                               false,
+                               {
                             let dismiss = dismiss.clone();
                             move || dismiss()
                         },
-                    ))
+                           ))
                     .into_element();
             }
             match current.head.clone() {
@@ -499,12 +519,16 @@ pub(crate) fn state_banner(
                             .text_color(move || design::text2()),
                         )
                         .child(view().flex_1())
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language_now = language_now.clone();
                                 move || i18n::t(language_now.as_str(), "state.createBranch")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let create_branch = create_branch.clone();
                                 let sha = sha.clone();
                                 move || {
@@ -514,17 +538,21 @@ pub(crate) fn state_banner(
                                     )
                                 }
                             },
-                        ))
-                        .child(widgets::small_button(
+                               ))
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language_now = language_now.clone();
                                 move || i18n::t(language_now.as_str(), "state.checkoutMain")
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let checkout_main = checkout_main.clone();
                                 move || checkout_main()
                             },
-                        ))
+                               ))
                         .into_element();
                 }
                 git::HeadState::Unborn { branch } => {
@@ -553,18 +581,22 @@ pub(crate) fn state_banner(
                             .text_color(move || design::text2()),
                         )
                         .child(view().flex_1())
-                        .child(widgets::small_button(
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let language_now = language_now.clone();
                                 move || {
                                     i18n::t(language_now.as_str(), "state.createInitialCommit")
                                 }
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Small,
+                                   false,
+                                   {
                                 let initial_commit = initial_commit.clone();
                                 move || initial_commit()
                             },
-                        ))
+                               ))
                         .into_element();
                 }
                 git::HeadState::Branch(_) => {
