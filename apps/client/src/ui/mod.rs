@@ -145,7 +145,11 @@ mod guard_tests {
     use std::path::{Path, PathBuf};
 
     /// 已迁移的页面文件（相对 `src/`）。P0 只有 ui 层自己。
-    const MIGRATED: &[&str] = &["screens/welcome.rs", "screens/settings.rs"];
+    const MIGRATED: &[&str] = &[
+        "screens/welcome.rs",
+        "screens/settings.rs",
+        "screens/refs_view.rs",
+    ];
 
     fn src_root() -> PathBuf {
         return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");

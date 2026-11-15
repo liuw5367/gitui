@@ -7,7 +7,6 @@
 //!
 //! 写操作（新建分支/标签、删除、添加远程、贮藏）需要输入与确认流程，本阶段只读 +
 //! 撤销，其余按「尚未实现」标注。
-
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
@@ -15,14 +14,12 @@ use crate::Actions;
 use crate::ui;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
-
 /// 页签。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RefsTab {
     Refs,
     Reflog,
 }
-
 impl RefsTab {
     fn key(self) -> &'static str {
         return match self {
@@ -31,7 +28,6 @@ impl RefsTab {
         };
     }
 }
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn refs_view(
     language: Signal<SharedString>,
@@ -59,7 +55,7 @@ pub(crate) fn refs_view(
                 .border_color(move || design::line())
                 .child(
                     text(move || i18n::t(language.get().as_str(), "refs.title"))
-                        .text_size(px(12.5))
+                        .text_size(px(crate::ui::TITLE))
                         .font_weight(FontWeight(600))
                         .line_height(px(16.0))
                         .text_color(move || design::text()),
@@ -126,43 +122,28 @@ pub(crate) fn refs_view(
             }
         }));
 }
-
 fn tab_button(
     language: Signal<SharedString>,
     which: RefsTab,
     selected: Signal<RefsTab>,
     set_selected: std::sync::Arc<dyn Fn(RefsTab)>,
 ) -> impl IntoElement {
-    return view()
-        .h(px(20.0))
-        .px(px(8.0))
-        .items_center()
-        .rounded(px(4.0))
-        .bg(move || {
-            if selected.get() == which {
-                design::selected()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press(move || set_selected(which))
-        .child(
-            text(move || i18n::t(language.get().as_str(), which.key()))
-                .text_size(px(11.0))
-                .line_height(px(14.0))
-                .text_color(move || {
-                    if selected.get() == which {
-                        design::text()
-                    } else {
-                        design::text2()
-                    }
-                }),
-        );
+    // 页签：选中的用 Secondary 表达，未选中用 Ghost。
+    let variant = if selected.get_untracked() == which {
+        crate::ui::button::ButtonVariant::Secondary
+    } else {
+        crate::ui::button::ButtonVariant::Ghost
+    };
+    return crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), which.key()),
+        variant,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        move || set_selected(which),
+    );
 }
-
 fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> impl IntoElement {
     let mut sections: Vec<AnyElement> = Vec::new();
-
     // 分支：检出、检出为新本地分支、比较、合并、重命名、删除、复制。
     let mut branch_rows: Vec<AnyElement> = Vec::new();
     for (index, branch) in tab.refs.branches.iter().enumerate() {
@@ -266,7 +247,6 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
             index,
         ));
     }
-
     // 远程：编辑 URL、取回、移除、复制。
     let mut remote_rows: Vec<AnyElement> = Vec::new();
     for (index, remote) in tab.refs.remotes.iter().enumerate() {
@@ -331,7 +311,6 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
             index,
         ));
     }
-
     // 标签：推送、删除、复制。
     let mut tag_rows: Vec<AnyElement> = Vec::new();
     for (index, tag) in tab.refs.tags.iter().enumerate() {
@@ -379,7 +358,6 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
             index,
         ));
     }
-
     // 贮藏：应用、弹出、丢弃、复制引用。
     let mut stash_rows: Vec<AnyElement> = Vec::new();
     for (index, stash) in tab.refs.stashes.iter().enumerate() {
@@ -438,7 +416,6 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
             index,
         ));
     }
-
     // 工作树：在 Finder 中显示、复制路径。
     let mut worktree_rows: Vec<AnyElement> = Vec::new();
     for (index, path) in tab.refs.worktrees.iter().enumerate() {
@@ -474,7 +451,6 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
             index,
         ));
     }
-
     sections.push(section(
         language,
         "sidebar.branches",
@@ -505,7 +481,6 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
         tab.refs.worktrees.len(),
         worktree_rows,
     ));
-
     return view().w_full().h_full().child(
         scroll().w_full().h_full().child(
             view()
@@ -515,15 +490,14 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
                 .flex_col()
                 .child(
                     text(move || i18n::t(language.get().as_str(), "refs.writeHint"))
-                        .text_size(px(10.0))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 )
                 .child(sections),
         ),
     );
 }
-
 fn section(
     language: Signal<SharedString>,
     key: &'static str,
@@ -543,22 +517,20 @@ fn section(
                 .gap(px(6.0))
                 .child(
                     text(move || i18n::t(language.get().as_str(), key))
-                        .text_size(px(10.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .font_weight(FontWeight(600))
                         .line_height(px(14.0))
                         .text_color(move || design::text2()),
                 )
                 .child(
                     text(count.to_string())
-                        .text_size(px(9.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 ),
         )
         .child(rows)
         .into_element();
 }
-
-
 fn reflog_list(
     language: Signal<SharedString>,
     tab: Tab,
@@ -596,22 +568,21 @@ fn reflog_list(
                 .child(
                     text(short)
                         .w(px(64.0))
-                        .text_size(px(10.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::SECONDARY))
                         .line_height(px(14.0))
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(action)
                         .w(px(80.0))
-                        .text_size(px(10.5))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::accent()),
                 )
                 .child(
                     text(summary)
                         .flex_1()
-                        .text_size(px(11.0))
+                        .text_size(px(crate::ui::BODY))
                         .line_height(px(14.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -620,24 +591,16 @@ fn reflog_list(
                     text(move || {
                         crate::dates::format(language.get().as_str(), timestamp, now)
                     })
-                    .text_size(px(9.5))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
                 )
-                .child(
-                    view()
-                        .h(px(18.0))
-                        .px(px(6.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .hover(|style| style.bg(move || design::panel()))
-                        .on_press(move || undo(index))
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), "reflog.undo"))
-                                .text_size(px(9.5))
-                                .line_height(px(12.0))
-                                .text_color(move || design::text2()),
-                        ),
-                )
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "reflog.undo"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || undo(index),
+                ))
                 .on_context_menu({
                     let undo = actions.undo_reflog.clone();
                     let open_form = actions.open_form_from.clone();
@@ -720,8 +683,8 @@ fn reflog_list(
                         .gap(px(8.0))
                         .child(
                             text(move || i18n::t(language.get().as_str(), "reflog.hint"))
-                                .text_size(px(10.0))
-                                .line_height(px(14.0))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text3()),
                         )
                         .child(view().flex_1())
@@ -745,7 +708,7 @@ fn reflog_list(
                                                 "reflog.filterHint",
                                             )
                                         })
-                                        .text_size(px(10.5))
+                                        .text_size(px(crate::ui::SECONDARY))
                                         .flex_1(),
                                 ),
                         ),
@@ -755,30 +718,20 @@ fn reflog_list(
         ),
     );
 }
-
 /// 创建入口按钮（工具条右侧）。
 fn create_button(
     language: Signal<SharedString>,
     key: &'static str,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return view()
-        .h(px(18.0))
-        .px(px(6.0))
-        .items_center()
-        .rounded(px(4.0))
-        .border_1()
-        .border_color(move || design::line_soft())
-        .hover(|style| style.bg(move || design::hover()))
-        .on_press(on_press)
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(9.5))
-                .line_height(px(12.0))
-                .text_color(move || design::text2()),
-        );
+    return crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), key),
+        crate::ui::button::ButtonVariant::Ghost,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        on_press,
+    );
 }
-
 /// 行内的删除动作。
 /// 一行带右键菜单的引用。`items` 由各分段自己组装，顺序即菜单顺序。
 #[allow(clippy::too_many_arguments)]
@@ -809,7 +762,7 @@ fn menu_row(
         .child(
             text(name)
                 .w(px(220.0))
-                .text_size(px(11.5))
+                .text_size(px(crate::ui::BODY))
                 .line_height(px(15.0))
                 .text_color(move || color())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -817,20 +770,20 @@ fn menu_row(
         .child(
             text(note)
                 .flex_1()
-                .text_size(px(10.0))
-                .line_height(px(14.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
         .child(
             text(track)
-                .text_size(px(9.5))
+                .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3()),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "common.menuHint"))
-                .text_size(px(9.0))
-                .line_height(px(12.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .into_element();
