@@ -616,8 +616,9 @@ fn general(
                                 .placeholder(move || {
                                     i18n::t(language.get().as_str(), "settings.datePatternHint")
                                 })
-                                .text_size(px(11.0))
-                                .font_family("SF Mono")
+                                .text_size(px(crate::ui::CODE))
+                                
+
                                 .flex_1(),
                         ),
                 )
@@ -737,9 +738,8 @@ fn general(
                                 .child(
                                     text(label)
                                         .flex_1()
-                                        .text_size(px(9.5))
-                                        .line_height(px(13.0))
-                                        .font_family("SF Mono")
+                                        .text_size(px(crate::ui::CODE))
+                                        .line_height(px(crate::ui::CODE_LINE))
                                         .text_color(move || design::text2())
                                         .text_overflow(nsh_core::EllipsizeMode::Middle),
                                 )
@@ -781,8 +781,9 @@ fn general(
                 .child(
                     text(identity_line.clone())
                         .flex_1()
-                        .text_size(px(11.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
+
                         .line_height(px(15.0))
                         .text_color(move || design::text2()),
                 )
@@ -1026,8 +1027,9 @@ fn about(
         .gap(px(8.0))
         .child(
             text(brand::version_line())
-                .text_size(px(11.5))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                
+
                 .text_color(move || design::text2()),
         )
         .child(
@@ -1038,8 +1040,9 @@ fn about(
         )
         .child(
             text(format!("{} <{}>", name, email))
-                .text_size(px(11.0))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                
+
                 .text_color(move || design::text2()),
         )
         // 四个外链；打不开时走状态栏提示，不弹错误框。
@@ -1125,15 +1128,17 @@ fn git_page(
                 .gap(px(4.0))
                 .child(
                     text(version)
-                        .text_size(px(11.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
+
                         .line_height(px(15.0))
                         .text_color(move || design::text()),
                 )
                 .child(
                     text(exec_path)
-                        .text_size(px(10.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
+
                         .line_height(px(14.0))
                         .text_color(move || design::text3())
                         .text_overflow(nsh_core::EllipsizeMode::Middle),
@@ -1203,9 +1208,8 @@ fn git_page(
                                         .bg(move || design::panel2())
                                         .child(
                                             text(label)
-                                                .text_size(px(10.0))
-                                                .line_height(px(13.0))
-                                                .font_family("SF Mono")
+                                                .text_size(px(crate::ui::CODE))
+                                                .line_height(px(crate::ui::CODE_LINE))
                                                 .text_color(move || design::text2())
                                                 .text_overflow(nsh_core::EllipsizeMode::Middle),
                                         )
@@ -1255,8 +1259,9 @@ fn git_page(
                 .gap(px(4.0))
                 .child(
                     text(helper_text)
-                        .text_size(px(11.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
+
                         .line_height(px(15.0))
                         .text_color(move || design::text2()),
                 )
@@ -1329,8 +1334,9 @@ fn shortcuts_page(
                         let value = registry.get().combo(id).to_string();
                         crate::shortcuts::pretty(value.as_str())
                     })
-                    .text_size(px(11.0))
-                    .font_family("SF Mono")
+                    .text_size(px(crate::ui::CODE))
+                    
+
                     .line_height(px(14.0))
                     .text_color(move || design::text2()),
                 )
@@ -1474,8 +1480,9 @@ fn credentials_page(
                 .gap(px(4.0))
                 .child(
                     text(helper_text)
-                        .text_size(px(11.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
+
                         .line_height(px(15.0))
                         .text_color(move || design::text()),
                 )
@@ -1791,9 +1798,8 @@ fn agent_page(
                 )
                 .child(
                     text(label)
-                        .text_size(px(10.0))
-                        .line_height(px(13.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        .line_height(px(crate::ui::CODE_LINE))
                         .text_color(move || {
                             let _ = language;
                             design::text2()
