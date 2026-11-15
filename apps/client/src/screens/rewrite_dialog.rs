@@ -6,7 +6,6 @@
 
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::widgets;
 use nsh_core::prelude::*;
 
 /// 这次要做的改写。
@@ -280,13 +279,17 @@ pub(crate) fn rewrite_dialog(
                         .border_t_1()
                         .border_color(move || design::line())
                         .child(view().flex_1())
-                        .child(widgets::button(
+                        .child(crate::ui::button::button(
+                                   
                             move || i18n::t(language_value.get().as_str(), "common.cancel"),
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Regular,
+                                   false,
+                                   {
                                 let on_close = on_close.clone();
                                 move || on_close()
                             },
-                        ))
+                               ))
                         .child(crate::ui::button::button(
                                    
                             move || i18n::t(language_value.get().as_str(), action_key),

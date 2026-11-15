@@ -3,9 +3,9 @@
 //! 搜索同时匹配命令文案与仓库路径；↑↓ 在整张结果表里移动，↵ 执行命中的那一行。
 //! 渲染与键盘导航共用 [`rows`]，避免「高亮一行、执行另一行」。
 
+use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::widgets;
 use nsh_core::prelude::*;
 
 /// 面板宽度与最大高度（设计板 `.palette`）。

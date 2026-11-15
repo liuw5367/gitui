@@ -5,9 +5,9 @@
 //!
 //! 补丁解析在 `domain::diff`。
 
+use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::widgets;
 use domain::diff::Patch;
 use nsh_core::prelude::*;
 

@@ -6,7 +6,6 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::{Sync, SyncOptions, Tab};
-use crate::widgets;
 use nsh_core::prelude::*;
 
 /// 对话框状态：种类 + 选项 + 结果。
@@ -363,18 +362,22 @@ pub(crate) fn sync_dialog(
                         .items_center()
                         .gap(px(8.0))
                         .child(view().flex_1())
-                        .child(widgets::button(
+                        .child(crate::ui::button::button(
+                                   
                             move || {
                                 i18n::t(
                                     language.get().as_str(),
                                     if has_result { "sync.close" } else { "common.cancel" },
                                 )
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Secondary,
+                                   crate::ui::button::ButtonSize::Regular,
+                                   false,
+                                   {
                                 let close = close.clone();
                                 move || close()
                             },
-                        ))
+                               ))
                         .child(dynamic(move || -> AnyElement {
                             if has_result {
                                 return view().w(px(0.0)).into_element();

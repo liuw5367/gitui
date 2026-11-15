@@ -4,10 +4,10 @@
 //! P1 中 Fetch/Pull/Push、Branch/Stash、Agent 还没有对应的写路径或同步实现，
 //! 这些按钮按禁用态渲染，不伪装成可用。
 
+use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets;
 use crate::Actions;
 use nsh_base::input;
 use nsh_core::prelude::*;

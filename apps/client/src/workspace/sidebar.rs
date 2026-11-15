@@ -5,11 +5,11 @@
 //!
 //! 侧栏数据是打开标签页时的快照：仓库变化由上层重新装载标签页触发重建。
 
+use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
 use crate::ui;
-use crate::widgets;
 use nsh_core::prelude::*;
 
 pub(crate) fn sidebar(

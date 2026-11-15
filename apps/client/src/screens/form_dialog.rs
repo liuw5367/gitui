@@ -285,7 +285,7 @@ pub(crate) fn form_dialog(
     );
 }
 
-/// 一行复选：走 `widgets::check`（原生 Checkbox + 统一指示器）。
+/// 一行复选：走 `ui::check::check_inline`（原生 Checkbox + 统一指示器）。
 fn flag_row(
     language: Signal<SharedString>,
     label_key: &'static str,

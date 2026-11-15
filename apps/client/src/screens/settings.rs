@@ -4,10 +4,10 @@
 //! `git config`，只读展示）、文件树分组、启动行为、版本信息。其余分区（Git、快捷键、
 //! 凭据）按设计稿呈现标题与说明，内容明确标注「尚未实现」，不做假控件。
 
+use crate::widgets;
 use crate::brand::{self, ThemeMode};
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::widgets;
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -153,13 +153,17 @@ pub(crate) fn settings(
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
-                .child(widgets::button(
+                .child(crate::ui::button::button(
+                           
                     move || i18n::t(language.get().as_str(), "common.done"),
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Regular,
+                           false,
+                           {
                         let go_welcome = done.clone();
                         move || go_welcome()
                     },
-                )),
+                       )),
         );
 }
 
@@ -1385,13 +1389,17 @@ fn shortcuts_page(
                 .flex_row()
                 .gap(px(8.0))
                 .child(view().flex_1())
-                .child(widgets::button(
+                .child(crate::ui::button::button(
+                           
                     move || i18n::t(language.get().as_str(), "shortcut.restoreDefaults"),
-                    {
+                           crate::ui::button::ButtonVariant::Secondary,
+                           crate::ui::button::ButtonSize::Regular,
+                           false,
+                           {
                         let restore = restore.clone();
                         move || restore()
                     },
-                )),
+                       )),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "shortcut.catalogHint"))

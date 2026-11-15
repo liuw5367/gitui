@@ -3,10 +3,10 @@
 //! 列表按「暂存 / 未暂存」两段呈现，段内按目录分组；行高 24、状态字母与 +/− 统计
 //! 来自设计稿。changelists 通过列表上方的选择器切换（本地存储，按仓库分组）。
 
+use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets;
 use crate::Actions;
 use domain::diff::{DiffLineKind, Patch};
 use nsh_core::element::desktop::MenuItem;

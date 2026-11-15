@@ -1,38 +1,14 @@
-//! 基础控件：按钮、图标按钮、键帽、分隔线。
+//! 尺寸自由的图标：`ui::icon::icon_view` 只认 11/12/13/16 四档，而画板里还有
+//! 9/10/15/20 这些点数（小指示勾、折叠箭头、错误横幅图标）。这个文件保留
+//! 「任意点数」的入口，供那些位置使用。
 //!
-//! 尺寸与配色来自 `design::metrics` 与 `design` 的 token；这里不放业务文案，
-//! 文案由调用方传入（已翻译）。
+//! 其余控件都已并入 `ui/`：按钮（`ui::button`）、复选（`ui::check`）、
+//! 键帽（`ui::badge::kbd`）、图标按钮（`ui::button::icon_button`）。
+//!
+//! 尺寸与配色来自 `design::metrics` 与 `design` 的 token。
 
-use crate::design::{self, icons, metrics};
+use crate::design::icons;
 use nsh_core::prelude::*;
-
-/// 普通按钮：`.btn`（高 24、字号 12、圆角 6、1px 边框）。
-///
-/// 文案用闭包而不是字符串，是为了让按钮跟随语言切换。
-pub(crate) fn button(
-    label: impl Fn() -> String + 'static,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    return view()
-        .h(px(metrics::BUTTON_H))
-        .px(px(10.0))
-        .flex_row()
-        .items_center()
-        .justify_center()
-        .gap(px(5.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .border_1()
-        .border_color(move || design::btn_border())
-        .bg(move || design::btn())
-        .hover(|style| style.bg(move || design::hover()))
-        .active(|style| style.bg(move || design::line_soft()))
-        .on_press(on_press)
-        .child(
-            text(move || label())
-                .text_size(px(12.0))
-                .text_color(move || design::text()),
-        );
-}
 
 /// 纯图标，不可点击：用于行内标记（分支、标签、文件）。
 pub(crate) fn icon(

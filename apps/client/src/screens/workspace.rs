@@ -409,19 +409,27 @@ fn error_panel(
             view()
                 .flex_row()
                 .gap(px(8.0))
-                .child(crate::widgets::button(
+                .child(crate::ui::button::button(
+                                  
                     move || i18n::t(language.get().as_str(), "error.retry"),
-                    {
+                                  crate::ui::button::ButtonVariant::Secondary,
+                                  crate::ui::button::ButtonSize::Regular,
+                                  false,
+                                  {
                         let retry = retry.clone();
                         move || retry()
                     },
-                ))
-                .child(crate::widgets::button(
+                              ))
+                .child(crate::ui::button::button(
+                                  
                     move || i18n::t(language.get().as_str(), "error.close"),
-                    {
+                                  crate::ui::button::ButtonVariant::Secondary,
+                                  crate::ui::button::ButtonSize::Regular,
+                                  false,
+                                  {
                         let welcome = welcome.clone();
                         move || welcome()
                     },
-                )),
+                              )),
         );
 }
