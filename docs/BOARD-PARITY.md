@@ -48,7 +48,7 @@
 | 板 | 画板要求的主要控件 | 现有实现 | 缺口 |
 |---|---|---|---|
 | 18 Files at commit | `btn`×2、`seg`、`badge-soft` | 检查器 Files 页已换 `ui::table` | ✅ 已就绪；视图切换仍是自绘分段（P5 剩余） |
-| 19 Blame & file history | `btn`×2、`badge-soft`、`statusbar` | 只有 320 宽侧栏 blame，画板是主区宽版 | ❌ 需补主区宽版 blame（`ui::table`）（P5 剩余） |
+| 19 Blame & file history | `blame-gutter`×16、`blame-src`×16、`blame-line`×16、`bh`/`ba`/`nm`×18、`tbtn`×6、`side-head`、`statusbar` | `inspector.rs` 的 `blame_body`（侧栏 320 宽）已有同样的三段结构：`short`(52) + `line` + `text`，数据来自 `tab.blame`（`short`/`author`/`timestamp`/`line`/`text` 齐备） | ❌ **主区宽版缺失**。不是样式问题：主区只有 4 个 `Mode`（History/Changes/Refs/Agent），没有 blame 入口；要加宽版必须先决定它挂在哪里（新增第 5 个 Mode，还是作为 Changes 的子视图）。画板还有 `bh`/`ba`（文件头/作者栏）与 `statusbar`，现有侧栏版没有 |
 
 ### P6 Navigation 组
 
