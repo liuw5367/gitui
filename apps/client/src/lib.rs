@@ -273,7 +273,13 @@ pub fn App() -> impl IntoElement {
     let commit_summary = signal(String::new());
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
-    let palette_open = signal(false);
+    // 验收开关：`GITUI_PALETTE=1` 启动即打开命令面板（⌘K 的等价物），
+    // 用于截图核对面板与列表项。
+    let palette_open = signal(
+        std::env::var("GITUI_PALETTE")
+            .map(|value| value == "1")
+            .unwrap_or(false),
+    );
     // 组件画廊（P0 的验收入口）：⌘⇧D 打开，Esc 关闭。P6 并入命令面板。
     // `GITUI_GALLERY=1` 用于截图验收：不依赖键盘自动化也能直接看到组件层。
     let gallery_open = signal(

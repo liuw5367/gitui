@@ -16,6 +16,7 @@
 #   GITUI_SYNC=1        启动即打开同步面板（验收弹层用）
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
 #   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
+#   GITUI_PALETTE=1     启动即打开命令面板（⌘K 的等价物）
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
 #                       会把画廊挡在后面，截出来就是一片白
 #   tools/shots.sh welcome            # 欢迎页
@@ -43,6 +44,7 @@ echo "启动应用（HOME=$home_dir）…"
   GITUI_SYNC="${GITUI_SYNC:-0}" \
   GITUI_FORM="${GITUI_FORM:-0}" \
   GITUI_MODE="${GITUI_MODE:-history}" \
+  GITUI_PALETTE="${GITUI_PALETTE:-0}" \
     nsh run >"$home_dir/run-$name.log" 2>&1 &
   echo $! >"$home_dir/run-$name.pid"
 )
