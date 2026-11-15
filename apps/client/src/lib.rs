@@ -53,6 +53,9 @@ pub(crate) enum Mode {
     Changes,
     Refs,
     Agent,
+    /// 单文件的 blame + 文件历史（板 19）。从检查器的 Blame 页或文件行进入，
+    /// 不占工具栏的分段——画板的入口是 `.blamebar` 里的 Files 按钮。
+    Blame,
 }
 
 /// 仓库管理页的三种入口（设计板 03 的分段控件）。
@@ -273,6 +276,7 @@ pub fn App() -> impl IntoElement {
         Ok("changes") => Mode::Changes,
         Ok("refs") => Mode::Refs,
         Ok("agent") => Mode::Agent,
+        Ok("blame") => Mode::Blame,
         _ => Mode::History,
     });
     let commit_summary = signal(String::new());

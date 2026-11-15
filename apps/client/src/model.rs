@@ -76,6 +76,8 @@ pub struct Tab {
     pub details: Option<git::CommitDetails>,
     /// 选中文件的 blame 行。
     pub blame: Vec<git::BlameLine>,
+    /// 正在看的 blame 文件路径（板 19 的 `.blamebar` 要显示它）。
+    pub blame_path: String,
     /// 选中文件的历史。
     pub file_history: Vec<Commit>,
     /// 对比引用的起点（`None` 表示未开启 Compare refs）。
@@ -231,6 +233,18 @@ fn normalise_status(status: char) -> char {
 }
 
 impl Tab {
+    /// blame 的纯文本（复制按钮用）：`短hash 作者 行号 代码`。
+    pub fn blame_text(&self) -> String {
+        let mut out = String::new();
+        for line in &self.blame {
+            out.push_str(&format!(
+                "{} {} {} {}\n",
+                line.short, line.author, line.line, line.text
+            ));
+        }
+        return out;
+    }
+
     /// 当前选中的提交。
     pub fn selected_commit(&self) -> Option<&Commit> {
         return self.selected.and_then(|index| self.commits.get(index));
@@ -425,6 +439,7 @@ pub fn select_file(tab: &mut Tab, index: usize) {
             tab.selected_file = Some(index);
             tab.file_patch = Some((file.path.clone(), patch));
             // blame 与文件历史只读，失败时留空而不是报错（例如文件在新提交里不存在）。
+            tab.blame_path = file.path.clone();
             tab.blame = repo.blame(file.path.as_str()).unwrap_or_default();
             tab.file_history = repo
                 .file_history(file.path.as_str(), 50)

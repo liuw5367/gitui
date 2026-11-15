@@ -3,6 +3,7 @@
 //! `lib.rs` 只负责状态与动作，屏幕函数只负责布局与呈现。欢迎页是**独立窗口**
 //! （`id = "welcome"`），标签页工作区与设置在同一个窗口的 `main` 里。
 
+mod blame_view;
 mod changes_view;
 mod conflict_view;
 mod form_dialog;
@@ -15,6 +16,7 @@ mod sync_dialog;
 mod welcome;
 mod workspace;
 
+pub(crate) use blame_view::blame_view;
 pub(crate) use changes_view::changes_view;
 pub(crate) use conflict_view::conflict_view;
 pub(crate) use form_dialog::{form_dialog, FormKind, FormState};

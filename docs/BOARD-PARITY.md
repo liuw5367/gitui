@@ -48,7 +48,7 @@
 | 板 | 画板要求的主要控件 | 现有实现 | 缺口 |
 |---|---|---|---|
 | 18 Files at commit | `btn`×2、`seg`、`badge-soft` | 检查器 Files 页已换 `ui::table` | ✅ 已就绪；视图切换仍是自绘分段（P5 剩余） |
-| 19 Blame & file history | `blame-gutter`×16、`blame-src`×16、`blame-line`×16、`bh`/`ba`/`nm`×18、`tbtn`×6、`side-head`、`statusbar` | `inspector.rs` 的 `blame_body`（侧栏 320 宽）已有同样的三段结构：`short`(52) + `line` + `text`，数据来自 `tab.blame`（`short`/`author`/`timestamp`/`line`/`text` 齐备） | ❌ **主区宽版缺失**。不是样式问题：主区只有 4 个 `Mode`（History/Changes/Refs/Agent），没有 blame 入口；要加宽版必须先决定它挂在哪里（新增第 5 个 Mode，还是作为 Changes 的子视图）。画板还有 `bh`/`ba`（文件头/作者栏）与 `statusbar`，现有侧栏版没有 |
+| 19 Blame & file history ✅ | `blame-gutter`×16、`blame-src`×16、`blame-line`×16、`bh`/`ba`/`nm`×18、`tbtn`×6、`side-head`、`statusbar` | `inspector.rs` 的 `blame_body`（侧栏 320 宽）已有同样的三段结构：`short`(52) + `line` + `text`，数据来自 `tab.blame`（`short`/`author`/`timestamp`/`line`/`text` 齐备） | ✅ 已实现主区宽版：新增 `Mode::Blame` + `screens/blame_view.rs`。左栏文件历史（`.fhist`，260 宽）+ 右栏 `.blamebar`（Blame 徽章、路径、行数、Copy 按钮）+ `.blamecode`（短 hash + 作者 | 行号 | 代码）。入口：`GITUI_MODE=blame`（验收用），工具栏不占分段——画板本身的入口是 `.blamebar` 的 Files 按钮 |
 
 ### P6 Navigation 组
 
@@ -131,6 +131,7 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 | `palette.png` | 20 | 命令面板：搜索框、七行命令、每行左侧放大镜与右侧快捷键 |
 | `syncpanel.png` | 15 / 28 / 29 | 同步面板：遮罩暗化、Fetch/Pull/Push 页签、三个复选行、页脚按钮 |
 | `formpanel.png` | 22 | 表单弹层：标题、字段标签与输入框、勾选行、页脚两按钮 |
+| `blame.png` | 19 | 主区 blame：左侧 File history 列表、右侧 Blame 徽章 + 路径 + 行数 + Copy，以及 blame 行（hash + 作者 | 行号 | 代码） |
 | `inspector.png` | 08 / 18 | 检查器：顶部三页签（Files 选中 / Info / Blame）、「1 file changed」与文件行（`diff.rs` + M） |
 | `settings.png` | 23 / 24 / 25 / 26 / 27 | 设置页：左侧六分区（General/Git/Shortcuts/Themes/Credentials/About）、右侧 Appearance 区块、主题三态（System 选中）、说明文字与分隔线 |
 

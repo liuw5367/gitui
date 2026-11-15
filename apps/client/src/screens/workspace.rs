@@ -322,6 +322,12 @@ fn body(
                             .flex_1()
                             .min_h_0()
                             .into_element(),
+                        crate::Mode::Blame => crate::screens::blame_view(
+                            language,
+                            tab_for_history.clone(),
+                            history_actions.copy_text.clone(),
+                        )
+                        .into_element(),
                         crate::Mode::Refs => crate::screens::refs_view(
                             language,
                             tab_for_changes.clone(),
