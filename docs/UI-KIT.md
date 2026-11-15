@@ -40,6 +40,7 @@ NSH 把界面分成三层：`nsh-core` 提供原语与布局，`nsh-base` 提供
 | `text_area` | `ui/text_input.rs` | `nsh_base::input(multiline)` | 自定义高度 | focus-visible、invalid | 提交说明、附注、冲突结果 |
 | `field` | `ui/field.rs` | `view` + `text` | — | invalid | 标签 13 + 控件 + 帮助/错误 11；错误与帮助互斥 |
 | `check_row` | `ui/check.rs` | `nsh_base::checkbox` | 行高 28 | checked、disabled | 整行是按压目标，14pt 指示器 |
+| `check_inline` | `ui/check.rs` | `nsh_base::checkbox` | 行高与指示器由调用方给（22 高 / 12–14） | checked、disabled | 表单里在矮行内放复选（「创建后检出」「跳过钩子」）；列表用 `check_row` |
 | `indicator` | `ui/check.rs` | `view` | 12×12 | — | 方框标记，**没有自己的按压**；用于表格单元格等「不能整行勾选」的场合 |
 | `indicator_action` | `ui/check.rs` | `nsh_base::button` | 12×12 | checked | 可点的方框（外观同 `indicator`）；点它只切换开关、不选中行——`data_table` 会把按压交给单元格视图，吞掉后不触发行选中 |
 | `switch_row` | `ui/check.rs` | `nsh_base::switch` | 38×22 轨道 | checked、disabled | 左侧文案 + 可选说明，右侧开关 |

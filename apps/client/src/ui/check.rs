@@ -78,6 +78,64 @@ pub(crate) fn indicator(checked: bool) -> impl IntoElement {
         );
 }
 
+/// 行内复选：与 [`check_row`] 同一套外观，但高度与指示器尺寸由调用方给。
+///
+/// `check_row` 是列表用的整行（28 高、14pt 指示器）；表单里偶尔需要在 20–22 高的
+/// 一行内放复选（「创建后检出」「跳过钩子」），用它。
+pub(crate) fn check_inline(
+    caption: impl Fn() -> String + 'static,
+    checked: bool,
+    row_height: f32,
+    indicator: f32,
+    disabled: bool,
+    on_change: impl Fn(bool) + 'static,
+) -> impl IntoElement {
+    return nsh_base::checkbox()
+        .checked(checked)
+        .disabled(disabled)
+        .opacity(if disabled { 0.45 } else { 1.0 })
+        .h(px(row_height))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_SM))
+        .indicator_style(move |style| {
+            let style = style
+                .w(px(indicator))
+                .h(px(indicator))
+                .items_center()
+                .justify_center()
+                .rounded(px(3.0))
+                .border_1();
+            if checked {
+                style
+                    .bg(move || design::token("primary-bg"))
+                    .border_color(move || design::token("primary-bg"))
+            } else {
+                style
+                    .bg(move || design::field())
+                    .border_color(move || design::field_border())
+            }
+        })
+        .indicator(dynamic(move || -> AnyElement {
+            if !checked {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            return crate::ui::icon::icon_view(
+                "check",
+                crate::ui::icon::IconSize::Compact,
+                move || design::token("primary-foreground"),
+            )
+            .into_element();
+        }))
+        .on_change(move |next: &bool| on_change(*next))
+        .child(
+            text(move || caption())
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::text()),
+        );
+}
+
 pub(crate) fn check_row(
     caption: impl Fn() -> String + 'static,
     checked: bool,

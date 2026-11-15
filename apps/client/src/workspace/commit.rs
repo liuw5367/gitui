@@ -350,12 +350,14 @@ fn checkbox_row(
     checked: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    // 原生 Checkbox：按压、键盘激活与无障碍状态由组件负责，样式由 widgets 统一。
+    // 原生 Checkbox：按压、键盘激活与无障碍状态由组件负责，外观取自 ui 层。
     let toggle = move |_next: bool| on_press();
-    return crate::widgets::check(
+    return crate::ui::check::check_inline(
         move || i18n::t(language.get().as_str(), key),
         checked,
+        22.0,
         12.0,
+        false,
         toggle,
     );
 }

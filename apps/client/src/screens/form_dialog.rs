@@ -302,10 +302,12 @@ fn flag_row(
         .h(px(22.0))
         .flex_row()
         .items_center()
-        .child(crate::widgets::check(
+        .child(crate::ui::check::check_inline(
             move || i18n::t(language.get().as_str(), label_key),
             form.flag,
+            22.0,
             14.0,
+            false,
             toggle,
         ));
 }
