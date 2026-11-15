@@ -262,7 +262,14 @@ pub fn App() -> impl IntoElement {
     let filter_open = signal(false);
     let inspector_open = signal(false);
     let compare_mode = signal(false);
-    let mode = signal(Mode::History);
+    // 验收开关：`GITUI_MODE=history|changes|refs|agent` 指定启动时的主视图，
+    // 用于逐个巡检各页渲染（历史表曾整行不可见却连续几轮被截图判过）。
+    let mode = signal(match std::env::var("GITUI_MODE").as_deref() {
+        Ok("changes") => Mode::Changes,
+        Ok("refs") => Mode::Refs,
+        Ok("agent") => Mode::Agent,
+        _ => Mode::History,
+    });
     let commit_summary = signal(String::new());
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
