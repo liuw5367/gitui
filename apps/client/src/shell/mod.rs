@@ -299,16 +299,19 @@ pub(crate) fn toolbar(
             do_agent()
         }))
         // 设计稿：Agent 右侧的 tb-icon 是右侧面板的显隐开关。
-        .child(widgets::icon_button(
+        .child(crate::ui::button::icon_button_tuned(
             "sidebar",
-            14.0,
-            move || {
+            move || i18n::t(language.get().as_str(), "shell.sidebar"),
+            crate::ui::button::ButtonSize::Toolbar,
+            Some(crate::ui::icon::IconSize::Toolbar),
+            Some(std::rc::Rc::new(move || {
                 if panel_open.get() {
                     design::accent()
                 } else {
                     design::text2()
                 }
-            },
+            })),
+            false,
             move || panel_open.set(!panel_open.get_untracked()),
         ));
 }

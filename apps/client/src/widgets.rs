@@ -58,32 +58,6 @@ pub(crate) fn small_button(
         );
 }
 
-/// 图标按钮：`.tb-icon`（26×24、圆角 6）；图标颜色跟随传入的 token。
-pub(crate) fn icon_button(
-    name: &'static str,
-    size: f32,
-    color: impl Fn() -> AdaptiveColor + 'static,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    let mut button = view()
-        .w(px(26.0))
-        .h(px(24.0))
-        .items_center()
-        .justify_center()
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .hover(|style| style.bg(move || design::hover()))
-        .on_press(on_press);
-    if let Some(source) = icons::icon(name) {
-        button = button.child(
-            svg(source)
-                .w(px(size))
-                .h(px(size))
-                .text_color(move || color()),
-        );
-    }
-    return button;
-}
-
 /// 纯图标，不可点击：用于行内标记（分支、标签、文件）。
 pub(crate) fn icon(
     name: &'static str,
