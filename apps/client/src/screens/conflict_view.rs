@@ -321,11 +321,14 @@ pub(crate) fn conflict_view(
                                 .flex_1()
                                 .min_w_0()
                                 .h_full()
-                                .flex_row()
-                                .gap(px(8.0))
                                 .p(px(12.0))
-                                .child(pane(language, "conflicts.ours", side_text(conflict_text.as_str(), Side::Ours)))
-                        .child(
+                                .child(crate::ui::split::horizontal(vec![
+                                    crate::ui::split::Pane::flex(pane(
+                                        language,
+                                        "conflicts.ours",
+                                        side_text(conflict_text.as_str(), Side::Ours),
+                                    )),
+                                    crate::ui::split::Pane::flex(
                             view()
                                 .flex_1()
                                 .min_w_0()
@@ -370,12 +373,13 @@ pub(crate) fn conflict_view(
                                         ),
                                     ),
                                 ),
-                        )
-                        .child(pane(
-                            language,
-                            "conflicts.theirs",
-                            side_text(conflict_text.as_str(), Side::Theirs),
-                        )),
+                            ),
+                                    crate::ui::split::Pane::flex(pane(
+                                        language,
+                                        "conflicts.theirs",
+                                        side_text(conflict_text.as_str(), Side::Theirs),
+                                    )),
+                                ])),
                         ),
                 )
                 // base 条：只在 diff3 风格有内容，且需要用户展开。
