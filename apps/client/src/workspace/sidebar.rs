@@ -143,7 +143,7 @@ fn group(
                 .flex_row()
                 .items_center()
                 .gap(px(5.0))
-                .child(widgets::icon("chev-down", 10.0, design::text3))
+                .child(crate::ui::icon::icon_view("chev-down", crate::ui::icon::IconSize::Compact, design::text3))
                 .child(
                     text(move || i18n::t(language.get().as_str(), key))
                         .text_size(px(crate::ui::SECONDARY))
@@ -268,7 +268,7 @@ fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) ->
         .gap(px(7.0))
         .rounded(px(metrics::RADIUS_CONTROL))
         .hover(|style| style.bg(move || design::hover()))
-        .child(widgets::icon(icon, 11.0, color))
+        .child(crate::ui::icon::icon_view(icon, crate::ui::icon::IconSize::Compact, color))
         .child(
             text(label)
                 .text_size(px(crate::ui::BODY))

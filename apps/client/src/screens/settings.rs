@@ -218,7 +218,7 @@ fn side(
                             .w(px(16.0))
                             .items_center()
                             .justify_center()
-                            .child(widgets::icon(item.icon(), 14.0, move || {
+                            .child(crate::ui::icon::icon_view(item.icon(), crate::ui::icon::IconSize::Inline, move || {
                                 if section.get() == *item {
                                     design::accent()
                                 } else {
@@ -691,7 +691,7 @@ fn general(
                                 .flex_row()
                                 .items_center()
                                 .gap(px(6.0))
-                                .child(widgets::icon("folder", 10.0, design::text3))
+                                .child(crate::ui::icon::icon_view("folder", crate::ui::icon::IconSize::Compact, design::text3))
                                 .child(
                                     text(label)
                                         .flex_1()

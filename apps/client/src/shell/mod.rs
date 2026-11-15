@@ -4,7 +4,6 @@
 //! P1 中 Fetch/Pull/Push、Branch/Stash、Agent 还没有对应的写路径或同步实现，
 //! 这些按钮按禁用态渲染，不伪装成可用。
 
-use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
@@ -751,7 +750,7 @@ pub(crate) fn statusbar(
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
-                .child(widgets::icon("check", 10.0, design::ok))
+                .child(crate::ui::icon::icon_view("check", crate::ui::icon::IconSize::Compact, design::ok))
                 .child(
                     text(message)
                         .text_size(px(crate::ui::SECONDARY))
