@@ -6,9 +6,13 @@
 use crate::design::{self, icons};
 use nsh_core::prelude::*;
 
-/// 图标尺寸三档：按钮内 12、行内 13、工具栏与页头 16。
+/// 图标尺寸：紧凑 11、按钮内 12、行内 13、工具栏与页头 16。
+///
+/// `Compact` 是设计稿在侧栏与状态横幅里用的 11pt——它不是「随手写的数字」，
+/// 而是与 12 并存的最小档（侧栏行比按钮更密，用 12 会显得过大）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum IconSize {
+    Compact,
     Button,
     Inline,
     Toolbar,
@@ -17,6 +21,7 @@ pub(crate) enum IconSize {
 impl IconSize {
     pub(crate) fn points(self) -> f32 {
         return match self {
+            IconSize::Compact => 11.0,
             IconSize::Button => 12.0,
             IconSize::Inline => 13.0,
             IconSize::Toolbar => 16.0,

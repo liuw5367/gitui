@@ -264,7 +264,7 @@ fn files_body(
                 .items_center()
                 .gap(px(crate::ui::GAP_SM))
                 .px(px(crate::ui::GAP_SM))
-                .child(widgets::icon("file", 11.0, design::text3))
+                .child(crate::ui::icon::icon_view("file", crate::ui::icon::IconSize::Compact, design::text3))
                 .child(
                     text(file.path.clone())
                         .flex_1()

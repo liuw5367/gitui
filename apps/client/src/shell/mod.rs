@@ -723,7 +723,7 @@ pub(crate) fn statusbar(
         .bg(move || design::status())
         .border_t_1()
         .border_color(move || design::line())
-        .child(widgets::icon("branch", 11.0, design::text3))
+        .child(crate::ui::icon::icon_view("branch", crate::ui::icon::IconSize::Compact, design::text3))
         .child(
             text(move || {
                 return tab
