@@ -42,8 +42,8 @@
 | v0.1 implementation | **All planned phases landed**: welcome window, workspace, history/diff, staging & commit, refs, reflog, conflicts, sync, agent, settings, shortcuts, command palette |
 | Verification | `cargo test` 179 项通过（domain 20 / git 59 / store 13 / agent 12 / apps 75）；`nsh check` 与 `cargo check --all-targets` 零警告；几何与主题测试直接比对设计 CSS |
 | Interaction acceptance | `docs/2026-11-14-gitui-ui-operation-test.md` 第 9 节逐板记录状态（PASS / PARTIAL / BLOCKED / N/A-DESIGN）；样式结论按原生刻度口径修订中 |
-| UI component layer | **P0 完成**：`apps/client/src/ui/` 15 个组件、原生刻度（DESIGN-HANDOFF §2.4）、`tools/check-ui.sh` 门禁、⌘⇧D 组件画廊；P1–P7 按 canvas 八组迁移 |
-| Known gaps | 逐板截图取证（本环境无图形会话，`nsh run` 被 dev session 锁阻断）、表格/diff/命令面板尚未换成 `data_table`/`diff`/`command`（P2/P3/P6）、凭据真实流程（按决定延后） |
+| UI component layer | `apps/client/src/ui/` 20 个组件文件、原生刻度（DESIGN-HANDOFF §2.4）、`tools/check-ui.sh` 门禁、⌘⇧D 组件画廊。P1–P4 与 P7 的界面迁移完成，**14 个文件登记**在 `tools/ui-migrated.txt`（字号字面量、裸按压、手写 mono、`nsh_base` 直引四项归零，由 `guard_tests` 强制） |
+| Known gaps | 逐板截图取证已可用（`tools/shots.sh` + `GITUI_MODE`/`GITUI_SYNC`/`GITUI_FORM`/`GITUI_PALETTE`/`GITUI_DIRTY`，按窗口 id 截图）；剩余：板 16 横幅未接 `ui::feedback::banner`、板 19 主区 blame 缺入口（主区只有 4 个 Mode）、板 14 `ui::split` 未接入、`widgets.rs` 与 `ui` 两套尺寸模型并存（见 DESIGN-HANDOFF §12）；凭据真实流程（按决定延后） |
 
 ## Document ownership
 

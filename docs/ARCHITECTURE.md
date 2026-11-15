@@ -161,18 +161,20 @@ User action (NSH view)
 
 | Need | Component |
 |---|---|
-| 复选 | `nsh_base::checkbox`（`widgets::check` 统一封装） |
-| 确认 / 危险动作 | `nsh_base::alert_dialog`（多动作 + `cancel`） |
-| 菜单 | `nsh_core::element::desktop::{MenuItem, popup_menu_at, set_application_menu}` |
+| 复选 | `nsh_base::checkbox`，经 `ui::check::{check_row, switch_row}` 统一外观；行内小方框用 `ui::check::indicator` / `indicator_action` |
+| 确认 / 危险动作 | `nsh_base::alert_dialog`，经 `ui::dialog::confirm_destructive` / `notice` 包装 |
+| 菜单 | `nsh_core::element::desktop::{MenuItem, popup_menu_at, set_application_menu}`，菜单项统一由 `ui::menu::{action, danger, divider}` 构造 |
 | 文件选择 | `pick_paths(OpenDialog::folders())` |
-| 拖选/文本 | `text` / `input`（0.5.0 的原生输入框） |
-| 弹层 | 自绘浮层（`view().absolute().inset(0)`）+ `z_index`，因为设计稿的弹层尺寸与
-  内部排版都需要完全自控 |
+| 拖选/文本 | `text` / `input`，经 `ui::text_input::{text_input, text_input_bound, search_field}` |
+| 弹层 | 模态用 `ui::dialog::dialog`，或 `scrim` + `modality` 自组；锚定浮层（变更清单、过滤面板、命令面板）仍是自绘 `view().absolute()`，因为它们要贴按钮、不能居中 |
+| 表格 | `nsh_base::data_table`，经 `ui::table`。**约束**：必须作为 `dynamic` 的直接返回值，放进 `flex_col` 的 child 里不渲染 |
+| diff | `nsh_base::DiffView`，经 `ui::diff_surface`（12/18 等宽、行号、classic +−） |
 
-尚未改用 `nsh_base` 原生实现的表面（记录为后续项）：`DiffView`（会带来行内词级
-高亮、折叠分隔条与语法高亮，但需要重做 hunk/行级暂存的入口）、`Command`（命令
-面板已具备同样的分组与键盘行为）、`Select` / `RadioGroup`（设置页现在是设计稿的
-分段控件）。
+尚未改用 `nsh_base` 原生实现的表面（记录为后续项）：`Command`（命令面板已具备
+同样的分组与键盘行为）、`Select` / `RadioGroup`（设置页现在是设计稿的分段控件）。
+
+`widgets.rs` 与 `ui/` 并存，原因见 `docs/DESIGN-HANDOFF.md` §12：前者接受可变
+点数，后者只认固定档位，不是重复实现。
 
 ### 5.3 Large data
 
