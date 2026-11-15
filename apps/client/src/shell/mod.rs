@@ -264,7 +264,7 @@ pub(crate) fn toolbar(
                         .text_size(px(crate::ui::BODY))
                         .flex_1(),
                 )
-                .child(widgets::kbd("⌘F")),
+                .child(crate::ui::badge::kbd("⌘F")),
         )
         .child(crate::ui::v_separator())
         .child(

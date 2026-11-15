@@ -8,7 +8,7 @@ use crate::design::{self, metrics};
 use crate::filters::When;
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets::kbd;
+use crate::ui::badge::kbd;
 use crate::Actions;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;

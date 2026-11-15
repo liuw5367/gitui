@@ -178,22 +178,3 @@ pub(crate) fn check(
         );
 }
 
-/// 键帽：`.kbd`（字号 10、1px 边框、圆角 4）。
-pub(crate) fn kbd(label: impl Into<SharedString>) -> impl IntoElement {
-    let label = label.into();
-    return view()
-        .h(px(15.0))
-        .px(px(4.0))
-        .items_center()
-        .justify_center()
-        .rounded(px(4.0))
-        .border_1()
-        .border_color(move || design::line())
-        .bg(move || design::panel())
-        .child(
-            text(label)
-                .text_size(px(10.0))
-                .text_color(move || design::text3()),
-        );
-}
-
