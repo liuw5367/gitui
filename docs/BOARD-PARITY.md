@@ -131,11 +131,11 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 | `palette.png` | 20 | 命令面板：搜索框、七行命令、每行左侧放大镜与右侧快捷键 |
 | `syncpanel.png` | 15 / 28 / 29 | 同步面板：遮罩暗化、Fetch/Pull/Push 页签、三个复选行、页脚按钮 |
 | `formpanel.png` | 22 | 表单弹层：标题、字段标签与输入框、勾选行、页脚两按钮 |
+| `inspector.png` | 08 / 18 | 检查器：顶部三页签（Files 选中 / Info / Blame）、「1 file changed」与文件行（`diff.rs` + M） |
 | `settings.png` | 23 / 24 / 25 / 26 / 27 | 设置页：左侧六分区（General/Git/Shortcuts/Themes/Credentials/About）、右侧 Appearance 区块、主题三态（System 选中）、说明文字与分隔线 |
 
-**未截到的板**：08（检查器，`ui::tabs` + `ui::table` 已就绪，但没有单独截图）、
-14（冲突三栏，仍是自绘 overlay）、16（三条横幅，未接入 `ui::banner`）、18（Files
-页）、19（主区 blame 缺入口）、21（右键菜单，需要交互才能弹出）。
+**未截到的板**：14（冲突三栏，仍是自绘 overlay）、16（三条横幅，未接入
+`ui::banner`）、19（主区 blame 缺入口）、21（右键菜单，需要交互才能弹出）。
 
 ## 5. 验收手段
 
@@ -148,7 +148,7 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 ./tools/shots.sh gallery                                   # 组件画廊
 GITUI_MODE=history|changes|refs|agent ...                  # 四个主视图
 GITUI_DIRTY=1 GITUI_MODE=changes ...                       # 制造未提交改动，看 diff
-GITUI_SYNC=1 / GITUI_FORM=1 / GITUI_PALETTE=1 / GITUI_SETTINGS=1 ...  # 弹层/面板/设置页
+GITUI_SYNC=1 / GITUI_FORM=1 / GITUI_PALETTE=1 / GITUI_SETTINGS=1 / GITUI_INSPECTOR=1
 ```
 
 判定方法：对截图做像素统计（颜色数 / 目标色像素数），而不是目测。`data_table`

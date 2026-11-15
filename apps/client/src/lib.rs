@@ -260,7 +260,12 @@ pub fn App() -> impl IntoElement {
     let filter_author = signal(String::new());
     let filter_when = signal(SharedString::from(When::All.id()));
     let filter_open = signal(false);
-    let inspector_open = signal(false);
+    // 验收开关：`GITUI_INSPECTOR=1` 启动即展开右侧检查器（板 08 / 18 需要它）。
+    let inspector_open = signal(
+        std::env::var("GITUI_INSPECTOR")
+            .map(|value| value == "1")
+            .unwrap_or(false),
+    );
     let compare_mode = signal(false);
     // 验收开关：`GITUI_MODE=history|changes|refs|agent` 指定启动时的主视图，
     // 用于逐个巡检各页渲染（历史表曾整行不可见却连续几轮被截图判过）。
