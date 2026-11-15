@@ -235,125 +235,149 @@ pub(crate) fn history(
                             let row_actions = row_actions.clone();
                             let squash_range = squash_range.clone();
                             let compare_for_rows = compare.clone();
-                            return view()
-                                .w_full()
-                                .flex_col()
-                                .child(each(
-                                    visible,
-                                    |row: &(usize, domain::Commit)| row.0,
-                                    move |row, _| {
-                                        let (index, commit) = row.get();
-                                        let select = select.clone();
-                                        let select_menu = select.clone();
-                                        let toggle_compare = toggle_compare.clone();
-                                        let row_actions_row = row_actions.clone();
-                                        let squash_range_for_row = squash_range.clone();
-                                        let compare_for_rows = compare_for_rows.clone();
-                                        let is_selected = selected == Some(index);
-                                        let in_compare = compare_for_rows.contains(&index);
-                                        let is_merge = commit.parents.len() > 1;
-                                        let has_refs = !commit.refs.is_empty();
-                                        view()
-                                            .w_full()
-                                            .h(px(metrics::COMMIT_ROW_H))
-                                            .flex_row()
-                                            .items_center()
-                                            .gap(px(8.0))
-                                            .px(px(8.0))
-                                            .border_b_1()
-                                            .border_color(move || design::line_soft())
-                                            .bg(move || {
-                                                if in_compare {
-                                                    design::accent_soft()
-                                                } else if is_selected {
-                                                    design::selected()
-                                                } else {
-                                                    AdaptiveColor::TRANSPARENT
-                                                }
-                                            })
-                                            .hover(|style| style.bg(move || design::hover()))
-                                            .on_press(move |event: &PressEvent| {
-                                                // 对比模式下点击是加入/移出集合；
-                                                // 否则普通点击选中，⌘ 点击也加入对比。
-                                                if compare_mode.get_untracked()
-                                                    || event.modifiers.cmd
-                                                {
-                                                    toggle_compare(index);
-                                                } else {
-                                                    select(index);
-                                                }
-                                            })
-                                            // 右键：提交级操作（设计板 21）。
-                                            .on_context_menu({
-                                                let summary = commit.summary.clone();
-                                                let short = commit.short.clone();
-                                                move |event: &nsh_core::ContextMenuEvent| {
-                                                    let items = commit_menu(
-                                                        language_value,
-                                                        short.as_str(),
-                                                        summary.as_str(),
-                                                        index,
-                                                        select_menu.clone(),
-                                                        row_actions_row.clone(),
-                                                        reset_request,
-                                                        squash_range_for_row.clone(),
-                                                        can_squash,
-                                                    );
-                                                    let _ = nsh_core::element::desktop::popup_menu_at(
-                                                        items,
-                                                        event.page_position,
-                                                    );
-                                                }
-                                            })
-                                            .child(graph_cell(is_selected || in_compare, is_merge))
-                                            .child(
-                                                view()
-                                                    .flex_1()
-                                                    .min_w_0()
-                                                    .flex_row()
-                                                    .items_center()
-                                                    .gap(px(6.0))
-                                                    .child(
-                                                        text(move || commit.summary.clone())
-                                                            .text_size(px(crate::ui::BODY))
-                                                            .text_color(move || design::text())
-                                                            .text_overflow(nsh_core::EllipsizeMode::Tail),
-                                                    )
-                                                    .child(
-                                                        view()
-                                                            .h(px(16.0))
-                                                            .flex_row()
-                                                            .items_center()
-                                                            .gap(px(4.0))
-                                                            .when(has_refs, |this| {
-                                                                this.child(ref_chips(commit.refs.clone()))
-                                                            }),
-                                                    ),
-                                            )
-                                            .child(
-                                                text(move || commit.author.clone())
-                                                    .w(px(AUTHOR_W))
-                                                    .text_size(px(crate::ui::SECONDARY))
-                                                    .text_color(move || design::text2())
-                                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
-                                            )
-                                            .child(
-                                                text(move || {
-                                                    let timestamp =
-                                                        commit.date.parse().unwrap_or(0);
-                                                    crate::dates::format(
-                                                        language_value.get().as_str(),
-                                                        timestamp,
-                                                        now,
-                                                    )
-                                                })
-                                                .w(px(DATE_W))
+                            // 表格：单列，整行交给 render 自绘——图线、引用徽章、对比
+                            // 强调色都要保留，表格只负责虚拟化、行高与键盘导航。
+                            // `visible` 是 Memo，先取一份快照供 render 与回调按索引取行。
+                            let rows_snapshot = visible.get();
+                            let rows: Vec<Vec<String>> = rows_snapshot
+                                .iter()
+                                .map(|(index, _commit)| vec![index.to_string()])
+                                .collect();
+                            let commits_for_render = rows_snapshot.clone();
+                            let compare_for_render = compare_for_rows.clone();
+                            let select_for_press = select.clone();
+                            let toggle_for_press = toggle_compare.clone();
+                            let compare_mode_for_press = compare_mode;
+                            let menu_select = select.clone();
+                            let menu_actions = row_actions.clone();
+                            let menu_squash = squash_range.clone();
+                            let commits_for_press = rows_snapshot.clone();
+                            let commits_for_menu = rows_snapshot.clone();
+                            return crate::ui::table::table(crate::ui::table::TableSpec {
+                                columns: vec![crate::ui::table::Column {
+                                    key: "commit",
+                                    title: None,
+                                    width: None,
+                                    fixed: false,
+                                }],
+                                rows,
+                                selected,
+                                row_height: Some(metrics::COMMIT_ROW_H),
+                                on_select: Box::new(move |_index| {}),
+                                render: Some(Box::new(move |row, _key, _text| {
+                                    let Some((index, commit)) =
+                                        commits_for_render.get(row as usize).cloned()
+                                    else {
+                                        return view().w_full().h_full().into_element();
+                                    };
+                                    let is_selected = selected == Some(index);
+                                    let in_compare = compare_for_render.contains(&index);
+                                    let is_merge = commit.parents.len() > 1;
+                                    let has_refs = !commit.refs.is_empty();
+                                    return view()
+                                        .w_full()
+                                        .h_full()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(8.0))
+                                        .px(px(8.0))
+                                        .bg(move || {
+                                            if in_compare {
+                                                design::accent_soft()
+                                            } else {
+                                                AdaptiveColor::TRANSPARENT
+                                            }
+                                        })
+                                        .child(graph_cell(is_selected || in_compare, is_merge))
+                                        .child(
+                                            view()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .flex_row()
+                                                .items_center()
+                                                .gap(px(6.0))
+                                                .child(
+                                                    text(commit.summary.clone())
+                                                        .text_size(px(crate::ui::BODY))
+                                                        .text_color(move || design::text())
+                                                        .text_overflow(
+                                                            nsh_core::EllipsizeMode::Tail,
+                                                        ),
+                                                )
+                                                .child(
+                                                    view()
+                                                        .h(px(16.0))
+                                                        .flex_row()
+                                                        .items_center()
+                                                        .gap(px(4.0))
+                                                        .when(has_refs, |this| {
+                                                            this.child(ref_chips(commit.refs.clone()))
+                                                        }),
+                                                ),
+                                        )
+                                        .child(
+                                            text(commit.author.clone())
+                                                .w(px(AUTHOR_W))
                                                 .text_size(px(crate::ui::SECONDARY))
-                                                .text_color(move || design::text3()),
-                                            )
-                                    },
-                                ))
-                                .into_element();
+                                                .text_color(move || design::text2())
+                                                .text_overflow(nsh_core::EllipsizeMode::Tail),
+                                        )
+                                        .child(
+                                            text({
+                                                let timestamp = commit.date.parse().unwrap_or(0);
+                                                crate::dates::format(
+                                                    language_value.get().as_str(),
+                                                    timestamp,
+                                                    now,
+                                                )
+                                            })
+                                            .w(px(DATE_W))
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .text_color(move || design::text3()),
+                                        )
+                                        .into_element();
+                                })),
+                                on_row_press: Some(Box::new(move |row, platform| {
+                                    let Some((index, _)) =
+                                        commits_for_press.get(row as usize).cloned()
+                                    else {
+                                        return;
+                                    };
+                                    // 对比模式下点击是加入/移出集合；否则普通点击选中，
+                                    // ⌘ 点击也加入对比。
+                                    if compare_mode_for_press.get_untracked() || platform {
+                                        toggle_for_press(index);
+                                    } else {
+                                        select_for_press(index);
+                                    }
+                                })),
+                                on_context_menu: Some(Box::new(move |row, x, y| {
+                                    let Some((index, commit)) =
+                                        commits_for_menu.get(row as usize).cloned()
+                                    else {
+                                        return;
+                                    };
+                                    let items = commit_menu(
+                                        language_value,
+                                        commit.short.as_str(),
+                                        commit.summary.as_str(),
+                                        index,
+                                        menu_select.clone(),
+                                        menu_actions.clone(),
+                                        reset_request,
+                                        menu_squash.clone(),
+                                        can_squash,
+                                    );
+                                    let _ = nsh_core::element::desktop::popup_menu_at(
+                                        items,
+                                        nsh_core::Point {
+                                            x: Points(x),
+                                            y: Points(y),
+                                        },
+                                    );
+                                })),
+                            })
+                            .into_element();
                         })),
                 ),
             ),
