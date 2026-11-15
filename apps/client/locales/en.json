@@ -343,7 +343,11 @@
   "palette": {
     "placeholder": "Type a command",
     "empty": "No matching commands",
-    "open": "Command Palette"
+    "open": "Command Palette",
+    "groupOpen": "Open repositories",
+    "groupRecent": "Recent repositories",
+    "groupCommands": "Commands",
+    "switch": "Switch"
   },
   "command": {
     "closeTab": "Close Tab",

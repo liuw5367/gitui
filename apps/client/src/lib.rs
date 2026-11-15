@@ -3068,9 +3068,21 @@ pub fn App() -> impl IntoElement {
             if !palette_open.get_untracked() {
                 return;
             }
-            let count = screens::palette_ids(
+            let open_paths: Vec<String> = tabs
+                .get_untracked()
+                .iter()
+                .map(|tab| tab.path.clone())
+                .collect();
+            let recent_paths: Vec<String> = recent
+                .get_untracked()
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect();
+            let count = screens::palette_rows(
                 palette_query.get_untracked().as_str(),
                 language.get_untracked().as_str(),
+                &open_paths,
+                &recent_paths,
             )
             .len();
             if count == 0 {
@@ -3103,17 +3115,32 @@ pub fn App() -> impl IntoElement {
             if !palette_open.get_untracked() {
                 return;
             }
-            let ids = screens::palette_ids(
+            let open_paths: Vec<String> = tabs
+                .get_untracked()
+                .iter()
+                .map(|tab| tab.path.clone())
+                .collect();
+            let recent_paths: Vec<String> = recent
+                .get_untracked()
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect();
+            let rows = screens::palette_rows(
                 palette_query.get_untracked().as_str(),
                 language.get_untracked().as_str(),
+                &open_paths,
+                &recent_paths,
             );
             let index = palette_selected
                 .get_untracked()
-                .min(ids.len().saturating_sub(1));
-            let Some(id) = ids.get(index).copied() else {
+                .min(rows.len().saturating_sub(1));
+            let Some(row) = rows.get(index).cloned() else {
                 return;
             };
-            run(id);
+            match row {
+                screens::PaletteRow::Command(id) => run(id),
+                screens::PaletteRow::Repo { path, .. } => open_path(path),
+            }
             palette_open.set(false);
         }
     });
@@ -3358,13 +3385,25 @@ pub fn App() -> impl IntoElement {
             if !palette_open.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            let commands = screens::palette_commands();
+            let open_paths: Vec<String> = tabs
+                .get()
+                .iter()
+                .map(|tab| tab.path.clone())
+                .collect();
+            let recent_paths: Vec<String> = recent
+                .get()
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect();
             let run_command = actions.run_command.clone();
+            let open_repo = actions.open_path.clone();
             return screens::palette(
                 language,
                 palette_query,
-                commands,
+                open_paths,
+                recent_paths,
                 run_command,
+                open_repo,
                 palette_open,
                 palette_selected,
             )
