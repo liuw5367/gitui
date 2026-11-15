@@ -16,3 +16,4 @@ screens/sync_dialog.rs
 screens/form_dialog.rs
 workspace/sidebar.rs
 screens/hook_sheet.rs
+screens/rewrite_dialog.rs

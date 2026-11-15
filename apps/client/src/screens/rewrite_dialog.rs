@@ -73,24 +73,11 @@ pub(crate) fn rewrite_dialog(
     on_submit: std::sync::Arc<dyn Fn()>,
     on_close: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(140)
-        .items_center()
-        .justify_center()
-        .bg(move || {
-            if state.get().is_some() {
-                design::token("overlay")
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press({
-            let on_close = on_close.clone();
-            move || on_close()
-        })
-        .child(dynamic(move || -> AnyElement {
+    let dismiss = on_close.clone();
+    return crate::ui::dialog::scrim(
+        move || state.get().is_some(),
+        140,
+        dynamic(move || -> AnyElement {
             let Some(dialog) = state.get() else {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             };
@@ -124,16 +111,16 @@ pub(crate) fn rewrite_dialog(
                             .child(
                                 text(short)
                                     .w(px(64.0))
-                                    .text_size(px(9.5))
-                                    .font_family("SF Mono")
+                                    .text_size(px(crate::ui::CODE))
+                                    
                                     .line_height(px(13.0))
                                     .text_color(move || design::text3()),
                             )
                             .child(
                                 text(summary)
                                     .flex_1()
-                                    .text_size(px(10.5))
-                                    .line_height(px(14.0))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
                                     .text_color(move || design::text2())
                                     .text_overflow(nsh_core::EllipsizeMode::Tail),
                             )
@@ -158,8 +145,8 @@ pub(crate) fn rewrite_dialog(
                                     &[("range", range.clone()), ("count", count.clone())],
                                 )
                             })
-                            .text_size(px(10.0))
-                            .line_height(px(14.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text3()),
                         )
                         .child(rows)
@@ -178,16 +165,16 @@ pub(crate) fn rewrite_dialog(
                         .gap(px(8.0))
                         .child(
                             text(short)
-                                .text_size(px(9.5))
-                                .font_family("SF Mono")
+                                .text_size(px(crate::ui::CODE))
+                                
                                 .line_height(px(13.0))
                                 .text_color(move || design::text3()),
                         )
                         .child(
                             text(summary)
                                 .flex_1()
-                                .text_size(px(10.5))
-                                .line_height(px(14.0))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text2())
                                 .text_overflow(nsh_core::EllipsizeMode::Tail),
                         )
@@ -195,7 +182,8 @@ pub(crate) fn rewrite_dialog(
                 );
             }
 
-            return view()
+            return crate::ui::dialog::modality(
+                view()
                 .w(px(480.0))
                 .flex_col()
                 .rounded(px(12.0))
@@ -203,7 +191,6 @@ pub(crate) fn rewrite_dialog(
                 .border_color(move || design::line())
                 .bg(move || design::content())
                 .overflow_hidden()
-                .on_press(|| {})
                 .child(
                     view()
                         .w_full()
@@ -217,7 +204,7 @@ pub(crate) fn rewrite_dialog(
                         .border_color(move || design::line())
                         .child(
                             text(move || i18n::t(language_value.get().as_str(), title_key))
-                                .text_size(px(13.0))
+                                .text_size(px(crate::ui::TITLE))
                                 .font_weight(FontWeight(600))
                                 .line_height(px(17.0))
                                 .text_color(move || design::text()),
@@ -241,33 +228,31 @@ pub(crate) fn rewrite_dialog(
                                 .border_1()
                                 .border_color(move || design::field_border())
                                 .bg(move || design::field())
-                                .child(
-                                    nsh_base::input()
-                                        .value({
-                                            let message = message.clone();
-                                            move || message.clone()
-                                        })
-                                        .on_change({
-                                            let on_change = on_change.clone();
-                                            move |text: &str| on_change(text.to_string())
-                                        })
-                                        .placeholder(move || {
-                                            i18n::t(
-                                                language_value.get().as_str(),
-                                                "rewrite.placeholder",
-                                            )
-                                        })
-                                        .text_size(px(11.0))
-                                        .flex_1(),
-                                ),
+                                .child(crate::ui::text_input::text_input_bound(
+                                    {
+                                        let message = message.clone();
+                                        move || message.clone()
+                                    },
+                                    move || {
+                                        i18n::t(
+                                            language_value.get().as_str(),
+                                            "rewrite.placeholder",
+                                        )
+                                    },
+                                    false,
+                                    {
+                                        let on_change = on_change.clone();
+                                        move |text: String| on_change(text)
+                                    },
+                                )),
                         )
                         // 阻塞原因与错误分开显示：前者是前置条件，后者是执行结果。
                         .child(view().w_full().when(blocker.is_some(), |this| {
                             let blocker = blocker.clone().unwrap_or_default();
                             this.child(
                                 text(blocker)
-                                    .text_size(px(10.0))
-                                    .line_height(px(14.0))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
                                     .text_color(move || design::warn()),
                             )
                         }))
@@ -275,8 +260,8 @@ pub(crate) fn rewrite_dialog(
                             let error = error.clone().unwrap_or_default();
                             this.child(
                                 text(error)
-                                    .text_size(px(10.0))
-                                    .line_height(px(14.0))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
                                     .text_color(move || design::danger()),
                             )
                         })),
@@ -314,6 +299,10 @@ pub(crate) fn rewrite_dialog(
                             },
                         )),
                 )
-                .into_element();
-        }))
+                .into_element(),
+            )
+            .into_element();
+        }),
+        move || dismiss(),
+    );
 }

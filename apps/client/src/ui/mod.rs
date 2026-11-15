@@ -157,6 +157,7 @@ mod guard_tests {
         "screens/form_dialog.rs",
         "workspace/sidebar.rs",
         "screens/hook_sheet.rs",
+        "screens/rewrite_dialog.rs",
     ];
 
     fn src_root() -> PathBuf {
