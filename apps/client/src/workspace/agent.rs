@@ -23,6 +23,7 @@ pub(crate) fn agent_panel(
 ) -> impl IntoElement {
     let make_plan = actions.propose_plan.clone();
     let run_step = actions.run_agent_step.clone();
+    let remove_step = actions.remove_agent_step.clone();
     let set_permission = actions.set_agent_permission.clone();
     let now = store::now_unix();
     return view()
@@ -137,6 +138,26 @@ pub(crate) fn agent_panel(
                                                 .child(
                                                     view()
                                                         .h(px(18.0))
+                                                        .w(px(16.0))
+                                                        .items_center()
+                                                        .justify_center()
+                                                        .rounded(px(4.0))
+                                                        .hover(|style| style.bg(move || design::hover()))
+                                                        .on_press({
+                                                            let remove = remove_step.clone();
+                                                            move || remove(index)
+                                                        })
+                                                        // 删除用减号：图标集里没有 minus，直接用字形。
+                                                        .child(
+                                                            text("−")
+                                                                .text_size(px(11.0))
+                                                                .line_height(px(12.0))
+                                                                .text_color(move || design::text3()),
+                                                        ),
+                                                )
+                                                .child(
+                                                    view()
+                                                        .h(px(18.0))
                                                         .px(px(6.0))
                                                         .items_center()
                                                         .rounded(px(4.0))
@@ -177,6 +198,8 @@ pub(crate) fn agent_panel(
                                                 .into_element(),
                                         );
                                     }
+                                    let approve = actions.run_plan.clone();
+                                    let add_step = actions.add_agent_step.clone();
                                     return view()
                                         .w_full()
                                         .flex_col()
@@ -188,6 +211,59 @@ pub(crate) fn agent_panel(
                                                 .text_color(move || design::text2()),
                                         )
                                         .child(steps)
+                                        .child(
+                                            view()
+                                                .w_full()
+                                                .flex_row()
+                                                .items_center()
+                                                .gap(px(6.0))
+                                                // 用 view 而不是 small_button：菜单要开在点击处，
+                                                // 需要 PressEvent 的 page_position。
+                                                .child(
+                                                    view()
+                                                        .h(px(crate::metrics::BUTTON_SMALL_H))
+                                                        .px(px(8.0))
+                                                        .items_center()
+                                                        .justify_center()
+                                                        .rounded(px(5.0))
+                                                        .border_1()
+                                                        .border_color(move || design::btn_border())
+                                                        .bg(move || design::btn())
+                                                        .hover(|style| {
+                                                            style.bg(move || design::hover())
+                                                        })
+                                                        .on_press({
+                                                            let add_step = add_step.clone();
+                                                            move |event: &PressEvent| {
+                                                                let items =
+                                                                    step_menu(language, add_step.clone());
+                                                                let _ = nsh_core::element::desktop::popup_menu_at(
+                                                                    items,
+                                                                    event.page_position,
+                                                                );
+                                                            }
+                                                        })
+                                                        .child(
+                                                            text(move || {
+                                                                i18n::t(
+                                                                    language.get().as_str(),
+                                                                    "agent.addStep",
+                                                                )
+                                                            })
+                                                            .text_size(px(11.0))
+                                                            .text_color(move || design::text()),
+                                                        ),
+                                                )
+                                                .child(widgets::primary_button(
+                                                    move || {
+                                                        i18n::t(
+                                                            language.get().as_str(),
+                                                            "agent.approveRun",
+                                                        )
+                                                    },
+                                                    move || approve(),
+                                                )),
+                                        )
                                         .into_element();
                                 }
                             }
@@ -371,7 +447,24 @@ fn audit_block(
         }));
 }
 
-fn action_key(action: AgentAction) -> &'static str {
+/// 「补一步」菜单：每个可执行动作一项，选中即往计划末尾追加。
+fn step_menu(
+    language: Signal<SharedString>,
+    add_step: std::sync::Arc<dyn Fn(&'static str)>,
+) -> Vec<nsh_core::element::desktop::MenuItem> {
+    let lang = language.get_untracked();
+    return AgentAction::ALL
+        .into_iter()
+        .map(|action| {
+            let add_step = add_step.clone();
+            let id = action.id();
+            nsh_core::element::desktop::MenuItem::new(i18n::t(lang.as_str(), action_key(action)))
+                .on_select(move || add_step(id))
+        })
+        .collect();
+}
+
+pub(crate) fn action_key(action: AgentAction) -> &'static str {
     return match action {
         AgentAction::StageAll => "agent.action.stageAll",
         AgentAction::Commit => "agent.action.commit",

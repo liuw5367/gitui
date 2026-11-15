@@ -471,7 +471,13 @@
       "discard": "Discard changes"
     },
     "action.readFiles": "Read files",
-    "action.forcePush": "Force push"
+    "action.forcePush": "Force push",
+    "addStep": "Add step…",
+    "approveRun": "Approve & Run",
+    "approveTitle": "Run this plan?",
+    "approveMessage": "These steps run in order and write to the repository:",
+    "nothingRunnable": "Nothing to run: every step is denied or on a protected branch",
+    "manualSummary": "Manual plan"
   },
   "branch": {
     "checkout": "Check Out",

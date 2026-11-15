@@ -471,7 +471,13 @@
       "discard": "丢弃改动"
     },
     "action.readFiles": "读取文件",
-    "action.forcePush": "强制推送"
+    "action.forcePush": "强制推送",
+    "addStep": "补一步…",
+    "approveRun": "批准并执行",
+    "approveTitle": "执行这份计划？",
+    "approveMessage": "以下步骤会按顺序执行并写入仓库：",
+    "nothingRunnable": "没有可执行的步骤：都被禁止或位于受保护分支",
+    "manualSummary": "手动计划"
   },
   "branch": {
     "checkout": "切换到此分支",

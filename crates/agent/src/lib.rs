@@ -33,6 +33,19 @@ pub enum Action {
 }
 
 impl Action {
+    /// 全部动作，顺序即界面显示顺序（策略持久化与设置页共用）。
+    pub const ALL: [Action; 9] = [
+        Action::StageAll,
+        Action::Commit,
+        Action::UnstageAll,
+        Action::Fetch,
+        Action::Pull,
+        Action::Push,
+        Action::Discard,
+        Action::ReadFiles,
+        Action::ForcePush,
+    ];
+
     /// 稳定标识，用于存储与审计。
     pub fn id(self) -> &'static str {
         return match self {
@@ -247,6 +260,38 @@ impl Plan {
         };
     }
 
+    /// 追加一步（计划编辑：用户手动补一步）。
+    pub fn push_step(&mut self, step: Step) {
+        self.steps.push(step);
+    }
+
+    /// 删掉某一步；返回是否真的删了（下标越界时为 `false`）。
+    ///
+    /// 删除只影响这份建议，不改变仓库；执行过的步骤不会回滚。
+    pub fn remove_step(&mut self, index: usize) -> bool {
+        if index >= self.steps.len() {
+            return false;
+        }
+        self.steps.remove(index);
+        return true;
+    }
+
+    /// 按当前策略，哪些步骤可以执行（`Deny` 与受保护分支挡住的除外）。
+    ///
+    /// 返回下标，保持计划顺序；界面用它做「Approve & Run」的范围预览。
+    pub fn runnable(&self, policies: &Policies, settings: &Settings, branch: &str) -> Vec<usize> {
+        return self
+            .steps
+            .iter()
+            .enumerate()
+            .filter(|(_, step)| {
+                !policies.is_denied(step.action)
+                    && settings.blocks(step.action, branch).is_none()
+            })
+            .map(|(index, _)| index)
+            .collect();
+    }
+
     /// 计划里是否有会改动仓库的步骤。
     pub fn touches_worktree(&self) -> bool {
         return self.steps.iter().any(|step| match step.action {
@@ -401,6 +446,37 @@ mod tests {
         assert!(settings.blocks(Action::Fetch, "main").is_none());
         // 非保护分支不挡。
         assert!(settings.blocks(Action::Commit, "feature/x").is_none());
+    }
+
+    #[test]
+    fn plan_steps_can_be_added_and_removed() {
+        let mut plan = propose("s", 0, 2, 0, 0, "fix: thing");
+        let before = plan.steps.len();
+        plan.push_step(Step::new(Action::Fetch, "取回远程"));
+        assert_eq!(plan.steps.len(), before + 1);
+        assert_eq!(plan.steps.last().map(|step| step.action), Some(Action::Fetch));
+        assert!(plan.remove_step(before));
+        assert_eq!(plan.steps.len(), before);
+        // 越界删除返回 false，不改计划。
+        assert!(!plan.remove_step(99));
+        assert_eq!(plan.steps.len(), before);
+    }
+
+    #[test]
+    fn runnable_skips_denied_and_protected() {
+        let mut plan = Plan::default();
+        plan.push_step(Step::new(Action::Fetch, "取回"));
+        plan.push_step(Step::new(Action::StageAll, "暂存"));
+        plan.push_step(Step::new(Action::Discard, "丢弃"));
+        plan.push_step(Step::new(Action::Commit, "提交"));
+        let mut policies = Policies::default();
+        policies.set(Action::Discard, Permission::Deny);
+        let mut settings = Settings::default();
+        settings.protected = vec!["main".to_string()];
+        // 受保护分支挡住写动作，只读动作照常。
+        assert_eq!(plan.runnable(&policies, &settings, "main"), vec![0]);
+        // 非保护分支：除了被 Deny 的丢弃，其余都可执行。
+        assert_eq!(plan.runnable(&policies, &settings, "feature/x"), vec![0, 1, 3]);
     }
 
     #[test]

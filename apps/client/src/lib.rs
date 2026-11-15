@@ -139,6 +139,12 @@ pub(crate) struct Actions {
     pub(crate) set_mode_agent: Arc<dyn Fn()>,
     pub(crate) propose_plan: Arc<dyn Fn()>,
     pub(crate) run_agent_step: Arc<dyn Fn(usize)>,
+    /// 删掉计划里的一步（计划编辑）。
+    pub(crate) remove_agent_step: Arc<dyn Fn(usize)>,
+    /// 往计划末尾补一步（参数是动作 id）。
+    pub(crate) add_agent_step: Arc<dyn Fn(&'static str)>,
+    /// 批准确认后按顺序执行计划里可执行的步骤。
+    pub(crate) run_plan: Arc<dyn Fn()>,
     pub(crate) set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)>,
     /// 设置 Agent 的自动化程度。
     pub(crate) set_automation: Arc<dyn Fn(agent::Automation)>,
@@ -290,19 +296,9 @@ pub fn App() -> impl IntoElement {
     let agent_policies = signal({
         let mut policies = agent::Policies::default();
         for (action, permission) in store::load_agent_policies(&store_dir) {
-            let matched = [
-                agent::Action::StageAll,
-                agent::Action::Commit,
-                agent::Action::UnstageAll,
-                agent::Action::Fetch,
-                agent::Action::Pull,
-                agent::Action::Push,
-                agent::Action::Discard,
-                agent::Action::ReadFiles,
-                agent::Action::ForcePush,
-            ]
-            .into_iter()
-            .find(|candidate| candidate.id() == action);
+            let matched = agent::Action::ALL
+                .into_iter()
+                .find(|candidate| candidate.id() == action);
             if let Some(action) = matched {
                 policies.set(action, agent::Permission::from_id(permission.as_str()));
             }
@@ -1569,6 +1565,100 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let remove_agent_step: Arc<dyn Fn(usize)> = {
+        let agent_plan = agent_plan;
+        Arc::new(move |index: usize| {
+            let Some(mut plan) = agent_plan.get_untracked() else {
+                return;
+            };
+            if plan.remove_step(index) {
+                agent_plan.set(Some(plan));
+            }
+        })
+    };
+
+    let add_agent_step: Arc<dyn Fn(&'static str)> = {
+        let agent_plan = agent_plan;
+        let language = language;
+        Arc::new(move |id: &'static str| {
+            let Some(action) = agent::Action::ALL
+                .into_iter()
+                .find(|candidate| candidate.id() == id)
+            else {
+                return;
+            };
+            let lang = language.get_untracked();
+            let label = i18n::t(lang.as_str(), workspace::agent::action_key(action));
+            let mut plan = agent_plan.get_untracked().unwrap_or_default();
+            if plan.summary.trim().is_empty() {
+                plan.summary = i18n::t(lang.as_str(), "agent.manualSummary");
+            }
+            plan.push_step(agent::Step::new(action, label));
+            agent_plan.set(Some(plan));
+        })
+    };
+
+    // Approve & Run：先按策略算出可执行范围，列出来让用户确认，再按顺序执行。
+    let run_plan: Arc<dyn Fn()> = {
+        let agent_plan = agent_plan;
+        let agent_policies = agent_policies;
+        let agent_settings = agent_settings;
+        let tabs = tabs;
+        let active = active;
+        let language = language;
+        let notice = notice;
+        let run_step = run_agent_step.clone();
+        Arc::new(move || {
+            let Some(plan) = agent_plan.get_untracked() else {
+                return;
+            };
+            let branch = tabs
+                .get_untracked()
+                .get(active.get_untracked())
+                .map(|tab| tab.branch.clone())
+                .unwrap_or_default();
+            let runnable = plan.runnable(
+                &agent_policies.get_untracked(),
+                &agent_settings.get_untracked(),
+                branch.as_str(),
+            );
+            let lang = language.get_untracked();
+            if runnable.is_empty() {
+                interactions::notify(notice, i18n::t(lang.as_str(), "agent.nothingRunnable"));
+                return;
+            }
+            let listed: Vec<String> = runnable
+                .iter()
+                .filter_map(|index| plan.steps.get(*index))
+                .map(|step| format!("• {}", step.label))
+                .collect();
+            let message = format!(
+                "{}\n\n{}",
+                i18n::t(lang.as_str(), "agent.approveMessage"),
+                listed.join("\n")
+            );
+            let action_label = i18n::t(lang.as_str(), "agent.approveRun");
+            let title = i18n::t(lang.as_str(), "agent.approveTitle");
+            let run_step = run_step.clone();
+            spawn(async move {
+                let ok = interactions::confirm(
+                    title,
+                    message,
+                    "runPlan",
+                    action_label,
+                    false,
+                )
+                .await;
+                if !ok {
+                    return;
+                }
+                for index in runnable {
+                    run_step(index);
+                }
+            });
+        })
+    };
+
     let set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)> = {
         let agent_policies = agent_policies;
         let store_dir = store_dir.clone();
@@ -1576,17 +1666,9 @@ pub fn App() -> impl IntoElement {
             let mut policies = agent_policies.get_untracked();
             policies.set(action, permission);
             agent_policies.set(policies.clone());
-            let entries: Vec<(String, String)> = [
-                agent::Action::StageAll,
-                agent::Action::Commit,
-                agent::Action::UnstageAll,
-                agent::Action::Fetch,
-                agent::Action::Pull,
-                agent::Action::Push,
-                agent::Action::Discard,
-            ]
-            .into_iter()
-            .map(|candidate| {
+            let entries: Vec<(String, String)> = agent::Action::ALL
+                .into_iter()
+                .map(|candidate| {
                 (
                     candidate.id().to_string(),
                     policies.permission(candidate).id().to_string(),
@@ -2955,6 +3037,9 @@ pub fn App() -> impl IntoElement {
         set_mode_agent,
         propose_plan,
         run_agent_step,
+        remove_agent_step,
+        add_agent_step,
+        run_plan,
         set_agent_permission,
         set_compare_refs,
         checkout_branch,
