@@ -48,7 +48,9 @@ if [ ! -x "$bin" ]; then
   CLANG_MODULE_CACHE_PATH="$root/.swift-cache" SWIFT_MODULE_CACHE_PATH="$root/.swift-cache" \
     swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
 fi
-for _ in $(seq 1 60); do
+# 等窗口出现的上限要按冷构建算：改动 rust 源码后 nsh 会重新编译，实测 60–100s，
+# 早先按热构建的 60s 设上限，改完代码必然超时（曾因此误以为「窗口没出现」）。
+for _ in $(seq 1 240); do
   window_id="$("$bin" nsh-app --id 2>/dev/null || true)"
   [ -n "${window_id:-}" ] && break
   sleep 1
