@@ -369,7 +369,13 @@ pub fn App() -> impl IntoElement {
     }
     let screen = signal(Screen::Workspace);
     // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
-    let welcome_open = signal(initial_tabs.is_empty());
+    // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
+    // 欢迎窗口是独立窗口且默认铺在主窗口之上，截图验收组件画廊时它会挡住画廊，
+    // 之前把「截到欢迎页的空白」误当成「画廊没渲染」，就是因为它。
+    let suppress_welcome = std::env::var("GITUI_NO_WELCOME")
+        .map(|value| value == "1")
+        .unwrap_or(false);
+    let welcome_open = signal(initial_tabs.is_empty() && !suppress_welcome);
     let active = signal(session.active.min(initial_tabs.len().saturating_sub(1)));
     if initial_tabs.is_empty() {
         initial_tabs.clear();
