@@ -367,6 +367,15 @@ pub fn App() -> impl IntoElement {
     if !initial_settings.restore_session {
         initial_tabs.clear();
     }
+    // 验收与命令行入口：`GITUI_REPO=/path/to/repo` 直接打开指定仓库，
+    // 优先于会话恢复。截图验收需要它——没有打开的仓库，历史表与变更页
+    // 根本不会渲染，截图只能看到欢迎页。
+    if let Ok(path) = std::env::var("GITUI_REPO") {
+        let path = path.trim().to_string();
+        if !path.is_empty() {
+            initial_tabs = vec![model::load_tab(&path, &initial_filter)];
+        }
+    }
     let screen = signal(Screen::Workspace);
     // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
     // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
