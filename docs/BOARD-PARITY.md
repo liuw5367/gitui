@@ -161,6 +161,20 @@ GITUI_SYNC=1 / GITUI_FORM=1 / GITUI_PALETTE=1 / GITUI_SETTINGS=1 / GITUI_INSPECT
 的 child 里就是空白——这一条是靠「同一位置放红块能显示、放表格不能」的对照实验
 定位的，不是靠调参数。
 
+## 5.1 四项门禁
+
+目标要求的验收门禁与当前实测结果：
+
+```
+cargo test --lib              80 passed; 0 failed
+cargo check --all-targets     0 error / 0 warning
+nsh check                     ✓ checked nsh-app
+tools/check-ui.sh             check-ui: 通过
+```
+
+`nsh check` 检查 NSH 工程配置与 API 用法，与 `cargo check` 互补。首跑含编译约
+40s，再跑约 170ms。
+
 ## 6. 用法
 
 1. 每组开工前查本表第 1 节，确认该组要新建哪些组件（第 2 节），先建组件再改页面。
