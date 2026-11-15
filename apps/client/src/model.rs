@@ -895,27 +895,52 @@ pub fn reset_to(tab: &mut Tab, sha: &str, mode: git::ResetMode) -> Result<(), St
 }
 
 /// 新建分支；`from` 为空时基于当前 HEAD。
-pub fn create_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
+pub fn create_branch(tab: &mut Tab, name: &str, from: &str, checkout: bool) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     let from = if from.trim().is_empty() {
         None
     } else {
         Some(from.trim())
     };
-    repo.create_branch(name, from).map_err(|error| error.detail())?;
+    match (checkout, from) {
+        // 建完就切：`checkout -b` 一步到位，别留一个看不见的新分支。
+        (true, Some(from)) => repo
+            .checkout_new_branch(name, from)
+            .map_err(|error| error.detail())?,
+        (true, None) => repo.checkout_new_branch(name, "HEAD").map_err(|error| error.detail())?,
+        (false, from) => repo.create_branch(name, from).map_err(|error| error.detail())?,
+    }
     refresh_refs(tab, &repo);
+    if checkout {
+        let filter = tab.filter.clone();
+        let refreshed = load_tab(tab.path.as_str(), &filter);
+        tab.branch = refreshed.branch;
+        tab.ahead = refreshed.ahead;
+        tab.behind = refreshed.behind;
+        tab.status = refreshed.status;
+        tab.changes = refreshed.changes;
+        tab.conflicts = refreshed.conflicts;
+        tab.operation = refreshed.operation;
+    }
     return Ok(());
 }
 
 /// 新建标签。
-pub fn create_tag(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
+pub fn create_tag(
+    tab: &mut Tab,
+    name: &str,
+    from: &str,
+    message: &str,
+    annotated: bool,
+) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     let from = if from.trim().is_empty() {
         None
     } else {
         Some(from.trim())
     };
-    repo.create_tag(name, from).map_err(|error| error.detail())?;
+    repo.create_tag_with(name, from, message, annotated)
+        .map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     return Ok(());
 }
@@ -929,9 +954,14 @@ pub fn add_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
 }
 
 /// 贮藏当前改动。
-pub fn stash_changes(tab: &mut Tab, message: &str) -> Result<(), String> {
+pub fn stash_changes(
+    tab: &mut Tab,
+    message: &str,
+    include_untracked: bool,
+) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.stash_push(message).map_err(|error| error.detail())?;
+    repo.stash_push_with(message, include_untracked)
+        .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
     return Ok(());
@@ -1977,7 +2007,7 @@ mod tests {
         // 贮藏：改动先藏起来，列表里有条目；应用后改动回来且条目还在。
         std::fs::write(repo.path.join("a.txt"), "stashed\n").expect("write");
         let mut tab = load_tab(&path, &LogFilter::default());
-        stash_changes(&mut tab, "wip").expect("stash");
+        stash_changes(&mut tab, "wip", true).expect("stash");
         assert_eq!(tab.refs.stashes.len(), 1);
         let reference = tab.refs.stashes[0].reference.clone();
 
@@ -2283,18 +2313,18 @@ mod tests {
         let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
         let before = tab.refs.branches.len();
 
-        create_branch(&mut tab, "feature/x", "").expect("branch");
+        create_branch(&mut tab, "feature/x", "", false).expect("branch");
         assert_eq!(tab.refs.branches.len(), before + 1);
         assert!(tab.refs.branches.iter().any(|branch| branch.name == "feature/x"));
 
-        create_tag(&mut tab, "v0.0.1", "").expect("tag");
+        create_tag(&mut tab, "v0.0.1", "", "", false).expect("tag");
         assert_eq!(tab.refs.tags, vec!["v0.0.1".to_string()]);
 
         add_remote(&mut tab, "origin", "https://example.com/repo.git").expect("remote");
         assert_eq!(tab.refs.remotes, vec!["origin".to_string()]);
 
         // 空名字被 Git 拒绝，错误应回传给调用方。
-        assert!(create_branch(&mut tab, "", "").is_err());
+        assert!(create_branch(&mut tab, "", "", false).is_err());
     }
 
     #[test]
@@ -2304,7 +2334,7 @@ mod tests {
         let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
         assert!(!tab.changes.is_empty());
 
-        stash_changes(&mut tab, "wip").expect("stash");
+        stash_changes(&mut tab, "wip", true).expect("stash");
         assert!(tab.changes.is_empty(), "贮藏后变更列表应为空");
         assert_eq!(tab.refs.stashes.len(), 1);
 

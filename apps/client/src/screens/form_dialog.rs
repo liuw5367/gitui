@@ -45,6 +45,29 @@ impl FormKind {
         };
     }
 
+    /// 第三个字段的标签（只有附注标签需要说明）。
+    fn third_label(self) -> Option<&'static str> {
+        return match self {
+            FormKind::NewTag => Some("form.message"),
+            _ => None,
+        };
+    }
+
+    /// 复选项的标签；`None` 表示没有复选。
+    fn flag_label(self) -> Option<&'static str> {
+        return match self {
+            FormKind::NewBranch => Some("form.checkoutAfter"),
+            FormKind::NewTag => Some("form.annotated"),
+            FormKind::NewStash => Some("form.includeUntracked"),
+            _ => None,
+        };
+    }
+
+    /// 复选的初始值：贮藏默认带上未跟踪文件，其它默认不勾。
+    fn flag_default(self) -> bool {
+        return matches!(self, FormKind::NewStash);
+    }
+
     /// 第二个字段的标签；`None` 表示只有一个字段。
     fn second_label(self) -> Option<&'static str> {
         return match self {
@@ -75,6 +98,10 @@ pub(crate) struct FormState {
     pub kind: FormKind,
     pub first: String,
     pub second: String,
+    /// 第三个字段（目前只有附注标签的说明用）。
+    pub third: String,
+    /// 复选项的值；含义由 [`FormKind::flag_label`] 决定。
+    pub flag: bool,
     pub error: Option<String>,
 }
 
@@ -84,6 +111,8 @@ impl FormState {
             kind,
             first: String::new(),
             second: String::new(),
+            third: String::new(),
+            flag: kind.flag_default(),
             error: None,
         };
     }
@@ -122,6 +151,8 @@ pub(crate) fn form_dialog(
             let on_cancel = on_cancel.clone();
             let form_for_field_one = form.clone();
             let form_for_field_two = form.clone();
+            let form_for_third = form.clone();
+            let form_for_flag = form.clone();
             return view()
                 .w(px(420.0))
                 .p(px(16.0))
@@ -173,6 +204,35 @@ pub(crate) fn form_dialog(
                         },
                     )
                     .into_element();
+                }))
+                .child(dynamic(move || -> AnyElement {
+                    let Some(label_key) = form.kind.third_label() else {
+                        return view().w_full().h(px(0.0)).into_element();
+                    };
+                    let form_for_third = form_for_third.clone();
+                    return field(
+                        language,
+                        label_key,
+                        form_for_third.clone(),
+                        |state: &FormState| state.third.clone(),
+                        {
+                            let state = state;
+                            let form = form_for_third.clone();
+                            move |text: String| {
+                                let mut next = form.clone();
+                                next.third = text;
+                                state.set(Some(next));
+                            }
+                        },
+                    )
+                    .into_element();
+                }))
+                .child(dynamic(move || -> AnyElement {
+                    let Some(label_key) = form.kind.flag_label() else {
+                        return view().w_full().h(px(0.0)).into_element();
+                    };
+                    let form_for_flag = form_for_flag.clone();
+                    return flag_row(language, label_key, form_for_flag, state).into_element();
                 }))
                 .child(
                     view()
@@ -226,6 +286,72 @@ pub(crate) fn form_dialog(
                 )
                 .into_element();
         }));
+}
+
+/// 一行复选：原生 `Checkbox` 负责按压/键盘/无障碍，指示器由我们画（设计稿 14×14）。
+fn flag_row(
+    language: Signal<SharedString>,
+    label_key: &'static str,
+    form: FormState,
+    state: Signal<Option<FormState>>,
+) -> impl IntoElement {
+    let checked = form.flag;
+    let label = i18n::t(language.get_untracked().as_str(), label_key);
+    return view()
+        .w_full()
+        .h(px(22.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .child(
+            nsh_base::checkbox()
+                .checked(checked)
+                .accessibility_label(label)
+                .on_change({
+                    let form = form.clone();
+                    move |next: &bool| {
+                        let mut updated = form.clone();
+                        updated.flag = *next;
+                        state.set(Some(updated));
+                    }
+                })
+                .indicator_style(move |style| {
+                    let style = style
+                        .w(px(14.0))
+                        .h(px(14.0))
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .border_1();
+                    if checked {
+                        style
+                            .bg(move || design::accent2())
+                            .border_color(move || design::accent2())
+                    } else {
+                        style
+                            .bg(move || design::field())
+                            .border_color(move || design::field_border())
+                    }
+                })
+                .indicator(dynamic(move || -> AnyElement {
+                    if !checked {
+                        return view().w(px(0.0)).h(px(0.0)).into_element();
+                    }
+                    return view()
+                        .w(px(9.0))
+                        .h(px(9.0))
+                        .child(crate::widgets::icon("check", 9.0, || {
+                            design::token("primary-foreground")
+                        }))
+                        .into_element();
+                })),
+        )
+        .child(
+            text(move || i18n::t(language.get().as_str(), label_key))
+                .text_size(px(10.5))
+                .line_height(px(14.0))
+                .text_color(move || design::text2()),
+        );
 }
 
 fn field(

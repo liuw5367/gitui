@@ -507,7 +507,7 @@
     "from": "From (optional)",
     "remoteName": "Remote name",
     "url": "URL",
-    "message": "Message (optional)",
+    "message": "Message",
     "create": "Create",
     "add": "Add",
     "stash": "Stash",
@@ -523,7 +523,10 @@
     "save": "Save",
     "identity": "Commit Identity",
     "authorName": "Name",
-    "authorEmail": "Email"
+    "authorEmail": "Email",
+    "checkoutAfter": "Checkout after create",
+    "annotated": "Annotated tag",
+    "includeUntracked": "Include untracked files"
   },
   "sync": {
     "fetchTitle": "Fetch",

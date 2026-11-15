@@ -636,10 +636,32 @@ impl Repo {
 
     /// 新建轻量标签（`git tag <name> <from>`）。
     pub fn create_tag(&self, name: &str, from: Option<&str>) -> Result<(), GitError> {
-        let args: Vec<&str> = match from {
-            Some(from) => vec!["tag", name, from],
-            None => vec!["tag", name],
-        };
+        return self.create_tag_with(name, from, "", false);
+    }
+
+    /// 新建标签；`annotated` 为真时建附注标签（带 `-a -m <message>`）。
+    ///
+    /// 附注标签没有说明时用标签名当说明：`git tag -a` 不给 `-m` 会开编辑器，
+    /// 这里用空的 `GIT_EDITOR` 会让它失败，所以必须自带消息。
+    pub fn create_tag_with(
+        &self,
+        name: &str,
+        from: Option<&str>,
+        message: &str,
+        annotated: bool,
+    ) -> Result<(), GitError> {
+        let mut args: Vec<&str> = vec!["tag"];
+        let message = message.trim();
+        if annotated {
+            args.push("-a");
+            let text = if message.is_empty() { name } else { message };
+            args.push("-m");
+            args.push(text);
+        }
+        args.push(name);
+        if let Some(from) = from {
+            args.push(from);
+        }
         run_git(&self.root, &args)?;
         return Ok(());
     }
@@ -735,11 +757,19 @@ impl Repo {
 
     /// 贮藏当前改动（`git stash push -u`）；`message` 为空时不带说明。
     pub fn stash_push(&self, message: &str) -> Result<(), GitError> {
-        let args: Vec<&str> = if message.trim().is_empty() {
-            vec!["stash", "push", "-u"]
-        } else {
-            vec!["stash", "push", "-u", "-m", message.trim()]
-        };
+        return self.stash_push_with(message, true);
+    }
+
+    /// 贮藏当前改动；`include_untracked` 决定是否带上未跟踪文件。
+    pub fn stash_push_with(&self, message: &str, include_untracked: bool) -> Result<(), GitError> {
+        let mut args: Vec<&str> = vec!["stash", "push"];
+        if include_untracked {
+            args.push("-u");
+        }
+        if !message.trim().is_empty() {
+            args.push("-m");
+            args.push(message.trim());
+        }
         run_git(&self.root, &args)?;
         return Ok(());
     }
@@ -3205,5 +3235,55 @@ mod tests {
             .expect("set-url");
         let url = run_git(repo.root(), &["remote", "get-url", "origin"]).expect("get-url");
         assert_eq!(String::from_utf8_lossy(&url).trim(), "git@example.com:b.git");
+    }
+
+    #[test]
+    fn annotated_tags_carry_a_message() {
+        let (_guard, path) = fixture("tag-annotated", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        repo.create_tag_with("v1", None, "first release", true)
+            .expect("annotated tag");
+        repo.create_tag_with("v2", None, "", false)
+            .expect("lightweight tag");
+        let annotated = run_git(repo.root(), &["cat-file", "-t", "v1"]).expect("type");
+        assert_eq!(String::from_utf8_lossy(&annotated).trim(), "tag");
+        let message = run_git(repo.root(), &["tag", "-l", "-n1", "v1"]).expect("message");
+        assert!(
+            String::from_utf8_lossy(&message).contains("first release"),
+            "附注标签应带说明：{message:?}"
+        );
+        // 轻量标签是指向提交的引用，不是 tag 对象。
+        let lightweight = run_git(repo.root(), &["cat-file", "-t", "v2"]).expect("type");
+        assert_eq!(String::from_utf8_lossy(&lightweight).trim(), "commit");
+        // 没给说明的附注标签用标签名兜底，不会卡在编辑器上。
+        repo.create_tag_with("v3", None, "  ", true).expect("fallback");
+        let fallback = run_git(repo.root(), &["tag", "-l", "-n1", "v3"]).expect("message");
+        assert!(String::from_utf8_lossy(&fallback).contains("v3"));
+    }
+
+    #[test]
+    fn stash_can_leave_untracked_files_out() {
+        let (_guard, path) = fixture("stash-untracked", &[("a.txt", "one\n")], "first");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("tracked.txt"), "changed\n").expect("write");
+        run_git(repo.root(), &["add", "tracked.txt"]).expect("add");
+        run_git(repo.root(), &["commit", "-q", "-m", "add tracked"]).expect("commit");
+        std::fs::write(repo.root().join("tracked.txt"), "changed again\n").expect("write");
+        std::fs::write(repo.root().join("loose.txt"), "untracked\n").expect("write");
+
+        repo.stash_push_with("without untracked", false).expect("stash");
+        assert!(
+            repo.root().join("loose.txt").exists(),
+            "未跟踪文件应留在工作区"
+        );
+        let list = repo.refs().expect("refs").stashes;
+        assert_eq!(list.len(), 1);
+        repo.stash_pop().expect("pop");
+        assert!(
+            std::fs::read_to_string(repo.root().join("tracked.txt"))
+                .expect("read")
+                .contains("changed again"),
+            "弹回后已跟踪改动应回来"
+        );
     }
 }

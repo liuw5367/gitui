@@ -507,7 +507,7 @@
     "from": "起点（可选）",
     "remoteName": "远程名称",
     "url": "地址",
-    "message": "说明（可选）",
+    "message": "说明",
     "create": "新建",
     "add": "添加",
     "stash": "贮藏",
@@ -523,7 +523,10 @@
     "save": "保存",
     "identity": "提交身份",
     "authorName": "姓名",
-    "authorEmail": "邮箱"
+    "authorEmail": "邮箱",
+    "checkoutAfter": "创建后检出",
+    "annotated": "附注标签",
+    "includeUntracked": "包含未跟踪文件"
   },
   "sync": {
     "fetchTitle": "获取",

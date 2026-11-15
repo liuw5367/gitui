@@ -1545,10 +1545,23 @@ pub fn App() -> impl IntoElement {
                 return;
             }
             let result = match form.kind {
-                screens::FormKind::NewBranch => model::create_branch(tab, first.as_str(), second.as_str()),
-                screens::FormKind::NewTag => model::create_tag(tab, first.as_str(), second.as_str()),
+                screens::FormKind::NewBranch => model::create_branch(
+                    tab,
+                    first.as_str(),
+                    second.as_str(),
+                    form.flag,
+                ),
+                screens::FormKind::NewTag => model::create_tag(
+                    tab,
+                    first.as_str(),
+                    second.as_str(),
+                    form.third.as_str(),
+                    form.flag,
+                ),
                 screens::FormKind::AddRemote => model::add_remote(tab, first.as_str(), second.as_str()),
-                screens::FormKind::NewStash => model::stash_changes(tab, first.as_str()),
+                screens::FormKind::NewStash => {
+                    model::stash_changes(tab, first.as_str(), form.flag)
+                }
                 // 重命名与改 URL：`second` 是被改对象的原名，`first` 是新值。
                 screens::FormKind::RenameBranch => {
                     model::rename_branch(tab, second.as_str(), first.as_str())
