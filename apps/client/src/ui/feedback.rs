@@ -13,6 +13,8 @@ pub(crate) enum BannerTone {
     Info,
     Warning,
     Danger,
+    /// 进行中的操作（合并/变基/拣选/回滚）。
+    Accent,
 }
 
 impl BannerTone {
@@ -21,6 +23,7 @@ impl BannerTone {
             BannerTone::Info => design::panel(),
             BannerTone::Warning => design::token("hunk-bg"),
             BannerTone::Danger => design::del_bg(),
+            BannerTone::Accent => design::token("tag-bg"),
         };
     }
 
@@ -29,6 +32,7 @@ impl BannerTone {
             BannerTone::Info => design::text2(),
             BannerTone::Warning => design::warn(),
             BannerTone::Danger => design::del_fg(),
+            BannerTone::Accent => design::text(),
         };
     }
 }
@@ -39,15 +43,33 @@ pub(crate) fn banner(
     message: impl Fn() -> String + 'static,
     actions: Vec<AnyElement>,
 ) -> impl IntoElement {
+    return banner_sized(tone, 32.0, None, message, actions);
+}
+
+/// 同 [`banner`]，可指定高度与前置图标——工作区三条横幅是 24/26/28 且都带图标。
+pub(crate) fn banner_sized(
+    tone: BannerTone,
+    height: f32,
+    icon: Option<&'static str>,
+    message: impl Fn() -> String + 'static,
+    actions: Vec<AnyElement>,
+) -> impl IntoElement {
     let mut row = view()
         .w_full()
-        .min_h(px(32.0))
+        .h(px(height))
         .flex_row()
         .items_center()
         .gap(px(ui::GAP))
         .px(px(ui::GAP_LG))
-        .py(px(ui::GAP_XS))
+        .overflow_hidden()
         .bg(move || tone.background());
+    if let Some(name) = icon {
+        row = row.child(crate::ui::icon::icon_view(
+            name,
+            crate::ui::icon::IconSize::Button,
+            move || tone.foreground(),
+        ));
+    }
     row = row.child(
         text(move || message())
             .flex_1()

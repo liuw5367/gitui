@@ -652,63 +652,56 @@ pub(crate) fn op_banner(
         );
     };
     let abort_for_view = abort.clone();
+    // 无进行中的操作时整条横幅高度为 0；有操作时走 ui 层横幅（28 高、tag-bg、
+    // 前置 info 图标），与另外两条横幅共用同一套外观。
     return view()
         .w_full()
         .h(move || {
-            match tab.get().map(|tab| tab.operation) {
-                Some(git::Operation::None) | None => px(0.0),
-                _ => px(28.0),
+            if has_operation() {
+                px(28.0)
+            } else {
+                px(0.0)
             }
         })
-        .px(px(12.0))
-        .flex_row()
-        .items_center()
-        .gap(px(8.0))
-        .bg(move || design::token("tag-bg"))
-        .border_b_1()
-        .border_color(move || design::line())
         .overflow_hidden()
         .child(dynamic(move || -> AnyElement {
             if !has_operation() {
                 return view().w_full().h(px(0.0)).into_element();
             }
             let abort = abort_for_view.clone();
-            return view()
-                .w_full()
-                .h(px(28.0))
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .child(crate::ui::icon::icon_view("info", crate::ui::icon::IconSize::Button, design::warn))
-                .child(
-                    text(move || {
-                        let operation = tab
-                            .get()
-                            .map(|tab| tab.operation.id().to_string())
-                            .unwrap_or_default();
-                        let conflicts = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
-                        i18n::with_arguments(
-                            language.get().as_str(),
-                            "operation.banner",
-                            &[
-                                ("operation", operation),
-                                ("conflicts", conflicts.to_string()),
-                            ],
-                        )
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .line_height(px(15.0))
-                    .text_color(move || design::text()),
-                )
-                .child(view().flex_1())
-                .child(widgets::small_button(
-                    move || i18n::t(language.get().as_str(), "operation.abort"),
-                    move || abort(),
-                ))
-                .into_element();
+            return crate::ui::feedback::banner_sized(
+                crate::ui::feedback::BannerTone::Accent,
+                28.0,
+                Some("info"),
+                move || {
+                    let operation = tab
+                        .get()
+                        .map(|tab| tab.operation.id().to_string())
+                        .unwrap_or_default();
+                    let conflicts = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
+                    i18n::with_arguments(
+                        language.get().as_str(),
+                        "operation.banner",
+                        &[
+                            ("operation", operation),
+                            ("conflicts", conflicts.to_string()),
+                        ],
+                    )
+                },
+                vec![
+                    crate::ui::button::button(
+                        move || i18n::t(language.get().as_str(), "operation.abort"),
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || abort(),
+                    )
+                    .into_element(),
+                ],
+            )
+            .into_element();
         }));
 }
-
 /// 状态栏：分支、操作状态、变更数量与编码信息。
 pub(crate) fn statusbar(
     language: Signal<SharedString>,
