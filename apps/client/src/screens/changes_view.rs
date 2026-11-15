@@ -115,15 +115,15 @@ pub(crate) fn changes_view(
                         .child(widgets::icon("file", 12.0, design::text3))
                         .child(
                             text(label)
-                                .text_size(px(11.0))
-                                .font_family("SF Mono")
+                                .text_size(px(crate::ui::CODE))
+                                
                                 .text_color(move || design::text())
                                 .text_overflow(nsh_core::EllipsizeMode::Tail),
                         )
                         .child(
                             text(format!("+{} −{}", additions, deletions))
-                                .text_size(px(9.5))
-                                .font_family("SF Mono")
+                                .text_size(px(crate::ui::CODE))
+                                
                                 .text_color(move || design::text3()),
                         ),
                 )
@@ -143,7 +143,7 @@ pub(crate) fn changes_view(
                                                 "changes.selectFile",
                                             )
                                         })
-                                        .text_size(px(11.0))
+                                        .text_size(px(crate::ui::BODY))
                                         .text_color(move || design::text3()),
                                     )
                                     .into_element()
@@ -229,7 +229,7 @@ fn changes_list(
                             } else {
                                 directory
                             })
-                            .text_size(px(10.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text2()),
                         )
                         .into_element(),
@@ -321,33 +321,33 @@ fn changes_list(
                                         String::new()
                                     }
                                 })
-                                .text_size(px(8.0))
+                                .text_size(px(crate::ui::SECONDARY))
                                 .text_color(move || design::content()),
                             ),
                     )
                     .child(
                         text(file_name)
                             .flex_1()
-                            .text_size(px(10.5))
-                            .font_family("SF Mono")
+                            .text_size(px(crate::ui::CODE))
+                            
                             .text_color(move || design::text())
                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
                     .child(
                         text(status.to_string())
                             .w(px(10.0))
-                            .text_size(px(9.5))
-                            .font_family("SF Mono")
+                            .text_size(px(crate::ui::CODE))
+                            
                             .text_color(move || status_color(status)),
                     )
                     .child(
                         text(format!("+{}", additions))
-                            .text_size(px(9.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::add_fg()),
                     )
                     .child(
                         text(format!("−{}", deletions))
-                            .text_size(px(9.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::del_fg()),
                     )
                     .child(
@@ -363,7 +363,7 @@ fn changes_list(
                                     .on_press(move || discard_change(index))
                                     .child(
                                         text("⌫")
-                                            .text_size(px(9.0))
+                                            .text_size(px(crate::ui::SECONDARY))
                                             .text_color(move || design::text3()),
                                     )
                             }),
@@ -385,13 +385,13 @@ fn changes_list(
                         .gap(px(6.0))
                         .child(
                             text(move || i18n::t(language.get().as_str(), title_key))
-                                .text_size(px(10.5))
+                                .text_size(px(crate::ui::SECONDARY))
                                 .font_weight(FontWeight(600))
                                 .text_color(move || design::text2()),
                         )
                         .child(
                             text(entries_count(&tab, is_staged).to_string())
-                                .text_size(px(9.5))
+                                .text_size(px(crate::ui::SECONDARY))
                                 .text_color(move || design::text3()),
                         )
                         .child(view().flex_1())
@@ -410,7 +410,7 @@ fn changes_list(
                                     text(move || {
                                         i18n::t(language.get().as_str(), action_label_key)
                                     })
-                                    .text_size(px(9.5))
+                                    .text_size(px(crate::ui::SECONDARY))
                                     .text_color(move || design::accent()),
                                 ),
                         ),
@@ -442,8 +442,8 @@ fn changes_list(
                     .child(
                         text(path)
                             .flex_1()
-                            .text_size(px(10.5))
-                            .font_family("SF Mono")
+                            .text_size(px(crate::ui::CODE))
+                            
                             .text_color(move || design::text())
                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
@@ -475,7 +475,7 @@ fn changes_list(
                             text(move || {
                                 i18n::t(language.get().as_str(), "conflicts.title")
                             })
-                            .text_size(px(10.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .font_weight(FontWeight(600))
                             .text_color(move || design::danger()),
                         )
@@ -511,7 +511,7 @@ fn changes_list(
                 .border_color(move || design::line_soft())
                 .child(
                     text(move || i18n::t(language.get().as_str(), "shell.changes"))
-                        .text_size(px(12.5))
+                        .text_size(px(crate::ui::BODY))
                         .font_weight(FontWeight(600))
                         .text_color(move || design::text()),
                 )
@@ -546,12 +546,12 @@ fn changes_list(
                                         )
                                     })
                             })
-                            .text_size(px(9.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text2()),
                         )
                         .child(
                             text(total.to_string())
-                                .text_size(px(9.5))
+                                .text_size(px(crate::ui::SECONDARY))
                                 .text_color(move || design::text3()),
                         ),
                 )
@@ -567,7 +567,7 @@ fn changes_list(
                             ],
                         )
                     })
-                    .text_size(px(10.0))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
                 ),
         )
@@ -737,9 +737,8 @@ fn diff_row(line: &domain::diff::DiffLine) -> AnyElement {
                 .w(px(34.0))
                 .flex_shrink_0()
                 .pl(px(6.0))
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
@@ -747,17 +746,15 @@ fn diff_row(line: &domain::diff::DiffLine) -> AnyElement {
                 .w(px(34.0))
                 .flex_shrink_0()
                 .pl(px(6.0))
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
             text(content)
                 .flex_1()
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || foreground)
                 .text_overflow(nsh_core::EllipsizeMode::Clip),
         )
@@ -788,9 +785,8 @@ fn hunk_header_row(
         .child(
             text(header)
                 .flex_1()
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || design::text2())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
@@ -836,9 +832,8 @@ fn line_row_with_piece(
                 .w(px(34.0))
                 .flex_shrink_0()
                 .pl(px(6.0))
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
@@ -846,17 +841,15 @@ fn line_row_with_piece(
                 .w(px(34.0))
                 .flex_shrink_0()
                 .pl(px(6.0))
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || design::text3()),
         )
         .child(
             text(content)
                 .flex_1()
-                .text_size(px(metrics::DIFF_FONT))
-                .line_height(px(metrics::DIFF_LINE_H))
-                .font_family("SF Mono")
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(crate::ui::CODE_LINE))
                 .text_color(move || foreground)
                 .text_overflow(nsh_core::EllipsizeMode::Clip),
         )
@@ -933,14 +926,14 @@ fn changelist_pop(
                 .child(
                     text(label)
                         .flex_1()
-                        .text_size(px(11.0))
+                        .text_size(px(crate::ui::BODY))
                         .line_height(px(14.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
                     text(count.to_string())
-                        .text_size(px(9.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 )
                 .child(
@@ -967,7 +960,7 @@ fn changelist_pop(
                             text(move || {
                                 i18n::t(language.get().as_str(), "changelists.moveHere")
                             })
-                            .text_size(px(9.0))
+                            .text_size(px(crate::ui::SECONDARY))
                             .line_height(px(11.0))
                             .text_color(move || design::accent()),
                         ),
@@ -987,7 +980,7 @@ fn changelist_pop(
         .bg(move || design::token("popover"))
         .child(
             text(move || i18n::t(language.get().as_str(), "changelists.title"))
-                .text_size(px(10.0))
+                .text_size(px(crate::ui::SECONDARY))
                 .font_weight(FontWeight(600))
                 .line_height(px(14.0))
                 .text_color(move || design::text3()),
@@ -1020,7 +1013,7 @@ fn changelist_pop(
                                 .placeholder(move || {
                                     i18n::t(language.get().as_str(), "changelists.newName")
                                 })
-                                .text_size(px(11.0))
+                                .text_size(px(crate::ui::BODY))
                                 .flex_1(),
                         ),
                 )
@@ -1042,8 +1035,8 @@ fn changelist_pop(
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "changelists.footHint"))
-                .text_size(px(9.0))
-                .line_height(px(12.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         );
 }
