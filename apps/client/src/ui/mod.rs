@@ -117,6 +117,15 @@ pub(crate) fn code(label: impl Fn() -> String + 'static) -> impl IntoElement {
         .text_color(move || design::text());
 }
 
+/// 一条竖直分隔线，用于横向排布的工具栏与分段之间。
+pub(crate) fn v_separator() -> impl IntoElement {
+    return view()
+        .w(px(1.0))
+        .h(px(16.0))
+        .flex_shrink_0()
+        .bg(move || design::line());
+}
+
 /// 一条水平分隔线。
 pub(crate) fn separator() -> impl IntoElement {
     return view()

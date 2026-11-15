@@ -197,10 +197,3 @@ pub(crate) fn kbd(label: impl Into<SharedString>) -> impl IntoElement {
         );
 }
 
-/// 竖向分隔线（工具栏用）。
-pub(crate) fn separator() -> impl IntoElement {
-    return view()
-        .w(px(1.0))
-        .h(px(16.0))
-        .bg(move || design::line());
-}

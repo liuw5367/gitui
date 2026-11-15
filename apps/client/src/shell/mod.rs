@@ -226,7 +226,7 @@ pub(crate) fn toolbar(
             design::text2,
             || {},
         ))
-        .child(widgets::separator())
+        .child(crate::ui::v_separator())
         .child(tool_button(language, "refresh", "shell.fetch", move || {
             do_fetch(crate::model::Sync::Fetch)
         }))
@@ -236,7 +236,7 @@ pub(crate) fn toolbar(
         .child(tool_button(language, "up", "shell.push", move || {
             do_push(crate::model::Sync::Push)
         }))
-        .child(widgets::separator())
+        .child(crate::ui::v_separator())
         .child(tool_button(language, "branch", "shell.branch", {
             let do_refs = do_refs.clone();
             move || do_refs()
@@ -266,7 +266,7 @@ pub(crate) fn toolbar(
                 )
                 .child(widgets::kbd("⌘F")),
         )
-        .child(widgets::separator())
+        .child(crate::ui::v_separator())
         .child(
             view()
                 .h(px(26.0))
