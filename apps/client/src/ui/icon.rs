@@ -107,16 +107,35 @@ mod tests {
                 if path.is_dir() {
                     stack.push(path);
                 } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+                    // 跳过本文件：它自身含有 marker 字面量与示例，会被误扫。
+                    if path.file_name().map(|n| n == "icon.rs").unwrap_or(false) {
+                        continue;
+                    }
                     let Ok(source) = fs::read_to_string(&path) else { continue };
-                    for marker in ["icon_view(\"", "icon_button(\"", "icon(\""] {
+                    // marker 不带引号：调用可以写成 `icon_button(` 后换行再给名字
+                    // （`chev_left` 那处就是这么漏过检查的——它写成了下划线，
+                    // 静默渲染空白，而扫描因为匹配不到跨行而没报）。
+                    for marker in ["icon_view(", "icon_button_tuned(", "icon_button(", "icon("] {
                         let mut rest = source.as_str();
                         while let Some(index) = rest.find(marker) {
                             let after = &rest[index + marker.len()..];
-                            if let Some(end) = after.find('"') {
-                                names.push(after[..end].to_string());
+                            let trimmed = after.trim_start();
+                            // 只收「紧跟着字符串字面量」的调用；变量名、表达式跳过。
+                            let Some(stripped) = trimmed.strip_prefix('"') else {
+                                rest = &after[..];
+                                if rest.is_empty() {
+                                    break;
+                                }
+                                rest = &rest[1..];
+                                continue;
+                            };
+                            if let Some(end) = stripped.find('"') {
+                                names.push(stripped[..end].to_string());
                             }
                             rest = &after[..];
-                            if rest.is_empty() { break; }
+                            if rest.is_empty() {
+                                break;
+                            }
                             rest = &rest[1..];
                         }
                     }
