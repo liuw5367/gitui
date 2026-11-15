@@ -123,7 +123,7 @@ pub(crate) fn sync_dialog(
                                     },
                                 )
                             })
-                            .text_size(px(13.0))
+                            .text_size(px(crate::ui::BODY))
                             .font_weight(FontWeight(600))
                             .line_height(px(17.0))
                             .text_color(move || design::text()),
@@ -150,21 +150,15 @@ pub(crate) fn sync_dialog(
                                     let active = which == kind;
                                     let set_kind = set_kind.clone();
                                     let language = language;
-                                    return view()
-                                        .h(px(20.0))
-                                        .px(px(9.0))
-                                        .items_center()
-                                        .rounded(px(5.0))
-                                        .bg(move || {
-                                            if active {
-                                                design::content()
-                                            } else {
-                                                AdaptiveColor::TRANSPARENT
-                                            }
-                                        })
-                                        .on_press(move || set_kind(which))
-                                        .child(
-                                            text(move || {
+                                    let variant = if active {
+                                        crate::ui::button::ButtonVariant::Secondary
+                                    } else {
+                                        crate::ui::button::ButtonVariant::Ghost
+                                    };
+                                    return crate::ui::button::button(
+                                        {
+                                            let language = language;
+                                            move || {
                                                 i18n::t(
                                                     language.get().as_str(),
                                                     match which {
@@ -173,26 +167,21 @@ pub(crate) fn sync_dialog(
                                                         Sync::Push => "sync.push",
                                                     },
                                                 )
-                                            })
-                                            .text_size(px(11.0))
-                                            .line_height(px(14.0))
-                                            .text_color(move || {
-                                                if active {
-                                                    design::text()
-                                                } else {
-                                                    design::text2()
-                                                }
-                                            }),
-                                        )
-                                        .into_element();
+                                            }
+                                        },
+                                        variant,
+                                        crate::ui::button::ButtonSize::Small,
+                                        false,
+                                        move || set_kind(which),
+                                    )
+                                    .into_element();
                                 })
                                 .collect::<Vec<AnyElement>>(),
                         ),
                 )
                 .child(
                     text(format!("{} · {} · {}", repo_name, remote, branch))
-                        .text_size(px(10.5))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
                         .line_height(px(14.0))
                         .text_color(move || design::text3()),
                 )
@@ -207,7 +196,7 @@ pub(crate) fn sync_dialog(
                             ],
                         )
                     })
-                    .text_size(px(11.0))
+                    .text_size(px(crate::ui::BODY))
                     .line_height(px(15.0))
                     .text_color(move || design::text2()),
                 )
@@ -315,8 +304,8 @@ pub(crate) fn sync_dialog(
                             },
                         )
                     })
-                    .text_size(px(10.0))
-                    .line_height(px(15.0))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
                     .text_color(move || design::text3()),
                 )
                 .child(
@@ -348,7 +337,7 @@ pub(crate) fn sync_dialog(
                                             if ok { "sync.ok" } else { "sync.failed" },
                                         )
                                     })
-                                    .text_size(px(10.0))
+                                    .text_size(px(crate::ui::SECONDARY))
                                     .font_weight(FontWeight(600))
                                     .line_height(px(13.0))
                                     .text_color(move || {
@@ -361,8 +350,7 @@ pub(crate) fn sync_dialog(
                                 )
                                 .child(
                                     text(output)
-                                        .text_size(px(9.5))
-                                        .font_family("SF Mono")
+                                        .text_size(px(crate::ui::CODE))
                                         .line_height(px(13.0))
                                         .text_color(move || design::text2())
                                         .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -376,8 +364,8 @@ pub(crate) fn sync_dialog(
                         text(move || {
                             i18n::t(language.get().as_str(), "sync.forceWarning")
                         })
-                        .text_size(px(10.0))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::danger()),
                     )
                 }))
@@ -435,54 +423,19 @@ pub(crate) fn sync_dialog(
         }));
 }
 
-/// 一行复选：12px 方框加标签。
+/// 一行复选：由 ui::check_row 提供方框、选中态与键盘操作。
 fn option_row(
     language: Signal<SharedString>,
     key: &'static str,
     checked: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h(px(20.0))
-        .flex_row()
-        .items_center()
-        .gap(px(7.0))
-        .on_press(on_press)
-        .child(
-            view()
-                .w(px(12.0))
-                .h(px(12.0))
-                .items_center()
-                .justify_center()
-                .rounded(px(3.0))
-                .border_1()
-                .border_color(move || design::line_strong())
-                .bg(move || {
-                    if checked {
-                        design::accent()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .child(
-                    text(move || {
-                        if checked {
-                            "✓".to_string()
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .text_size(px(8.0))
-                    .text_color(move || design::content()),
-                ),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(10.5))
-                .line_height(px(14.0))
-                .text_color(move || design::text2()),
-        );
+    return crate::ui::check::check_row(
+        move || i18n::t(language.get().as_str(), key),
+        checked,
+        false,
+        move |_next: bool| on_press(),
+    );
 }
 
 /// 拉取策略三选一（设计板 29）。
@@ -500,8 +453,8 @@ fn strategy_row(
         .gap(px(4.0))
         .child(
             text(move || i18n::t(language.get().as_str(), "sync.strategy"))
-                .text_size(px(10.5))
-                .line_height(px(14.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text2()),
         )
         .child(view().flex_1())
@@ -514,38 +467,23 @@ fn strategy_row(
                     let set_option = set_option.clone();
                     let language = language;
                     return view()
-                        .h(px(18.0))
-                        .px(px(7.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .bg(move || {
+                        .child(crate::ui::button::button(
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), choice.key())
+                            },
                             if active {
-                                design::content()
+                                crate::ui::button::ButtonVariant::Secondary
                             } else {
-                                AdaptiveColor::TRANSPARENT
-                            }
-                        })
-                        .border_1()
-                        .border_color(move || {
-                            if active {
-                                design::line_soft()
-                            } else {
-                                AdaptiveColor::TRANSPARENT
-                            }
-                        })
-                        .on_press(move || set_option(choice.option_id(), true))
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), choice.key()))
-                                .text_size(px(10.0))
-                                .line_height(px(13.0))
-                                .text_color(move || {
-                                    if active {
-                                        design::text()
-                                    } else {
-                                        design::text3()
-                                    }
-                                }),
-                        )
+                                crate::ui::button::ButtonVariant::Ghost
+                            },
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let set_option = set_option.clone();
+                                move || set_option(choice.option_id(), true)
+                            },
+                        ))
                         .into_element();
                 })
                 .collect::<Vec<AnyElement>>(),
