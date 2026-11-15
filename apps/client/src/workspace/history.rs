@@ -587,9 +587,13 @@ fn hist_bar(
 }
 
 fn widgets_icon(filter_open: Signal<bool>) -> impl IntoElement {
-    return crate::widgets::icon_button("filter", 12.0, design::text2, move || {
-        filter_open.set(!filter_open.get_untracked())
-    });
+    return crate::ui::button::icon_button(
+        "filter",
+        move || "Filter".to_string(),
+        crate::ui::button::ButtonSize::Small,
+        false,
+        move || filter_open.set(!filter_open.get_untracked()),
+    );
 }
 
 /// 工具条上的筛选芯片：`visible` 为假时不占位。

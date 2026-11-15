@@ -95,10 +95,11 @@ pub(crate) fn diff(
                     move || export_patch(),
                 ))
                 .child(mode_toggle(language, split_view, set_split_mode.clone()))
-                .child(crate::widgets::icon_button(
+                .child(crate::ui::button::icon_button(
                     "copy",
-                    12.0,
-                    design::text3,
+                    move || "Copy".to_string(),
+                    crate::ui::button::ButtonSize::Small,
+                    false,
                     move || copy_text(patch_text.clone()),
                 )),
         )
