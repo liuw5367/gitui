@@ -149,25 +149,10 @@ pub(crate) fn agent_panel(
                                                     ),
                                                 )
                                                 .child(
-                                                    view()
-                                                        .h(px(18.0))
-                                                        .px(px(6.0))
-                                                        .items_center()
-                                                        .rounded(px(4.0))
-                                                        .bg(move || {
-                                                            if denied {
-                                                                design::panel2()
-                                                            } else {
-                                                                design::accent_soft()
-                                                            }
-                                                        })
-                                                        .when(!denied, |this| {
-                                                            this.on_press(move || {
-                                                                run_step(index)
-                                                            })
-                                                        })
-                                                        .child(
-                                                            text(move || {
+                                                    crate::ui::button::button(
+                                                        {
+                                                            let language = language;
+                                                            move || {
                                                                 i18n::t(
                                                                     language.get().as_str(),
                                                                     if denied {
@@ -176,17 +161,13 @@ pub(crate) fn agent_panel(
                                                                         "agent.run"
                                                                     },
                                                                 )
-                                                            })
-                                                            .text_size(px(crate::ui::SECONDARY))
-                                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                                            .text_color(move || {
-                                                                if denied {
-                                                                    design::text3()
-                                                                } else {
-                                                                    design::accent()
-                                                                }
-                                                            }),
-                                                        ),
+                                                            }
+                                                        },
+                                                        crate::ui::button::ButtonVariant::Secondary,
+                                                        crate::ui::button::ButtonSize::Small,
+                                                        denied,
+                                                        move || run_step(index),
+                                                    )
                                                 )
                                                 .into_element(),
                                         );
@@ -299,41 +280,36 @@ fn permissions_block(
                         .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text2()),
                 )
-                .child(
-                    view()
-                        .h(px(18.0))
-                        .px(px(6.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .bg(move || design::panel2())
-                        .on_press({
-                            let set_permission = set_permission.clone();
-                            move || {
-                                // 点一下循环：Ask → Allow → Deny → Ask。
-                                let next = match policies.get_untracked().permission(action) {
-                                    Permission::Ask => Permission::Allow,
-                                    Permission::Allow => Permission::Deny,
-                                    Permission::Deny => Permission::Ask,
-                                };
-                                set_permission(action, next);
-                            }
-                        })
-                        .child(
-                            text(move || {
-                                i18n::t(
-                                    language.get().as_str(),
-                                    match policies.get().permission(action) {
-                                        Permission::Ask => "agent.ask",
-                                        Permission::Allow => "agent.allow",
-                                        Permission::Deny => "agent.deny",
-                                    },
-                                )
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::text2()),
-                        ),
-                )
+                .child(crate::ui::button::button(
+                    {
+                        let language = language;
+                        move || {
+                            i18n::t(
+                                language.get().as_str(),
+                                match policies.get().permission(action) {
+                                    Permission::Ask => "agent.ask",
+                                    Permission::Allow => "agent.allow",
+                                    Permission::Deny => "agent.deny",
+                                },
+                            )
+                        }
+                    },
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
+                        let set_permission = set_permission.clone();
+                        move || {
+                            // 点一下循环：Ask → Allow → Deny → Ask。
+                            let next = match policies.get_untracked().permission(action) {
+                                Permission::Ask => Permission::Allow,
+                                Permission::Allow => Permission::Deny,
+                                Permission::Deny => Permission::Ask,
+                            };
+                            set_permission(action, next);
+                        }
+                    },
+                ))
                 .into_element(),
         );
     }
