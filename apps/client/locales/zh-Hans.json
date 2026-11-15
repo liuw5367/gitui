@@ -298,7 +298,15 @@
     "revertAction": "回滚",
     "restoreShortcutsTitle": "恢复默认快捷键？",
     "restoreShortcutsMessage": "你自定义的按键组合会被替换，包括刚刚录制的。",
-    "restoreShortcutsAction": "恢复默认"
+    "restoreShortcutsAction": "恢复默认",
+    "dirtyCheckoutTitle": "有未提交改动时切换分支",
+    "dirtyCheckoutMessage": "切到 %{branch} 会带上未提交的改动：可以先贮藏，也可以直接带过去。",
+    "dirtyCheckoutStash": "贮藏并切换",
+    "dirtyCheckoutCarry": "带过去",
+    "nonFastForwardTitle": "远端有你没有的提交",
+    "nonFastForwardMessage": "先拉取整合远端提交，再重新推送。不会做任何强制推送。",
+    "nonFastForwardRebase": "拉取（变基）",
+    "nonFastForwardMerge": "拉取（合并）"
   },
   "toast": {
     "copied": "已复制到剪贴板",
@@ -310,7 +318,8 @@
     "pushed": "已推送",
     "stashDone": "贮藏已应用",
     "identityCleared": "已清除仓库级身份",
-    "initDone": "仓库已初始化"
+    "initDone": "仓库已初始化",
+    "stashedBeforeCheckout": "改动已贮藏，可在「贮藏」里恢复"
   },
   "conflicts": {
     "title": "冲突",

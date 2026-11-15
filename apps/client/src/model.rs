@@ -540,6 +540,31 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
     };
 }
 
+/// 工作区是否不干净（有暂存或未暂存的改动）。
+pub fn is_dirty(tab: &Tab) -> bool {
+    return !tab.status.is_empty();
+}
+
+/// 切换分支并刷新标签页；`stash` 为真时先贮藏改动再切换。
+///
+/// 带改动切换会让 git 在会覆盖本地修改时拒绝；由界面先问「贮藏 / 带过去 / 取消」。
+pub fn checkout_branch_with(tab: &mut Tab, branch: &str, stash: bool) {
+    if stash {
+        let repo = match Repo::open(tab.path.as_str()) {
+            Ok(repo) => repo,
+            Err(error) => {
+                tab.error = Some(error.detail());
+                return;
+            }
+        };
+        if let Err(error) = repo.stash_push_with("", true) {
+            tab.error = Some(error.detail());
+            return;
+        }
+    }
+    checkout_branch(tab, branch);
+}
+
 /// 切换分支并刷新标签页（历史、引用、变更都要跟着变）。
 pub fn checkout_branch(tab: &mut Tab, branch: &str) {
     let repo = match Repo::open(tab.path.as_str()) {
@@ -2506,6 +2531,39 @@ mod tests {
         let tab = load_tab(gone.display().to_string().as_str(), &filter);
         assert_eq!(tab.problem, RepoProblem::NotFound);
         assert_eq!(parent_path(gone.display().to_string().as_str()), root.path.display().to_string());
+    }
+
+    #[test]
+    fn dirty_checkout_can_stash_first() {
+        let root = TempRepo::new("dirty-checkout");
+        let branch = "feature/dirty";
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root.path)
+                .args(args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {:?}", args);
+        };
+        run(&["branch", branch]);
+        let filter = LogFilter::default();
+        let mut tab = load_tab(root.path.display().to_string().as_str(), &filter);
+        assert!(!is_dirty(&tab), "干净仓库不应被判为脏");
+        // 制造一个未暂存改动。
+        std::fs::write(root.path.join("a.txt"), "two\n").expect("write");
+        let tab_dirty = load_tab(root.path.display().to_string().as_str(), &filter);
+        assert!(is_dirty(&tab_dirty));
+        // 先贮藏再切换：工作区干净，改动在贮藏里。
+        checkout_branch_with(&mut tab, branch, true);
+        assert_eq!(tab.branch, branch);
+        assert!(!is_dirty(&tab), "贮藏后工作区应干净");
+        assert_eq!(tab.refs.stashes.len(), 1, "改动应在贮藏里");
+        assert_eq!(
+            std::fs::read_to_string(root.path.join("a.txt")).expect("read"),
+            "one\n",
+            "切分支后文件回到分支上的内容"
+        );
     }
 
 }

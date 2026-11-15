@@ -298,7 +298,15 @@
     "revertAction": "Revert",
     "restoreShortcutsTitle": "Restore default shortcuts?",
     "restoreShortcutsMessage": "Your custom key bindings will be replaced, including ones you recorded.",
-    "restoreShortcutsAction": "Restore Defaults"
+    "restoreShortcutsAction": "Restore Defaults",
+    "dirtyCheckoutTitle": "Switch branch with local changes",
+    "dirtyCheckoutMessage": "%{branch} would carry your uncommitted changes. Stash them first, or take them with you.",
+    "dirtyCheckoutStash": "Stash and Switch",
+    "dirtyCheckoutCarry": "Carry Changes",
+    "nonFastForwardTitle": "The remote has commits you don't have",
+    "nonFastForwardMessage": "Pull to integrate the remote commits, then push again. Nothing is forced.",
+    "nonFastForwardRebase": "Pull (Rebase)",
+    "nonFastForwardMerge": "Pull (Merge)"
   },
   "toast": {
     "copied": "Copied to clipboard",
@@ -310,7 +318,8 @@
     "pushed": "Pushed",
     "stashDone": "Stash applied",
     "identityCleared": "Repository identity cleared",
-    "initDone": "Repository initialized"
+    "initDone": "Repository initialized",
+    "stashedBeforeCheckout": "Changes stashed — restore them from Stashes"
   },
   "conflicts": {
     "title": "Conflicted",

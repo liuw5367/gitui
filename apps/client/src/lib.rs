@@ -1030,13 +1030,84 @@ pub fn App() -> impl IntoElement {
                     (Some(message), true) => Err(message.clone()),
                     (None, _) => Ok(String::new()),
                 };
+                let rejected = kind == model::Sync::Push
+                    && tab.sync_failed
+                    && tab.sync_fault == Some(domain::NetworkFault::Rejected);
                 tabs.set(list);
                 sync_state.set(Some(screens::SyncDialogState {
                     kind,
-                    options,
+                    options: options.clone(),
                     result: Some(result),
                     running: false,
                 }));
+                if !rejected {
+                    return;
+                }
+                // 远端已前进：不自动强推，让用户在「拉取变基 / 拉取合并 / 取消」里选。
+                let lang = language.get_untracked();
+                let title = i18n::t(lang.as_str(), "confirm.nonFastForwardTitle");
+                let message = i18n::t(lang.as_str(), "confirm.nonFastForwardMessage");
+                let rebase_label = i18n::t(lang.as_str(), "confirm.nonFastForwardRebase");
+                let merge_label = i18n::t(lang.as_str(), "confirm.nonFastForwardMerge");
+                let cancel_label = i18n::t(lang.as_str(), "common.cancel");
+                let pending = nsh_base::alert_dialog()
+                    .title(title)
+                    .description(message)
+                    .action("rebase", rebase_label)
+                    .action("merge", merge_label)
+                    .cancel("cancel", cancel_label)
+                    .show();
+                let language = language;
+                let notice = notice;
+                spawn(async move {
+                    let Ok(result) = pending.await else {
+                        return;
+                    };
+                    let Some(action) = result.action else {
+                        return;
+                    };
+                    if action.as_str() == "cancel" {
+                        return;
+                    }
+                    let strategy = if action.as_str() == "rebase" {
+                        git::PullStrategy::Rebase
+                    } else {
+                        git::PullStrategy::Merge
+                    };
+                    let pull_options = model::SyncOptions {
+                        pull: git::PullOptions {
+                            strategy,
+                            ..options.pull.clone()
+                        },
+                        ..options.clone()
+                    };
+                    let mut list = tabs.get_untracked();
+                    if let Some(tab) = list.get_mut(active.get_untracked()) {
+                        model::sync_with(tab, model::Sync::Pull, &pull_options);
+                        let pulled = !tab.sync_failed;
+                        // 拉取成功后再推一次；失败就只报拉取结果，不再连环弹框。
+                        if pulled {
+                            model::sync_with(tab, model::Sync::Push, &options);
+                        }
+                        let outcome = match (&tab.sync_message, tab.sync_failed) {
+                            (Some(message), false) => Some((message.clone(), false)),
+                            (Some(message), true) => Some((message.clone(), true)),
+                            (None, _) => None,
+                        };
+                        tabs.set(list);
+                        if let Some((message, failed)) = outcome {
+                            if failed {
+                                interactions::notify(notice, message);
+                            } else {
+                                let lang = language.get_untracked();
+                                interactions::notify(
+                                    notice,
+                                    i18n::t(lang.as_str(), "toast.pushed"),
+                                );
+                            }
+                        }
+                    }
+                });
             }
         })
     };
@@ -1802,13 +1873,69 @@ pub fn App() -> impl IntoElement {
     let checkout_branch: Arc<dyn Fn(String)> = {
         let tabs = tabs;
         let active = active;
+        let language = language;
+        let notice = notice;
         Arc::new(move |branch: String| {
             let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::checkout_branch(tab, branch.as_str());
-                tabs.set(list);
+            let dirty = tabs
+                .get_untracked()
+                .get(current)
+                .is_some_and(model::is_dirty);
+            if !dirty {
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    model::checkout_branch(tab, branch.as_str());
+                    tabs.set(list);
+                }
+                return;
             }
+            // 有改动时先问：贮藏后切、把改动带过去、还是取消（手册第 4 节）。
+            let lang = language.get_untracked();
+            let title = i18n::t(lang.as_str(), "confirm.dirtyCheckoutTitle");
+            let message = i18n::with_arguments(
+                lang.as_str(),
+                "confirm.dirtyCheckoutMessage",
+                &[("branch", branch.clone())],
+            );
+            let stash_label = i18n::t(lang.as_str(), "confirm.dirtyCheckoutStash");
+            let carry_label = i18n::t(lang.as_str(), "confirm.dirtyCheckoutCarry");
+            let cancel_label = i18n::t(lang.as_str(), "common.cancel");
+            let pending = nsh_base::alert_dialog()
+                .title(title)
+                .description(message)
+                .action("stash", stash_label)
+                .action("carry", carry_label)
+                .cancel("cancel", cancel_label)
+                .show();
+            let language = language;
+            let notice = notice;
+            spawn(async move {
+                let Ok(result) = pending.await else {
+                    return;
+                };
+                let Some(action) = result.action else {
+                    return;
+                };
+                if action.as_str() == "cancel" {
+                    return;
+                }
+                let stash = action.as_str() == "stash";
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.get_mut(current) {
+                    model::checkout_branch_with(tab, branch.as_str(), stash);
+                    let failed = tab.error.clone();
+                    tabs.set(list);
+                    if let Some(detail) = failed {
+                        interactions::notify(notice, detail);
+                    } else if stash {
+                        let lang = language.get_untracked();
+                        interactions::notify(
+                            notice,
+                            i18n::t(lang.as_str(), "toast.stashedBeforeCheckout"),
+                        );
+                    }
+                }
+            });
         })
     };
 
