@@ -1847,6 +1847,180 @@ pub fn clone_with(
     return Ok(());
 }
 
+/// 一次正在进行的克隆：可轮询结果、读进度、随时取消。
+///
+/// `git clone` 的进度写在 stderr，所以这里用读线程把 stderr 收进共享缓冲，
+/// 调用方（界面）在主线程轮询 [`CloneRun::progress`]，不需要阻塞界面。
+pub struct CloneRun {
+    child: std::process::Child,
+    stderr: std::sync::Arc<std::sync::Mutex<String>>,
+    reader: Option<std::thread::JoinHandle<()>>,
+    destination: std::path::PathBuf,
+}
+
+impl CloneRun {
+    /// 最近一行输出（git 的进度行）；没有输出时为空串。
+    pub fn progress(&self) -> String {
+        let text = self
+            .stderr
+            .lock()
+            .map(|buffer| buffer.clone())
+            .unwrap_or_default();
+        return text
+            .lines()
+            .last()
+            .map(|line| line.trim().to_string())
+            .unwrap_or_default();
+    }
+
+    /// 轮询：还在跑返回 `None`，结束后返回克隆结果。
+    pub fn try_finish(&mut self) -> Option<Result<(), GitError>> {
+        let status = match self.child.try_wait() {
+            Ok(status) => status,
+            Err(error) => {
+                return Some(Err(GitError::Spawn {
+                    program: "git".to_string(),
+                    reason: error.to_string(),
+                }));
+            }
+        };
+        let status = status?;
+        // 进程结束后读线程会读到 EOF，join 它把最后几行收完。
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+        if status.success() {
+            return Some(Ok(()));
+        }
+        let detail = self
+            .stderr
+            .lock()
+            .map(|buffer| buffer.clone())
+            .unwrap_or_default();
+        let detail = truncate(detail.trim(), MAX_DETAIL);
+        return Some(Err(GitError::CommandFailed {
+            program: "git".to_string(),
+            args: "clone".to_string(),
+            code: status.code(),
+            detail,
+        }));
+    }
+
+    /// 取消：杀掉子进程、等它退出，并删掉这次创建的目标目录。
+    ///
+    /// 只删除「本次克隆创建」的目录；用户给的目录如果原本就存在（空目录）也一并
+    /// 清空，因为里面只可能是这次没写完的产物。
+    pub fn cancel(&mut self) -> Result<(), GitError> {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+        let removed = std::fs::remove_dir_all(&self.destination);
+        if let Err(error) = removed
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(GitError::Unreadable {
+                path: self.destination.display().to_string(),
+                reason: error.to_string(),
+            });
+        }
+        return Ok(());
+    }
+}
+
+/// 启动一次可取消的克隆；目录非空时直接报错，不覆盖已有内容。
+pub fn start_clone(
+    url: &str,
+    destination: &str,
+    options: &CloneOptions,
+) -> Result<CloneRun, GitError> {
+    let destination_path = Path::new(destination);
+    if destination_path.exists() {
+        let empty = std::fs::read_dir(destination_path)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if !empty {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: "clone".to_string(),
+                code: None,
+                detail: format!("目标目录不是空目录：{destination}"),
+            });
+        }
+    }
+    if let Some(parent) = destination_path.parent()
+        && !parent.as_os_str().is_empty()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent).map_err(|error| GitError::Unreadable {
+            path: parent.display().to_string(),
+            reason: error.to_string(),
+        })?;
+    }
+    let destination_text = destination_path.display().to_string();
+    let depth = options.depth.to_string();
+    let mut args: Vec<&str> = vec!["clone", "--progress"];
+    if let Some(branch) = options.branch.as_deref()
+        && !branch.trim().is_empty()
+    {
+        args.push("--branch");
+        args.push(branch);
+    }
+    if options.depth > 0 {
+        args.push("--depth");
+        args.push(depth.as_str());
+    }
+    if options.recurse_submodules {
+        args.push("--recurse-submodules");
+    }
+    args.push(url);
+    args.push(destination_text.as_str());
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(".")
+        .args(&args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stderr(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null());
+    let mut child = command.spawn().map_err(|error| GitError::Spawn {
+        program: "git".to_string(),
+        reason: error.to_string(),
+    })?;
+    let stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let reader = child.stderr.take().map(|pipe| {
+        let buffer = stderr.clone();
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut reader = std::io::BufReader::new(pipe);
+            let mut chunk = [0u8; 512];
+            loop {
+                match reader.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => {
+                        // 进度里含 `\r`，按行与回车都切开，只保留可读文本。
+                        let text = String::from_utf8_lossy(&chunk[..read]).to_string();
+                        if let Ok(mut buffer) = buffer.lock() {
+                            buffer.push_str(text.replace('\r', "\n").as_str());
+                            if buffer.len() > MAX_DETAIL * 4 {
+                                let keep = buffer.len() - MAX_DETAIL * 2;
+                                *buffer = buffer[keep..].to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    });
+    return Ok(CloneRun {
+        child,
+        stderr,
+        reader,
+        destination: destination_path.to_path_buf(),
+    });
+}
+
 /// 在 `directory` 里运行 `git args...`，返回 stdout。
 pub fn run_git(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
     let program = "git";
@@ -3235,6 +3409,54 @@ mod tests {
             .expect("set-url");
         let url = run_git(repo.root(), &["remote", "get-url", "origin"]).expect("get-url");
         assert_eq!(String::from_utf8_lossy(&url).trim(), "git@example.com:b.git");
+    }
+
+    #[test]
+    fn cancellable_clone_finishes_and_reports_progress() {
+        let (guard, path) = fixture("clone-run", &[("a.txt", "one\n")], "first");
+        let target = TempDir::new("clone-run-target");
+        let destination = target.path().join("copy");
+        let destination_text = destination.display().to_string();
+        let mut run = start_clone(
+            path.as_str(),
+            destination_text.as_str(),
+            &CloneOptions::default(),
+        )
+        .expect("start clone");
+        // 本地仓库克隆很快：轮询到结束，最多等 10 秒（避免慢机器上偶发失败）。
+        let mut outcome = None;
+        for _ in 0..200 {
+            if let Some(result) = run.try_finish() {
+                outcome = Some(result);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let result = outcome.expect("克隆应在超时前结束");
+        result.expect("克隆应成功");
+        assert!(destination.join(".git").exists(), "克隆产物应存在");
+        assert_eq!(
+            std::fs::read_to_string(destination.join("a.txt")).expect("read"),
+            "one\n"
+        );
+        let _ = guard;
+    }
+
+    #[test]
+    fn cancelling_a_clone_removes_the_half_written_directory() {
+        let (guard, path) = fixture("clone-cancel", &[("a.txt", "one\n")], "first");
+        let target = TempDir::new("clone-cancel-target");
+        let destination = target.path().join("gone");
+        let destination_text = destination.display().to_string();
+        let mut run = start_clone(
+            path.as_str(),
+            destination_text.as_str(),
+            &CloneOptions::default(),
+        )
+        .expect("start clone");
+        run.cancel().expect("cancel");
+        assert!(!destination.exists(), "取消后不应留下半成品目录");
+        let _ = guard;
     }
 
     #[test]

@@ -50,6 +50,7 @@ pub(crate) fn welcome(
     init_path: Signal<String>,
     clone_error: Signal<Option<String>>,
     cloning: Signal<bool>,
+    clone_progress: Signal<String>,
     form: Signal<RepoForm>,
     actions: Actions,
 ) -> impl IntoElement {
@@ -90,7 +91,7 @@ pub(crate) fn welcome(
                             .child(view().h(px(24.0)).w_full()),
                     ),
                 )
-                .child(cloning_indicator(language, cloning)),
+                .child(cloning_indicator(language, cloning, clone_progress, actions.cancel_clone.clone())),
         );
 }
 
@@ -98,6 +99,8 @@ pub(crate) fn welcome(
 fn cloning_indicator(
     language: Signal<SharedString>,
     cloning: Signal<bool>,
+    progress: Signal<String>,
+    cancel: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     return view()
         .absolute()
@@ -116,15 +119,27 @@ fn cloning_indicator(
         .child(widgets::icon("refresh", 12.0, design::accent))
         .child(
             text(move || {
-                if cloning.get() {
+                if !cloning.get() {
+                    return String::new();
+                }
+                let stage = progress.get();
+                if stage.trim().is_empty() {
                     i18n::t(language.get().as_str(), "welcome.cloneWorking")
                 } else {
-                    String::new()
+                    stage
                 }
             })
             .text_size(px(10.5))
-            .text_color(move || design::text2()),
-        );
+            .text_color(move || design::text2())
+            .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(widgets::small_button(
+            move || i18n::t(language.get().as_str(), "common.cancel"),
+            {
+                let cancel = cancel.clone();
+                move || cancel()
+            },
+        ));
 }
 
 fn sidebar(

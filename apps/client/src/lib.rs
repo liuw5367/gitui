@@ -189,6 +189,8 @@ pub(crate) struct Actions {
     pub(crate) apply_filter: Arc<dyn Fn()>,
     pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
+    /// 取消正在进行的克隆。
+    pub(crate) cancel_clone: Arc<dyn Fn()>,
     pub(crate) init_repository: Arc<dyn Fn()>,
     pub(crate) toggle_language: Arc<dyn Fn()>,
     pub(crate) refresh: Arc<dyn Fn()>,
@@ -374,6 +376,10 @@ pub fn App() -> impl IntoElement {
     let init_files = signal(screens::InitFiles::default());
     let clone_error = signal(Option::<String>::None);
     let cloning = signal(false);
+    // 克隆进度（git 的 stderr 最后一行）与取消标志。
+    let clone_progress = signal(String::new());
+    let clone_cancel: std::sync::Arc<std::sync::atomic::AtomicBool> =
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let init_path = signal(String::new());
     let repo_form = signal(RepoForm::Open);
 
@@ -648,6 +654,9 @@ pub fn App() -> impl IntoElement {
         let store_dir = store_dir.clone();
         let clone_error = clone_error;
         let cloning = cloning;
+        let clone_progress = clone_progress;
+        let clone_cancel = clone_cancel.clone();
+        let language = language;
         let open_path = open_path.clone();
         Arc::new(move || {
             let url = clone_url.get_untracked();
@@ -659,26 +668,57 @@ pub fn App() -> impl IntoElement {
                 recurse_submodules: chosen.recurse_submodules,
             };
             if url.trim().is_empty() {
-                clone_error.set(Some("缺少仓库地址".to_string()));
+                clone_error.set(Some(i18n::t(language.get_untracked().as_str(), "welcome.missingUrl")));
                 return;
             }
             if destination.trim().is_empty() {
-                clone_error.set(Some("缺少目标位置".to_string()));
+                clone_error.set(Some(i18n::t(language.get_untracked().as_str(), "welcome.missingDestination")));
                 return;
             }
             // 「克隆后打开」关闭时只记入最近仓库，不切走当前工作区。
             let open_after = chosen.open_after_clone;
             cloning.set(true);
+            clone_progress.set(String::new());
+            clone_cancel.store(false, std::sync::atomic::Ordering::Relaxed);
             clone_error.set(None);
             let open_path = open_path.clone();
             let recent = recent;
             let store_dir = store_dir.clone();
             let clone_error = clone_error;
             let cloning = cloning;
+            let clone_progress = clone_progress;
+            let cancel = clone_cancel.clone();
             spawn(async move {
-                let result =
-                    git::clone_with(url.trim(), destination.trim(), &options);
+                // 启动后按 100ms 轮询：界面一直可响应，取消也能立刻生效。
+                let mut run = match git::start_clone(
+                    url.trim(),
+                    destination.trim(),
+                    &options,
+                ) {
+                    Ok(run) => run,
+                    Err(error) => {
+                        cloning.set(false);
+                        clone_error.set(Some(error.detail()));
+                        return;
+                    }
+                };
+                let result = loop {
+                    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = run.cancel();
+                        let lang = language.get_untracked();
+                        break Err(i18n::t(lang.as_str(), "welcome.cloneCancelled"));
+                    }
+                    if let Some(outcome) = run.try_finish() {
+                        break outcome.map_err(|error| error.detail());
+                    }
+                    let progress = run.progress();
+                    if !progress.is_empty() {
+                        clone_progress.set(progress);
+                    }
+                    timer(std::time::Duration::from_millis(100)).await;
+                };
                 cloning.set(false);
+                clone_progress.set(String::new());
                 match result {
                     Ok(()) => {
                         if open_after {
@@ -691,10 +731,15 @@ pub fn App() -> impl IntoElement {
                             recent.set(store::load_recent(&store_dir));
                         }
                     }
-                    Err(error) => clone_error.set(Some(error.detail())),
+                    Err(detail) => clone_error.set(Some(detail)),
                 }
             });
         })
+    };
+
+    let cancel_clone: Arc<dyn Fn()> = {
+        let cancel = clone_cancel.clone();
+        Arc::new(move || cancel.store(true, std::sync::atomic::Ordering::Relaxed))
     };
 
     let init_repository: Arc<dyn Fn()> = {
@@ -705,7 +750,7 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || {
             let path = init_path.get_untracked();
             if path.trim().is_empty() {
-                clone_error.set(Some("缺少目录".to_string()));
+                clone_error.set(Some(i18n::t(language.get_untracked().as_str(), "welcome.missingDirectory")));
                 return;
             }
             let files = init_files.get_untracked();
@@ -3069,6 +3114,7 @@ pub fn App() -> impl IntoElement {
         apply_filter,
         clear_filter,
         clone_repository,
+        cancel_clone,
         init_repository,
         toggle_language,
         refresh,
@@ -3341,6 +3387,7 @@ pub fn App() -> impl IntoElement {
         init_path,
         clone_error,
         cloning,
+        clone_progress,
         repo_form,
         actions.clone(),
     );
@@ -3652,6 +3699,7 @@ fn open_welcome_window(
     init_path: Signal<String>,
     clone_error: Signal<Option<String>>,
     cloning: Signal<bool>,
+    clone_progress: Signal<String>,
     form: Signal<RepoForm>,
     actions: Actions,
 ) {
@@ -3682,6 +3730,7 @@ fn open_welcome_window(
                 init_path,
                 clone_error,
                 cloning,
+                clone_progress,
                 form,
                 actions.clone(),
             );

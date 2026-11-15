@@ -32,7 +32,11 @@
     "recurse": "递归子模块",
     "openAfterClone": "克隆后打开",
     "gitignore": "生成 .gitignore",
-    "readme": "生成 README.md"
+    "readme": "生成 README.md",
+    "missingUrl": "缺少仓库地址",
+    "missingDestination": "缺少目标位置",
+    "missingDirectory": "缺少要初始化的目录",
+    "cloneCancelled": "已取消克隆"
   },
   "shell": {
     "history": "历史",

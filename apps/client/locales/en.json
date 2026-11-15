@@ -32,7 +32,11 @@
     "recurse": "Recurse submodules",
     "openAfterClone": "Open after clone",
     "gitignore": "Add .gitignore",
-    "readme": "Add README.md"
+    "readme": "Add README.md",
+    "missingUrl": "Enter a repository URL",
+    "missingDestination": "Choose a destination folder",
+    "missingDirectory": "Choose a folder to initialize",
+    "cloneCancelled": "Clone cancelled"
   },
   "shell": {
     "history": "History",
