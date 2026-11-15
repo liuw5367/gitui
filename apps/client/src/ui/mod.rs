@@ -21,6 +21,7 @@ pub(crate) mod field;
 pub(crate) mod gallery;
 pub(crate) mod icon;
 pub(crate) mod key_value;
+pub(crate) mod menu;
 pub(crate) mod row;
 pub(crate) mod section;
 pub(crate) mod segmented;
