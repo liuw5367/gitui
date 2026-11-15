@@ -12,6 +12,7 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
 use crate::Actions;
+use crate::ui;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
@@ -186,67 +187,74 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
         let copy_text = actions.copy_text.clone();
         let name_for_menu = name.clone();
         let items = vec![
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "branch.checkout"))
-                .disabled(is_current)
-                .on_select({
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "branch.checkout"),
+                !is_current,
+                {
                     let checkout = checkout.clone();
                     let name = name_for_menu.clone();
                     move || checkout(name.clone())
-                }),
-            MenuItem::new(i18n::t(
-                language.get_untracked().as_str(),
-                "branch.checkoutAsNew",
-            ))
-            .on_select({
-                let checkout_new = checkout_new.clone();
-                let name = name_for_menu.clone();
-                move || checkout_new(name.clone(), name.clone())
-            }),
-            MenuItem::separator(),
-            MenuItem::new(i18n::t(
-                language.get_untracked().as_str(),
-                "menu.openCompare",
-            ))
-            .on_select({
-                let compare = compare.clone();
-                let name = name_for_menu.clone();
-                move || compare(None, Some(name.clone()))
-            }),
-            MenuItem::new(i18n::t(
-                language.get_untracked().as_str(),
-                "branch.mergeInto",
-            ))
-            .disabled(is_current)
-            .on_select({
-                let merge = merge.clone();
-                let name = name_for_menu.clone();
-                move || {
-                    let _ = merge(name.clone());
-                }
-            }),
-            MenuItem::separator(),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "branch.rename"))
-                .on_select({
-                    let open_form = open_form.clone();
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "branch.checkoutAsNew"),
+                true,
+                {
+                    let checkout_new = checkout_new.clone();
+                    let name = name_for_menu.clone();
+                    move || checkout_new(name.clone(), name.clone())
+                },
+            ),
+            ui::menu::divider(),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.openCompare"),
+                true,
+                {
+                    let compare = compare.clone();
+                    let name = name_for_menu.clone();
+                    move || compare(None, Some(name.clone()))
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "branch.mergeInto"),
+                !is_current,
+                {
+                    let merge = merge.clone();
                     let name = name_for_menu.clone();
                     move || {
-                        open_form(crate::screens::FormKind::RenameBranch, name.clone())
+                        let _ = merge(name.clone());
                     }
-                }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyName"))
-                .on_select({
+                },
+            ),
+            ui::menu::divider(),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "branch.rename"),
+                true,
+                {
+                    let open_form = open_form.clone();
+                    let name = name_for_menu.clone();
+                    move || open_form(crate::screens::FormKind::RenameBranch, name.clone())
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.copyName"),
+                true,
+                {
                     let copy_text = copy_text.clone();
                     let name = name_for_menu.clone();
                     move || copy_text(name.clone())
-                }),
-            MenuItem::separator(),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "branch.delete"))
-                .disabled(is_current)
-                .on_select({
+                },
+            ),
+            ui::menu::divider(),
+            ui::menu::danger(
+                i18n::t(language.get_untracked().as_str(), "branch.delete"),
+                !is_current,
+                {
                     let delete = delete.clone();
                     let name = name_for_menu;
                     move || delete(name.clone())
-                }),
+                },
+            ),
         ];
         branch_rows.push(menu_row(
             language,
@@ -274,34 +282,44 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
             .map(|(_, url)| url.clone())
             .unwrap_or_default();
         let items = vec![
-            MenuItem::new(i18n::t(
-                language.get_untracked().as_str(),
-                "menu.editRemoteUrl",
-            ))
-            .on_select({
-                let edit_form = edit_form.clone();
-                let name = name.clone();
-                move || {
-                    edit_form(crate::screens::FormKind::EditRemote, name.clone());
-                }
-            }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "sync.fetch"))
-                .on_select({
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.editRemoteUrl"),
+                true,
+                {
+                    let edit_form = edit_form.clone();
+                    let name = name.clone();
+                    move || {
+                        edit_form(crate::screens::FormKind::EditRemote, name.clone());
+                    }
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "sync.fetch"),
+                true,
+                {
                     let fetch = fetch.clone();
                     move || fetch(crate::model::Sync::Fetch)
-                }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyUrl")).on_select({
-                let copy_text = copy_text.clone();
-                let url = url.clone();
-                move || copy_text(url.clone())
-            }),
-            MenuItem::separator(),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "form.dropRemote"))
-                .on_select({
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.copyUrl"),
+                true,
+                {
+                    let copy_text = copy_text.clone();
+                    let url = url.clone();
+                    move || copy_text(url.clone())
+                },
+            ),
+            ui::menu::divider(),
+            ui::menu::danger(
+                i18n::t(language.get_untracked().as_str(), "form.dropRemote"),
+                true,
+                {
                     let drop_remote = drop_remote.clone();
                     let name = name.clone();
                     move || drop_remote(name.clone())
-                }),
+                },
+            ),
         ];
         remote_rows.push(menu_row(
             language,
@@ -322,22 +340,34 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
         let drop_tag = actions.drop_tag.clone();
         let copy_text = actions.copy_text.clone();
         let items = vec![
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.pushTag")).on_select({
-                let push = push.clone();
-                let name = name.clone();
-                move || push(name.clone())
-            }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyName")).on_select({
-                let copy_text = copy_text.clone();
-                let name = name.clone();
-                move || copy_text(name.clone())
-            }),
-            MenuItem::separator(),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "form.dropTag")).on_select({
-                let drop_tag = drop_tag.clone();
-                let name = name.clone();
-                move || drop_tag(name.clone())
-            }),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.pushTag"),
+                true,
+                {
+                    let push = push.clone();
+                    let name = name.clone();
+                    move || push(name.clone())
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.copyName"),
+                true,
+                {
+                    let copy_text = copy_text.clone();
+                    let name = name.clone();
+                    move || copy_text(name.clone())
+                },
+            ),
+            ui::menu::divider(),
+            ui::menu::danger(
+                i18n::t(language.get_untracked().as_str(), "form.dropTag"),
+                true,
+                {
+                    let drop_tag = drop_tag.clone();
+                    let name = name.clone();
+                    move || drop_tag(name.clone())
+                },
+            ),
         ];
         tag_rows.push(menu_row(
             language,
@@ -360,29 +390,43 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
         let drop_stash = actions.drop_stash.clone();
         let copy_text = actions.copy_text.clone();
         let items = vec![
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.stashApply"))
-                .on_select({
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.stashApply"),
+                true,
+                {
                     let apply = apply.clone();
                     let reference = reference.clone();
                     move || apply(reference.clone())
-                }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.stashPop")).on_select({
-                let pop = pop.clone();
-                let reference = reference.clone();
-                move || pop(reference.clone())
-            }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyName")).on_select({
-                let copy_text = copy_text.clone();
-                let reference = reference.clone();
-                move || copy_text(reference.clone())
-            }),
-            MenuItem::separator(),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "form.dropStash"))
-                .on_select({
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.stashPop"),
+                true,
+                {
+                    let pop = pop.clone();
+                    let reference = reference.clone();
+                    move || pop(reference.clone())
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.copyName"),
+                true,
+                {
+                    let copy_text = copy_text.clone();
+                    let reference = reference.clone();
+                    move || copy_text(reference.clone())
+                },
+            ),
+            ui::menu::divider(),
+            ui::menu::danger(
+                i18n::t(language.get_untracked().as_str(), "form.dropStash"),
+                true,
+                {
                     let drop_stash = drop_stash.clone();
                     let reference = reference.clone();
                     move || drop_stash(reference.clone())
-                }),
+                },
+            ),
         ];
         stash_rows.push(menu_row(
             language,
@@ -402,12 +446,19 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
         let copy_text = actions.copy_text.clone();
         let path_for_menu = path.clone();
         let items = vec![
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.reveal")).on_select({
-                let reveal = reveal.clone();
-                let path = path_for_menu.clone();
-                move || reveal(path.clone())
-            }),
-            MenuItem::new(i18n::t(language.get_untracked().as_str(), "menu.copyPath")).on_select({
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.reveal"),
+                true,
+                {
+                    let reveal = reveal.clone();
+                    let path = path_for_menu.clone();
+                    move || reveal(path.clone())
+                },
+            ),
+            ui::menu::action(
+                i18n::t(language.get_untracked().as_str(), "menu.copyPath"),
+                true,
+                {
                 let copy_text = copy_text.clone();
                 let path = path_for_menu.clone();
                 move || copy_text(path.clone())
@@ -598,11 +649,18 @@ fn reflog_list(
                         let lang = language.get_untracked();
                         let lang = lang.as_str();
                         let items = vec![
-                            MenuItem::new(i18n::t(lang, "reflog.undo")).on_select({
-                                let undo = undo.clone();
-                                move || undo(index)
-                            }),
-                            MenuItem::new(i18n::t(lang, "menu.newBranchFromHere")).on_select({
+                            ui::menu::action(
+                                i18n::t(lang, "reflog.undo"),
+                                true,
+                                {
+                                    let undo = undo.clone();
+                                    move || undo(index)
+                                },
+                            ),
+                            ui::menu::action(
+                                i18n::t(lang, "menu.newBranchFromHere"),
+                                true,
+                                {
                                 let open_form = open_form.clone();
                                 let sha = sha.clone();
                                 move || {
@@ -612,18 +670,27 @@ fn reflog_list(
                                     )
                                 }
                             }),
-                            MenuItem::new(i18n::t(lang, "menu.showInHistory")).on_select({
+                            ui::menu::action(
+                                i18n::t(lang, "menu.showInHistory"),
+                                true,
+                                {
                                 let show = show.clone();
                                 let sha = sha.clone();
                                 move || show(sha.clone())
                             }),
-                            MenuItem::separator(),
-                            MenuItem::new(i18n::t(lang, "menu.copySha")).on_select({
+                            ui::menu::divider(),
+                            ui::menu::action(
+                                i18n::t(lang, "menu.copySha"),
+                                true,
+                                {
                                 let copy_text = copy_text.clone();
                                 let sha = sha.clone();
                                 move || copy_text(sha.clone())
                             }),
-                            MenuItem::new(i18n::t(lang, "menu.copyName")).on_select({
+                            ui::menu::action(
+                                i18n::t(lang, "menu.copyName"),
+                                true,
+                                {
                                 let copy_text = copy_text.clone();
                                 let short = short.clone();
                                 move || copy_text(short.clone())
