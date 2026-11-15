@@ -35,7 +35,7 @@
 
 | 板 | 画板要求的主要控件 | 现有实现 | 缺口 |
 |---|---|---|---|
-| 14 Merge conflict | `btn`×10、`seg`×2、`merge-pane`×3、`merge-code`×3 | `conflict_view.rs`（487 行），字号/mono 已清零，冲突 chip 用 `ui::button` | ⚠️ 整屏 overlay 与三栏仍是自绘；`ui::split` 已建但未接入（P4 剩余） |
+| 14 Merge conflict | `btn`×10、`seg`×2、`merge-pane`×3、`merge-code`×3 | `conflict_view.rs`，字号/mono 已清零，9 处按钮用 `ui::button`，**三栏已接入 `ui::split`** | ✅ 基本就绪；整屏仍是 overlay（画板本身也是 overlay） |
 | 15 Sync & auth | `checkrow`×3、`btn`×4 | `sync_dialog.rs`（517 行），遮罩与吞点击用 `ui::dialog::scrim`/`modality`，选项用 `ui::button`/`ui::check_row` | ✅ 主体就绪；未换 `ui::tabs` |
 | 16 Repository states | `pill`×18、`mini-*`（8 类 ×6） | 三条横幅已收敛到 `ui::feedback::banner_sized`：操作条（Accent/28）、仓库状态四个分支（Neutral/26 ×3、Highlight/26 ×1） | ✅ 已就绪。`sync_banner` 例外：消息是 git 输出，用 `CODE` 等宽字号，改成横幅的 `SECONDARY` 会丢对齐 |
 | 17 Reflog & undo | `commit`×3、`btn`×3、`kbd` | `refs_view.rs` 的 Reflog 段已用 `ui::menu`；撤销确认走 `ui::dialog::confirm_destructive` | ✅ 基本就绪 |
@@ -131,12 +131,12 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 | `palette.png` | 20 | 命令面板：搜索框、七行命令、每行左侧放大镜与右侧快捷键 |
 | `syncpanel.png` | 15 / 28 / 29 | 同步面板：遮罩暗化、Fetch/Pull/Push 页签、三个复选行、页脚按钮 |
 | `formpanel.png` | 22 | 表单弹层：标题、字段标签与输入框、勾选行、页脚两按钮 |
+| `conflict-split.png` | 14 | 冲突页：左 224 文件列表 + 右侧经 `ui::split` 的三栏（Ours / Result / Theirs），可拖拽把手 |
 | `blame.png` | 19 | 主区 blame：左侧 File history 列表、右侧 Blame 徽章 + 路径 + 行数 + Copy，以及 blame 行（hash + 作者 | 行号 | 代码） |
 | `inspector.png` | 08 / 18 | 检查器：顶部三页签（Files 选中 / Info / Blame）、「1 file changed」与文件行（`diff.rs` + M） |
 | `settings.png` | 23 / 24 / 25 / 26 / 27 | 设置页：左侧六分区（General/Git/Shortcuts/Themes/Credentials/About）、右侧 Appearance 区块、主题三态（System 选中）、说明文字与分隔线 |
 
-**未截到的板**：14（冲突三栏，仍是自绘 overlay）、16（三条横幅，未接入
-`ui::banner`）、19（主区 blame 缺入口）、21（右键菜单）。
+**未截到的板**：21（右键菜单，需交互弹出）。
 
 关于 21：试过加「启动即弹菜单」的入口，但 `file_menu` 需要 12 个参数（repo 路径、
 文件路径、变更清单、以及 7 个回调），为验收单独构造这一整套数据不划算；而把菜单
