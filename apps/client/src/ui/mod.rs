@@ -169,6 +169,7 @@ mod guard_tests {
         "screens/rewrite_dialog.rs",
         "workspace/inspector.rs",
         "screens/changes_view.rs",
+        "workspace/history.rs",
     ];
 
     fn src_root() -> PathBuf {

@@ -544,35 +544,23 @@ fn hist_bar(
             design::text2,
         ))
         .child(view().flex_1())
-        .child(
-            view()
-                .h(px(20.0))
-                .px(px(6.0))
-                .items_center()
-                .rounded(px(4.0))
-                .bg(move || {
-                    if compare_mode.get() {
-                        design::accent_soft()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press({
+        .child({
+            let variant = if compare_mode.get() {
+                crate::ui::button::ButtonVariant::Secondary
+            } else {
+                crate::ui::button::ButtonVariant::Ghost
+            };
+            crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "compare.mode"),
+                variant,
+                crate::ui::button::ButtonSize::Small,
+                false,
+                {
                     let set_compare_mode = set_compare_mode.clone();
                     move || set_compare_mode(!compare_mode.get_untracked())
-                })
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "compare.mode"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || {
-                            if compare_mode.get() {
-                                design::accent()
-                            } else {
-                                design::text3()
-                            }
-                        }),
-                ),
-        )
+                },
+            )
+        })
         .child(compare_refs(language, refs_list, compare_pair, set_compare_refs))
         .child(
             crate::ui::button::button(
@@ -1033,53 +1021,39 @@ fn compare_refs(
         let pick_target = set_compare_refs.clone();
         let base_name = reference.clone();
         let target_name = reference.clone();
+        let base_label = reference.clone();
+        let target_label = reference.clone();
         let base_target = target_value.clone();
         let target_base = base_value.clone();
         let is_base = base_value.as_deref() == Some(reference.as_str());
         let is_target = target_value.as_deref() == Some(reference.as_str());
         base_picker.push(
-            view()
-                .h(px(16.0))
-                .px(px(4.0))
-                .items_center()
-                .rounded(px(3.0))
-                .bg(move || {
-                    if is_base {
-                        design::accent_soft()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press(move || pick_base(Some(base_name.clone()), base_target.clone()))
-                .child(
-                    text(reference.clone())
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(11.0))
-                        .text_color(move || design::text2()),
-                )
-                .into_element(),
+            crate::ui::button::button(
+                move || base_label.clone(),
+                if is_base {
+                    crate::ui::button::ButtonVariant::Secondary
+                } else {
+                    crate::ui::button::ButtonVariant::Ghost
+                },
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || pick_base(Some(base_name.clone()), base_target.clone()),
+            )
+            .into_element(),
         );
         target_picker.push(
-            view()
-                .h(px(16.0))
-                .px(px(4.0))
-                .items_center()
-                .rounded(px(3.0))
-                .bg(move || {
-                    if is_target {
-                        design::accent_soft()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press(move || pick_target(target_base.clone(), Some(target_name.clone())))
-                .child(
-                    text(reference.clone())
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(11.0))
-                        .text_color(move || design::text2()),
-                )
-                .into_element(),
+            crate::ui::button::button(
+                move || target_label.clone(),
+                if is_target {
+                    crate::ui::button::ButtonVariant::Secondary
+                } else {
+                    crate::ui::button::ButtonVariant::Ghost
+                },
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || pick_target(target_base.clone(), Some(target_name.clone())),
+            )
+            .into_element(),
         );
     }
 
@@ -1123,34 +1097,18 @@ fn compare_refs(
                 .border_color(move || design::line_soft())
                 .child(target_picker),
         )
-        .child(
-            view()
-                .h(px(16.0))
-                .px(px(4.0))
-                .items_center()
-                .rounded(px(3.0))
-                .hover(|style| style.bg(move || design::hover()))
-                .on_press(move || set_compare_refs(swap_target.clone(), swap_base.clone()))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "compare.swap"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(11.0))
-                        .text_color(move || design::text2()),
-                ),
-        )
-        .child(
-            view()
-                .h(px(16.0))
-                .px(px(4.0))
-                .items_center()
-                .rounded(px(3.0))
-                .hover(|style| style.bg(move || design::hover()))
-                .on_press(move || clear_refs(None, None))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "compare.clear"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(11.0))
-                        .text_color(move || design::text3()),
-                ),
-        );
+        .child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.swap"),
+            crate::ui::button::ButtonVariant::Ghost,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || set_compare_refs(swap_target.clone(), swap_base.clone()),
+        ))
+        .child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.clear"),
+            crate::ui::button::ButtonVariant::Ghost,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || clear_refs(None, None),
+        ));
 }
