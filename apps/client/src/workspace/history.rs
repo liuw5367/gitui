@@ -210,7 +210,7 @@ pub(crate) fn history(
                                             };
                                             return i18n::t(lang, key);
                                         })
-                                        .text_size(px(11.0))
+                                        .text_size(px(crate::ui::BODY))
                                         .text_color(move || design::text3()),
                                     );
                                 if unborn {
@@ -315,7 +315,7 @@ pub(crate) fn history(
                                                     .gap(px(6.0))
                                                     .child(
                                                         text(move || commit.summary.clone())
-                                                            .text_size(px(12.5))
+                                                            .text_size(px(crate::ui::BODY))
                                                             .text_color(move || design::text())
                                                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                                                     )
@@ -333,7 +333,7 @@ pub(crate) fn history(
                                             .child(
                                                 text(move || commit.author.clone())
                                                     .w(px(AUTHOR_W))
-                                                    .text_size(px(10.5))
+                                                    .text_size(px(crate::ui::SECONDARY))
                                                     .text_color(move || design::text2())
                                                     .text_overflow(nsh_core::EllipsizeMode::Tail),
                                             )
@@ -348,7 +348,7 @@ pub(crate) fn history(
                                                     )
                                                 })
                                                 .w(px(DATE_W))
-                                                .text_size(px(9.5))
+                                                .text_size(px(crate::ui::SECONDARY))
                                                 .text_color(move || design::text3()),
                                             )
                                     },
@@ -393,8 +393,8 @@ pub(crate) fn history(
                             )],
                         )
                     })
-                    .text_size(px(10.0))
-                    .line_height(px(13.0))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
                     .text_color(move || design::accent()),
                 )
                 .child(view().flex_1())
@@ -469,7 +469,7 @@ fn hist_bar(
         .border_color(move || design::line_soft())
         .child(
             text(move || i18n::t(language.get().as_str(), "shell.history"))
-                .text_size(px(12.5))
+                .text_size(px(crate::ui::BODY))
                 .font_weight(FontWeight(600))
                 .text_color(move || design::text()),
         )
@@ -497,7 +497,7 @@ fn hist_bar(
                     &[("count", total.to_string())],
                 )
             })
-            .text_size(px(10.5))
+            .text_size(px(crate::ui::SECONDARY))
             .text_color(move || design::text3()),
         )
         .child(chip(
@@ -537,7 +537,7 @@ fn hist_bar(
                 })
                 .child(
                     text(move || i18n::t(language.get().as_str(), "compare.mode"))
-                        .text_size(px(10.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || {
                             if compare_mode.get() {
                                 design::accent()
@@ -549,18 +549,13 @@ fn hist_bar(
         )
         .child(compare_refs(language, refs_list, compare_pair, set_compare_refs))
         .child(
-            view()
-                .h(px(20.0))
-                .px(px(6.0))
-                .items_center()
-                .rounded(px(4.0))
-                .hover(|style| style.bg(move || design::hover()))
-                .on_press(move || clear())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "filter.clear"))
-                        .text_size(px(10.5))
-                        .text_color(move || design::text3()),
-                ),
+            crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "filter.clear"),
+                crate::ui::button::ButtonVariant::Ghost,
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || clear(),
+            ),
         )
         .child(widgets_icon(filter_open));
 }
@@ -586,14 +581,14 @@ fn chip(
         .bg(move || background())
         .child(
             text(move || label())
-                .text_size(px(9.5))
+                .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || foreground()),
         );
 }
 
 fn column_header(language: Signal<SharedString>, key: &'static str) -> nsh_core::element::Text {
     return text(move || i18n::t(language.get().as_str(), key))
-        .text_size(px(9.5))
+        .text_size(px(crate::ui::SECONDARY))
         .font_weight(FontWeight(600))
         .text_color(move || design::text3());
 }
@@ -915,7 +910,7 @@ fn filter_pop(
 fn section_label(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
     return view().w_full().h(px(20.0)).items_center().child(
         text(move || i18n::t(language.get().as_str(), key))
-            .text_size(px(9.5))
+            .text_size(px(crate::ui::SECONDARY))
             .font_weight(FontWeight(600))
             .text_color(move || design::text3()),
     );
@@ -928,29 +923,21 @@ fn choice_row(
     on_press: impl Fn() + 'static,
 ) -> AnyElement {
     let _ = language;
-    return view()
-        .w_full()
-        .h(px(22.0))
-        .px(px(6.0))
-        .flex_row()
-        .items_center()
-        .rounded(px(4.0))
-        .bg(move || {
-            if selected() {
-                design::selected()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .hover(|style| style.bg(move || design::hover()))
-        .on_press(on_press)
-        .child(
-            text(label)
-                .text_size(px(11.0))
-                .text_color(move || design::text())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .into_element();
+    let label = label;
+    // 选中的 chip 用 Secondary 表达，未选中用 Ghost。
+    let variant = if selected() {
+        crate::ui::button::ButtonVariant::Secondary
+    } else {
+        crate::ui::button::ButtonVariant::Ghost
+    };
+    return crate::ui::button::button(
+        move || label.clone(),
+        variant,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        on_press,
+    )
+    .into_element();
 }
 
 /// 引用徽章：本地分支、远程、标签各用一组配色。
@@ -980,7 +967,7 @@ fn ref_chips(refs: Vec<String>) -> impl IntoElement {
                 })
                 .child(
                     text(label)
-                        .text_size(px(9.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || {
                             if is_tag {
                                 design::tag_fg()
@@ -1040,7 +1027,7 @@ fn compare_refs(
                 .on_press(move || pick_base(Some(base_name.clone()), base_target.clone()))
                 .child(
                     text(reference.clone())
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .line_height(px(11.0))
                         .text_color(move || design::text2()),
                 )
@@ -1062,7 +1049,7 @@ fn compare_refs(
                 .on_press(move || pick_target(target_base.clone(), Some(target_name.clone())))
                 .child(
                     text(reference.clone())
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .line_height(px(11.0))
                         .text_color(move || design::text2()),
                 )
@@ -1078,7 +1065,7 @@ fn compare_refs(
             text(move || {
                 i18n::t(language.get().as_str(), if has_pair { "compare.range" } else { "compare.pick" })
             })
-            .text_size(px(9.5))
+            .text_size(px(crate::ui::SECONDARY))
             .text_color(move || design::text3()),
         )
         .child(
@@ -1095,7 +1082,7 @@ fn compare_refs(
         )
         .child(
             text("→")
-                .text_size(px(9.5))
+                .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3()),
         )
         .child(
@@ -1120,7 +1107,7 @@ fn compare_refs(
                 .on_press(move || set_compare_refs(swap_target.clone(), swap_base.clone()))
                 .child(
                     text(move || i18n::t(language.get().as_str(), "compare.swap"))
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .line_height(px(11.0))
                         .text_color(move || design::text2()),
                 ),
@@ -1135,7 +1122,7 @@ fn compare_refs(
                 .on_press(move || clear_refs(None, None))
                 .child(
                     text(move || i18n::t(language.get().as_str(), "compare.clear"))
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .line_height(px(11.0))
                         .text_color(move || design::text3()),
                 ),
