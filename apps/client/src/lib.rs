@@ -280,7 +280,12 @@ pub fn App() -> impl IntoElement {
         let loaded = settings_state.get_untracked();
         crate::dates::load(loaded.date_format.as_str(), loaded.date_pattern.as_str());
     }
-    let form_state = signal(Option::<screens::FormState>::None);
+    // 验收开关：`GITUI_FORM=1` 启动即打开「新建分支」表单，用于核对表单弹层。
+    let form_state = signal(if std::env::var("GITUI_FORM").map(|v| v == "1").unwrap_or(false) {
+        Some(screens::FormState::new(screens::FormKind::NewBranch))
+    } else {
+        None
+    });
     let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);

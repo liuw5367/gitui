@@ -5,7 +5,6 @@
 
 use crate::design::{self, metrics};
 use crate::i18n;
-use nsh_base::input;
 use nsh_core::prelude::*;
 
 /// 对话框的种类，决定标题、字段与确认文案。
@@ -125,24 +124,11 @@ pub(crate) fn form_dialog(
     on_submit: std::sync::Arc<dyn Fn(FormState)>,
     on_cancel: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(120)
-        .items_center()
-        .justify_center()
-        .bg(move || {
-            if state.get().is_some() {
-                design::token("overlay")
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press({
-            let on_cancel = on_cancel.clone();
-            move || on_cancel()
-        })
-        .child(dynamic(move || -> AnyElement {
+    let dismiss = on_cancel.clone();
+    return crate::ui::dialog::scrim(
+        move || state.get().is_some(),
+        120,
+        dynamic(move || -> AnyElement {
             let Some(form) = state.get() else {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             };
@@ -153,7 +139,8 @@ pub(crate) fn form_dialog(
             let form_for_field_two = form.clone();
             let form_for_third = form.clone();
             let form_for_flag = form.clone();
-            return view()
+            return crate::ui::dialog::modality(
+                view()
                 .w(px(420.0))
                 .p(px(16.0))
                 .flex_col()
@@ -162,10 +149,9 @@ pub(crate) fn form_dialog(
                 .border_1()
                 .border_color(move || design::line())
                 .bg(move || design::token("popover"))
-                .on_press(|| {})
                 .child(
                     text(move || i18n::t(language.get().as_str(), form.kind.title()))
-                        .text_size(px(13.5))
+                        .text_size(px(crate::ui::TITLE))
                         .font_weight(FontWeight(600))
                         .line_height(px(18.0))
                         .text_color(move || design::text()),
@@ -257,8 +243,8 @@ pub(crate) fn form_dialog(
                                     .and_then(|form| form.error)
                                     .unwrap_or_default()
                             })
-                            .text_size(px(10.5))
-                            .line_height(px(14.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::danger()),
                         ),
                 )
@@ -284,8 +270,12 @@ pub(crate) fn form_dialog(
                             },
                         )),
                 )
-                .into_element();
-        }));
+                .into_element(),
+            )
+            .into_element();
+        }),
+        move || dismiss(),
+    );
 }
 
 /// 一行复选：走 `widgets::check`（原生 Checkbox + 统一指示器）。
@@ -329,9 +319,9 @@ fn field(
         .gap(px(4.0))
         .child(
             text(move || i18n::t(language.get().as_str(), label_key))
-                .text_size(px(10.5))
+                .text_size(px(crate::ui::SECONDARY))
                 .font_weight(FontWeight(600))
-                .line_height(px(14.0))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text2()),
         )
         .child(
@@ -345,12 +335,14 @@ fn field(
                 .border_1()
                 .border_color(move || design::field_border())
                 .bg(move || design::field())
-                .child(
-                    input()
-                        .value(read(&form))
-                        .on_change(move |text: &str| write(text.to_string()))
-                        .text_size(px(12.0))
-                        .flex_1(),
-                ),
+                .child(crate::ui::text_input::text_input_bound(
+                    {
+                        let form = form.clone();
+                        move || read(&form)
+                    },
+                    || String::new(),
+                    false,
+                    move |text: String| write(text),
+                )),
         );
 }
