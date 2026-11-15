@@ -116,14 +116,12 @@ pub(crate) fn changes_view(
                         .child(
                             text(label)
                                 .text_size(px(crate::ui::CODE))
-                                
                                 .text_color(move || design::text())
                                 .text_overflow(nsh_core::EllipsizeMode::Tail),
                         )
                         .child(
                             text(format!("+{} −{}", additions, deletions))
                                 .text_size(px(crate::ui::CODE))
-                                
                                 .text_color(move || design::text3()),
                         ),
                 )
@@ -329,7 +327,6 @@ fn changes_list(
                         text(file_name)
                             .flex_1()
                             .text_size(px(crate::ui::CODE))
-                            
                             .text_color(move || design::text())
                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
@@ -337,7 +334,6 @@ fn changes_list(
                         text(status.to_string())
                             .w(px(10.0))
                             .text_size(px(crate::ui::CODE))
-                            
                             .text_color(move || status_color(status)),
                     )
                     .child(
@@ -395,25 +391,16 @@ fn changes_list(
                                 .text_color(move || design::text3()),
                         )
                         .child(view().flex_1())
-                        .child(
-                            view()
-                                .h(px(16.0))
-                                .px(px(4.0))
-                                .items_center()
-                                .rounded(px(3.0))
-                                .hover(|style| style.bg(move || design::hover()))
-                                .on_press({
-                                    let action = action.clone();
-                                    move || action()
-                                })
-                                .child(
-                                    text(move || {
-                                        i18n::t(language.get().as_str(), action_label_key)
-                                    })
-                                    .text_size(px(crate::ui::SECONDARY))
-                                    .text_color(move || design::accent()),
-                                ),
-                        ),
+                        .child(crate::ui::button::button(
+                            move || i18n::t(language.get().as_str(), action_label_key),
+                            crate::ui::button::ButtonVariant::Ghost,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let action = action.clone();
+                                move || action()
+                            },
+                        )),
                 )
                 .child(rows)
                 .into_element(),
@@ -443,7 +430,6 @@ fn changes_list(
                         text(path)
                             .flex_1()
                             .text_size(px(crate::ui::CODE))
-                            
                             .text_color(move || design::text())
                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
