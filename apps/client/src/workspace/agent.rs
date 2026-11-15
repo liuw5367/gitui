@@ -44,7 +44,7 @@ pub(crate) fn agent_panel(
                 .gap(px(8.0))
                 .border_b_1()
                 .border_color(move || design::line())
-                .child(widgets::icon("sparkle", 13.0, design::accent))
+                .child(crate::ui::icon::icon_view("sparkle", crate::ui::icon::IconSize::Inline, design::accent))
                 .child(
                     text(move || i18n::t(language.get().as_str(), "agent.name"))
                         .text_size(px(crate::ui::BODY))
