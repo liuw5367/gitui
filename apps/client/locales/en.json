@@ -295,7 +295,10 @@
     "cherryPickAction": "Cherry-pick",
     "revertTitle": "Revert %{short}?",
     "revertMessage": "A new commit is created that undoes this one. History is not rewritten.",
-    "revertAction": "Revert"
+    "revertAction": "Revert",
+    "restoreShortcutsTitle": "Restore default shortcuts?",
+    "restoreShortcutsMessage": "Your custom key bindings will be replaced, including ones you recorded.",
+    "restoreShortcutsAction": "Restore Defaults"
   },
   "toast": {
     "copied": "Copied to clipboard",
@@ -408,7 +411,8 @@
     "mergeEmptyDirs": "Merge empty directories",
     "compactSingleChild": "Compact single-child folders",
     "showWelcome": "Show Welcome",
-    "lastSession": "Last session · %{count} repositories will be restored"
+    "lastSession": "Last session · %{count} repositories will be restored",
+    "customized": "Customized"
   },
   "refs": {
     "title": "Refs",
@@ -480,7 +484,19 @@
     "commit": "Go to commit panel",
     "primaryAction": "Commit (Changes view)",
     "switchTab": "Switch repository tab",
-    "cycleTab": "Previous / next tab"
+    "cycleTab": "Previous / next tab",
+    "nextTab": "Next tab",
+    "prevTab": "Previous tab",
+    "tab": "Switch to tab %{n}",
+    "record": "Record",
+    "restoreDefaults": "Restore Defaults",
+    "search": "Search shortcuts",
+    "searchEmpty": "No shortcut matches",
+    "recording": "Press a new combination for %{action} (Esc cancels)",
+    "conflict": "Already used by %{action}",
+    "notBindable": "That combination can't be bound: use ⌘ + letter, ⇧⌘ + letter, ⌘1–⌘9, ⇧⌘[ or ⇧⌘]",
+    "catalogHint": "Rebinding covers ⌘ + letter, ⇧⌘ + letter, ⌘1–⌘9, ⇧⌘[ / ⇧⌘], ⌘↵ and ⌘,.",
+    "restored": "Shortcuts restored to defaults"
   },
   "form": {
     "newBranch": "New Branch",

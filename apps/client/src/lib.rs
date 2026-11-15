@@ -13,6 +13,7 @@ mod interactions;
 mod model;
 mod screens;
 mod shell;
+mod shortcuts;
 mod widgets;
 mod workspace;
 
@@ -266,6 +267,13 @@ pub fn App() -> impl IntoElement {
     let rewrite_state = signal(Option::<screens::RewriteState>::None);
     // 命令面板的高亮行。
     let palette_selected = signal(0_usize);
+    // 快捷键：注册表、录制中的动作、设置页的搜索词与改键错误。
+    let shortcut_registry = signal(shortcuts::Registry::with_overrides(&store::load_shortcuts(
+        &store_dir,
+    )));
+    let recording_shortcut = signal(Option::<&'static str>::None);
+    let shortcut_query = signal(String::new());
+    let shortcut_error = signal(Option::<String>::None);
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
     // 冲突视图：可编辑的结果区与 base 显隐。
@@ -1097,28 +1105,38 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    // 命令面板：每条命令对应一个已接好的动作。
+    // 命令面板与快捷键共用同一个分发器：命令 id 就是快捷键注册表里的动作 id。
     let run_command: Arc<dyn Fn(&'static str)> = {
         let open_repo = choose_folder.clone();
         let close_tab = close_tab.clone();
         let refresh = refresh.clone();
         let set_mode_cmd = set_mode.clone();
+        let commit_cmd = commit.clone();
         let inspector_open = inspector_open;
         let compare_mode = compare_mode;
-        let sync = sync.clone();
         let open_sync = open_sync.clone();
         let go_welcome = go_welcome.clone();
         let go_repo_manager = go_repo_manager.clone();
         let go_settings = go_settings.clone();
         let toggle_language = toggle_language.clone();
         let palette_open = palette_open;
+        let palette_selected = palette_selected;
         let theme_mode = theme_mode;
         let store_dir = store_dir.clone();
+        let filter_open = filter_open;
+        let mode_signal = mode;
+        let tabs_cmd = tabs;
+        let active_cmd = active;
+        let screen_cmd = screen;
         Arc::new(move |id: &'static str| {
             match id {
                 "open" => open_repo(),
-                "openPalette" => palette_open.set(true),
-                "closeTab" => close_tab(active.get_untracked()),
+                "openPalette" => {
+                    // 打开时把高亮拉回第一行。
+                    palette_selected.set(0);
+                    palette_open.set(true);
+                }
+                "closeTab" => close_tab(active_cmd.get_untracked()),
                 "refresh" => refresh(),
                 "history" => set_mode_cmd(Mode::History),
                 "changes" => set_mode_cmd(Mode::Changes),
@@ -1127,6 +1145,28 @@ pub fn App() -> impl IntoElement {
                 "fetch" => open_sync(model::Sync::Fetch),
                 "pull" => open_sync(model::Sync::Pull),
                 "push" => open_sync(model::Sync::Push),
+                // ⌘F 搜索与 ⇧⌘F 过滤共用历史视图的过滤浮层（手册 1.3）。
+                "filter" | "filterHistory" => {
+                    set_mode_cmd(Mode::History);
+                    filter_open.set(true);
+                }
+                // ⌘↵：只在 Changes 里提交，避免在历史视图误提交。
+                "primary" => {
+                    if mode_signal.get_untracked() == Mode::Changes {
+                        commit_cmd();
+                    }
+                }
+                "prevTab" => cycle_tab(tabs_cmd, active_cmd, screen_cmd, false),
+                "nextTab" => cycle_tab(tabs_cmd, active_cmd, screen_cmd, true),
+                "tab1" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 0),
+                "tab2" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 1),
+                "tab3" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 2),
+                "tab4" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 3),
+                "tab5" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 4),
+                "tab6" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 5),
+                "tab7" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 6),
+                "tab8" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 7),
+                "tab9" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 8),
                 "welcome" => go_welcome(),
                 "repoManager" => go_repo_manager(),
                 "settings" => go_settings(),
@@ -1142,8 +1182,97 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let set_theme: Arc<dyn Fn(ThemeMode)> = {
-        let theme_mode = theme_mode;
+    // 快捷键改键：写入注册表并持久化；冲突/不可绑定时把原因交给设置页显示。
+    let rebind_shortcut: Arc<dyn Fn(&'static str, String)> = {
+        let registry = shortcut_registry;
+        let recording = recording_shortcut;
+        let error = shortcut_error;
+        let store_dir = store_dir.clone();
+        let language = language;
+        Arc::new(move |id: &'static str, combo: String| {
+            let mut next = registry.get_untracked();
+            let outcome = next.rebind(id, combo.as_str());
+            let lang = language.get_untracked();
+            match outcome {
+                Ok(()) => {
+                    registry.set(next.clone());
+                    store::save_shortcuts(&store_dir, &next.overrides());
+                    error.set(None);
+                    recording.set(None);
+                }
+                // 失败时保持录制状态，用户可以直接改按另一个组合。
+                Err(shortcuts::BindError::NotBindable) => {
+                    error.set(Some(i18n::t(lang.as_str(), "shortcut.notBindable")));
+                }
+                Err(shortcuts::BindError::Conflict(other)) => {
+                    let action = shortcuts::ACTIONS
+                        .iter()
+                        .find(|candidate| candidate.id == other);
+                    let name = action
+                        .map(|action| shortcuts::label(action, lang.as_str()))
+                        .unwrap_or_else(|| other.to_string());
+                    error.set(Some(i18n::with_arguments(
+                        lang.as_str(),
+                        "shortcut.conflict",
+                        &[("action", name)],
+                    )));
+                }
+            }
+        })
+    };
+
+    let record_shortcut: Arc<dyn Fn(&'static str)> = {
+        let recording = recording_shortcut;
+        let error = shortcut_error;
+        Arc::new(move |id: &'static str| {
+            error.set(None);
+            recording.set(Some(id));
+        })
+    };
+
+    // 恢复默认：先确认（会覆盖用户的自定义），再重置并清空持久化。
+    let restore_shortcuts: Arc<dyn Fn()> = {
+        let registry = shortcut_registry;
+        let recording = recording_shortcut;
+        let error = shortcut_error;
+        let store_dir = store_dir.clone();
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let lang = language.get_untracked();
+            let title = i18n::t(lang.as_str(), "confirm.restoreShortcutsTitle");
+            let message = i18n::t(lang.as_str(), "confirm.restoreShortcutsMessage");
+            let action_label = i18n::t(lang.as_str(), "confirm.restoreShortcutsAction");
+            let done = i18n::t(lang.as_str(), "shortcut.restored");
+            let registry = registry;
+            let recording = recording;
+            let error = error;
+            let store_dir = store_dir.clone();
+            let notice = notice;
+            spawn(async move {
+                let ok = interactions::confirm(
+                    title,
+                    message,
+                    "restoreShortcuts",
+                    action_label,
+                    false,
+                )
+                .await;
+                if !ok {
+                    return;
+                }
+                let mut next = registry.get_untracked();
+                next.restore_defaults();
+                registry.set(next.clone());
+                store::save_shortcuts(&store_dir, &next.overrides());
+                recording.set(None);
+                error.set(None);
+                interactions::notify(notice, done);
+            });
+        })
+    };
+
+    let set_theme: Arc<dyn Fn(ThemeMode)> = {        let theme_mode = theme_mode;
         let store_dir = store_dir.clone();
         Arc::new(move |mode: ThemeMode| {
             theme_mode.set(mode);
@@ -2072,8 +2201,6 @@ pub fn App() -> impl IntoElement {
 
     // 键盘与命令面板共用同一个派发入口（Actions 会把它移走，因此先留一份）。
     let run_command_for_key = run_command.clone();
-    let commit_for_key = commit.clone();
-    let open_sync_for_key = open_sync.clone();
 
     let set_update_mode: Arc<dyn Fn(String)> = {
         let settings_state = settings_state;
@@ -2674,9 +2801,13 @@ pub fn App() -> impl IntoElement {
         let choose_folder = actions.choose_folder.clone();
         effect({
             let language = language;
+            let shortcuts = shortcut_registry;
             move || {
                 let lang = language.get();
-                let items = build_menu(lang.as_str(), run.clone(), choose_folder.clone());
+                // 菜单里的加速键也取注册表：改键后菜单跟着变。
+                let bindings = shortcuts.get();
+                let combo = move |id: &str| bindings.combo(id).to_string();
+                let items = build_menu(lang.as_str(), run.clone(), choose_folder.clone(), &combo);
                 nsh_core::element::desktop::set_application_menu(items);
             }
         });
@@ -2694,139 +2825,23 @@ pub fn App() -> impl IntoElement {
         });
     }
 
-    on_key("mod+o", {
-        let choose_folder = actions.choose_folder.clone();
-        move |_| choose_folder()
-    });
-    on_key("mod+w", {
-        let close_tab = actions.close_tab.clone();
-        let active = active;
-        move |_| close_tab(active.get_untracked())
-    });
-    on_key("mod+r", {
-        let refresh = actions.refresh.clone();
-        move |_| refresh()
-    });
-    on_key("mod+,", {
-        let go_settings = actions.go_settings.clone();
-        move |_| go_settings()
-    });
-    on_key("mod+p", {
-        let palette_open = palette_open;
-        let palette_selected = palette_selected;
-        move |_| {
-            let next = !palette_open.get_untracked();
-            if next {
-                palette_selected.set(0);
+    // 快捷键：把清单里的每个组合各绑一次，按下时查注册表决定跑哪个命令。
+    // 注册表是可改的（设置页 25 的 Record / Restore Defaults），而 nsh 0.5.0 的
+    // on_key 只能在挂载时绑定一次，所以绑定的是「组合」而不是「动作」。
+    for combo in shortcuts::catalog() {
+        let pressed = combo.clone();
+        let registry = shortcut_registry;
+        let recording = recording_shortcut;
+        let run = actions.run_command.clone();
+        let rebind = rebind_shortcut.clone();
+        on_key(combo.as_str(), move |_| {
+            // 录制期间按键只用于改键，不执行命令。
+            if let Some(id) = recording.get_untracked() {
+                rebind(id, pressed.clone());
+                return;
             }
-            palette_open.set(next);
-        }
-    });
-
-    // 查询变化时把高亮拉回第一行，避免高亮停在已被筛掉的位置。
-    effect({
-        let palette_query = palette_query;
-        let palette_selected = palette_selected;
-        move || {
-            // 读一次即建立依赖；查询一变就把高亮拉回第一行。
-            let _ = palette_query.get();
-            palette_selected.set(0);
-        }
-    });
-    on_key("mod+shift+a", {
-        let theme_mode = theme_mode;
-        let store_dir = store_dir.clone();
-        move |_| {
-            let next = theme_mode.get_untracked().next();
-            theme_mode.set(next);
-            nsh_core::element::set_color_scheme(next.appearance());
-            store::save_appearance(&store_dir, next.id());
-        }
-    });
-    on_key("mod+f", {
-        let filter_open = filter_open;
-        let mode = mode;
-        move |_| {
-            // 设计板 04：搜索框在历史视图；过滤浮层也只在历史里有意义。
-            mode.set(Mode::History);
-            filter_open.set(true);
-        }
-    });
-
-    // ⌘⇧F：过滤历史（与 ⌘F 同一浮层）。
-    on_key("mod+shift+f", {
-        let filter_open = filter_open;
-        let mode = mode;
-        move |_| {
-            mode.set(Mode::History);
-            filter_open.set(true);
-        }
-    });
-
-    // ⌘⇧P：推送确认；⌘⇧K：跳到提界面。
-    on_key("mod+shift+p", {
-        let open_sync = open_sync_for_key.clone();
-        move |_| open_sync(model::Sync::Push)
-    });
-
-    on_key("mod+shift+k", {
-        let mode = mode;
-        move |_| mode.set(Mode::Changes)
-    });
-
-    // ⌘↵：在 Changes 里提交，在 History 里不做（避免误提交）。
-    on_key("mod+enter", {
-        let mode = mode;
-        let commit = commit_for_key.clone();
-        move |_| {
-            if mode.get_untracked() == Mode::Changes {
-                commit();
-            }
-        }
-    });
-
-    // ⌘1…⌘9 切换仓库 tab；越界不做事（不把用户送到空 tab）。
-    for (key, slot) in [
-        ("mod+1", 0usize),
-        ("mod+2", 1),
-        ("mod+3", 2),
-        ("mod+4", 3),
-        ("mod+5", 4),
-        ("mod+6", 5),
-        ("mod+7", 6),
-        ("mod+8", 7),
-        ("mod+9", 8),
-    ] {
-        on_key(key, {
-            let active = active;
-            let tabs = tabs;
-            move |_| {
-                if slot < tabs.get_untracked().len() {
-                    active.set(slot);
-                    screen.set(Screen::Workspace);
-                }
-            }
-        });
-    }
-
-    // ⌘⇧[ / ⌘⇧] 前后切 tab（到头回绕，符合 macOS 习惯）。
-    for (key, forward) in [("mod+shift+[", false), ("mod+shift+]", true)] {
-        on_key(key, {
-            let active = active;
-            let tabs = tabs;
-            move |_| {
-                let count = tabs.get_untracked().len();
-                if count < 2 {
-                    return;
-                }
-                let current = active.get_untracked();
-                let next = if forward {
-                    (current + 1) % count
-                } else {
-                    (current + count - 1) % count
-                };
-                active.set(next);
-                screen.set(Screen::Workspace);
+            if let Some(id) = registry.get_untracked().action_for(pressed.as_str()) {
+                run(id);
             }
         });
     }
@@ -2900,7 +2915,13 @@ pub fn App() -> impl IntoElement {
         let rewrite_state = rewrite_state;
         let tabs = tabs;
         let active = active;
+        let recording = recording_shortcut;
         move |_| {
+            // 录制中按 Esc 只取消录制，不继续关下面的浮层。
+            if recording.get_untracked().is_some() {
+                recording.set(None);
+                return;
+            }
             if rewrite_state.get_untracked().is_some() {
                 rewrite_state.set(None);
                 return;
@@ -3045,6 +3066,14 @@ pub fn App() -> impl IntoElement {
                             actions_for_view.set_automation.clone(),
                             actions_for_view.set_review_millis.clone(),
                             actions_for_view.toggle_protected_branch.clone(),
+                            screens::ShortcutUi {
+                                registry: shortcut_registry,
+                                query: shortcut_query,
+                                recording: recording_shortcut,
+                                error: shortcut_error,
+                                record: record_shortcut.clone(),
+                                restore: restore_shortcuts.clone(),
+                            },
                             actions_for_view.clone(),
                         )
                         .into_element(),
@@ -3135,6 +3164,7 @@ fn build_menu(
     language: &str,
     run: Arc<dyn Fn(&'static str)>,
     choose_folder: Arc<dyn Fn()>,
+    combo: &dyn Fn(&str) -> String,
 ) -> Vec<MenuItem> {
     let lang = language;
     let menu = move |key: &'static str| i18n::t(lang, key);
@@ -3150,13 +3180,13 @@ fn build_menu(
             menu("menu.app.file"),
             vec![
                 MenuItem::new(menu("menu.openRepo"))
-                    .shortcut("mod+o")
+                    .shortcut(&combo("open"))
                     .on_select({
                         let choose_folder = choose_folder.clone();
                         move || choose_folder()
                     }),
                 MenuItem::new(menu("menu.closeTab"))
-                    .shortcut("mod+w")
+                    .shortcut(&combo("closeTab"))
                     .on_select(menu_run("closeTab")),
                 MenuItem::separator(),
                 MenuItem::role(MenuRole::Close),
@@ -3178,7 +3208,7 @@ fn build_menu(
             menu("menu.app.view"),
             vec![
                 MenuItem::new(menu("menu.commandPalette"))
-                    .shortcut("mod+p")
+                    .shortcut(&combo("openPalette"))
                     .on_select(menu_run("openPalette")),
                 MenuItem::separator(),
                 MenuItem::new(menu("menu.showHistory")).on_select(menu_run("history")),
@@ -3186,7 +3216,7 @@ fn build_menu(
                 MenuItem::new(menu("menu.toggleInspector")).on_select(menu_run("inspector")),
                 MenuItem::separator(),
                 MenuItem::new(menu("menu.cycleAppearance"))
-                    .shortcut("mod+shift+a")
+                    .shortcut(&combo("toggleTheme"))
                     .on_select(menu_run("toggleTheme")),
                 MenuItem::new(menu("menu.switchLanguage")).on_select(menu_run("toggleLanguage")),
             ],
@@ -3199,12 +3229,12 @@ fn build_menu(
                 MenuItem::new(menu("menu.push")).on_select(menu_run("push")),
                 MenuItem::separator(),
                 MenuItem::new(menu("menu.refresh"))
-                    .shortcut("mod+r")
+                    .shortcut(&combo("refresh"))
                     .on_select(menu_run("refresh")),
                 MenuItem::new(menu("menu.repoManager")).on_select(menu_run("repoManager")),
                 MenuItem::separator(),
                 MenuItem::new(menu("menu.settings"))
-                    .shortcut("mod+,")
+                    .shortcut(&combo("settings"))
                     .on_select(menu_run("settings")),
             ],
         ),
@@ -3336,6 +3366,40 @@ pub(crate) fn persist(dir: &std::path::Path, active: Signal<usize>, tabs: Signal
 pub(crate) fn window_insets() -> (f32, f32) {
     let edges = title_bar();
     return (edges.left.0, edges.right.0);
+}
+
+/// 切到第 `slot` 个标签页；越界不动（不把用户送到空标签）。
+fn activate_slot(
+    tabs: Signal<Vec<Tab>>,
+    active: Signal<usize>,
+    screen: Signal<Screen>,
+    slot: usize,
+) {
+    if slot < tabs.get_untracked().len() {
+        active.set(slot);
+        screen.set(Screen::Workspace);
+    }
+}
+
+/// 前/后切标签页，到头回绕（符合 macOS 习惯）；不足两个标签时不动。
+fn cycle_tab(
+    tabs: Signal<Vec<Tab>>,
+    active: Signal<usize>,
+    screen: Signal<Screen>,
+    forward: bool,
+) {
+    let count = tabs.get_untracked().len();
+    if count < 2 {
+        return;
+    }
+    let current = active.get_untracked();
+    let next = if forward {
+        (current + 1) % count
+    } else {
+        (current + count - 1) % count
+    };
+    active.set(next);
+    screen.set(Screen::Workspace);
 }
 
 /// 供子模块使用的设计常量。

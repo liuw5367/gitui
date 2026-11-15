@@ -295,7 +295,10 @@
     "cherryPickAction": "拣选",
     "revertTitle": "回滚 %{short}？",
     "revertMessage": "会生成一个反向提交来抵消这次改动，不改写历史。",
-    "revertAction": "回滚"
+    "revertAction": "回滚",
+    "restoreShortcutsTitle": "恢复默认快捷键？",
+    "restoreShortcutsMessage": "你自定义的按键组合会被替换，包括刚刚录制的。",
+    "restoreShortcutsAction": "恢复默认"
   },
   "toast": {
     "copied": "已复制到剪贴板",
@@ -408,7 +411,8 @@
     "mergeEmptyDirs": "合并空目录",
     "compactSingleChild": "压缩单子目录",
     "showWelcome": "显示欢迎页",
-    "lastSession": "上次会话 · 将恢复 %{count} 个仓库"
+    "lastSession": "上次会话 · 将恢复 %{count} 个仓库",
+    "customized": "已自定义"
   },
   "refs": {
     "title": "引用",
@@ -480,7 +484,19 @@
     "commit": "跳到提交面板",
     "primaryAction": "提交（变更视图）",
     "switchTab": "切换仓库标签",
-    "cycleTab": "上一个 / 下一个标签"
+    "cycleTab": "上一个 / 下一个标签",
+    "nextTab": "下一个标签页",
+    "prevTab": "上一个标签页",
+    "tab": "切换到标签页 %{n}",
+    "record": "录制",
+    "restoreDefaults": "恢复默认",
+    "search": "搜索快捷键",
+    "searchEmpty": "没有匹配的快捷键",
+    "recording": "为「%{action}」按下新组合（Esc 取消）",
+    "conflict": "已被「%{action}」占用",
+    "notBindable": "这个组合不能绑定：请用 ⌘ + 字母、⇧⌘ + 字母、⌘1–⌘9、⇧⌘[ 或 ⇧⌘]",
+    "catalogHint": "可改键范围：⌘ + 字母、⇧⌘ + 字母、⌘1–⌘9、⇧⌘[ / ⇧⌘]、⌘↵、⌘,",
+    "restored": "快捷键已恢复默认"
   },
   "form": {
     "newBranch": "新建分支",

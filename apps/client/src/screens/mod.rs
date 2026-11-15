@@ -22,7 +22,7 @@ pub(crate) use hook_sheet::hook_sheet;
 pub(crate) use palette::palette;
 pub(crate) use refs_view::{refs_view, RefsTab};
 pub(crate) use rewrite_dialog::{rewrite_dialog, RewriteKind, RewriteState};
-pub(crate) use settings::{settings, Section as SettingsSection};
+pub(crate) use settings::{settings, Section as SettingsSection, ShortcutUi};
 pub(crate) use sync_dialog::{sync_dialog, SyncDialogState};
 pub(crate) use welcome::{welcome, CloneOptions, InitFiles};
 pub(crate) use workspace::workspace;

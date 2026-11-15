@@ -258,6 +258,30 @@ pub fn save_git_scan_folders(dir: &Path, folders: &[PathBuf]) {
     let _ = write_lines(&dir.join("git-scan-folders.txt"), &lines);
 }
 
+/// 快捷键覆盖项（`shortcuts.txt`，每行 `<动作 id>=<组合>`）。
+///
+/// 只存与默认值不同的项：默认值随版本演进时，没改过的动作自动跟上新默认。
+pub fn load_shortcuts(dir: &Path) -> Vec<(String, String)> {
+    let Ok(text) = std::fs::read_to_string(dir.join("shortcuts.txt")) else {
+        return Vec::new();
+    };
+    return text
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(id, combo)| (id.trim().to_string(), combo.trim().to_string()))
+        .filter(|(id, combo)| !id.is_empty() && !combo.is_empty())
+        .collect();
+}
+
+/// 保存快捷键覆盖项。
+pub fn save_shortcuts(dir: &Path, overrides: &[(String, String)]) {
+    let lines: Vec<String> = overrides
+        .iter()
+        .map(|(id, combo)| format!("{id}={combo}"))
+        .collect();
+    let _ = write_lines(&dir.join("shortcuts.txt"), &lines);
+}
+
 /// 在给定目录下找 Git 仓库（含 `.git` 的目录），最多下探三层。
 ///
 /// 限深是刻意的：再深会扫到 `node_modules` 之类的树里，代价大而收益小。
@@ -692,5 +716,20 @@ mod tests {
         ];
         save_git_scan_folders(dir.path(), &folders);
         assert_eq!(load_git_scan_folders(dir.path()), folders);
+    }
+
+    #[test]
+    fn shortcuts_persist_as_overrides() {
+        let dir = TempDir::new("shortcuts");
+        assert!(load_shortcuts(dir.path()).is_empty());
+        let overrides = vec![
+            ("push".to_string(), "mod+shift+e".to_string()),
+            ("commit".to_string(), "mod+shift+b".to_string()),
+        ];
+        save_shortcuts(dir.path(), &overrides);
+        assert_eq!(load_shortcuts(dir.path()), overrides);
+        // 空列表要真的清空文件（恢复默认后再存一次）。
+        save_shortcuts(dir.path(), &[]);
+        assert!(load_shortcuts(dir.path()).is_empty());
     }
 }

@@ -47,6 +47,19 @@ impl Section {
     }
 }
 
+/// 快捷键分区需要的状态与动作（注册表、搜索词、录制状态、改键错误）。
+///
+/// 打成一个结构体而不是继续加参数：设置页的参数已经很多，而这些值只服务于
+/// 25 号「Shortcuts」一页。
+pub(crate) struct ShortcutUi {
+    pub registry: Signal<crate::shortcuts::Registry>,
+    pub query: Signal<String>,
+    pub recording: Signal<Option<&'static str>>,
+    pub error: Signal<Option<String>>,
+    pub record: std::sync::Arc<dyn Fn(&'static str)>,
+    pub restore: std::sync::Arc<dyn Fn()>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn settings(
     language: Signal<SharedString>,
@@ -67,6 +80,7 @@ pub(crate) fn settings(
     set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
     set_review: std::sync::Arc<dyn Fn(u32)>,
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
+    shortcuts: ShortcutUi,
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -103,6 +117,7 @@ pub(crate) fn settings(
                     set_automation,
                     set_review,
                     toggle_protected,
+                    shortcuts,
                     actions,
                 )),
         )
@@ -252,6 +267,7 @@ fn main(
     set_automation: std::sync::Arc<dyn Fn(agent::Automation)>,
     set_review: std::sync::Arc<dyn Fn(u32)>,
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
+    shortcuts: ShortcutUi,
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
@@ -317,7 +333,16 @@ fn main(
                             add_found.clone(),
                         )
                         .into_element(),
-                        Section::Shortcuts => shortcuts_page(language).into_element(),
+                        Section::Shortcuts => shortcuts_page(
+                            language,
+                            shortcuts.registry,
+                            shortcuts.query,
+                            shortcuts.recording,
+                            shortcuts.error,
+                            shortcuts.record.clone(),
+                            shortcuts.restore.clone(),
+                        )
+                        .into_element(),
                         Section::Credentials => {
                             credentials_page(language, git_info.clone()).into_element()
                         }
@@ -1219,56 +1244,166 @@ fn git_page(
 }
 
 /// 快捷键分区（25）：列出本构建真实的按键绑定。
-fn shortcuts_page(language: Signal<SharedString>) -> AnyElement {
+fn shortcuts_page(
+    language: Signal<SharedString>,
+    registry: Signal<crate::shortcuts::Registry>,
+    query: Signal<String>,
+    recording: Signal<Option<&'static str>>,
+    error: Signal<Option<String>>,
+    record: std::sync::Arc<dyn Fn(&'static str)>,
+    restore: std::sync::Arc<dyn Fn()>,
+) -> AnyElement {
+    let needle = query.get_untracked().to_lowercase();
+    let bindings = registry.get_untracked();
     let mut rows: Vec<AnyElement> = Vec::new();
-    // 只列真实绑定：这里每一项都对应 lib.rs 里的 on_key。
-    for (keys, key) in [
-        ("⌘O", "shortcut.openRepo"),
-        ("⌘P", "shortcut.palette"),
-        ("⌘W", "shortcut.closeTab"),
-        ("⌘R", "shortcut.refresh"),
-        ("⌘F", "shortcut.filter"),
-        ("⇧⌘F", "shortcut.filterHistory"),
-        ("⇧⌘P", "shortcut.push"),
-        ("⇧⌘K", "shortcut.commit"),
-        ("⌘↵", "shortcut.primaryAction"),
-        ("⌘1…9", "shortcut.switchTab"),
-        ("⇧⌘[ / ]", "shortcut.cycleTab"),
-        ("⌘,", "shortcut.settings"),
-        ("⇧⌘A", "shortcut.cycleAppearance"),
-        ("esc", "shortcut.dismiss"),
-    ] {
+    for action in crate::shortcuts::ACTIONS.iter() {
+        let label = crate::shortcuts::label(action, language.get_untracked().as_str());
+        if !needle.is_empty() && !label.to_lowercase().contains(&needle) {
+            continue;
+        }
+        let id = action.id;
+        let is_default = bindings.combo(id) == action.default;
+        let record = record.clone();
         rows.push(
             view()
                 .w_full()
-                .h(px(24.0))
+                .h(px(26.0))
                 .flex_row()
                 .items_center()
                 .gap(px(10.0))
                 .child(
-                    text(move || i18n::t(language.get().as_str(), key))
+                    text(label)
                         .flex_1()
                         .text_size(px(11.5))
                         .line_height(px(15.0))
                         .text_color(move || design::text()),
                 )
-                .child(crate::widgets::kbd(keys))
+                .child(
+                    text(move || {
+                        if is_default {
+                            String::new()
+                        } else {
+                            i18n::t(language.get().as_str(), "settings.customized")
+                        }
+                    })
+                    .text_size(px(9.5))
+                    .line_height(px(13.0))
+                    .text_color(move || design::text3()),
+                )
+                .child(
+                    text(move || {
+                        let value = registry.get().combo(id).to_string();
+                        crate::shortcuts::pretty(value.as_str())
+                    })
+                    .text_size(px(11.0))
+                    .font_family("SF Mono")
+                    .line_height(px(14.0))
+                    .text_color(move || design::text2()),
+                )
+                .child(widgets::small_button(
+                    move || i18n::t(language.get().as_str(), "shortcut.record"),
+                    {
+                        let record = record.clone();
+                        move || record(id)
+                    },
+                ))
+                .into_element(),
+        );
+    }
+    if rows.is_empty() {
+        rows.push(
+            text(move || i18n::t(language.get().as_str(), "shortcut.searchEmpty"))
+                .text_size(px(10.5))
+                .line_height(px(15.0))
+                .text_color(move || design::text3())
                 .into_element(),
         );
     }
     return view()
         .w_full()
         .flex_col()
-        .gap(px(2.0))
+        .gap(px(10.0))
         .child(
             text(move || i18n::t(language.get().as_str(), "settings.shortcutsHint"))
                 .text_size(px(10.5))
                 .line_height(px(15.0))
                 .text_color(move || design::text3()),
         )
-        .child(rows)
         .child(
-            text(move || i18n::t(language.get().as_str(), "settings.recordNotImplemented"))
+            view()
+                .w_full()
+                .h(px(metrics::FIELD_H))
+                .flex_row()
+                .items_center()
+                .px(px(8.0))
+                .rounded(px(metrics::RADIUS_CONTROL))
+                .border_1()
+                .border_color(move || design::field_border())
+                .bg(move || design::field())
+                .child(widgets::icon("search", 12.0, design::text3))
+                .child(
+                    nsh_base::input()
+                        .value(query)
+                        .on_change(move |text: &str| query.set(text.to_string()))
+                        .placeholder(move || {
+                            i18n::t(language.get().as_str(), "shortcut.search")
+                        })
+                        .text_size(px(12.0))
+                        .flex_1(),
+                ),
+        )
+        // 录制提示与改键错误：两者都只在有内容时占高度。
+        .child(
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(2.0))
+                .child(
+                    text(move || match recording.get() {
+                        Some(id) => {
+                            let name = crate::shortcuts::ACTIONS
+                                .iter()
+                                .find(|action| action.id == id)
+                                .map(|action| {
+                                    crate::shortcuts::label(action, language.get_untracked().as_str())
+                                })
+                                .unwrap_or_default();
+                            i18n::with_arguments(
+                                language.get().as_str(),
+                                "shortcut.recording",
+                                &[("action", name)],
+                            )
+                        }
+                        None => String::new(),
+                    })
+                    .text_size(px(10.5))
+                    .line_height(px(15.0))
+                    .text_color(move || design::accent()),
+                )
+                .child(
+                    text(move || error.get().unwrap_or_default())
+                        .text_size(px(10.5))
+                        .line_height(px(15.0))
+                        .text_color(move || design::danger()),
+                ),
+        )
+        .child(view().w_full().flex_col().gap(px(2.0)).child(rows))
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .gap(px(8.0))
+                .child(view().flex_1())
+                .child(widgets::button(
+                    move || i18n::t(language.get().as_str(), "shortcut.restoreDefaults"),
+                    {
+                        let restore = restore.clone();
+                        move || restore()
+                    },
+                )),
+        )
+        .child(
+            text(move || i18n::t(language.get().as_str(), "shortcut.catalogHint"))
                 .text_size(px(10.0))
                 .line_height(px(14.0))
                 .text_color(move || design::text3()),
