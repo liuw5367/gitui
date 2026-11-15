@@ -191,7 +191,7 @@ fn changes_list(
         if entries.is_empty() {
             continue;
         }
-        let mut rows: Vec<AnyElement> = Vec::new();
+        let mut rows: Vec<Vec<String>> = Vec::new();
         let mut current_directory = String::new();
         // 目录链压缩需要知道所有出现过的目录。
         let all_dirs: Vec<String> = tab
@@ -212,160 +212,10 @@ fn changes_list(
             let show_row = tree.shows_directory(direct_files);
             if group_by_directory && directory != current_directory && show_row {
                 current_directory = directory.clone();
-                rows.push(
-                    view()
-                        .w_full()
-                        .h(px(20.0))
-                        .pl(px(8.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(5.0))
-                        .child(widgets::icon("chev-down", 9.0, design::text3))
-                        .child(
-                            text(if directory.is_empty() {
-                                ".".to_string()
-                            } else {
-                                directory
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::text2()),
-                        )
-                        .into_element(),
-                );
+                let label = if directory.is_empty() { ".".to_string() } else { directory };
+                rows.push(vec![format!("d|{label}")]);
             }
-            let select_change = select_change.clone();
-            let toggle_stage = toggle_stage.clone();
-            let discard_change = discard_change.clone();
-            let path = entry.path.clone();
-            let file_name = path.rsplit('/').next().unwrap_or(&path).to_string();
-            let status = entry.status_letter();
-            let is_untracked = entry.untracked;
-            let additions = entry.additions;
-            let deletions = entry.deletions;
-            let is_selected = selected == Some(index);
-            rows.push(
-                view()
-                    .w_full()
-                    .h(px(24.0))
-                    .pl(px(20.0))
-                    .pr(px(8.0))
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .bg(move || {
-                        if is_selected {
-                            design::selected()
-                        } else {
-                            AdaptiveColor::TRANSPARENT
-                        }
-                    })
-                    .hover(|style| style.bg(move || design::hover()))
-                    .on_press(move || select_change(index))
-                    // 右键：暂存、撤销修改、外部打开、复制路径、移入清单。
-                    .on_context_menu({
-                        let toggle_stage = toggle_stage.clone();
-                        let discard_change = discard_change.clone();
-                        let copy_text = actions.copy_text.clone();
-                        let open_editor = actions.open_editor.clone();
-                        let reveal_path = actions.reveal_path.clone();
-                        let move_to_changelist = actions.move_to_changelist.clone();
-                        let repo_root = tab.path.clone();
-                        let changelists = tab.changelists.clone();
-                        let path_for_menu = entry.path.clone();
-                        move |event: &nsh_core::ContextMenuEvent| {
-                            let items = file_menu(
-                                language,
-                                repo_root.as_str(),
-                                path_for_menu.as_str(),
-                                changelists.clone(),
-                                is_staged,
-                                is_untracked,
-                                index,
-                                toggle_stage.clone(),
-                                discard_change.clone(),
-                                copy_text.clone(),
-                                open_editor.clone(),
-                                reveal_path.clone(),
-                                move_to_changelist.clone(),
-                            );
-                            let _ = nsh_core::element::desktop::popup_menu_at(
-                                items,
-                                event.page_position,
-                            );
-                        }
-                    })
-                    .child(
-                        view()
-                            .w(px(12.0))
-                            .h(px(12.0))
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(3.0))
-                            .border_1()
-                            .border_color(move || design::line_strong())
-                            .bg(move || {
-                                if entry_is_staged(is_staged) {
-                                    design::accent()
-                                } else {
-                                    AdaptiveColor::TRANSPARENT
-                                }
-                            })
-                            .on_press(move || toggle_stage(index))
-                            .child(
-                                text(move || {
-                                    if entry_is_staged(is_staged) {
-                                        "✓".to_string()
-                                    } else {
-                                        String::new()
-                                    }
-                                })
-                                .text_size(px(crate::ui::SECONDARY))
-                                .text_color(move || design::content()),
-                            ),
-                    )
-                    .child(
-                        text(file_name)
-                            .flex_1()
-                            .text_size(px(crate::ui::CODE))
-                            .text_color(move || design::text())
-                            .text_overflow(nsh_core::EllipsizeMode::Tail),
-                    )
-                    .child(
-                        text(status.to_string())
-                            .w(px(10.0))
-                            .text_size(px(crate::ui::CODE))
-                            .text_color(move || status_color(status)),
-                    )
-                    .child(
-                        text(format!("+{}", additions))
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::add_fg()),
-                    )
-                    .child(
-                        text(format!("−{}", deletions))
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::del_fg()),
-                    )
-                    .child(
-                        // 丢弃只对未跟踪以外的未暂存文件有意义，且需要确认。
-                        view()
-                            .w(px(14.0))
-                            .h(px(14.0))
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(3.0))
-                            .when(is_selected && !is_staged && !is_untracked, |this| {
-                                this.hover(|style| style.bg(move || design::hover()))
-                                    .on_press(move || discard_change(index))
-                                    .child(
-                                        text("⌫")
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .text_color(move || design::text3()),
-                                    )
-                            }),
-                    )
-                    .into_element(),
-            );
+            rows.push(vec![format!("f|{index}")]);
         }
         sections.push(
             view()
@@ -402,7 +252,169 @@ fn changes_list(
                             },
                         )),
                 )
-                .child(rows)
+                .child({
+                    // 表格必须是 `dynamic` 的直接返回值——历史表与检查器的表格都
+                    // 是这个形状；放进 `flex_col` 的 child 里 data_table 不出内容。
+                    let changes = tab.changes.clone();
+                    let changes_for_menu = tab.changes.clone();
+                    let select_for_press = select_change.clone();
+                    let changes_for_press = tab.changes.clone();
+                    let rows_for_press = rows.clone();
+                    let rows_for_menu = rows.clone();
+                    let toggle_for_menu = toggle_stage.clone();
+                    let discard_for_menu = discard_change.clone();
+                    let copy_text = actions.copy_text.clone();
+                    let open_editor = actions.open_editor.clone();
+                    let reveal_path = actions.reveal_path.clone();
+                    let move_to_changelist = actions.move_to_changelist.clone();
+                    let repo_root = tab.path.clone();
+                    let changelists = tab.changelists.clone();
+                    let language_for_menu = language;
+                    let _ = &language_for_menu;
+                    let table_h = (rows.len() as f32) * 24.0;
+                    dynamic(move || -> AnyElement {
+                        let changes = changes.clone();
+                        let changes_for_press = changes_for_press.clone();
+                        let changes_for_menu = changes_for_menu.clone();
+                        let select_for_press = select_for_press.clone();
+                        let rows_for_press = rows_for_press.clone();
+                        let rows_for_menu = rows_for_menu.clone();
+                        let toggle_for_menu = toggle_for_menu.clone();
+                        let discard_for_menu = discard_for_menu.clone();
+                        let copy_text = copy_text.clone();
+                        let open_editor = open_editor.clone();
+                        let reveal_path = reveal_path.clone();
+                        let move_to_changelist = move_to_changelist.clone();
+                        let repo_root = repo_root.clone();
+                        let changelists = changelists.clone();
+                        return view()
+                            .w_full()
+                            .h(px(table_h))
+                            .child(crate::ui::table::table(crate::ui::table::TableSpec {
+                                columns: vec![crate::ui::table::Column {
+                                    key: "change",
+                                    title: None,
+                                    width: Some(1200.0),
+                                    fixed: false,
+                                }],
+                                rows: rows.clone(),
+                                selected,
+                                row_height: Some(24.0),
+                                on_select: Box::new(|_i| {}),
+                                render: Some(Box::new(move |row, _k, cell_text| {
+                                    let _ = row;
+                                    return match rows_row(&cell_text) {
+                                        Some(RowSpec::Directory(label)) => view()
+                                            .w_full()
+                                            .h(px(20.0))
+                                            .pl(px(8.0))
+                                            .flex_row()
+                                            .items_center()
+                                            .gap(px(5.0))
+                                            .child(widgets::icon("chev-down", 9.0, design::text3))
+                                            .child(
+                                                text(label)
+                                                    .text_size(px(crate::ui::SECONDARY))
+                                                    .text_color(move || design::text2()),
+                                            )
+                                            .into_element(),
+                                        Some(RowSpec::File(index)) => {
+                                            let Some(entry) = changes.get(index as usize) else {
+                                                return view().w_full().into_element();
+                                            };
+                                            let path = entry.path.clone();
+                                            let name =
+                                                path.rsplit('/').next().unwrap_or(&path).to_string();
+                                            let letter = entry.status_letter();
+                                            return view()
+                                                .w_full()
+                                                .h(px(24.0))
+                                                .pl(px(20.0))
+                                                .pr(px(8.0))
+                                                .flex_row()
+                                                .items_center()
+                                                .gap(px(6.0))
+                                                .child(crate::ui::check::indicator(
+                                                    entry_is_staged(is_staged),
+                                                ))
+                                                .child(
+                                                    text(name)
+                                                        .flex_1()
+                                                        .text_size(px(crate::ui::CODE))
+                                                        .text_color(move || design::text())
+                                                        .text_overflow(
+                                                            nsh_core::EllipsizeMode::Tail,
+                                                        ),
+                                                )
+                                                .child(
+                                                    text(letter.to_string())
+                                                        .w(px(10.0))
+                                                        .text_size(px(crate::ui::CODE))
+                                                        .text_color(move || status_color(letter)),
+                                                )
+                                                .child(
+                                                    text(format!("+{}", entry.additions))
+                                                        .text_size(px(crate::ui::SECONDARY))
+                                                        .text_color(move || design::add_fg()),
+                                                )
+                                                .child(
+                                                    text(format!("−{}", entry.deletions))
+                                                        .text_size(px(crate::ui::SECONDARY))
+                                                        .text_color(move || design::del_fg()),
+                                                )
+                                                .into_element();
+                                        }
+                                        None => view().w_full().into_element(),
+                                    };
+                                })),
+                                on_row_press: Some(Box::new(move |row, _cmd| {
+                                    // 目录行（`d|`）不参与选中；文件行取其索引。
+                                    let Some(spec) = rows_for_press.get(row as usize) else {
+                                        return;
+                                    };
+                                    let Some(RowSpec::File(index)) = spec.first().and_then(|c| rows_row(c)) else {
+                                        return;
+                                    };
+                                    select_for_press(index as usize);
+                                    let _ = &changes_for_press;
+                                })),
+                                on_context_menu: Some(Box::new(move |row, x, y| {
+                                    let Some(spec) = rows_for_menu.get(row as usize) else {
+                                        return;
+                                    };
+                                    let Some(RowSpec::File(index)) = spec.first().and_then(|c| rows_row(c)) else {
+                                        return;
+                                    };
+                                    let Some(entry) = changes_for_menu.get(index as usize) else {
+                                        return;
+                                    };
+                                    let items = file_menu(
+                                        language,
+                                        repo_root.as_str(),
+                                        entry.path.as_str(),
+                                        changelists.clone(),
+                                        is_staged,
+                                        entry.untracked,
+                                        index as usize,
+                                        toggle_for_menu.clone(),
+                                        discard_for_menu.clone(),
+                                        copy_text.clone(),
+                                        open_editor.clone(),
+                                        reveal_path.clone(),
+                                        move_to_changelist.clone(),
+                                    );
+                                    let _ = nsh_core::element::desktop::popup_menu_at(
+                                        items,
+                                        nsh_core::Point {
+                                            x: Points(x),
+                                            y: Points(y),
+                                        },
+                                    );
+                                })),
+                            }))
+                            .into_element();
+                    })
+                })
                 .into_element(),
         );
     }
