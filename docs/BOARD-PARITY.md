@@ -135,7 +135,12 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 | `settings.png` | 23 / 24 / 25 / 26 / 27 | 设置页：左侧六分区（General/Git/Shortcuts/Themes/Credentials/About）、右侧 Appearance 区块、主题三态（System 选中）、说明文字与分隔线 |
 
 **未截到的板**：14（冲突三栏，仍是自绘 overlay）、16（三条横幅，未接入
-`ui::banner`）、19（主区 blame 缺入口）、21（右键菜单，需要交互才能弹出）。
+`ui::banner`）、19（主区 blame 缺入口）、21（右键菜单）。
+
+关于 21：试过加「启动即弹菜单」的入口，但 `file_menu` 需要 12 个参数（repo 路径、
+文件路径、变更清单、以及 7 个回调），为验收单独构造这一整套数据不划算；而把菜单
+项渲染成静态列表只是自绘一个「看起来像菜单」的东西，属于假控件，不做。菜单的
+真实验证靠人工点击（`refs_view` 等 6 处都在用同一套 `ui::menu` 构造器）。
 
 ## 5. 验收手段
 
