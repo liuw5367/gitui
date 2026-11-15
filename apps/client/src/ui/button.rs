@@ -200,14 +200,19 @@ pub(crate) fn icon_button(
         ButtonSize::Small => IconSize::Button,
         ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => IconSize::Toolbar,
     };
-    let side = size.height();
+    // 画板的两个图标按钮类不是同一个比例：`.iconbtn` 是 24×24 正方形，
+    // `.tb-icon` 是 26×24（工具栏里略宽，视觉上更像一块「按钮」而非圆点）。
+    let (width, height) = match size {
+        ButtonSize::Toolbar => (26.0, 24.0),
+        other => (other.height(), other.height()),
+    };
     let label_for_a11y = label();
     return nsh_base::button()
         .disabled(disabled)
         .opacity(if disabled { 0.45 } else { 1.0 })
         .accessibility_label(Some(SharedString::from(label_for_a11y)))
-        .w(px(side))
-        .h(px(side))
+        .w(px(width))
+        .h(px(height))
         .items_center()
         .justify_center()
         .rounded(px(metrics::RADIUS_CONTROL))

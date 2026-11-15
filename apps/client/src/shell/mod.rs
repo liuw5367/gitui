@@ -179,10 +179,11 @@ pub(crate) fn titlebar(
                             .text_color(move || design::text2()),
                         ),
                 )
-                .child(widgets::icon_button(
+                .child(crate::ui::button::icon_button(
                     "gear",
-                    14.0,
-                    design::text2,
+                    move || i18n::t(language.get().as_str(), "shell.settings"),
+                    crate::ui::button::ButtonSize::Toolbar,
+                    false,
                     {
                         let go_settings = actions.go_settings.clone();
                         move || go_settings()
@@ -220,10 +221,11 @@ pub(crate) fn toolbar(
         .bg(move || design::bar())
         .border_b_1()
         .border_color(move || design::line())
-        .child(widgets::icon_button(
+        .child(crate::ui::button::icon_button(
             "sidebar",
-            14.0,
-            design::text2,
+            move || i18n::t(language.get().as_str(), "shell.sidebar"),
+            crate::ui::button::ButtonSize::Toolbar,
+            true,
             || {},
         ))
         .child(crate::ui::v_separator())
