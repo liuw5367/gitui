@@ -7,3 +7,4 @@
 # P0：只有 ui 层本身，页面从 P1 开始迁。
 
 screens/welcome.rs
+screens/settings.rs

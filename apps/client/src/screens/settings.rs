@@ -201,41 +201,31 @@ fn side(
         let mut rows: Vec<AnyElement> = Vec::new();
         for item in items {
             let set_section = set_section.clone();
+            // 图标在选中行用强调色，与设计稿的 `.settings-nav.on .si` 一致。
             rows.push(
-                view()
-                    .w_full()
-                    .h(px(28.0))
-                    .px(px(8.0))
-                    .flex_row()
-                    .items_center()
-                    .gap(px(7.0))
-                    .rounded(px(metrics::RADIUS_CONTROL))
-                    .bg(move || {
-                        if section.get() == *item {
-                            design::selected()
-                        } else {
-                            AdaptiveColor::TRANSPARENT
-                        }
-                    })
-                    .hover(|style| style.bg(move || design::hover()))
-                    .on_press(move || set_section(*item))
-                    // 图标在选中行用强调色，与设计稿的 `.settings-nav.on .si` 一致。
-                    .child(view().w(px(16.0)).items_center().justify_center().child(
-                        widgets::icon(item.icon(), 14.0, move || {
-                            if section.get() == *item {
-                                design::accent()
-                            } else {
-                                design::text3()
-                            }
-                        }),
-                    ))
-                    .child(
-                        text(move || i18n::t(language.get().as_str(), item.key()))
-                            .text_size(px(crate::ui::BODY))
-                            .line_height(px(15.0))
-                            .text_color(move || design::text()),
-                    )
-                    .into_element(),
+                crate::ui::row::row(
+                    move || i18n::t(language.get().as_str(), item.key()),
+                    None,
+                    Some(
+                        view()
+                            .w(px(16.0))
+                            .items_center()
+                            .justify_center()
+                            .child(widgets::icon(item.icon(), 14.0, move || {
+                                if section.get() == *item {
+                                    design::accent()
+                                } else {
+                                    design::text3()
+                                }
+                            }))
+                            .into_element(),
+                    ),
+                    vec![],
+                    section.get() == *item,
+                    false,
+                    move || set_section(*item),
+                )
+                .into_element(),
             );
         }
         groups.push(
@@ -457,25 +447,12 @@ fn general(
     for mode in [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark] {
         let set_theme = set_theme.clone();
         theme_rows.push(
-            view()
-                .h(px(24.0))
-                .px(px(10.0))
-                .items_center()
-                .rounded(px(5.0))
-                .bg(move || {
-                    if theme_mode.get() == mode {
-                        design::content()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press(move || set_theme(mode))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), theme_key(mode)))
-                        .text_size(px(crate::ui::BODY))
-                        .text_color(move || design::text()),
-                )
-                .into_element(),
+            option_chip(
+                move || i18n::t(language.get().as_str(), theme_key(mode)),
+                theme_mode.get_untracked() == mode,
+                move || set_theme(mode),
+            )
+            .into_element(),
         );
     }
     return view()
@@ -550,45 +527,14 @@ fn general(
                                         == style.id();
                                     let set_date_style = set_date_style.clone();
                                     let language = language;
-                                    return view()
-                                        .h(px(22.0))
-                                        .px(px(8.0))
-                                        .items_center()
-                                        .rounded(px(5.0))
-                                        .border_1()
-                                        .border_color(move || {
-                                            if active {
-                                                design::line_soft()
-                                            } else {
-                                                AdaptiveColor::TRANSPARENT
-                                            }
-                                        })
-                                        .bg(move || {
-                                            if active {
-                                                design::content()
-                                            } else {
-                                                AdaptiveColor::TRANSPARENT
-                                            }
-                                        })
-                                        .on_press(move || set_date_style(style))
-                                        .child(
-                                            text(move || {
-                                                i18n::t(
-                                                    language.get().as_str(),
-                                                    style.key(),
-                                                )
-                                            })
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                            .text_color(move || {
-                                                if active {
-                                                    design::text()
-                                                } else {
-                                                    design::text3()
-                                                }
-                                            }),
-                                        )
-                                        .into_element();
+                                    return option_chip(
+                                        move || {
+                                            i18n::t(language.get().as_str(), style.key())
+                                        },
+                                        active,
+                                        move || set_date_style(style),
+                                    )
+                                    .into_element();
                                 })
                                 .collect::<Vec<AnyElement>>(),
                         ),
@@ -831,34 +777,13 @@ fn general(
                                         == mode.id();
                                     let set_update_mode = set_update_mode.clone();
                                     let language = language;
-                                    return view()
-                                        .h(px(16.0))
-                                        .px(px(7.0))
-                                        .items_center()
-                                        .rounded(px(4.0))
-                                        .bg(move || {
-                                            if active {
-                                                design::content()
-                                            } else {
-                                                AdaptiveColor::TRANSPARENT
-                                            }
-                                        })
-                                        .on_press(move || set_update_mode(mode.id().to_string()))
-                                        .child(
-                                            text(move || {
-                                                i18n::t(language.get().as_str(), mode.key())
-                                            })
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                            .text_color(move || {
-                                                if active {
-                                                    design::text()
-                                                } else {
-                                                    design::text3()
-                                                }
-                                            }),
-                                        )
-                                        .into_element();
+                                    let mode_id = mode.id().to_string();
+                                    return option_chip(
+                                        move || i18n::t(language.get().as_str(), mode.key()),
+                                        active,
+                                        move || set_update_mode(mode_id.clone()),
+                                    )
+                                    .into_element();
                                 })
                                 .collect::<Vec<AnyElement>>(),
                         ),
@@ -873,45 +798,40 @@ fn general(
 }
 
 /// 启动方式的两个选项（设计板 23 的 Launch behavior）。
+/// 一组互斥选项里的一个：选中用 Secondary（描边 + 卡片底色），未选中用 Ghost。
+///
+/// 设置页有六处这样的选择器（主题、日期样式、更新方式、启动方式、自动化、
+/// 审查窗口），此前各自手写高度、圆角与 on_press；统一走这里。
+fn option_chip(
+    label: impl Fn() -> String + 'static,
+    active: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let variant = if active {
+        crate::ui::button::ButtonVariant::Secondary
+    } else {
+        crate::ui::button::ButtonVariant::Ghost
+    };
+    return crate::ui::button::button(
+        label,
+        variant,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        on_press,
+    );
+}
+
 fn launch_choice(
     language: Signal<SharedString>,
     key: &'static str,
     active: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return view()
-        .h(px(22.0))
-        .px(px(8.0))
-        .items_center()
-        .rounded(px(5.0))
-        .border_1()
-        .border_color(move || {
-            if active {
-                design::line_soft()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .bg(move || {
-            if active {
-                design::content()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press(on_press)
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || {
-                    if active {
-                        design::text()
-                    } else {
-                        design::text3()
-                    }
-                }),
-        );
+    return option_chip(
+        move || i18n::t(language.get().as_str(), key),
+        active,
+        on_press,
+    );
 }
 
 /// 日期格式的四种预设。
@@ -1631,42 +1551,32 @@ fn agent_page(
                     .text_size(px(crate::ui::META))
                     .text_color(move || design::danger()),
                 )
-                .child(
-                    view()
-                        .h(px(20.0))
-                        .px(px(8.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .border_1()
-                        .border_color(move || design::line_soft())
-                        .bg(move || design::panel2())
-                        .on_press({
-                            let set_permission = set_permission.clone();
-                            move || {
-                                let next = match policies.get_untracked().permission(action) {
-                                    agent::Permission::Ask => agent::Permission::Allow,
-                                    agent::Permission::Allow => agent::Permission::Deny,
-                                    agent::Permission::Deny => agent::Permission::Ask,
-                                };
-                                set_permission(action, next);
-                            }
-                        })
-                        .child(
-                            text(move || {
-                                i18n::t(
-                                    language.get().as_str(),
-                                    match policies.get().permission(action) {
-                                        agent::Permission::Ask => "agent.ask",
-                                        agent::Permission::Allow => "agent.allow",
-                                        agent::Permission::Deny => "agent.deny",
-                                    },
-                                )
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::text2()),
-                        ),
-                )
+                .child(crate::ui::button::button(
+                    move || {
+                        i18n::t(
+                            language.get().as_str(),
+                            match policies.get().permission(action) {
+                                agent::Permission::Ask => "agent.ask",
+                                agent::Permission::Allow => "agent.allow",
+                                agent::Permission::Deny => "agent.deny",
+                            },
+                        )
+                    },
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
+                        let set_permission = set_permission.clone();
+                        move || {
+                            let next = match policies.get_untracked().permission(action) {
+                                agent::Permission::Ask => agent::Permission::Allow,
+                                agent::Permission::Allow => agent::Permission::Deny,
+                                agent::Permission::Deny => agent::Permission::Ask,
+                            };
+                            set_permission(action, next);
+                        }
+                    },
+                ))
                 .into_element(),
         );
     }
@@ -1682,32 +1592,12 @@ fn agent_page(
         let active = settings.get_untracked().automation == mode;
         let set_automation = set_automation.clone();
         let language = language;
-        return view()
-            .h(px(22.0))
-            .px(px(8.0))
-            .items_center()
-            .rounded(px(5.0))
-            .bg(move || {
-                if active {
-                    design::content()
-                } else {
-                    AdaptiveColor::TRANSPARENT
-                }
-            })
-            .on_press(move || set_automation(mode))
-            .child(
-                text(move || i18n::t(language.get().as_str(), automation_key(mode)))
-                    .text_size(px(crate::ui::SECONDARY))
-                    .line_height(px(crate::ui::SECONDARY_LINE))
-                    .text_color(move || {
-                        if active {
-                            design::text()
-                        } else {
-                            design::text2()
-                        }
-                    }),
-            )
-            .into_element();
+        return option_chip(
+            move || i18n::t(language.get().as_str(), automation_key(mode)),
+            active,
+            move || set_automation(mode),
+        )
+        .into_element();
     })
     .collect();
 
@@ -1724,32 +1614,12 @@ fn agent_page(
             } else {
                 format!("{}s", millis / 1000)
             };
-            return view()
-                .h(px(20.0))
-                .px(px(7.0))
-                .items_center()
-                .rounded(px(4.0))
-                .bg(move || {
-                    if active {
-                        design::content()
-                    } else {
-                        AdaptiveColor::TRANSPARENT
-                    }
-                })
-                .on_press(move || set_review(millis))
-                .child(
-                    text(label)
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || {
-                            if active {
-                                design::text()
-                            } else {
-                                design::text3()
-                            }
-                        }),
-                )
-                .into_element();
+            return option_chip(
+                move || label.clone(),
+                active,
+                move || set_review(millis),
+            )
+            .into_element();
         })
         .collect();
 
@@ -1762,50 +1632,17 @@ fn agent_page(
             let toggle = toggle_protected.clone();
             let language = language;
             let label = name.clone();
-            return view()
-                .h(px(20.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .on_press(move || toggle(name.clone()))
-                .child(
-                    view()
-                        .w(px(12.0))
-                        .h(px(12.0))
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(3.0))
-                        .border_1()
-                        .border_color(move || design::line_strong())
-                        .bg(move || {
-                            if checked {
-                                design::accent()
-                            } else {
-                                AdaptiveColor::TRANSPARENT
-                            }
-                        })
-                        .child(
-                            text(move || {
-                                if checked {
-                                    "✓".to_string()
-                                } else {
-                                    String::new()
-                                }
-                            })
-                            .text_size(px(crate::ui::META))
-                            .text_color(move || design::content()),
-                        ),
-                )
-                .child(
-                    text(label)
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(crate::ui::CODE_LINE))
-                        .text_color(move || {
-                            let _ = language;
-                            design::text2()
-                        }),
-                )
-                .into_element();
+            let _ = language;
+            return crate::ui::check::check_row(
+                move || label.clone(),
+                checked,
+                false,
+                {
+                    let name = name.clone();
+                    move |_next: bool| toggle(name.clone())
+                },
+            )
+            .into_element();
         })
         .collect();
 
