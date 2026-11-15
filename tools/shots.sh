@@ -17,6 +17,7 @@
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
 #   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
 #   GITUI_PALETTE=1     启动即打开命令面板（⌘K 的等价物）
+#   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
 #                       会把画廊挡在后面，截出来就是一片白
 #   tools/shots.sh welcome            # 欢迎页
@@ -34,6 +35,23 @@ out_dir="$root/docs/verify/native"
 out="$out_dir/$name.png"
 
 mkdir -p "$home_dir" "$out_dir"
+
+# `GITUI_DIRTY=1` 在 GITUI_REPO 指向的仓库里制造一处未提交改动，
+# 让 Changes / diff 视图有内容可截（干净的 fixture 里它们是空的）。
+if [ "${GITUI_DIRTY:-0}" = "1" ] && [ -n "${GITUI_REPO:-}" ]; then
+  if [ -d "$GITUI_REPO" ]; then
+    target=""
+    for candidate in src/main.txt src/diff.rs README.md; do
+      if [ -f "$GITUI_REPO/$candidate" ]; then target="$GITUI_REPO/$candidate"; break; fi
+    done
+    if [ -n "$target" ]; then
+      printf '\n// screenshot fixture change\n' >>"$target"
+      echo "已在 $target 制造一处改动"
+    else
+      echo "GITUI_DIRTY=1 但 $GITUI_REPO 里找不到可改的文件" >&2
+    fi
+  fi
+fi
 
 echo "启动应用（HOME=$home_dir）…"
 (
