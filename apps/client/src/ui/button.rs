@@ -196,10 +196,23 @@ pub(crate) fn icon_button(
     disabled: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    let icon_size = match size {
+    return icon_button_tuned(name, label, size, None, None, disabled, on_press);
+}
+
+/// 同 [`icon_button`]，但可指定图标尺寸与前景色。
+pub(crate) fn icon_button_tuned(
+    name: &'static str,
+    label: impl Fn() -> String + 'static,
+    size: ButtonSize,
+    icon_size_override: Option<IconSize>,
+    foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let icon_size = icon_size_override.unwrap_or(match size {
         ButtonSize::Small => IconSize::Button,
         ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => IconSize::Toolbar,
-    };
+    });
     // 画板的两个图标按钮类不是同一个比例：`.iconbtn` 是 24×24 正方形，
     // `.tb-icon` 是 26×24（工具栏里略宽，视觉上更像一块「按钮」而非圆点）。
     let (width, height) = match size {
@@ -225,5 +238,8 @@ pub(crate) fn icon_button(
                 .outline_color(move || focus_color())
         })
         .on_press(move |_: &()| on_press())
-        .child(icon_view(name, icon_size, design::text2));
+        .child(icon_view(name, icon_size, move || match &foreground {
+            Some(color) => color(),
+            None => design::text2(),
+        }));
 }
