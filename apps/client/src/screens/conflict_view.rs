@@ -9,7 +9,6 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::widgets;
 use crate::Actions;
 use domain::conflict::{self, Side};
 use nsh_core::prelude::*;
@@ -484,7 +483,8 @@ pub(crate) fn conflict_view(
                                 move || mark()
                             },
                                ))
-                        .child(widgets::primary_button(
+                        .child(crate::ui::button::button(
+                                   
                             {
                                 let operation = operation.clone();
                                 move || {
@@ -495,7 +495,10 @@ pub(crate) fn conflict_view(
                                     )
                                 }
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Primary,
+                                   crate::ui::button::ButtonSize::Regular,
+                                   false,
+                                   {
                                 let continue_op = continue_op.clone();
                                 move || {
                                     if can_continue {
@@ -503,7 +506,7 @@ pub(crate) fn conflict_view(
                                     }
                                 }
                             },
-                        ))
+                               ))
                         .child(crate::ui::button::button(
                                    
                             {

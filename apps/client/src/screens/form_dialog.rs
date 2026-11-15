@@ -262,13 +262,17 @@ pub(crate) fn form_dialog(
                                 move || on_cancel()
                             },
                         ))
-                        .child(crate::widgets::primary_button(
+                        .child(crate::ui::button::button(
+                                          
                             move || i18n::t(language.get().as_str(), form.kind.confirm()),
-                            {
+                                          crate::ui::button::ButtonVariant::Primary,
+                                          crate::ui::button::ButtonSize::Regular,
+                                          false,
+                                          {
                                 let on_submit = on_submit.clone();
                                 move || on_submit(submit_form.clone())
                             },
-                        )),
+                                      )),
                 )
                 .into_element(),
             )

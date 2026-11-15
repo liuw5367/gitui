@@ -6,7 +6,6 @@
 
 use crate::design;
 use crate::i18n;
-use crate::widgets;
 use crate::Actions;
 use agent::{Action as AgentAction, AuditEntry, Permission, Plan};
 use nsh_core::prelude::*;
@@ -76,7 +75,8 @@ pub(crate) fn agent_panel(
                                 .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text2()),
                         )
-                        .child(widgets::primary_button(
+                        .child(crate::ui::button::button(
+                                   
                             move || {
                                 if plan.get().is_some() {
                                     i18n::t(language.get().as_str(), "agent.replan")
@@ -84,11 +84,14 @@ pub(crate) fn agent_panel(
                                     i18n::t(language.get().as_str(), "agent.plan")
                                 }
                             },
-                            {
+                                   crate::ui::button::ButtonVariant::Primary,
+                                   crate::ui::button::ButtonSize::Regular,
+                                   false,
+                                   {
                                 let make_plan = make_plan.clone();
                                 move || make_plan()
                             },
-                        ))
+                               ))
                         .child(dynamic(move || -> AnyElement {
                             match plan.get() {
                                 None => view().w_full().h(px(0.0)).into_element(),
@@ -207,15 +210,19 @@ pub(crate) fn agent_panel(
                                                         }
                                                     },
                                                 ))
-                                                .child(widgets::primary_button(
+                                                .child(crate::ui::button::button(
+                                                           
                                                     move || {
                                                         i18n::t(
                                                             language.get().as_str(),
                                                             "agent.approveRun",
                                                         )
                                                     },
-                                                    move || approve(),
-                                                )),
+                                                           crate::ui::button::ButtonVariant::Primary,
+                                                           crate::ui::button::ButtonSize::Regular,
+                                                           false,
+                                                           move || approve(),
+                                                       )),
                                         )
                                         .into_element();
                                 }

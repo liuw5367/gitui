@@ -379,7 +379,8 @@ pub(crate) fn sync_dialog(
                             if has_result {
                                 return view().w(px(0.0)).into_element();
                             }
-                            return crate::widgets::primary_button(
+                            return crate::ui::button::button(
+                                              
                                 move || {
                                     i18n::t(
                                         language.get().as_str(),
@@ -394,7 +395,10 @@ pub(crate) fn sync_dialog(
                                         },
                                     )
                                 },
-                                {
+                                              crate::ui::button::ButtonVariant::Primary,
+                                              crate::ui::button::ButtonSize::Regular,
+                                              false,
+                                              {
                                     let run = run.clone();
                                     move || {
                                         if !running {
@@ -402,7 +406,7 @@ pub(crate) fn sync_dialog(
                                         }
                                     }
                                 },
-                            )
+                                          )
                             .into_element();
                         })),
                 )

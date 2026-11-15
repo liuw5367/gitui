@@ -287,9 +287,13 @@ pub(crate) fn rewrite_dialog(
                                 move || on_close()
                             },
                         ))
-                        .child(widgets::primary_button(
+                        .child(crate::ui::button::button(
+                                   
                             move || i18n::t(language_value.get().as_str(), action_key),
-                            {
+                                   crate::ui::button::ButtonVariant::Primary,
+                                   crate::ui::button::ButtonSize::Regular,
+                                   false,
+                                   {
                                 let on_submit = on_submit.clone();
                                 move || {
                                     if can_submit {
@@ -297,7 +301,7 @@ pub(crate) fn rewrite_dialog(
                                     }
                                 }
                             },
-                        )),
+                               )),
                 )
                 .into_element(),
             )

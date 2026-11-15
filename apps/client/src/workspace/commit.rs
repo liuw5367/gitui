@@ -282,7 +282,8 @@ pub(crate) fn commit_panel(
                             },
                         )),
                 )
-                .child(widgets::primary_button(
+                .child(crate::ui::button::button(
+                           
                     move || {
                         if amend {
                             return i18n::t(language.get().as_str(), "commit.amendAction");
@@ -293,7 +294,10 @@ pub(crate) fn commit_panel(
                             &[("count", staged_count.to_string())],
                         )
                     },
-                    {
+                           crate::ui::button::ButtonVariant::Primary,
+                           crate::ui::button::ButtonSize::Regular,
+                           false,
+                           {
                         let commit = commit.clone();
                         move || {
                             if can_commit {
@@ -301,7 +305,7 @@ pub(crate) fn commit_panel(
                             }
                         }
                     },
-                ))
+                       ))
                 .child(
                     text(move || {
                         if can_commit {

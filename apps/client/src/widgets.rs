@@ -58,30 +58,6 @@ pub(crate) fn small_button(
         );
 }
 
-/// 主按钮：`.btn.primary`（`--primary-bg` 底色、白字）。
-pub(crate) fn primary_button(
-    label: impl Fn() -> String + 'static,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    return view()
-        .h(px(metrics::BUTTON_H))
-        .px(px(10.0))
-        .flex_row()
-        .items_center()
-        .justify_center()
-        .gap(px(5.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .bg(move || design::accent2())
-        .hover(|style| style.opacity(0.9))
-        .active(|style| style.opacity(0.8))
-        .on_press(on_press)
-        .child(
-            text(move || label())
-                .text_size(px(12.0))
-                .text_color(move || design::token("primary-foreground")),
-        );
-}
-
 /// 图标按钮：`.tb-icon`（26×24、圆角 6）；图标颜色跟随传入的 token。
 pub(crate) fn icon_button(
     name: &'static str,
