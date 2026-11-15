@@ -36,6 +36,11 @@ pub(crate) struct TableSpec {
     /// 行被选中时的回调。
     pub(crate) on_select: Box<dyn Fn(usize)>,
     /// 自定义单元格：`(行, 列键, 文本)` 返回一个元素。
+    ///
+    /// 返回的元素**可以含交互子元素**（按钮、勾选框等）：`data_table` 的
+    /// `press_with` 会先把按压交给该单元格视图，它若吞掉（返回 taken）就不再
+    /// 执行行选中。所以行内「暂存 / 丢弃」这类次级按钮是安全的，不会连带选中行。
+    /// 注意按钮要小（12–14pt）并留间距，避免与行按压误触。
     pub(crate) render: Option<Box<dyn Fn(u32, &str, String) -> AnyElement>>,
     /// 行被按压（含修饰键）：`(行, ⌘ 是否按下)`。给了它就由调用方决定选中还是
     /// 加入对比，而不是走默认的「点击即选中」。
