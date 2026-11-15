@@ -17,6 +17,7 @@
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
 #   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
 #   GITUI_PALETTE=1     启动即打开命令面板（⌘K 的等价物）
+#   GITUI_SETTINGS=1    启动即进入设置页
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
 #                       会把画廊挡在后面，截出来就是一片白
@@ -63,6 +64,7 @@ echo "启动应用（HOME=$home_dir）…"
   GITUI_FORM="${GITUI_FORM:-0}" \
   GITUI_MODE="${GITUI_MODE:-history}" \
   GITUI_PALETTE="${GITUI_PALETTE:-0}" \
+  GITUI_SETTINGS="${GITUI_SETTINGS:-0}" \
     nsh run >"$home_dir/run-$name.log" 2>&1 &
   echo $! >"$home_dir/run-$name.pid"
 )

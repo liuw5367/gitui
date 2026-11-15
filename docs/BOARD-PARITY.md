@@ -115,7 +115,29 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 | `diff.rs` 图标开关 | 同 shell 的图标按钮（active 态） |
 | `changes_view.rs` 行内方框 | 已用 `ui::check::indicator_action` 解决，此处留档说明它为什么需要单独原语 |
 
-## 4. 验收手段
+## 4. 逐板截图索引
+
+截图在 `docs/verify/native/`，每张对应一个界面（同界面只留最新一张）。
+生成方式见第 5 节。
+
+| 截图 | 覆盖的板 | 截到的内容 |
+|---|---|---|
+| `gallery.png` | —（组件层） | 全部 `ui` 组件的实际外观，⌘⇧D 打开 |
+| `history-final.png` | 04 / 06 / 07 | 提交行（图线、摘要、作者、相对时间）、Compare 按钮、分支标签、分支侧栏 |
+| `diffview.png` | 04 / 05 | diff 正文（行号、+−）、Unified/Split 切换、折叠与换行开关；左栏文件列表 |
+| `changes-final.png` | 10 / 11 | 分区标题（Unstaged 1）、文件行（方框 + 名称 + M + +1 −0）、取消全部暂存、变更清单入口 |
+| `refs.png` | 09 / 17 / 30 | 分支/标签/远程/贮藏四段，每行的名称、说明与快捷提示 |
+| `agent.png` | 12 / 13 | Agent 面板的标题、说明、步骤列表与权限按钮（Ask/Allow/Deny） |
+| `palette.png` | 20 | 命令面板：搜索框、七行命令、每行左侧放大镜与右侧快捷键 |
+| `syncpanel.png` | 15 / 28 / 29 | 同步面板：遮罩暗化、Fetch/Pull/Push 页签、三个复选行、页脚按钮 |
+| `formpanel.png` | 22 | 表单弹层：标题、字段标签与输入框、勾选行、页脚两按钮 |
+| `settings.png` | 23 / 24 / 25 / 26 / 27 | 设置页：左侧六分区（General/Git/Shortcuts/Themes/Credentials/About）、右侧 Appearance 区块、主题三态（System 选中）、说明文字与分隔线 |
+
+**未截到的板**：08（检查器，`ui::tabs` + `ui::table` 已就绪，但没有单独截图）、
+14（冲突三栏，仍是自绘 overlay）、16（三条横幅，未接入 `ui::banner`）、18（Files
+页）、19（主区 blame 缺入口）、21（右键菜单，需要交互才能弹出）。
+
+## 5. 验收手段
 
 截图不是「看有没有排错版」，而是「看内容是否真的在」。历史表曾连续几轮被判通过，
 实际整行不可见（列宽 120pt + render 根节点 `h_full` 塌成 0）。
@@ -126,7 +148,7 @@ icon key_value menu row section segmented setting_row split table tabs text_inpu
 ./tools/shots.sh gallery                                   # 组件画廊
 GITUI_MODE=history|changes|refs|agent ...                  # 四个主视图
 GITUI_DIRTY=1 GITUI_MODE=changes ...                       # 制造未提交改动，看 diff
-GITUI_SYNC=1 / GITUI_FORM=1 / GITUI_PALETTE=1 ...          # 三个弹层/面板
+GITUI_SYNC=1 / GITUI_FORM=1 / GITUI_PALETTE=1 / GITUI_SETTINGS=1 ...  # 弹层/面板/设置页
 ```
 
 判定方法：对截图做像素统计（颜色数 / 目标色像素数），而不是目测。`data_table`
@@ -134,7 +156,7 @@ GITUI_SYNC=1 / GITUI_FORM=1 / GITUI_PALETTE=1 ...          # 三个弹层/面板
 的 child 里就是空白——这一条是靠「同一位置放红块能显示、放表格不能」的对照实验
 定位的，不是靠调参数。
 
-## 5. 用法
+## 6. 用法
 
 1. 每组开工前查本表第 1 节，确认该组要新建哪些组件（第 2 节），先建组件再改页面。
 2. 组件落地后，把对应行从第 2 节删除，并在 `UI-KIT.md` 第 3 节登记。

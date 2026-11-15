@@ -400,7 +400,15 @@ pub fn App() -> impl IntoElement {
             initial_tabs = vec![model::load_tab(&path, &initial_filter)];
         }
     }
-    let screen = signal(Screen::Workspace);
+    // 验收开关：`GITUI_SETTINGS=1` 启动即进入设置页，用于截图核对。
+    let screen = signal(if std::env::var("GITUI_SETTINGS")
+        .map(|value| value == "1")
+        .unwrap_or(false)
+    {
+        Screen::Settings
+    } else {
+        Screen::Workspace
+    });
     // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
     // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
     // 欢迎窗口是独立窗口且默认铺在主窗口之上，截图验收组件画廊时它会挡住画廊，
