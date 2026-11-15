@@ -358,35 +358,10 @@ pub(crate) fn state_banner(
                 let open_parent = actions.open_parent.clone();
                 let close = actions.close_tab.clone();
                 let language_for_text = language_now.clone();
-                return view()
-                    .w_full()
-                    .h(px(26.0))
-                    .px(px(12.0))
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.0))
-                    .bg(move || design::panel2())
-                    .child(crate::ui::icon::icon_view("info", crate::ui::icon::IconSize::Button, design::danger))
-                    .child(
-                        text(move || {
-                            i18n::with_arguments(
-                                language_for_text.as_str(),
-                                if not_found {
-                                    "state.repoNotFound"
-                                } else {
-                                    "state.notARepository"
-                                },
-                                &[("path", path.clone())],
-                            )
-                        })
-                        .flex_1()
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                    )
-                    .child(crate::ui::button::button(
-                               
+                // 打不开的仓库：图标 + 说明 + 三个补救动作。「打开上级目录」只在路径
+                // 找不到时才有意义，所以单独判一次 not_found。
+                let mut banner_actions: Vec<AnyElement> = vec![
+                    crate::ui::button::button(
                         {
                             let language_now = language_now.clone();
                             move || {
@@ -400,42 +375,65 @@ pub(crate) fn state_banner(
                                 )
                             }
                         },
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               move || {
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || {
                             if not_found {
                                 locate()
                             } else {
                                 init_here()
                             }
                         },
-                           ))
-                    .when(!not_found, |this| {
-                        this.child(crate::ui::button::button(
-                                       
+                    )
+                    .into_element(),
+                ];
+                if !not_found {
+                    banner_actions.push(
+                        crate::ui::button::button(
                             {
                                 let language_now = language_now.clone();
                                 move || i18n::t(language_now.as_str(), "state.openParent")
                             },
-                                       crate::ui::button::ButtonVariant::Secondary,
-                                       crate::ui::button::ButtonSize::Small,
-                                       false,
-                                       move || open_parent(),
-                                   ))
-                    })
-                    .child(crate::ui::button::button(
-                               
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            move || open_parent(),
+                        )
+                        .into_element(),
+                    );
+                }
+                banner_actions.push(
+                    crate::ui::button::button(
                         {
                             let language_now = language_now.clone();
                             move || i18n::t(language_now.as_str(), "common.close")
                         },
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               move || close(active.get_untracked()),
-                           ))
-                    .into_element();
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || close(active.get_untracked()),
+                    )
+                    .into_element(),
+                );
+                return crate::ui::feedback::banner_sized(
+                    crate::ui::feedback::BannerTone::Neutral,
+                    26.0,
+                    Some("info"),
+                    move || {
+                        i18n::with_arguments(
+                            language_for_text.as_str(),
+                            if not_found {
+                                "state.repoNotFound"
+                            } else {
+                                "state.notARepository"
+                            },
+                            &[("path", path.clone())],
+                        )
+                    },
+                    banner_actions,
+                )
+                .into_element();
             }
             // 优先级：需要登录 > 离线 > 游离头 > 空仓库。
             if let Some(fault) = current.sync_fault {

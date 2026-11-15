@@ -15,6 +15,8 @@ pub(crate) enum BannerTone {
     Danger,
     /// 进行中的操作（合并/变基/拣选/回滚）。
     Accent,
+    /// 中性提示（仓库打不开、空仓库等）：`panel-2` 底 + 主文本色。
+    Neutral,
 }
 
 impl BannerTone {
@@ -24,6 +26,7 @@ impl BannerTone {
             BannerTone::Warning => design::token("hunk-bg"),
             BannerTone::Danger => design::del_bg(),
             BannerTone::Accent => design::token("tag-bg"),
+            BannerTone::Neutral => design::panel2(),
         };
     }
 
@@ -32,7 +35,7 @@ impl BannerTone {
             BannerTone::Info => design::text2(),
             BannerTone::Warning => design::warn(),
             BannerTone::Danger => design::del_fg(),
-            BannerTone::Accent => design::text(),
+            BannerTone::Accent | BannerTone::Neutral => design::text(),
         };
     }
 }
