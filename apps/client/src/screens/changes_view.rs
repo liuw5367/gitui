@@ -222,7 +222,7 @@ fn changes_list(
                         .flex_row()
                         .items_center()
                         .gap(px(5.0))
-                        .child(widgets::icon("chev_down", 9.0, design::text3))
+                        .child(widgets::icon("chev-down", 9.0, design::text3))
                         .child(
                             text(if directory.is_empty() {
                                 ".".to_string()

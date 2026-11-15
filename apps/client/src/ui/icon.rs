@@ -35,6 +35,12 @@ pub(crate) fn icon_view(
 ) -> impl IntoElement {
     let points = size.points();
     let mut holder = view().w(px(points)).h(px(points)).flex_shrink_0();
+    // 图标名写错时以前会静默渲染空占位（画廊里「Disabled icon」就是这么丢的）。
+    // 调试构建下直接报出来，发布构建仍保持静默以免崩溃。
+    debug_assert!(
+        icons::icon(name).is_some(),
+        "图标名不存在：{name}（可用名字见 design/icons.rs）"
+    );
     if let Some(source) = icons::icon(name) {
         holder = holder.child(
             svg(source)
@@ -74,4 +80,51 @@ pub(crate) fn inline_icon(name: &'static str) -> impl IntoElement {
 /// 工具栏默认色图标。
 pub(crate) fn toolbar_icon(name: &'static str) -> impl IntoElement {
     return icon_view(name, IconSize::Toolbar, design::text2);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    /// 扫描 `src/` 里所有 `icon_view("name"` / `icon_button("name"` / `icon("name"`
+    /// 的字面量，确认图标表里都有。图标名写错时，以前只会渲染空占位。
+    #[test]
+    fn every_icon_literal_exists_in_the_sprite() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut names: Vec<String> = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
+                    let Ok(source) = fs::read_to_string(&path) else { continue };
+                    for marker in ["icon_view(\"", "icon_button(\"", "icon(\""] {
+                        let mut rest = source.as_str();
+                        while let Some(index) = rest.find(marker) {
+                            let after = &rest[index + marker.len()..];
+                            if let Some(end) = after.find('"') {
+                                names.push(after[..end].to_string());
+                            }
+                            rest = &after[..];
+                            if rest.is_empty() { break; }
+                            rest = &rest[1..];
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!names.is_empty(), "没扫到任何图标字面量");
+        // `icon_view(name, ..)` 这类调用里的 `name` 是参数名而不是图标名，跳过。
+        names.retain(|name| name != "name");
+        let missing: Vec<&String> = names
+            .iter()
+            .filter(|name| icons::icon(name.as_str()).is_none())
+            .collect();
+        assert!(missing.is_empty(), "这些图标名不在 sprite 里：{missing:?}");
+    }
 }

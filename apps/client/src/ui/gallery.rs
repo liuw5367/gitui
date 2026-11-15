@@ -136,7 +136,7 @@ fn body(
                         || {},
                     ))
                     .child(icon_button(
-                        "trash",
+                        "copy",
                         move || "Disabled icon".to_string(),
                         ButtonSize::Small,
                         true,

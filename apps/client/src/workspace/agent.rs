@@ -47,7 +47,7 @@ pub(crate) fn agent_panel(
                 .child(widgets::icon("sparkle", 13.0, design::accent))
                 .child(
                     text(move || i18n::t(language.get().as_str(), "agent.name"))
-                        .text_size(px(12.0))
+                        .text_size(px(crate::ui::BODY))
                         .font_weight(FontWeight(600))
                         .line_height(px(15.0))
                         .text_color(move || design::text()),
@@ -55,7 +55,7 @@ pub(crate) fn agent_panel(
                 .child(view().flex_1())
                 .child(
                     text(move || i18n::t(language.get().as_str(), "agent.localOnly"))
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 ),
         )
@@ -72,8 +72,8 @@ pub(crate) fn agent_panel(
                         .gap(px(10.0))
                         .child(
                             text(move || i18n::t(language.get().as_str(), "agent.intro"))
-                                .text_size(px(10.5))
-                                .line_height(px(15.0))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text2()),
                         )
                         .child(widgets::primary_button(
@@ -122,8 +122,8 @@ pub(crate) fn agent_panel(
                                                 .child(
                                                     text(label)
                                                         .flex_1()
-                                                        .text_size(px(10.5))
-                                                        .line_height(px(14.0))
+                                                        .text_size(px(crate::ui::SECONDARY))
+                                                        .line_height(px(crate::ui::SECONDARY_LINE))
                                                         .text_color(move || {
                                                             if denied {
                                                                 design::text3()
@@ -136,24 +136,17 @@ pub(crate) fn agent_panel(
                                                         ),
                                                 )
                                                 .child(
-                                                    view()
-                                                        .h(px(18.0))
-                                                        .w(px(16.0))
-                                                        .items_center()
-                                                        .justify_center()
-                                                        .rounded(px(4.0))
-                                                        .hover(|style| style.bg(move || design::hover()))
-                                                        .on_press({
+                                                    // 删除用减号：图标集里没有 minus，直接用字形。
+                                                    crate::ui::button::button(
+                                                        move || "−".to_string(),
+                                                        crate::ui::button::ButtonVariant::Ghost,
+                                                        crate::ui::button::ButtonSize::Small,
+                                                        false,
+                                                        {
                                                             let remove = remove_step.clone();
                                                             move || remove(index)
-                                                        })
-                                                        // 删除用减号：图标集里没有 minus，直接用字形。
-                                                        .child(
-                                                            text("−")
-                                                                .text_size(px(11.0))
-                                                                .line_height(px(12.0))
-                                                                .text_color(move || design::text3()),
-                                                        ),
+                                                        },
+                                                    ),
                                                 )
                                                 .child(
                                                     view()
@@ -184,8 +177,8 @@ pub(crate) fn agent_panel(
                                                                     },
                                                                 )
                                                             })
-                                                            .text_size(px(9.5))
-                                                            .line_height(px(12.0))
+                                                            .text_size(px(crate::ui::SECONDARY))
+                                                            .line_height(px(crate::ui::SECONDARY_LINE))
                                                             .text_color(move || {
                                                                 if denied {
                                                                     design::text3()
@@ -206,8 +199,8 @@ pub(crate) fn agent_panel(
                                         .gap(px(6.0))
                                         .child(
                                             text(move || plan.summary.clone())
-                                                .text_size(px(10.5))
-                                                .line_height(px(15.0))
+                                                .text_size(px(crate::ui::SECONDARY))
+                                                .line_height(px(crate::ui::SECONDARY_LINE))
                                                 .text_color(move || design::text2()),
                                         )
                                         .child(steps)
@@ -250,7 +243,7 @@ pub(crate) fn agent_panel(
                                                                     "agent.addStep",
                                                                 )
                                                             })
-                                                            .text_size(px(11.0))
+                                                            .text_size(px(crate::ui::BODY))
                                                             .text_color(move || design::text()),
                                                         ),
                                                 )
@@ -302,8 +295,8 @@ fn permissions_block(
                 .child(
                     text(move || i18n::t(language.get().as_str(), action_key(action)))
                         .flex_1()
-                        .text_size(px(10.5))
-                        .line_height(px(14.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
                         .text_color(move || design::text2()),
                 )
                 .child(
@@ -336,8 +329,8 @@ fn permissions_block(
                                     },
                                 )
                             })
-                            .text_size(px(9.5))
-                            .line_height(px(12.0))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
                             .text_color(move || design::text2()),
                         ),
                 )
@@ -350,7 +343,7 @@ fn permissions_block(
         .gap(px(2.0))
         .child(
             text(move || i18n::t(language.get().as_str(), "agent.permissions"))
-                .text_size(px(10.0))
+                .text_size(px(crate::ui::SECONDARY))
                 .font_weight(FontWeight(600))
                 .line_height(px(14.0))
                 .text_color(move || design::text3()),
@@ -369,7 +362,7 @@ fn audit_block(
         .gap(px(2.0))
         .child(
             text(move || i18n::t(language.get().as_str(), "agent.audit"))
-                .text_size(px(10.0))
+                .text_size(px(crate::ui::SECONDARY))
                 .font_weight(FontWeight(600))
                 .line_height(px(14.0))
                 .text_color(move || design::text3()),
@@ -383,7 +376,7 @@ fn audit_block(
                     .items_center()
                     .child(
                         text(move || i18n::t(language.get().as_str(), "agent.auditEmpty"))
-                            .text_size(px(9.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text3()),
                     )
                     .into_element();
@@ -416,16 +409,16 @@ fn audit_block(
                         )
                         .child(
                             text(action)
-                                .text_size(px(9.5))
-                                .font_family("SF Mono")
+                                .text_size(px(crate::ui::CODE))
+                                
                                 .line_height(px(12.0))
                                 .text_color(move || design::text2()),
                         )
                         .child(
                             text(detail)
                                 .flex_1()
-                                .text_size(px(9.5))
-                                .line_height(px(12.0))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
                                 .text_color(move || design::text3())
                                 .text_overflow(nsh_core::EllipsizeMode::Tail),
                         )
@@ -437,7 +430,7 @@ fn audit_block(
                                     now,
                                 )
                             })
-                            .text_size(px(9.0))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text3()),
                         )
                         .into_element(),

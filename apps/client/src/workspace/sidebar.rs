@@ -143,7 +143,7 @@ fn group(
                 .flex_row()
                 .items_center()
                 .gap(px(5.0))
-                .child(widgets::icon("chev_down", 10.0, design::text3))
+                .child(widgets::icon("chev-down", 10.0, design::text3))
                 .child(
                     text(move || i18n::t(language.get().as_str(), key))
                         .text_size(px(10.5))
