@@ -29,6 +29,7 @@ pub(crate) mod split;
 pub(crate) mod segmented;
 pub(crate) mod tabs;
 pub(crate) mod table;
+pub(crate) mod tree;
 pub(crate) mod text_input;
 
 

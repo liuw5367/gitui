@@ -77,7 +77,7 @@
 | ~~`menu`~~ 构造器已就绪（待接入） | 09 / 21 / 22 | 系统 `NSMenu` | 菜单项分四类构造；外观由系统决定 |
 | ~~`split`~~ 已就绪（待接入） | 14 | `nsh_base` 的 `h_resizable`/`v_resizable` | 检查器与冲突三栏 |
 | ~~`setting_row`~~ 已就绪（待接入） | 23 | `view` + `text` | 标题 + 说明 + 右侧控件 + 分隔线 |
-| `tree` | 23 | `nsh_base::tree` | 设置侧栏；文件树也可复用 |
+| ~~`tree`~~ 已就绪（待接入） | 23 | `nsh_base::tree` | 设置侧栏；文件树也可复用 |
 | `command` | 20 | `nsh_base::command` | 命令面板 |
 | `diff_surface` | 04 | `nsh_base::diff` | diff 与其开关 |
 | `toolbar` | 04 | `nsh_base::toolbar` | 工作区工具栏 52 高 |
