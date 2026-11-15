@@ -8,8 +8,8 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
+use crate::ui;
 use crate::widgets;
-use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
 pub(crate) fn sidebar(
@@ -204,22 +204,28 @@ fn branch_row(
             let new_branch_name = new_branch_name.clone();
             let merge_name = merge_name.clone();
             let items = vec![
-                MenuItem::new(i18n::t(language.get().as_str(), "branch.checkout"))
-                    .disabled(is_current)
-                    .on_select(move || checkout(checkout_name.clone())),
-                MenuItem::new(i18n::t(
-                    language.get().as_str(),
-                    "branch.checkoutAsNew",
-                ))
-                .on_select(move || new_branch(new_branch_name.clone(), new_branch_name.clone())),
-                MenuItem::separator(),
-                MenuItem::new(i18n::t(language.get().as_str(), "branch.mergeInto"))
-                    .disabled(is_current)
-                    .on_select(move || merge(merge_name.clone())),
-                MenuItem::separator(),
-                MenuItem::new(i18n::t(language.get().as_str(), "branch.delete"))
-                    .disabled(is_current)
-                    .on_select(move || delete(delete_name.clone())),
+                ui::menu::action(
+                    i18n::t(language.get().as_str(), "branch.checkout"),
+                    !is_current,
+                    move || checkout(checkout_name.clone()),
+                ),
+                ui::menu::action(
+                    i18n::t(language.get().as_str(), "branch.checkoutAsNew"),
+                    true,
+                    move || new_branch(new_branch_name.clone(), new_branch_name.clone()),
+                ),
+                ui::menu::divider(),
+                ui::menu::action(
+                    i18n::t(language.get().as_str(), "branch.mergeInto"),
+                    !is_current,
+                    move || merge(merge_name.clone()),
+                ),
+                ui::menu::divider(),
+                ui::menu::danger(
+                    i18n::t(language.get().as_str(), "branch.delete"),
+                    !is_current,
+                    move || delete(delete_name.clone()),
+                ),
             ];
             let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
         })
