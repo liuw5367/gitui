@@ -309,7 +309,8 @@
     "historyDone": "已完成",
     "pushed": "已推送",
     "stashDone": "贮藏已应用",
-    "identityCleared": "已清除仓库级身份"
+    "identityCleared": "已清除仓库级身份",
+    "initDone": "仓库已初始化"
   },
   "conflicts": {
     "title": "冲突",
@@ -641,7 +642,12 @@
     "offline": "连不上远端",
     "rejected": "远端拒绝了推送 —— 先拉取",
     "openCredentials": "凭据…",
-    "dismiss": "忽略"
+    "dismiss": "忽略",
+    "repoNotFound": "找不到仓库：%{path}",
+    "notARepository": "这里不是 Git 仓库：%{path}",
+    "locate": "重新定位…",
+    "initHere": "在此初始化",
+    "openParent": "打开上级目录"
   },
   "diff": {
     "export": "导出",

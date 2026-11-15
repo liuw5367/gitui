@@ -94,6 +94,12 @@ pub(crate) struct Actions {
     pub(crate) export_patch: Arc<dyn Fn()>,
     /// 游离头时回到 main/master。
     pub(crate) checkout_default_branch: Arc<dyn Fn()>,
+    /// 在当前标签页目录里初始化仓库。
+    pub(crate) init_here: Arc<dyn Fn()>,
+    /// 重新定位仓库（缺失仓库的 Locate…）。
+    pub(crate) locate_repo: Arc<dyn Fn()>,
+    /// 打开当前路径的上一级（不是仓库时的 Open parent）。
+    pub(crate) open_parent: Arc<dyn Fn()>,
     /// 空仓库里创建第一个提交。
     pub(crate) create_initial_commit: Arc<dyn Fn()>,
     /// 清掉同步失败状态。
@@ -345,7 +351,9 @@ pub fn App() -> impl IntoElement {
         .paths
         .iter()
         .map(|path| model::load_tab(path, &initial_filter))
-        .filter(|tab| tab.error.is_none())
+        // 打不开的仓库仍保留标签页：横幅给出「重新定位 / 在此初始化」，而不是
+        // 让它在启动时悄悄消失（手册 TC-01）。
+        .filter(|tab| tab.error.is_none() || tab.problem != model::RepoProblem::None)
         .collect();
     if !initial_settings.restore_session {
         initial_tabs.clear();
@@ -2388,6 +2396,68 @@ pub fn App() -> impl IntoElement {
         })
     };
 
+    let init_here: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let notice = notice;
+        let language = language;
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let mut list = tabs.get_untracked();
+            if let Some(tab) = list.get_mut(current) {
+                match model::init_here(tab) {
+                    Ok(()) => {
+                        let lang = language.get_untracked();
+                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.initDone"));
+                    }
+                    Err(detail) => interactions::notify(notice, detail),
+                }
+                tabs.set(list);
+            }
+        })
+    };
+
+    let open_parent: Arc<dyn Fn()> = {
+        let tabs = tabs;
+        let active = active;
+        let open_path = open_path.clone();
+        Arc::new(move || {
+            let current = active.get_untracked();
+            let list = tabs.get_untracked();
+            let Some(tab) = list.get(current) else {
+                return;
+            };
+            let parent = model::parent_path(tab.path.as_str());
+            if !parent.is_empty() {
+                open_path(parent);
+            }
+        })
+    };
+
+    // 缺失仓库的 Locate…：选一个新目录打开，然后关掉这个打不开的标签页。
+    let locate_repo: Arc<dyn Fn()> = {
+        let open_path = open_path.clone();
+        let close_tab = close_tab.clone();
+        let active = active;
+        Arc::new(move || {
+            let index = active.get_untracked();
+            let open_path = open_path.clone();
+            let close_tab = close_tab.clone();
+            let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
+            spawn(async move {
+                let Ok(Some(paths)) = answer.await else {
+                    return;
+                };
+                let Some(path) = paths.first() else {
+                    return;
+                };
+                open_path(path.display().to_string());
+                // 先打开再关旧的：关掉会让下标前移。
+                close_tab(index);
+            });
+        })
+    };
+
     let create_initial_commit: Arc<dyn Fn()> = {
         let tabs = tabs;
         let active = active;
@@ -2723,6 +2793,9 @@ pub fn App() -> impl IntoElement {
         set_commit_option,
         toggle_hook_log,
         checkout_default_branch,
+        init_here,
+        locate_repo,
+        open_parent,
         set_diff_split,
         apply_piece,
         toggle_diff_option,

@@ -9,11 +9,25 @@
 use domain::{Commit, DiffStat, StatusEntry};
 use git::{LogFilter, Refs, Repo};
 
+/// 仓库打不开的原因（决定横幅给哪几个动作）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RepoProblem {
+    /// 正常。
+    #[default]
+    None,
+    /// 路径不存在或不可读。
+    NotFound,
+    /// 目录在，但不是 Git 仓库。
+    NotARepository,
+}
+
 /// 一个仓库标签页的全部界面状态。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tab {
     pub path: String,
     pub name: String,
+    /// 仓库打不开的原因；正常时为 `None`。
+    pub problem: RepoProblem,
     pub branch: String,
     pub ahead: u32,
     pub behind: u32,
@@ -247,11 +261,17 @@ pub fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let repo = match Repo::open(path) {
         Ok(repo) => repo,
         Err(error) => {
+            let problem = match &error {
+                domain::GitError::NotARepository { .. } => RepoProblem::NotARepository,
+                domain::GitError::Unreadable { .. } => RepoProblem::NotFound,
+                _ => RepoProblem::None,
+            };
             return Tab {
                 path: path.to_string(),
                 name: last_segment(path),
                 filter: filter.clone(),
                 error: Some(error.detail()),
+                problem,
                 ..Tab::default()
             };
         }
@@ -333,6 +353,29 @@ pub fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
         branch: "…".to_string(),
         ..Tab::default()
     };
+}
+
+/// 重新读一遍同一个仓库（初始化后、从别处改过仓库后用）。
+pub fn reload(tab: &mut Tab) {
+    let path = tab.path.clone();
+    let filter = tab.filter.clone();
+    *tab = load_tab(path.as_str(), &filter);
+}
+
+/// 在标签页指向的目录里初始化仓库（设计板 16 的「不是仓库」动作）。
+pub fn init_here(tab: &mut Tab) -> Result<(), String> {
+    git::init_with(tab.path.as_str(), &git::InitOptions::default())
+        .map_err(|error| error.detail())?;
+    reload(tab);
+    return Ok(());
+}
+
+/// 路径的上一级；没有上一级时返回空串。
+pub fn parent_path(path: &str) -> String {
+    return std::path::Path::new(path)
+        .parent()
+        .map(|parent| parent.display().to_string())
+        .unwrap_or_default();
 }
 
 /// 选中第 `index` 个提交，读取补丁与文件统计，并清掉单文件选择。
@@ -2431,4 +2474,38 @@ mod tests {
         assert!(!patch.contains(&format!("+++ b/{}", other)));
         assert_eq!(tab.selected_file, Some(0));
     }
+    #[test]
+    fn a_plain_folder_reports_not_a_repository_and_can_be_initialized() {
+        // 独立的临时目录：放在别的仓库里会被 git 解析成上级仓库，测不到「不是仓库」。
+        let folder = std::env::temp_dir().join(format!(
+            "nsh-app-plain-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&folder).expect("mkdir");
+        let filter = LogFilter::default();
+        let mut tab = load_tab(folder.display().to_string().as_str(), &filter);
+        assert_eq!(tab.problem, RepoProblem::NotARepository);
+        assert!(tab.error.is_some(), "打不开时仍要留着原因给界面");
+        // 在同一个目录初始化后，标签页应变成可用仓库。
+        init_here(&mut tab).expect("init here");
+        assert_eq!(tab.problem, RepoProblem::None);
+        assert!(tab.error.is_none());
+        assert!(tab.branch == "main" || tab.branch == "master", "branch: {}", tab.branch);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_missing_path_reports_not_found() {
+        let root = TempRepo::new("missing");
+        let gone = root.path.join("does-not-exist");
+        let filter = LogFilter::default();
+        let tab = load_tab(gone.display().to_string().as_str(), &filter);
+        assert_eq!(tab.problem, RepoProblem::NotFound);
+        assert_eq!(parent_path(gone.display().to_string().as_str()), root.path.display().to_string());
+    }
+
 }

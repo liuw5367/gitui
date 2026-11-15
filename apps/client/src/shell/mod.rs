@@ -319,11 +319,14 @@ pub(crate) fn toolbar(
 pub(crate) fn state_banner(
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
+    active: Signal<usize>,
     actions: Actions,
 ) -> impl IntoElement {
     let visible = move || {
         return tab.get().is_some_and(|tab| {
-            matches!(tab.head, git::HeadState::Detached { .. })
+            // 打不开的仓库优先级最高：其它状态在它上面都没有意义。
+            tab.problem != crate::model::RepoProblem::None
+                || matches!(tab.head, git::HeadState::Detached { .. })
                 || matches!(tab.head, git::HeadState::Unborn { .. })
                 || tab.sync_fault.is_some()
         });
@@ -346,6 +349,82 @@ pub(crate) fn state_banner(
             };
             // 语言值克隆进各个闭包（`SharedString` 克隆很便宜），避免借用逃逸。
             let language_now = language.get();
+            // 打不开的仓库：给出能直接补救的三个动作，而不是让用户看着报错。
+            if current.problem != crate::model::RepoProblem::None {
+                let path = current.path.clone();
+                let not_found = current.problem == crate::model::RepoProblem::NotFound;
+                let locate = actions.locate_repo.clone();
+                let init_here = actions.init_here.clone();
+                let open_parent = actions.open_parent.clone();
+                let close = actions.close_tab.clone();
+                let language_for_text = language_now.clone();
+                return view()
+                    .w_full()
+                    .h(px(26.0))
+                    .px(px(12.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .bg(move || design::panel2())
+                    .child(widgets::icon("info", 12.0, design::danger))
+                    .child(
+                        text(move || {
+                            i18n::with_arguments(
+                                language_for_text.as_str(),
+                                if not_found {
+                                    "state.repoNotFound"
+                                } else {
+                                    "state.notARepository"
+                                },
+                                &[("path", path.clone())],
+                            )
+                        })
+                        .flex_1()
+                        .text_size(px(10.5))
+                        .line_height(px(14.0))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                    )
+                    .child(widgets::small_button(
+                        {
+                            let language_now = language_now.clone();
+                            move || {
+                                i18n::t(
+                                    language_now.as_str(),
+                                    if not_found {
+                                        "state.locate"
+                                    } else {
+                                        "state.initHere"
+                                    },
+                                )
+                            }
+                        },
+                        move || {
+                            if not_found {
+                                locate()
+                            } else {
+                                init_here()
+                            }
+                        },
+                    ))
+                    .when(!not_found, |this| {
+                        this.child(widgets::small_button(
+                            {
+                                let language_now = language_now.clone();
+                                move || i18n::t(language_now.as_str(), "state.openParent")
+                            },
+                            move || open_parent(),
+                        ))
+                    })
+                    .child(widgets::small_button(
+                        {
+                            let language_now = language_now.clone();
+                            move || i18n::t(language_now.as_str(), "common.close")
+                        },
+                        move || close(active.get_untracked()),
+                    ))
+                    .into_element();
+            }
             // 优先级：需要登录 > 离线 > 游离头 > 空仓库。
             if let Some(fault) = current.sync_fault {
                 let message_key = match fault {

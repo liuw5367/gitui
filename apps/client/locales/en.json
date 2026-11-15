@@ -309,7 +309,8 @@
     "historyDone": "Done",
     "pushed": "Pushed",
     "stashDone": "Stash applied",
-    "identityCleared": "Repository identity cleared"
+    "identityCleared": "Repository identity cleared",
+    "initDone": "Repository initialized"
   },
   "conflicts": {
     "title": "Conflicted",
@@ -641,7 +642,12 @@
     "offline": "Cannot reach the remote",
     "rejected": "The remote rejected the push — pull first",
     "openCredentials": "Credentials…",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "repoNotFound": "Repository not found: %{path}",
+    "notARepository": "Not a Git repository: %{path}",
+    "locate": "Locate…",
+    "initHere": "Init here",
+    "openParent": "Open parent"
   },
   "diff": {
     "export": "Export",
