@@ -7,7 +7,8 @@
 use crate::design;
 use crate::ui;
 use nsh_base::data_table::{
-    ColumnFixed, DataTableAlign, DataTableCell, DataTableColumn, DataTableRows, DataTableSelection,
+    ColumnFixed, DataTableAlign, DataTableCell, DataTableColumn, DataTableContextMenu,
+    DataTablePress, DataTableRows, DataTableSelection,
 };
 use nsh_core::prelude::*;
 
@@ -36,6 +37,11 @@ pub(crate) struct TableSpec {
     pub(crate) on_select: Box<dyn Fn(usize)>,
     /// 自定义单元格：`(行, 列键, 文本)` 返回一个元素。
     pub(crate) render: Option<Box<dyn Fn(u32, &str, String) -> AnyElement>>,
+    /// 行被按压（含修饰键）：`(行, ⌘ 是否按下)`。给了它就由调用方决定选中还是
+    /// 加入对比，而不是走默认的「点击即选中」。
+    pub(crate) on_row_press: Option<Box<dyn Fn(u32, bool)>>,
+    /// 行被右键：`(行, x, y)`。坐标是根视图坐标，可直接给 `popup_menu_at`。
+    pub(crate) on_context_menu: Option<Box<dyn Fn(u32, f32, f32)>>,
 }
 
 /// 一张虚拟化表格。
@@ -43,6 +49,8 @@ pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
     let columns = columns_of(&spec.columns);
     let data = rows_of(&spec.columns, &spec.rows);
     let render = spec.render;
+    let row_press = spec.on_row_press.map(std::rc::Rc::new);
+    let context_menu = spec.on_context_menu.map(std::rc::Rc::new);
     let on_select = std::rc::Rc::new(spec.on_select);
     return nsh_base::data_table()
         .columns(columns)
@@ -71,6 +79,18 @@ pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
                 .line_height(px(ui::CODE_LINE))
                 .text_color(move || design::text())
                 .into_element();
+        })
+        .select_on_modifier_press(false)
+        .on_row_press(move |press: &DataTablePress| {
+            if let Some(handler) = &row_press {
+                // 有 ⌘/Shift 时不走默认选中，交给调用方（历史表的对比集合）。
+                handler(press.row, press.platform);
+            }
+        })
+        .on_context_menu(move |event: &DataTableContextMenu| {
+            if let (Some(handler), Some(row)) = (&context_menu, event.row) {
+                handler(row, event.x.0, event.y.0);
+            }
         })
         .on_selection_change(move |selection: &Option<DataTableSelection>| {
             if let Some(selection) = selection
@@ -143,6 +163,23 @@ mod tests {
         assert_eq!(columns[1].key.as_ref(), "summary");
         assert_eq!(columns[1].width, None);
         assert_eq!(columns[1].fixed, ColumnFixed::None);
+    }
+
+    #[test]
+    fn spec_defaults_have_no_row_press_or_context_menu() {
+        // 不传这两个回调时，表格走默认的「点击即选中」，不额外拦截按压。
+        let spec = TableSpec {
+            columns: vec![column("a", None, false)],
+            rows: vec![vec!["1".to_string()]],
+            selected: None,
+            row_height: None,
+            on_select: Box::new(|_row| {}),
+            render: None,
+            on_row_press: None,
+            on_context_menu: None,
+        };
+        assert!(spec.on_row_press.is_none());
+        assert!(spec.on_context_menu.is_none());
     }
 
     #[test]
