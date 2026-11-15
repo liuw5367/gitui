@@ -73,7 +73,7 @@
 
 | 组件 | 首次需要 | 基于 | 说明 |
 |---|---|---|---|
-| `key_value` | 08 | `view` + `text` | 左标签 + 右值的两列行，`Info` 页要十几行 |
+| ~~`key_value`~~ 已就绪（待接入） | 08 | `view` + `text` | 左标签 + 右值的两列行 |
 | `menu` | 09 / 21 / 22 | `nsh_base::menu` / `context_menu` | 行菜单与右键菜单；菜单项带图标、快捷键列、危险项 |
 | `split` | 14 | `nsh_base::h_resizable` / `v_resizable` | 检查器与冲突三栏 |
 | `setting_row` | 23 | `ui::row` 变体 | 标题 + 说明 + 右侧控件 + 分隔线 |
