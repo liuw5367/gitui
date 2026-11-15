@@ -215,7 +215,8 @@ pub(crate) fn history(
                                     );
                                 if unborn {
                                     let initial_commit = initial_commit.clone();
-                                    empty = empty.child(crate::widgets::small_button(
+                                    empty = empty.child(crate::ui::button::button(
+                    
                                         {
                                             let language_value = language_value;
                                             move || {
@@ -225,8 +226,11 @@ pub(crate) fn history(
                                                 )
                                             }
                                         },
-                                        move || initial_commit(),
-                                    ));
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || initial_commit(),
+                ));
                                 }
                                 return empty.into_element();
                             }
@@ -424,8 +428,12 @@ pub(crate) fn history(
                     .text_color(move || design::accent()),
                 )
                 .child(view().flex_1())
-                .child(crate::widgets::small_button(
+                .child(crate::ui::button::button(
+                    
                     move || i18n::t(language_value.get().as_str(), "rewrite.squashTitle"),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
                     {
                         let open_squash = open_squash.clone();
                         let range = range.clone();
@@ -436,8 +444,12 @@ pub(crate) fn history(
                         }
                     },
                 ))
-                .child(crate::widgets::small_button(
+                .child(crate::ui::button::button(
+                    
                     move || i18n::t(language_value.get().as_str(), "compare.clear"),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
                     {
                         let clear = clear.clone();
                         move || clear()
@@ -902,15 +914,21 @@ fn filter_pop(
                 .gap(px(6.0))
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(crate::widgets::primary_button(
+                .child(crate::ui::button::button(
                     move || i18n::t(language.get().as_str(), "filter.apply"),
+                    crate::ui::button::ButtonVariant::Primary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
                     {
                         let apply = apply.clone();
                         move || apply()
                     },
                 ))
-                .child(crate::widgets::small_button(
+                .child(crate::ui::button::button(
                     move || i18n::t(language.get().as_str(), "filter.clear"),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
                     {
                         let clear = clear.clone();
                         move || clear()
@@ -922,12 +940,7 @@ fn filter_pop(
 }
 
 fn section_label(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
-    return view().w_full().h(px(20.0)).items_center().child(
-        text(move || i18n::t(language.get().as_str(), key))
-            .text_size(px(crate::ui::SECONDARY))
-            .font_weight(FontWeight(600))
-            .text_color(move || design::text3()),
-    );
+    return crate::ui::section::section_label(move || i18n::t(language.get().as_str(), key));
 }
 
 fn choice_row(
