@@ -55,25 +55,25 @@ pub(crate) fn commit_panel(
                 .child(
                     text(name)
                         .flex_1()
-                        .text_size(px(10.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
                     text(status.to_string())
-                        .text_size(px(9.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        
                         .text_color(move || design::warn()),
                 )
                 .child(
                     text(format!("+{}", additions))
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::add_fg()),
                 )
                 .child(
                     text(format!("−{}", deletions))
-                        .text_size(px(9.0))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::del_fg()),
                 )
                 .into_element(),
@@ -99,13 +99,13 @@ pub(crate) fn commit_panel(
                 .border_color(move || design::line_soft())
                 .child(
                     text(move || i18n::t(language.get().as_str(), "commit.tab"))
-                        .text_size(px(10.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .font_weight(FontWeight(600))
                         .text_color(move || design::text()),
                 )
                 .child(
                     text(tab.changes.len().to_string())
-                        .text_size(px(9.5))
+                        .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
                 ),
         )
@@ -133,7 +133,7 @@ pub(crate) fn commit_panel(
                                     ],
                                 )
                             })
-                            .text_size(px(9.5))
+                            .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text3()),
                         )
                         .child(field_label(language, "commit.summary", "commit.required"))
@@ -160,7 +160,7 @@ pub(crate) fn commit_panel(
                                                 "commit.summaryPlaceholder",
                                             )
                                         })
-                                        .text_size(px(12.0))
+                                        .text_size(px(crate::ui::BODY))
                                         .flex_1(),
                                 ),
                         )
@@ -186,33 +186,24 @@ pub(crate) fn commit_panel(
                                                 "commit.descriptionPlaceholder",
                                             )
                                         })
-                                        .text_size(px(11.0))
+                                        .text_size(px(crate::ui::BODY))
                                         .flex_1(),
                                 ),
                         )
-                        .child(
-                            view()
-                                .w_full()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(8.0))
-                                .child(
-                                    text(move || {
-                                        i18n::t(language.get().as_str(), "commit.askAgent")
-                                    })
-                                    .text_size(px(10.0))
-                                    .line_height(px(13.0))
-                                    .text_color(move || design::accent()),
-                                )
-                                .on_press({
-                                    let set_mode = actions.set_mode.clone();
-                                    let propose = actions.propose_plan.clone();
-                                    move || {
-                                        set_mode(crate::Mode::Agent);
-                                        propose();
-                                    }
-                                }),
-                        )
+                        .child(crate::ui::button::button(
+                            move || i18n::t(language.get().as_str(), "commit.askAgent"),
+                            crate::ui::button::ButtonVariant::Ghost,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let set_mode = actions.set_mode.clone();
+                                let propose = actions.propose_plan.clone();
+                                move || {
+                                    set_mode(crate::Mode::Agent);
+                                    propose();
+                                }
+                            },
+                        ))
                         .child(
                             view()
                                 .w_full()
@@ -235,7 +226,7 @@ pub(crate) fn commit_panel(
                                                     &[("count", staged_count.to_string())],
                                                 )
                                             })
-                                            .text_size(px(9.5))
+                                            .text_size(px(crate::ui::SECONDARY))
                                             .text_color(move || design::text3()),
                                         ),
                                 )
@@ -319,7 +310,7 @@ pub(crate) fn commit_panel(
                             i18n::t(language.get().as_str(), "commit.nothingStaged")
                         }
                     })
-                    .text_size(px(9.5))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
                 ),
         );
@@ -337,13 +328,13 @@ fn field_label(
         .gap(px(5.0))
         .child(
             text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(10.5))
+                .text_size(px(crate::ui::SECONDARY))
                 .font_weight(FontWeight(600))
                 .text_color(move || design::text2()),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), hint_key))
-                .text_size(px(9.5))
+                .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3()),
         );
 }
@@ -430,7 +421,7 @@ fn hook_box(
                             },
                         )
                     })
-                    .text_size(px(10.0))
+                    .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text2()),
                 ),
         )
@@ -438,9 +429,8 @@ fn hook_box(
             view().w_full().when(has_log, |this| {
                 this.child(
                     text(preview)
-                        .text_size(px(9.5))
-                        .line_height(px(14.0))
-                        .font_family("SF Mono")
+                        .text_size(px(crate::ui::CODE))
+                        .line_height(px(crate::ui::CODE_LINE))
                         .text_color(move || design::text2())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )

@@ -149,6 +149,7 @@ mod guard_tests {
         "screens/welcome.rs",
         "screens/settings.rs",
         "screens/refs_view.rs",
+        "workspace/commit.rs",
     ];
 
     fn src_root() -> PathBuf {
