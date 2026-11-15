@@ -1009,3 +1009,51 @@ fn changelist_pop(
                 .text_color(move || design::text3()),
         );
 }
+
+/// 表格里一行的含义。
+///
+/// 目录标题与文件行都是表格数据行（方案 A：目录分组保留，代价是键盘会经过
+/// 目录行）。行文本用前缀区分，因为 `data_table` 的每个格子只有一个字符串：
+/// - `d|<目录名>` —— 目录标题；
+/// - `f|<索引>` —— `tab.changes` 里的第 `<索引>` 项。
+#[derive(Debug, PartialEq, Eq)]
+#[allow(dead_code)] // 表格替换落地后即被 render / on_row_press 使用（见计划第 75 轮）。
+enum RowSpec {
+    Directory(String),
+    File(u32),
+}
+
+/// 解析一行表格数据；格式不对时返回 `None`（调用方画空行，不 panic）。
+#[allow(dead_code)] // 同上：表格替换落地后启用，单测已覆盖解析行为。
+fn rows_row(text: &str) -> Option<RowSpec> {
+    let (kind, rest) = text.split_once('|')?;
+    return match kind {
+        "d" => Some(RowSpec::Directory(rest.to_string())),
+        "f" => rest.parse().ok().map(RowSpec::File),
+        _ => None,
+    };
+}
+
+#[cfg(test)]
+mod row_spec_tests {
+    use super::*;
+
+    #[test]
+    fn directory_and_file_rows_parse() {
+        assert_eq!(
+            rows_row("d|src/widgets"),
+            Some(RowSpec::Directory("src/widgets".to_string()))
+        );
+        assert_eq!(rows_row("f|0"), Some(RowSpec::File(0)));
+        assert_eq!(rows_row("f|42"), Some(RowSpec::File(42)));
+    }
+
+    #[test]
+    fn malformed_rows_are_rejected_instead_of_panicking() {
+        // 前缀不认识、缺分隔符、索引不是数字：一律 None，由调用方画空行。
+        assert_eq!(rows_row("x|1"), None);
+        assert_eq!(rows_row("no-separator"), None);
+        assert_eq!(rows_row("f|abc"), None);
+        assert_eq!(rows_row(""), None);
+    }
+}

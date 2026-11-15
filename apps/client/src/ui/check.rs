@@ -8,6 +8,38 @@ use crate::ui;
 use nsh_core::prelude::*;
 
 /// 复选行：左侧 14pt 指示器 + 13pt 文案。
+/// 一个 12×12 的方框标记：选中时填强调色并画对勾。
+///
+/// 用于「不能整行勾选」的场合——例如表格单元格里表示某文件已暂存。它不是
+/// 按钮，没有自己的按压：点击由外层（行或单元格）负责。
+pub(crate) fn indicator(checked: bool) -> impl IntoElement {
+    return view()
+        .w(px(12.0))
+        .h(px(12.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(3.0))
+        .border_1()
+        .border_color(move || design::line_strong())
+        .bg(move || {
+            if checked {
+                design::accent()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .child(
+            text(if checked {
+                "✓".to_string()
+            } else {
+                String::new()
+            })
+            .text_size(px(ui::META))
+            .text_color(move || design::content()),
+        );
+}
+
 pub(crate) fn check_row(
     caption: impl Fn() -> String + 'static,
     checked: bool,
