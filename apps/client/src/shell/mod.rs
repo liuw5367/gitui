@@ -442,52 +442,46 @@ pub(crate) fn state_banner(
                     domain::NetworkFault::Offline => "state.offline",
                     domain::NetworkFault::Rejected => "state.rejected",
                 };
-                return view()
-                    .w_full()
-                    .h(px(26.0))
-                    .px(px(12.0))
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.0))
-                    .bg(move || design::panel2())
-                    .child(widgets::icon("globe", 11.0, design::warn))
-                    .child({
+                return crate::ui::feedback::banner_sized(
+                    crate::ui::feedback::BannerTone::Neutral,
+                    26.0,
+                    Some("globe"),
+                    {
                         let language_now = language_now.clone();
-                        text(move || i18n::t(language_now.as_str(), message_key))
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::text2())
-                    })
-                    .child(view().flex_1())
-                    .child(crate::ui::button::button(
-                               
-                        {
-                            let language_now = language_now.clone();
-                            move || i18n::t(language_now.as_str(), "state.openCredentials")
-                        },
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               {
-                            let open_settings = open_settings.clone();
-                            move || open_settings()
-                        },
-                           ))
-                    .child(crate::ui::button::button(
-                               
-                        {
-                            let language_now = language_now.clone();
-                            move || i18n::t(language_now.as_str(), "state.dismiss")
-                        },
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               {
-                            let dismiss = dismiss.clone();
-                            move || dismiss()
-                        },
-                           ))
-                    .into_element();
+                        move || i18n::t(language_now.as_str(), message_key)
+                    },
+                    vec![
+                        crate::ui::button::button(
+                            {
+                                let language_now = language_now.clone();
+                                move || i18n::t(language_now.as_str(), "state.openCredentials")
+                            },
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let open_settings = open_settings.clone();
+                                move || open_settings()
+                            },
+                        )
+                        .into_element(),
+                        crate::ui::button::button(
+                            {
+                                let language_now = language_now.clone();
+                                move || i18n::t(language_now.as_str(), "state.dismiss")
+                            },
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let dismiss = dismiss.clone();
+                                move || dismiss()
+                            },
+                        )
+                        .into_element(),
+                    ],
+                )
+                .into_element();
             }
             match current.head.clone() {
                 git::HeadState::Detached { sha } => {
@@ -554,48 +548,40 @@ pub(crate) fn state_banner(
                         .into_element();
                 }
                 git::HeadState::Unborn { branch } => {
-                    return view()
-                        .w_full()
-                        .h(px(26.0))
-                        .px(px(12.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .bg(move || design::panel2())
-                        .child(widgets::icon("plus", 11.0, design::text3))
-                        .child(
-                            text({
-                                let language_now = language_now.clone();
-                                move || {
-                                    i18n::with_arguments(
-                                        language_now.as_str(),
-                                        "state.unborn",
-                                        &[("branch", branch.clone())],
-                                    )
-                                }
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::text2()),
-                        )
-                        .child(view().flex_1())
-                        .child(crate::ui::button::button(
-                                   
-                            {
-                                let language_now = language_now.clone();
-                                move || {
-                                    i18n::t(language_now.as_str(), "state.createInitialCommit")
-                                }
-                            },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
-                                let initial_commit = initial_commit.clone();
-                                move || initial_commit()
-                            },
-                               ))
-                        .into_element();
+                    return crate::ui::feedback::banner_sized(
+                        crate::ui::feedback::BannerTone::Neutral,
+                        26.0,
+                        Some("plus"),
+                        {
+                            let language_now = language_now.clone();
+                            move || {
+                                i18n::with_arguments(
+                                    language_now.as_str(),
+                                    "state.unborn",
+                                    &[("branch", branch.clone())],
+                                )
+                            }
+                        },
+                        vec![
+                            crate::ui::button::button(
+                                {
+                                    let language_now = language_now.clone();
+                                    move || {
+                                        i18n::t(language_now.as_str(), "state.createInitialCommit")
+                                    }
+                                },
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                {
+                                    let initial_commit = initial_commit.clone();
+                                    move || initial_commit()
+                                },
+                            )
+                            .into_element(),
+                        ],
+                    )
+                    .into_element();
                 }
                 git::HeadState::Branch(_) => {
                     return view().w_full().h(px(0.0)).into_element();
