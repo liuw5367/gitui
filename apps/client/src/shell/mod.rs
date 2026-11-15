@@ -855,11 +855,11 @@ fn tool_button(
         .rounded(px(metrics::RADIUS_CONTROL))
         .hover(|style| style.bg(move || design::hover()))
         .on_press(on_press)
-        .child(widgets::icon(icon, 13.0, design::text2))
+        .child(crate::ui::icon::inline_icon(icon))
         .child(
             text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(12.0))
-                .line_height(px(16.0))
+                .text_size(px(crate::ui::BODY))
+                .line_height(px(crate::ui::BODY_LINE))
                 .text_color(move || design::text()),
         );
 }
@@ -878,11 +878,11 @@ fn disabled_tool(
         .gap(px(5.0))
         .rounded(px(metrics::RADIUS_CONTROL))
         .opacity(0.45)
-        .child(widgets::icon(icon, 13.0, design::text2))
+        .child(crate::ui::icon::inline_icon(icon))
         .child(
             text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(12.0))
-                .line_height(px(16.0))
+                .text_size(px(crate::ui::BODY))
+                .line_height(px(crate::ui::BODY_LINE))
                 .text_color(move || design::text()),
         );
 }

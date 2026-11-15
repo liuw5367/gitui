@@ -13,7 +13,7 @@ pub const TITLEBAR_H: f32 = 44.0;
 /// 无仓库标签页时的标题栏（`.titlebar`）。
 pub const TITLEBAR_PLAIN_H: f32 = 38.0;
 /// `.toolbar.v2`。
-pub const TOOLBAR_H: f32 = 44.0;
+pub const TOOLBAR_H: f32 = native::TOOLBAR;
 /// 工作区侧栏（`.sidebar`）。
 pub const SIDEBAR_W: f32 = 232.0;
 /// 状态栏（`.statusbar`）。
