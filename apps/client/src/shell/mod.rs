@@ -845,22 +845,14 @@ fn tool_button(
     key: &'static str,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return view()
-        .h(px(metrics::TBTN_H))
-        .px(px(9.0))
-        .flex_row()
-        .items_center()
-        .gap(px(5.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .hover(|style| style.bg(move || design::hover()))
-        .on_press(on_press)
-        .child(crate::ui::icon::inline_icon(icon))
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(crate::ui::BODY))
-                .line_height(px(crate::ui::BODY_LINE))
-                .text_color(move || design::text()),
-        );
+    return crate::ui::button::button_icon(
+        move || i18n::t(language.get().as_str(), key),
+        icon,
+        crate::ui::button::ButtonVariant::Ghost,
+        crate::ui::button::ButtonSize::Toolbar,
+        false,
+        on_press,
+    );
 }
 
 /// 尚未接入的动作：按钮按设计稿渲染，但处于禁用态（不响应按压）。
@@ -869,19 +861,12 @@ fn disabled_tool(
     icon: &'static str,
     key: &'static str,
 ) -> impl IntoElement {
-    return view()
-        .h(px(metrics::TBTN_H))
-        .px(px(9.0))
-        .flex_row()
-        .items_center()
-        .gap(px(5.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .opacity(0.45)
-        .child(crate::ui::icon::inline_icon(icon))
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(crate::ui::BODY))
-                .line_height(px(crate::ui::BODY_LINE))
-                .text_color(move || design::text()),
-        );
+    return crate::ui::button::button_icon(
+        move || i18n::t(language.get().as_str(), key),
+        icon,
+        crate::ui::button::ButtonVariant::Ghost,
+        crate::ui::button::ButtonSize::Toolbar,
+        true,
+        || {},
+    );
 }

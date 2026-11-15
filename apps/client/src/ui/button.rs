@@ -21,12 +21,16 @@ pub(crate) enum ButtonVariant {
     Danger,
 }
 
-/// 按钮尺寸：22 / 28 / 32。
+/// 按钮尺寸：22 / 28 / 32 / 26（工具栏）。
+///
+/// `Toolbar` 与 `Regular` 同字阶但更矮、内距更小，对应设计稿工具栏项的 26pt；
+/// 它不替代其它档位，只为工具栏这种「图标 + 短文案、密集排布」的场合存在。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ButtonSize {
     Small,
     Regular,
     Large,
+    Toolbar,
 }
 
 impl ButtonSize {
@@ -35,6 +39,7 @@ impl ButtonSize {
             ButtonSize::Small => ui::CONTROL_SMALL,
             ButtonSize::Regular => ui::CONTROL,
             ButtonSize::Large => ui::CONTROL_LARGE,
+            ButtonSize::Toolbar => crate::design::metrics::TBTN_H,
         };
     }
 
@@ -43,18 +48,83 @@ impl ButtonSize {
             ButtonSize::Small => 8.0,
             ButtonSize::Regular => 12.0,
             ButtonSize::Large => 16.0,
+            ButtonSize::Toolbar => 9.0,
+        };
+    }
+
+    fn line(self) -> f32 {
+        return match self {
+            ButtonSize::Toolbar => ui::BODY_LINE,
+            _ => self.height(),
         };
     }
 
     fn font(self) -> f32 {
         return match self {
             ButtonSize::Small => ui::SECONDARY,
-            ButtonSize::Regular | ButtonSize::Large => ui::BODY,
+            ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => ui::BODY,
         };
     }
 }
 
 /// 文字按钮。`label` 用闭包，语言切换后重建时取新文案。
+/// 带前置图标的文字按钮（工具栏项：图标 + 文案）。
+///
+/// 与 [`button`] 同一套变体与尺寸，只是文案前多一个图标。
+pub(crate) fn button_icon(
+    label: impl Fn() -> String + 'static,
+    icon: &'static str,
+    variant: ButtonVariant,
+    size: ButtonSize,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let foreground = match variant {
+        ButtonVariant::Primary | ButtonVariant::Danger => design::token("primary-foreground"),
+        ButtonVariant::Secondary => design::text(),
+        ButtonVariant::Ghost => design::text2(),
+    };
+    let mut element = nsh_base::button()
+        .disabled(disabled)
+        .opacity(if disabled { 0.45 } else { 1.0 })
+        .h(px(size.height()))
+        .px(px(size.pad_x()))
+        .flex_row()
+        .items_center()
+        .gap(px(5.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .focus_visible(move |style| {
+            style
+                .outline(px(FOCUS_WIDTH))
+                .outline_color(move || focus_color())
+        })
+        .on_press(move |_: &()| on_press());
+    element = match variant {
+        ButtonVariant::Primary => element
+            .bg(move || design::token("primary-bg"))
+            .hover(move |style| style.opacity(0.9)),
+        ButtonVariant::Secondary => element
+            .bg(move || design::btn())
+            .border_1()
+            .border_color(move || design::btn_border())
+            .hover(move |style| style.bg(move || design::hover())),
+        ButtonVariant::Ghost => element
+            .bg(AdaptiveColor::TRANSPARENT)
+            .hover(move |style| style.bg(move || design::hover())),
+        ButtonVariant::Danger => element
+            .bg(move || design::danger())
+            .hover(move |style| style.opacity(0.9)),
+    };
+    return element
+        .child(crate::ui::icon::inline_icon(icon))
+        .child(
+            text(move || label())
+                .text_size(px(size.font()))
+                .line_height(px(size.line()))
+                .text_color(move || foreground),
+        );
+}
+
 pub(crate) fn button(
     label: impl Fn() -> String + 'static,
     variant: ButtonVariant,
@@ -112,7 +182,7 @@ pub(crate) fn button(
     return element.child(
         text(move || label())
             .text_size(px(size.font()))
-            .line_height(px(size.height()))
+            .line_height(px(size.line()))
             .font_weight(FontWeight::MEDIUM)
             .text_color(move || foreground),
     );
@@ -128,7 +198,7 @@ pub(crate) fn icon_button(
 ) -> impl IntoElement {
     let icon_size = match size {
         ButtonSize::Small => IconSize::Button,
-        ButtonSize::Regular | ButtonSize::Large => IconSize::Toolbar,
+        ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => IconSize::Toolbar,
     };
     let side = size.height();
     let label_for_a11y = label();
