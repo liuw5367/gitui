@@ -227,76 +227,68 @@ fn files_body(
 ) -> AnyElement {
     let files = tab.files.clone();
     let selected = tab.selected_file;
-    return scroll().w_full().h_full().child(
-        view()
+    if files.is_empty() {
+        return view()
             .w_full()
-            .py(px(4.0))
-            .px(px(6.0))
-            .flex_col()
-            .child(if files.is_empty() {
-                view()
-                    .w_full()
-                    .h(px(40.0))
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        text(move || i18n::t(language.get().as_str(), "files.empty"))
-                            .text_size(px(10.5))
-                            .text_color(move || design::text3()),
-                    )
-                    .into_element()
-            } else {
-                let mut rows: Vec<AnyElement> = Vec::new();
-                for (index, file) in files.iter().enumerate() {
-                    let select_file = select_file.clone();
-                    let path = file.path.clone();
-                    let additions = file.additions;
-                    let deletions = file.deletions;
-                    let is_selected = selected == Some(index);
-                    rows.push(
-                        view()
-                            .w_full()
-                            .h(px(24.0))
-                            .px(px(6.0))
-                            .flex_row()
-                            .items_center()
-                            .gap(px(6.0))
-                            .rounded(px(4.0))
-                            .bg(move || {
-                                if is_selected {
-                                    design::selected()
-                                } else {
-                                    AdaptiveColor::TRANSPARENT
-                                }
-                            })
-                            .hover(|style| style.bg(move || design::hover()))
-                            .on_press(move || select_file(index))
-                            .child(widgets::icon("file", 11.0, design::text3))
-                            .child(
-                                text(path)
-                                    .flex_1()
-                                    .text_size(px(10.5))
-                                    .font_family("SF Mono")
-                                    .line_height(px(14.0))
-                                    .text_color(move || design::text())
-                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
-                            )
-                            .child(
-                                text(format!("+{}", additions))
-                                    .text_size(px(9.5))
-                                    .text_color(move || design::add_fg()),
-                            )
-                            .child(
-                                text(format!("−{}", deletions))
-                                    .text_size(px(9.5))
-                                    .text_color(move || design::del_fg()),
-                            )
-                            .into_element(),
-                    );
-                }
-                view().w_full().flex_col().child(rows).into_element()
-            }),
-    )
+            .h(px(60.0))
+            .items_center()
+            .justify_center()
+            .child(
+                text(move || i18n::t(language.get().as_str(), "files.empty"))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+            )
+            .into_element();
+    }
+    // 表格：一列「文件」，行内容（图标 + 路径 + +/− 统计）由 render 回调自绘，
+    // 行高 24 与设计板 08 的检查器行一致。
+    let rows: Vec<Vec<String>> = files.iter().map(|file| vec![file.path.clone()]).collect();
+    let files_for_render = files.clone();
+    return crate::ui::table::table(crate::ui::table::TableSpec {
+        columns: vec![crate::ui::table::Column {
+            key: "file",
+            title: None,
+            width: None,
+            fixed: false,
+        }],
+        rows,
+        selected,
+        row_height: Some(24.0),
+        on_select: Box::new(move |index| select_file(index)),
+        render: Some(Box::new(move |row, _key, _text| {
+            let file = &files_for_render[row as usize];
+            return view()
+                .w_full()
+                .h_full()
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .px(px(crate::ui::GAP_SM))
+                .child(widgets::icon("file", 11.0, design::text3))
+                .child(
+                    text(file.path.clone())
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(crate::ui::CODE))
+                        .line_height(px(crate::ui::CODE_LINE))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(format!("+{}", file.additions))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::add_fg()),
+                )
+                .child(
+                    text(format!("−{}", file.deletions))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::del_fg()),
+                )
+                .into_element();
+        })),
+        on_row_press: None,
+        on_context_menu: None,
+    })
     .into_element();
 }
 
