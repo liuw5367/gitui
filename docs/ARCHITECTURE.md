@@ -76,11 +76,24 @@
 
 ```
 apps/client/                NSH 应用入口、窗口、标题栏、屏幕与工作区视图、locales（同一 crate 供各平台构建）
-crates/core/                领域类型、错误分类、补丁解析（无 UI/进程依赖）
-crates/git/                 进程执行与输出解析：status/log/show/diff/refs；后续写路径、同步、操作状态机
-crates/store/               会话、最近仓库、界面语言、设置、变更清单、Agent 权限与审计
+crates/domain/              领域类型、错误分类与网络故障归类、补丁解析、补丁切片、冲突标记、并排配对（无 UI/进程依赖）
+crates/git/                 进程执行与输出解析：status/log/show/diff/refs、写路径、同步选项、历史改写
+crates/store/               会话、最近仓库、界面语言、设置、变更清单、快捷键覆盖、Agent 权限与审计
 crates/agent/               Agent 的计划模型、权限策略与审计（不碰进程与凭据）
 ```
+
+应用 crate 的模块（`apps/client/src/`）：
+
+| 模块 | 职责 |
+|---|---|
+| `lib.rs` | 根组件：窗口属性、信号、动作集合（`Actions`）、屏幕路由、快捷键分发、原生菜单 |
+| `model.rs` | 每个标签页的界面状态与全部读写包装（`load_tab`、`commit_staged`、`apply_piece`…） |
+| `shortcuts.rs` | 快捷键注册表：可绑定动作、组合清单、改键冲突与持久化形状 |
+| `interactions.rs` | 确认框、剪贴板、外部打开、状态栏提示的封装 |
+| `design/` | 设计 token、几何常量（含与设计 CSS 对照的几何测试）、图标 |
+| `screens/` | 欢迎页、工作区、设置、变更、引用、冲突、同步、改写、表单、命令面板 |
+| `workspace/` | 侧栏、历史、diff、检查器、提交面板、Agent 面板 |
+| `shell/` | 标题栏、工具栏、状态横幅（操作 / 同步 / 仓库问题）、状态栏 |
 
 
 Rules:
@@ -143,19 +156,23 @@ User action (NSH view)
 
 ### 5.2 Native components
 
-| Need | Preferred |
+用 NSH 自带的 `nsh/base` 组件承担交互与无障碍，而不是手写按压逻辑；外观仍由
+`design/` 的 token 与自绘指示器决定（组件都不带样式）。
+
+| Need | Component |
 |---|---|
-| Sidebar | `NSOutlineView` + `NSVisualEffectView` |
-| Commit/file table | `NSTableView` (view-based, reusable rows) |
-| Diff/editor | `NSTextView` in `NSScrollView` (read-only/edit modes) |
-| Split layout | `NSSplitView` |
-| Toolbar | `NSToolbar`/NSH toolbar |
-| Menus | `NSMenu` |
-| Sheets/alerts | NSH sheet / `NSAlert` |
-| Search | `NSSearchField` |
-| Segmented | `NSSegmentedControl` |
-| Progress | `NSProgressIndicator` |
-| Settings | AppKit controls/NSH wrappers |
+| 复选 | `nsh_base::checkbox`（`widgets::check` 统一封装） |
+| 确认 / 危险动作 | `nsh_base::alert_dialog`（多动作 + `cancel`） |
+| 菜单 | `nsh_core::element::desktop::{MenuItem, popup_menu_at, set_application_menu}` |
+| 文件选择 | `pick_paths(OpenDialog::folders())` |
+| 拖选/文本 | `text` / `input`（0.5.0 的原生输入框） |
+| 弹层 | 自绘浮层（`view().absolute().inset(0)`）+ `z_index`，因为设计稿的弹层尺寸与
+  内部排版都需要完全自控 |
+
+尚未改用 `nsh_base` 原生实现的表面（记录为后续项）：`DiffView`（会带来行内词级
+高亮、折叠分隔条与语法高亮，但需要重做 hunk/行级暂存的入口）、`Command`（命令
+面板已具备同样的分组与键盘行为）、`Select` / `RadioGroup`（设置页现在是设计稿的
+分段控件）。
 
 ### 5.3 Large data
 
@@ -219,6 +236,13 @@ User action (NSH view)
 | branch | `git switch`, `git branch` |
 | fetch/pull/push | §8 |
 | merge/rebase | §9 |
+| cherry-pick / revert | `git cherry-pick <sha>` / `git revert --no-edit <sha>` |
+| tag | `git tag [-a -m <message>] <name> [<rev>]` |
+| stash | `git stash push [-u] [-m <message>]` / `stash apply` / `stash pop` / `stash drop` |
+| 历史改写 | `git rebase -i` + 生成的 `GIT_SEQUENCE_EDITOR` / `GIT_EDITOR`（ADR-0007） |
+
+写路径的选项统一用结构体传（`CommitOptions`、`FetchOptions`、`PullOptions`、
+`PushOptions`、`CloneOptions`、`InitOptions`），旧签名转调默认值，避免布尔参数爆炸。
 
 - Generate patches from a fresh diff; apply; if fail, refresh and retry once, then report.
 - After write, re-read status/refs; never trust in-memory index.

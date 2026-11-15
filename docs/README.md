@@ -1,6 +1,6 @@
 # gitui — documentation map
 
-**Status**: v1, 2026-11-14  
+**Status**: v1, 2026-11-15  
 **Product spec**: [../SPEC.md](../SPEC.md)  
 **Stack**: **NSH (Native Shell) + Rust only** — no TSX, no JS runtime, no HTML UI. NSH 0.5.0 的 Rust API + AppKit 后端。
 **Positioning**: 跨平台的原生 Git 客户端；当前接入 macOS，其他平台在 macOS 版本完成后接入。默认界面语言为英文。
@@ -35,9 +35,11 @@
 | CLI spikes S-1/S-2/S-3 | **Pass** on macOS 15.7.7 / Git 2.56.0 |
 | S-4 performance | **Partial** (20k commits micro-benchmark); 100k/1GB not yet run |
 | S-5 auth/network | **Pending** (needs remote/token/SSH harness) |
-| S-6 NSH Rust editor/bridge | **Pending, blocking** for M2/M4 |
-| v0.1 implementation | **P1 done**: welcome page, open repository, workspace shell, read-only history/diff (see `plans.local/2026-11-14-design-parity-build.md`) |
-| P1 verification | `cargo test --workspace` 通过（几何断言比对设计 CSS）；截图 `docs/verify/p1-welcome.png` |
+| S-6 NSH Rust editor/bridge | **Done**: app is Rust-only on NSH 0.5.0, no TSX/QuickJS |
+| v0.1 implementation | **All planned phases landed**: welcome window, workspace, history/diff, staging & commit, refs, reflog, conflicts, sync, agent, settings, shortcuts, command palette |
+| Verification | `cargo test` 175 项通过（domain 20 / git 57 / store 13 / agent 10 / apps 75）；`nsh check` 与 `cargo check` 零警告；几何与主题测试直接比对设计 CSS |
+| Interaction acceptance | `docs/2026-11-14-gitui-ui-operation-test.md` 第 9 节逐板记录状态（PASS / PARTIAL / BLOCKED / N/A-DESIGN） |
+| Known gaps | 逐板截图取证（本环境无图形会话）、原生 `DiffView`/`Command`/`Select` 替换、Agent 计划编辑、Clone/Init 进度与取消、凭据真实流程（按决定延后） |
 
 ## Document ownership
 
