@@ -16,6 +16,7 @@ pub(crate) mod badge;
 pub(crate) mod button;
 pub(crate) mod check;
 pub(crate) mod dialog;
+pub(crate) mod diff_surface;
 pub(crate) mod feedback;
 pub(crate) mod field;
 pub(crate) mod gallery;

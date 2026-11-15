@@ -79,7 +79,7 @@
 | ~~`setting_row`~~ 已就绪（待接入） | 23 | `view` + `text` | 标题 + 说明 + 右侧控件 + 分隔线 |
 | ~~`tree`~~ 已就绪（待接入） | 23 | `nsh_base::tree` | 设置侧栏；文件树也可复用 |
 | `command` | 20 | `nsh_base::command` | 命令面板 |
-| `diff_surface` | 04 | `nsh_base::diff` | diff 与其开关 |
+| ~~`diff_surface`~~ 已就绪（待接入） | 04 | `nsh_base::DiffView` | diff 与其开关 |
 | `toolbar` | 04 | `nsh_base::toolbar` | 工作区工具栏 52 高 |
 | `tab_strip` | 04 | `ui::tabs` 变体 | 仓库页签（⌘1…9、溢出菜单） |
 
