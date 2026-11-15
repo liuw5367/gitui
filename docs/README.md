@@ -37,9 +37,9 @@
 | S-5 auth/network | **Pending** (needs remote/token/SSH harness) |
 | S-6 NSH Rust editor/bridge | **Done**: app is Rust-only on NSH 0.5.0, no TSX/QuickJS |
 | v0.1 implementation | **All planned phases landed**: welcome window, workspace, history/diff, staging & commit, refs, reflog, conflicts, sync, agent, settings, shortcuts, command palette |
-| Verification | `cargo test` 175 项通过（domain 20 / git 57 / store 13 / agent 10 / apps 75）；`nsh check` 与 `cargo check` 零警告；几何与主题测试直接比对设计 CSS |
+| Verification | `cargo test` 179 项通过（domain 20 / git 59 / store 13 / agent 12 / apps 75）；`nsh check` 与 `cargo check --all-targets` 零警告；几何与主题测试直接比对设计 CSS |
 | Interaction acceptance | `docs/2026-11-14-gitui-ui-operation-test.md` 第 9 节逐板记录状态（PASS / PARTIAL / BLOCKED / N/A-DESIGN） |
-| Known gaps | 逐板截图取证（本环境无图形会话）、原生 `DiffView`/`Command`/`Select` 替换、Agent 计划编辑、Clone/Init 进度与取消、凭据真实流程（按决定延后） |
+| Known gaps | 逐板截图取证（本环境无图形会话）、原生 `DiffView`/`Command`/`Select` 替换（优化项）、凭据真实流程（按决定延后） |
 
 ## Document ownership
 

@@ -931,7 +931,7 @@
 |---|---|---|---|
 | 01 | Welcome | PASS | `screens/welcome.rs`（独立窗口，Open/Clone/Init + recent + 分组 + 空态） |
 | 02 | Welcome (empty) | PASS | 同上（无 recent 的空态文案与 Scan 入口） |
-| 03 | Repository manager | PASS | 同上（与欢迎页合并；Clone 分支/深度/递归/克隆后打开，Init 附带文件） |
+| 03 | Repository manager | PASS | 同上（与欢迎页合并；Clone 分支/深度/递归/克隆后打开 + 进度与取消，Init 附带文件） |
 | 04 | History & diff | PASS | `workspace/history.rs`、`workspace/diff.rs`（统一/并排、折叠、换行、导出） |
 | 05 | History filters | PASS | `workspace/history.rs` 过滤浮层 + `filters.rs` |
 | 06 | Multi-commit diff | PASS | 历史多选 + 对比栏（合并/拣选/清空） |
@@ -983,7 +983,7 @@
 | Checkout dirty branch | PASS | 贮藏并切换 / 带过去 / 取消 |
 | Missing repository | PASS | 横幅「重新定位…/关闭」 |
 | Not a repository | PASS | 横幅「在此初始化/打开上级目录/关闭」 |
-| Clone/Init error/progress | PARTIAL | 失败保留表单并显示原因；克隆中有进行中提示行；没有进度百分比与取消 |
+| Clone/Init error/progress | PASS | 克隆显示 git 的真实进度行并可取消（取消后删除半成品目录）；失败保留表单并显示原因 |
 | Hook full log | PASS | 完整输出弹层，可复制、可关闭 |
 | Auth sign-in | BLOCKED | 入口可点并说明「尚未接入」，不写 token |
 | Tag/remote/stash create/edit | PASS | 表单齐备（远程编辑 URL、标签附注、贮藏含未跟踪） |
@@ -1012,5 +1012,4 @@
 - **逐板截图取证与像素比对**：本环境没有可捕获的图形会话。替代证据是几何测试
   （`design/metrics.rs` 直接解析设计 CSS）与主题色对照测试。
 - **原生 `DiffView` / `Command` / `Select` 组件替换**：见 `docs/ARCHITECTURE.md` 5.2。
-- **Clone/Init 进度与取消**（03 板）：需要 git 层可取消的子进程运行器（读线程 +
-  轮询 + kill + 清理半成品目录），单独一轮做，避免动到现有 clone 路径。
+- **Init 没有进度**：`git init` 是瞬时操作，只在克隆上做了进度与取消。
