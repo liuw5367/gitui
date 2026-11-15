@@ -255,8 +255,11 @@ pub(crate) fn form_dialog(
                         .items_center()
                         .gap(px(8.0))
                         .child(view().flex_1())
-                        .child(crate::widgets::button(
+                        .child(crate::ui::button::button(
                             move || i18n::t(language.get().as_str(), "common.cancel"),
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Regular,
+                            false,
                             {
                                 let on_cancel = on_cancel.clone();
                                 move || on_cancel()
