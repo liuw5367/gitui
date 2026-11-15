@@ -978,17 +978,18 @@ fn section_block(
     return view()
         .w_full()
         .flex_col()
-        .gap(px(6.0))
+        .gap(px(crate::ui::GAP_SM))
         .child(
             text(move || i18n::t(language.get().as_str(), title_key))
-                .text_size(px(12.0))
-                .font_weight(FontWeight(600))
+                .text_size(px(crate::ui::BODY))
+                .line_height(px(crate::ui::BODY_LINE))
+                .font_weight(FontWeight::SEMIBOLD)
                 .text_color(move || design::text()),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), hint_key))
-                .text_size(px(10.5))
-                .line_height(px(15.0))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         )
         .child(body);
@@ -1000,14 +1001,14 @@ fn toggle_row(
     checked: std::sync::Arc<dyn Fn() -> bool>,
     on_press: impl Fn() + 'static,
 ) -> AnyElement {
-    // 原生 Checkbox：按压/键盘/无障碍由组件负责；`checked` 在构建时取值，
-    // 设置页在状态变化后整页重建，所以这里可以直接取。
+    // 复选行：按压、键盘与无障碍由 nsh 的 Checkbox 提供；`checked` 在构建时
+    // 取值，设置页在状态变化后整页重建，所以这里可以直接取。
     let value = checked();
     let toggle = move |_next: bool| on_press();
-    return crate::widgets::check(
+    return crate::ui::check::check_row(
         move || i18n::t(language.get().as_str(), label_key),
         value,
-        14.0,
+        false,
         toggle,
     )
     .into_element();
@@ -1083,22 +1084,13 @@ fn link_button(
     url: &'static str,
     open_browser: std::sync::Arc<dyn Fn(String)>,
 ) -> impl IntoElement {
-    return view()
-        .h(px(metrics::BUTTON_SMALL_H))
-        .px(px(8.0))
-        .items_center()
-        .rounded(px(5.0))
-        .border_1()
-        .border_color(move || design::btn_border())
-        .bg(move || design::btn())
-        .hover(|style| style.bg(move || design::hover()))
-        .on_press(move || open_browser(url.to_string()))
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(11.0))
-                .line_height(px(14.0))
-                .text_color(move || design::accent()),
-        );
+    return crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), key),
+        crate::ui::button::ButtonVariant::Secondary,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        move || open_browser(url.to_string()),
+    );
 }
 
 /// Git 分区（24）：本机 Git 版本与执行路径、凭据助手（只读）、仓库发现（未实现）。
