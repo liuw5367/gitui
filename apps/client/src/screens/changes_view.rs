@@ -8,7 +8,7 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
 use crate::Actions;
-use domain::diff::{DiffLineKind, Patch};
+use domain::diff::DiffLineKind;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
@@ -26,7 +26,7 @@ pub(crate) fn changes_view(
 ) -> impl IntoElement {
     let total = tab.changes.len();
     let staged = tab.changes.iter().filter(|entry| entry.staged).count();
-    let patch = Patch::parse(tab.change_diff.as_str());
+    let patch = tab.change_diff.clone();
     let label = tab
         .selected_change
         .and_then(|index| tab.changes.get(index))

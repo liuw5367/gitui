@@ -32,6 +32,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 克隆与初始化 | `clone`、`clone_with`、`start_clone`、`init_repository`、`init_with` |
 | 本机信息与底层执行 | `info`、`credential_helper`、`run_git` |
 
+`diff_between`、`patch`、`patch_for_path`、`file_diff` 返回已解析的 `domain::diff::Patch`；Git 的原始文本保存在 `Patch::raw` 里，导出 patch 与复制直接用它，保证字节一致。
+
 `Repo::refs` 返回 `Refs { branches, remotes, tags, stashes, submodules, worktrees }`。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 的 `reference` 形如 `stash@{0}`。
 
 ## 选项
@@ -65,7 +67,7 @@ cd crates/git
 cargo test
 ```
 
-当前 59 项通过。测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏、冲突解决与多步操作、同步选项与强推保护、克隆选项与取消、blame、reflog 与错误路径。
+当前 62 项通过（含从 `domain` 搬来的网络错误分类测试）。测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏、冲突解决与多步操作、同步选项与强推保护、克隆选项与取消、blame、reflog 与错误路径。
 
 ## 依赖
 

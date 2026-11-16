@@ -2812,7 +2812,7 @@ pub fn App() -> impl IntoElement {
             let Some(tab) = list.get(active.get_untracked()) else {
                 return;
             };
-            let patch = tab.patch.clone();
+            let patch = tab.patch.raw.clone();
             if patch.trim().is_empty() {
                 let lang = language.get_untracked();
                 interactions::notify(notice, i18n::t(lang.as_str(), "diff.nothingToExport"));

@@ -241,14 +241,12 @@ fn body(
                 .get(to)
                 .map(|commit| commit.short.clone())
                 .unwrap_or_default();
-            (
-                i18n::with_arguments(
-                    language.get_untracked().as_str(),
-                    "compare.range",
-                    &[("from", from_short), ("to", to_short)],
-                ),
-                model::compare_patch(&tab).unwrap_or_default(),
-            )
+            let label = i18n::with_arguments(
+                language.get_untracked().as_str(),
+                "compare.range",
+                &[("from", from_short), ("to", to_short)],
+            );
+            (label, model::compare_patch(&tab).unwrap_or_default())
         }
         None => match tab.file_patch.clone() {
             Some((path, patch)) => (path, patch),

@@ -3,7 +3,7 @@
 //! 正文自 P2 起交给 `ui::diff_surface`（包装 `nsh_base::DiffView`），等宽 12 / 行高
 //! 18、行号与正负行配色都由它负责。本文件只剩工具栏与开关。
 //!
-//! 补丁解析在 `domain::diff`。
+//! 补丁在 `git` 边界就解析成 `domain::diff::Patch`，这里只负责展示与开关。
 
 use crate::design::{self, metrics};
 use crate::i18n;
@@ -29,16 +29,16 @@ impl DiffOptions {
 pub(crate) fn diff(
     language: Signal<SharedString>,
     label: String,
-    patch_text: String,
-    copy_text: std::sync::Arc<dyn Fn(String)>,
+    patch: Patch,
+    copy_patch: std::sync::Arc<dyn Fn(String)>,
     options: DiffOptions,
     toggle_option: std::sync::Arc<dyn Fn(&'static str)>,
     export_patch: std::sync::Arc<dyn Fn()>,
     split_view: bool,
     set_split_mode: std::sync::Arc<dyn Fn(bool)>,
 ) -> impl IntoElement {
-    let patch = Patch::parse(patch_text.as_str());
-    let patch_for_view = patch_text.clone();
+    // 渲染与复制都要字节一致的原文，直接取解析时留下的 raw。
+    let patch_for_view = patch.raw.clone();
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
     let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
     let file_label = patch
@@ -103,7 +103,7 @@ pub(crate) fn diff(
                     move || "Copy".to_string(),
                     crate::ui::button::ButtonSize::Small,
                     false,
-                    move || copy_text(patch_text.clone()),
+                    move || copy_patch(patch.raw.clone()),
                 )),
         )
         .child(

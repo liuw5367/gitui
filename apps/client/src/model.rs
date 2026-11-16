@@ -40,14 +40,16 @@ pub struct Tab {
     pub filter: LogFilter,
     /// 选中的提交下标；空仓库时为 `None`。
     pub selected: Option<usize>,
-    /// 选中的提交的补丁文本。
-    pub patch: String,
+    /// 选中的提交的补丁（加载期解析好，渲染期不再解析）。
+    /// 没有选中提交时是 `Patch::default()`，与原来的空串语义等价；
+    /// 导出 patch 与复制用 `patch.raw`（原始文本）。
+    pub patch: domain::diff::Patch,
     /// 选中的提交改动的文件统计。
     pub files: Vec<DiffStat>,
     /// 选中的文件下标（`files`），用于单文件 diff。
     pub selected_file: Option<usize>,
-    /// 单文件补丁：(路径, 补丁文本)。
-    pub file_patch: Option<(String, String)>,
+    /// 单文件补丁：(路径, 补丁)。原始文本在 `Patch::raw` 里。
+    pub file_patch: Option<(String, domain::diff::Patch)>,
     /// 多选对比的提交下标（升序无关，按点击顺序）。
     pub compare: Vec<usize>,
     /// 对比模式：开启后点击提交是加入/移出对比集合。
@@ -56,8 +58,8 @@ pub struct Tab {
     pub changes: Vec<ChangeEntry>,
     /// 选中的变更下标。
     pub selected_change: Option<usize>,
-    /// 选中变更的 diff 文本。
-    pub change_diff: String,
+    /// 选中变更的 diff（加载期解析好，渲染期不再解析）。
+    pub change_diff: domain::diff::Patch,
     /// 变更清单（本地存储，按仓库分组）。
     pub changelists: Vec<store::Changelist>,
     /// 当前清单名；`None` 表示默认清单。
@@ -460,13 +462,14 @@ pub fn toggle_compare(tab: &mut Tab, index: usize) {
 }
 
 /// 对比模式下要显示的补丁：区间 diff；不足两个提交时为 `None`。
-pub fn compare_patch(tab: &Tab) -> Option<String> {
+pub fn compare_patch(tab: &Tab) -> Option<domain::diff::Patch> {
     let (from, to) = tab.compare_range()?;
     let from_sha = tab.commits.get(from)?.sha.clone();
     let to_sha = tab.commits.get(to)?.sha.clone();
     // 区间 diff 包含 `from` 之后的提交到 `to`，因此起点取 `from` 的父提交。
     let repo = Repo::open(tab.path.as_str()).ok()?;
-    return repo.diff_between(&format!("{}^", from_sha), &to_sha).ok();
+    let range = format!("{}^", from_sha);
+    return repo.diff_between(&range, &to_sha).ok();
 }
 
 /// 读取工作区与暂存区的变更，并附上逐文件行数统计。
@@ -528,7 +531,7 @@ pub fn refresh_changes(tab: &mut Tab) {
     if let Some(index) = tab.selected_change {
         load_change_diff(tab, index);
     } else {
-        tab.change_diff.clear();
+        tab.change_diff = domain::diff::Patch::default();
     }
     tab.error = None;
 }
@@ -548,7 +551,7 @@ pub fn load_change_diff(tab: &mut Tab, index: usize) {
     tab.selected_change = Some(index);
     // 未跟踪文件没有 diff（git 不比较索引外的文件），留空由界面提示。
     tab.change_diff = if entry.untracked {
-        String::new()
+        domain::diff::Patch::default()
     } else {
         repo.file_diff(entry.path.as_str(), entry.staged)
             .unwrap_or_default()
@@ -747,14 +750,14 @@ fn reload_after_history_change(tab: &mut Tab) -> Result<String, String> {
 /// 按 hunk 或单行暂存/取消暂存当前选中的变更。
 ///
 /// `line_index` 为 `None` 时整段 hunk；`reverse` 为真表示从暂存区取回。
-/// 补丁来源是 `tab.change_diff`（当前文件相对暂存区的 diff）。
+/// 补丁来源是 `tab.change_diff`（当前文件相对暂存区 diff 的解析结果，原文在 `raw`）。
 pub fn apply_piece(
     tab: &mut Tab,
     hunk_index: usize,
     line_index: Option<usize>,
     reverse: bool,
 ) -> Result<(), String> {
-    let sections = domain::stage::Sections::parse(tab.change_diff.as_str());
+    let sections = domain::stage::Sections::parse(tab.change_diff.raw.as_str());
     let patch = match line_index {
         Some(line) => sections.line_patch(0, hunk_index, line),
         None => sections.hunk_patch(0, hunk_index),
@@ -776,7 +779,7 @@ pub fn apply_piece(
             load_change_diff(tab, index);
         } else {
             tab.selected_change = None;
-            tab.change_diff.clear();
+            tab.change_diff = domain::diff::Patch::default();
         }
     }
     return Ok(());
@@ -1303,7 +1306,7 @@ pub fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
         }
         Err(error) => {
             tab.sync_failed = true;
-            tab.sync_fault = domain::classify_network_error(error.detail().as_str());
+            tab.sync_fault = git::classify_network_error(error.detail().as_str());
             tab.sync_message = Some(error.detail());
             refresh_changes(tab);
         }
@@ -1535,7 +1538,7 @@ mod tests {
         assert_eq!(tab.selected, Some(0));
         assert_eq!(tab.selected_commit().expect("commit").summary, "first");
         assert!(!tab.refs.branches.is_empty());
-        assert!(!tab.patch.is_empty());
+        assert!(!tab.patch.lines.is_empty());
         assert_eq!(tab.files.len(), 1);
         assert_eq!(tab.authors, vec!["Test".to_string()]);
     }
@@ -1897,7 +1900,7 @@ mod tests {
             .position(|entry| entry.path == "f.txt")
             .expect("f.txt");
         load_change_diff(&mut tab, index);
-        let sections = domain::stage::Sections::parse(tab.change_diff.as_str());
+        let sections = domain::stage::Sections::parse(tab.change_diff.raw.as_str());
         assert_eq!(sections.files[0].hunks.len(), 2, "应有两个 hunk");
 
         // 只暂存第二个 hunk。
@@ -1996,7 +1999,7 @@ mod tests {
     fn sync_failures_are_classified_for_the_banner() {
         // 直接验证归类函数接到界面上用的那条路径。
         assert_eq!(
-            domain::classify_network_error("fatal: Authentication failed for 'https://x/'"),
+            git::classify_network_error("fatal: Authentication failed for 'https://x/'"),
             Some(domain::NetworkFault::AuthRequired)
         );
         let mut tab = Tab::default();
@@ -2511,7 +2514,7 @@ mod tests {
         assert!(!path.is_empty());
         // 补丁只应包含所选文件，另一个文件不应出现。
         let other = if path == "a.txt" { "b.txt" } else { "a.txt" };
-        assert!(!patch.contains(&format!("+++ b/{}", other)));
+        assert!(!patch.raw.contains(&format!("+++ b/{}", other)));
         assert_eq!(tab.selected_file, Some(0));
     }
     #[test]

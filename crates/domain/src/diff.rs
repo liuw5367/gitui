@@ -45,12 +45,16 @@ pub struct DiffFile {
 pub struct Patch {
     pub lines: Vec<DiffLine>,
     pub files: Vec<DiffFile>,
+    /// 解析时的原始文本。导出 patch、复制这类要求字节一致的场合直接用它，
+    /// 不要从 `lines` 反推（反推会丢掉无法识别的行的原文细节）。
+    pub raw: String,
 }
 
 impl Patch {
-    /// 依次读取按行分类的结果。
+    /// 依次读取按行分类的结果；原始文本一并保存到 [`Patch::raw`]。
     pub fn parse(text: &str) -> Patch {
         let mut patch = Patch::default();
+        patch.raw = text.to_string();
         let mut old_line: u32 = 0;
         let mut new_line: u32 = 0;
         let mut current_file: Option<DiffFile> = None;
