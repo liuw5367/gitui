@@ -29,11 +29,11 @@
 
 | # | 位置 | 画板值 | 实现值 | 原因 | 可回退 |
 |---|---|---|---|---|---|
-| 9 | 历史表与变更表 | `.commit` 四列网格 `64 / minmax / 96 / 58` | 单列宽 1200，整行在 `render` 里自绘（`workspace/history.rs:266`、`screens/changes_view.rs:299`） | 图线、引用徽章、对比底色、状态方框都要自绘，`data_table` 的多列模型装不下 | 是（改为多列需重画这些元素） |
-| 10 | 变更清单 | 贴按钮的自定义弹层 | 系统菜单 `popup_menu_at`（`screens/changes_view.rs:414`） | 它由按钮触发、贴在其下方，不是模态；套 `ui::dialog` 会变成居中遮罩，语义相反 | 是 |
-| 11 | 命令面板位置 | `.palette-layer` 模糊背板 + `.palette` `top:92px` | 遮罩 + 面板 `mt(-120)`（`screens/palette.rs:260`） | 面板要贴窗口上方；`dialog::scrim` 会把内容居中 | 是（若接受居中） |
+| 9 | 历史表与变更表 | `.commit` 四列网格 `64 / minmax / 96 / 58` | 单列宽 1200，整行在 `render` 里自绘（`features/history/view.rs:269`、`features/changes/view.rs:353`） | 图线、引用徽章、对比底色、状态方框都要自绘，`data_table` 的多列模型装不下 | 是（改为多列需重画这些元素） |
+| 10 | 变更清单 | 贴按钮的自定义弹层 | 系统菜单 `popup_menu_at`（`features/changes/view.rs:468`） | 它由按钮触发、贴在其下方，不是模态；套 `ui::dialog` 会变成居中遮罩，语义相反 | 是 |
+| 11 | 命令面板位置 | `.palette-layer` 模糊背板 + `.palette` `top:92px` | 遮罩 + 面板 `mt(-120)`（`features/search/view.rs:285`） | 面板要贴窗口上方；`dialog::scrim` 会把内容居中 | 是（若接受居中） |
 | 12 | 分块暂存方框 | 随行高变化的可点方框 | 12×12（`ui/check.rs:14–22` 的 `indicator_action`；`indicator` 同尺寸） | 表格单元格空间有限，且要与 `indicator` 一致 | 是 |
-| 13 | 克隆表单的协议分段 | HTTPS / SSH 分段控件 | 未放置（`screens/welcome.rs:29` 的 `CloneOptions` 只有分支、深度、子模块、克隆后打开） | 协议由 URL 决定，原控件没有后端含义，保留即为假控件 | 是（需要时接 URL 重写） |
+| 13 | 克隆表单的协议分段 | HTTPS / SSH 分段控件 | 未放置（`features/welcome/state.rs:25` 的 `CloneOptions` 只有分支、深度、子模块、克隆后打开） | 协议由 URL 决定，原控件没有后端含义，保留即为假控件 | 是（需要时接 URL 重写） |
 
 ## 3. 已澄清：不算偏离
 

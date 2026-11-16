@@ -1,7 +1,7 @@
 # UI-KIT — 组件层
 
 `apps/client/src/ui/` 是应用自己的外观层：行为、键盘、焦点与无障碍来自 `nsh_base`，
-外观只在这里定义。页面（`screens/`、`workspace/`、`shell/`）组合这一层的组件，不自己
+外观只在这里定义。页面（`features/`、`app/`、`shell/`）组合这一层的组件，不自己
 写颜色、字号、圆角。
 
 刻度与色值见 [TOKENS.md](TOKENS.md)；这些组件的视觉规则见
@@ -38,9 +38,8 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 - `src/ui/mod.rs` 的 `guard_tests`：同样的检查跑在 `cargo test` 里，`MIGRATED` 常量与
   `ui-migrated.txt` 是同一份名单。
 
-当前名单 16 个文件；`screens/`、`workspace/`、`shell/` 下共 21 个，未进名单的两个真实
-页面是 `screens/palette.rs` 与 `workspace/diff.rs`（其余是 `mod.rs`）。新迁移一个页面
-时两处名单一起加。
+名单覆盖 `features/`、`app/`、`shared/`、`shell/` 下的全部页面文件（原 `screens/` 与
+`workspace/` 已在重构中并入 `features/` 与 `app/`）。新增页面时两处名单一起加。
 
 ## 3. 组件清单
 
@@ -143,7 +142,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 
 **已知缺陷（待修）**：`ui/row.rs:59` 在选中时把文字色设成 `sel-strong`（浅色 `#D5E6FF`），
 而底色是 `sel`（`#E7F0FF`），对比度约 1.1:1，选中行的标题实际不可读；深色模式同样
-（`#1B3D60` on `#15324F`）。设置页侧栏（`screens/settings.rs` 的 `row(.., selected, ..)`）
+（`#1B3D60` on `#15324F`）。设置页侧栏（`features/settings/view.rs` 的 `row(.., selected, ..)`）
 会走到这条路径。正确做法是底色 `sel` + 文字 `text`。`sel-strong` 全库只在这一处被引用，
 改成 `text` 不会牵连别处。
 
@@ -159,6 +158,5 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 
 - `widgets::icon`：仍接受任意点数，实际有 3 处例外（9 行内折叠箭头、15 设置页分支、
   20 错误横幅），其余图标已走 `ui::icon_view` 的四档。合并 `widgets.rs` 后可收敛。
-- 未进名单的两个真实页面：`screens/palette.rs`、`workspace/diff.rs`。它们没有字号与颜色
-  字面量，但各有一处裸 `.on_press`，进名单会立刻失败；把那一处换成 `ui` 的按钮或行之后，
-  两处名单一起加。
+- 原先在名单外的 `palette` 与 `diff` 已随重构并入 `features/search/` 与 `shared/`，
+  现在 21 个页面文件全部在名单里。
