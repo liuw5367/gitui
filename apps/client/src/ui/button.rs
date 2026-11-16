@@ -6,6 +6,7 @@
 use crate::design::{self, metrics};
 use crate::ui::icon::{icon_view, IconSize};
 use crate::ui::{self, focus_color, FOCUS_WIDTH};
+use nsh_core::element::IntoProp;
 use nsh_core::prelude::*;
 
 /// 按钮的语义变体。
@@ -71,14 +72,16 @@ impl ButtonSize {
 /// 带前置图标的文字按钮（工具栏项：图标 + 文案）。
 ///
 /// 与 [`button`] 同一套变体与尺寸，只是文案前多一个图标。
-pub(crate) fn button_icon(
+pub(crate) fn button_icon<M>(
     label: impl Fn() -> String + 'static,
     icon: &'static str,
     variant: ButtonVariant,
     size: ButtonSize,
-    disabled: bool,
+    disabled: impl IntoProp<bool, M> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    let disabled = disabled.into_prop();
+    let dimmed = disabled.clone();
     let foreground = match variant {
         ButtonVariant::Primary | ButtonVariant::Danger => design::token("primary-foreground"),
         ButtonVariant::Secondary => design::text(),
@@ -86,7 +89,7 @@ pub(crate) fn button_icon(
     };
     let mut element = nsh_base::button()
         .disabled(disabled)
-        .opacity(if disabled { 0.45 } else { 1.0 })
+        .opacity(move || if dimmed.get() { 0.45_f32 } else { 1.0_f32 })
         .h(px(size.height()))
         .px(px(size.pad_x()))
         .flex_row()
@@ -125,16 +128,18 @@ pub(crate) fn button_icon(
         );
 }
 
-pub(crate) fn button(
+pub(crate) fn button<M>(
     label: impl Fn() -> String + 'static,
     variant: ButtonVariant,
     size: ButtonSize,
-    disabled: bool,
+    disabled: impl IntoProp<bool, M> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    let disabled = disabled.into_prop();
+    let dimmed = disabled.clone();
     let mut element = nsh_base::button()
         .disabled(disabled)
-        .opacity(if disabled { 0.45 } else { 1.0 })
+        .opacity(move || if dimmed.get() { 0.45_f32 } else { 1.0_f32 })
         .h(px(size.height()))
         .px(px(size.pad_x()))
         .flex_row()
@@ -189,26 +194,28 @@ pub(crate) fn button(
 }
 
 /// 图标按钮：内容只有一个图标，`label` 同时作为无障碍名称。
-pub(crate) fn icon_button(
+pub(crate) fn icon_button<M>(
     name: &'static str,
     label: impl Fn() -> String + 'static,
     size: ButtonSize,
-    disabled: bool,
+    disabled: impl IntoProp<bool, M> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     return icon_button_tuned(name, label, size, None, None, disabled, on_press);
 }
 
 /// 同 [`icon_button`]，但可指定图标尺寸与前景色。
-pub(crate) fn icon_button_tuned(
+pub(crate) fn icon_button_tuned<M>(
     name: &'static str,
     label: impl Fn() -> String + 'static,
     size: ButtonSize,
     icon_size_override: Option<IconSize>,
     foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
-    disabled: bool,
+    disabled: impl IntoProp<bool, M> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    let disabled = disabled.into_prop();
+    let dimmed = disabled.clone();
     let icon_size = icon_size_override.unwrap_or(match size {
         ButtonSize::Small => IconSize::Button,
         ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => IconSize::Toolbar,
@@ -222,7 +229,7 @@ pub(crate) fn icon_button_tuned(
     let label_for_a11y = label();
     return nsh_base::button()
         .disabled(disabled)
-        .opacity(if disabled { 0.45 } else { 1.0 })
+        .opacity(move || if dimmed.get() { 0.45_f32 } else { 1.0_f32 })
         .accessibility_label(Some(SharedString::from(label_for_a11y)))
         .w(px(width))
         .h(px(height))

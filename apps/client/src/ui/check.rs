@@ -5,6 +5,7 @@
 
 use crate::design::{self, metrics};
 use crate::ui;
+use nsh_core::element::IntoProp;
 use nsh_core::prelude::*;
 
 /// 可点的方框标记：外观同 [`indicator`]，但自己是按压目标。
@@ -82,18 +83,20 @@ pub(crate) fn indicator(checked: bool) -> impl IntoElement {
 ///
 /// `check_row` 是列表用的整行（28 高、14pt 指示器）；表单里偶尔需要在 20–22 高的
 /// 一行内放复选（「创建后检出」「跳过钩子」），用它。
-pub(crate) fn check_inline(
+pub(crate) fn check_inline<MC, MD>(
     caption: impl Fn() -> String + 'static,
-    checked: bool,
+    checked: impl IntoProp<bool, MC> + 'static,
     row_height: f32,
     indicator: f32,
-    disabled: bool,
+    disabled: impl IntoProp<bool, MD> + 'static,
     on_change: impl Fn(bool) + 'static,
 ) -> impl IntoElement {
+    let checked: Prop<bool> = checked.into_prop().into();
+    let disabled: Prop<bool> = disabled.into_prop().into();
     return nsh_base::checkbox()
         .checked(checked)
         .disabled(disabled)
-        .opacity(if disabled { 0.45 } else { 1.0 })
+        .opacity(move || if disabled.get() { 0.45_f32 } else { 1.0_f32 })
         .h(px(row_height))
         .flex_row()
         .items_center()
@@ -106,18 +109,24 @@ pub(crate) fn check_inline(
                 .justify_center()
                 .rounded(px(3.0))
                 .border_1();
-            if checked {
-                style
-                    .bg(move || design::token("primary-bg"))
-                    .border_color(move || design::token("primary-bg"))
-            } else {
-                style
-                    .bg(move || design::field())
-                    .border_color(move || design::field_border())
-            }
+            style
+                .bg(move || {
+                    if checked.get() {
+                        design::token("primary-bg")
+                    } else {
+                        design::field()
+                    }
+                })
+                .border_color(move || {
+                    if checked.get() {
+                        design::token("primary-bg")
+                    } else {
+                        design::field_border()
+                    }
+                })
         })
         .indicator(dynamic(move || -> AnyElement {
-            if !checked {
+            if !checked.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
             return crate::ui::icon::icon_view(
@@ -136,16 +145,18 @@ pub(crate) fn check_inline(
         );
 }
 
-pub(crate) fn check_row(
+pub(crate) fn check_row<MC, MD>(
     caption: impl Fn() -> String + 'static,
-    checked: bool,
-    disabled: bool,
+    checked: impl IntoProp<bool, MC> + 'static,
+    disabled: impl IntoProp<bool, MD> + 'static,
     on_change: impl Fn(bool) + 'static,
 ) -> impl IntoElement {
+    let checked: Prop<bool> = checked.into_prop().into();
+    let disabled: Prop<bool> = disabled.into_prop().into();
     return nsh_base::checkbox()
         .checked(checked)
         .disabled(disabled)
-        .opacity(if disabled { 0.45 } else { 1.0 })
+        .opacity(move || if disabled.get() { 0.45_f32 } else { 1.0_f32 })
         .h(px(ui::ROW))
         .flex_row()
         .items_center()
@@ -158,18 +169,24 @@ pub(crate) fn check_row(
                 .justify_center()
                 .rounded(px(4.0))
                 .border_1();
-            if checked {
-                style
-                    .bg(move || design::token("primary-bg"))
-                    .border_color(move || design::token("primary-bg"))
-            } else {
-                style
-                    .bg(move || design::field())
-                    .border_color(move || design::field_border())
-            }
+            style
+                .bg(move || {
+                    if checked.get() {
+                        design::token("primary-bg")
+                    } else {
+                        design::field()
+                    }
+                })
+                .border_color(move || {
+                    if checked.get() {
+                        design::token("primary-bg")
+                    } else {
+                        design::field_border()
+                    }
+                })
         })
         .indicator(dynamic(move || -> AnyElement {
-            if !checked {
+            if !checked.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
             return view()

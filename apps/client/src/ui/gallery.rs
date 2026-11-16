@@ -192,7 +192,7 @@ fn body(
                     .gap(px(ui::GAP))
                     .child(ui::check::check_row(
                         move || "Checkbox row".to_string(),
-                        checked.get(),
+                        move || checked.get(),
                         false,
                         move |next| checked.set(next),
                     ))
@@ -224,7 +224,7 @@ fn body(
                                 label: Box::new(move || "Refs".to_string()),
                             },
                         ],
-                        match segment.get().as_ref() {
+                        move || match segment.get().as_ref() {
                             "changes" => "changes",
                             "refs" => "refs",
                             _ => "history",

@@ -15,7 +15,6 @@ use super::state::WelcomeState;
 use crate::design;
 use crate::i18n;
 use crate::ui;
-use crate::ui::badge::Tone;
 use crate::ui::button::{ButtonSize, ButtonVariant, button};
 use nsh_core::prelude::*;
 use store::RecentRepo;
@@ -391,11 +390,6 @@ fn entry_section(
 ) -> impl IntoElement {
     let form = state.form;
     let set_form = cmd.clone();
-    let selected = match form.get_untracked() {
-        super::state::RepoForm::Open => "open",
-        super::state::RepoForm::Clone => "clone",
-        super::state::RepoForm::Init => "init",
-    };
     return view()
         .w_full()
         .max_w(px(MAIN_MAX_WIDTH))
@@ -431,7 +425,11 @@ fn entry_section(
                             }),
                         },
                     ],
-                    selected,
+                    move || match form.get() {
+                        super::state::RepoForm::Open => "open",
+                        super::state::RepoForm::Clone => "clone",
+                        super::state::RepoForm::Init => "init",
+                    },
                     {
                         let set_form = set_form.clone();
                         move |id| {
@@ -442,13 +440,7 @@ fn entry_section(
                             })
                         }
                     },
-                ))
-                .child(view().flex_1())
-                .child(ui::meta(move || match form.get() {
-                    super::state::RepoForm::Open => "git open".to_string(),
-                    super::state::RepoForm::Clone => "git clone".to_string(),
-                    super::state::RepoForm::Init => "git init".to_string(),
-                })),
+                )),
         )
         .child(
             view()
@@ -632,7 +624,7 @@ fn clone_form(
                                     }),
                                 },
                             ],
-                            match options.get_untracked().depth {
+                            move || match options.get().depth {
                                 1 => "one",
                                 50 => "fifty",
                                 _ => "full",
@@ -644,7 +636,6 @@ fn clone_form(
                                     "fifty" => 50,
                                     _ => 0,
                                 };
-                                next.depth_custom.clear();
                                 options.set(next);
                             },
                         )),
@@ -658,7 +649,7 @@ fn clone_form(
                 .gap(px(ui::GAP_XL))
                 .child(ui::check::check_row(
                     move || i18n::t(language.get().as_str(), "welcome.recurse"),
-                    options.get_untracked().recurse_submodules,
+                    move || options.get().recurse_submodules,
                     false,
                     move |next| {
                         let mut options_next = options.get_untracked();
@@ -668,7 +659,7 @@ fn clone_form(
                 ))
                 .child(ui::check::check_row(
                     move || i18n::t(language.get().as_str(), "welcome.openAfterClone"),
-                    options.get_untracked().open_after_clone,
+                    move || options.get().open_after_clone,
                     false,
                     move |next| {
                         let mut options_next = options.get_untracked();
@@ -693,7 +684,7 @@ fn clone_form(
                     },
                     ButtonVariant::Primary,
                     ButtonSize::Regular,
-                    cloning.get_untracked(),
+                    move || cloning.get(),
                     {
                         let clone_repository = clone_repository.clone();
                         move || clone_repository.clone_repository()
@@ -729,7 +720,7 @@ fn init_form(
     let init_repository = cmd.clone();
     let path = state.init_path;
     let files = state.init_files;
-    let error = state.clone_error;
+    let error = state.init_error;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
@@ -754,7 +745,7 @@ fn init_form(
                 .gap(px(ui::GAP_XL))
                 .child(ui::check::check_row(
                     move || i18n::t(language.get().as_str(), "welcome.gitignore"),
-                    files.get_untracked().gitignore,
+                    move || files.get().gitignore,
                     false,
                     move |next| {
                         let mut updated = files.get_untracked();
@@ -764,7 +755,7 @@ fn init_form(
                 ))
                 .child(ui::check::check_row(
                     move || i18n::t(language.get().as_str(), "welcome.readme"),
-                    files.get_untracked().readme,
+                    move || files.get().readme,
                     false,
                     move |next| {
                         let mut updated = files.get_untracked();
@@ -819,21 +810,30 @@ fn tip(language: Signal<SharedString>) -> impl IntoElement {
                     design::accent,
                 ))
                 .child(
-                    text(move || {
-                        let language = language.get();
-                        format!(
-                            "{}  {}",
-                            i18n::t(language.as_str(), "welcome.tipTitle"),
-                            i18n::t(language.as_str(), "welcome.tipBody")
+                    view()
+                        .flex_1()
+                        .min_w_0()
+                        .flex_row()
+                        .items_start()
+                        .gap(px(ui::GAP_XS))
+                        .child(
+                            text(move || {
+                                i18n::t(language.get().as_str(), "welcome.tipLead")
+                            })
+                            .text_size(px(ui::SECONDARY))
+                            .line_height(px(ui::SECONDARY_LINE))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(move || design::text2()),
                         )
-                    })
-                    .flex_1()
-                    .min_w_0()
-                    .text_size(px(ui::SECONDARY))
-                    .line_height(px(ui::SECONDARY_LINE))
-                    .text_color(move || design::text2()),
-                )
-                .child(ui::badge::badge(move || "K".to_string(), Tone::Neutral)),
+                        .child(
+                            text(move || {
+                                i18n::t(language.get().as_str(), "welcome.tipRest")
+                            })
+                            .text_size(px(ui::SECONDARY))
+                            .line_height(px(ui::SECONDARY_LINE))
+                            .text_color(move || design::text2()),
+                        ),
+                ),
         ));
 }
 

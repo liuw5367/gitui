@@ -204,6 +204,7 @@ pub(crate) fn app() -> impl IntoElement {
     // Init 的附带文件（设计板 03）。
     let init_files = signal(features::welcome::state::InitFiles::default());
     let clone_error = signal(Option::<String>::None);
+    let init_error = signal(Option::<String>::None);
     let cloning = signal(false);
     // 克隆进度（git 的 stderr 最后一行）与取消标志。
     let clone_progress = signal(String::new());
@@ -339,6 +340,7 @@ pub(crate) fn app() -> impl IntoElement {
             init_files,
             init_path,
             clone_error,
+            init_error,
             cloning,
             clone_progress,
             form: repo_form,

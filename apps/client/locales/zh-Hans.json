@@ -17,8 +17,6 @@
     "choose": "选择…",
     "clone": "克隆仓库",
     "cloneHint": "获取所有分支与标签。",
-    "tipTitle": "提示",
-    "tipBody": "按 ⌘O 打开仓库，按 ⌘P 打开命令面板。",
     "noRecent": "还没有最近打开的仓库",
     "openFolder": "打开…",
     "cloneWorking": "正在克隆…",
@@ -36,7 +34,18 @@
     "missingUrl": "缺少仓库地址",
     "missingDestination": "缺少目标位置",
     "missingDirectory": "缺少要初始化的目录",
-    "cloneCancelled": "已取消克隆"
+    "cloneCancelled": "已取消克隆",
+    "tipLead": "gitui 会恢复上次会话里的每个仓库。",
+    "tipRest": "可以在「设置 › 通用」里修改。",
+    "error": {
+      "gitMissing": "找不到 git 命令。请安装 Git，或在「设置 › Git」里指定路径。",
+      "notRepo": "%{path} 不是 Git 仓库。",
+      "unreadable": "无法读取 %{path}。",
+      "commandFailed": "Git 命令执行失败。",
+      "spawn": "无法启动 %{program}。",
+      "hookFailed": "Git 钩子拒绝了这次操作。",
+      "parse": "无法解析 Git 输出。"
+    }
   },
   "shell": {
     "history": "历史",

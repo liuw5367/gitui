@@ -6,6 +6,7 @@
 use super::state::{CloneOptions, InitFiles, RepoForm, WelcomeState};
 use crate::features::SessionHandle;
 use crate::i18n;
+use domain::GitError;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -81,7 +82,10 @@ impl WelcomeCommands {
                 Ok(run) => run,
                 Err(error) => {
                     cloning.set(false);
-                    clone_error.set(Some(error.detail()));
+                    clone_error.set(Some(localized_error(
+                        language.get_untracked().as_str(),
+                        &error,
+                    )));
                     return;
                 }
             };
@@ -92,7 +96,8 @@ impl WelcomeCommands {
                     break Err(i18n::t(lang.as_str(), "welcome.cloneCancelled"));
                 }
                 if let Some(outcome) = run.try_finish() {
-                    break outcome.map_err(|error| error.detail());
+                    let lang = language.get_untracked();
+                    break outcome.map_err(|error| localized_error(lang.as_str(), &error));
                 }
                 let progress = run.progress();
                 if !progress.is_empty() {
@@ -127,13 +132,13 @@ impl WelcomeCommands {
     /// 初始化仓库并打开（原 `init_repository`）。
     pub(crate) fn init_repository(&self) {
         let init_path = self.state.init_path;
-        let clone_error = self.state.clone_error;
+        let init_error = self.state.init_error;
         let init_files = self.state.init_files;
         let session = self.session.clone();
         let language = self.language;
         let path = init_path.get_untracked();
         if path.trim().is_empty() {
-            clone_error.set(Some(i18n::t(
+            init_error.set(Some(i18n::t(
                 language.get_untracked().as_str(),
                 "welcome.missingDirectory",
             )));
@@ -146,12 +151,67 @@ impl WelcomeCommands {
         };
         match git::init_with(path.trim(), &options) {
             Ok(()) => session.open_path(path.trim().to_string()),
-            Err(error) => clone_error.set(Some(error.detail())),
+            Err(error) => init_error.set(Some(localized_error(
+                language.get_untracked().as_str(),
+                &error,
+            ))),
         }
     }
 
     /// 切换 Open / Clone / Init 分段（原 `set_repo_form`）。
     pub(crate) fn set_repo_form(&self, form: RepoForm) {
         self.state.form.set(form);
+        // 错误跟着表单走：切换后旧表单的失败不能出现在新表单里。
+        self.state.clone_error.set(None);
+        self.state.init_error.set(None);
+    }
+}
+
+/// 把 Git 错误映射成当前语言的表单文案。
+///
+/// `GitError::detail()` 只有中文，不能直接给英文界面用；这里按错误类别取
+/// i18n 文案，命令输出留在错误对象里供后续诊断。
+pub(crate) fn localized_error(language: &str, error: &GitError) -> String {
+    return match error {
+        GitError::GitMissing => i18n::t(language, "welcome.error.gitMissing"),
+        GitError::NotARepository { path } => i18n::with_arguments(
+            language,
+            "welcome.error.notRepo",
+            &[("path", path.clone())],
+        ),
+        GitError::Unreadable { path, .. } => i18n::with_arguments(
+            language,
+            "welcome.error.unreadable",
+            &[("path", path.clone())],
+        ),
+        GitError::CommandFailed { .. } => {
+            i18n::t(language, "welcome.error.commandFailed")
+        }
+        GitError::Spawn { program, .. } => i18n::with_arguments(
+            language,
+            "welcome.error.spawn",
+            &[("program", program.clone())],
+        ),
+        GitError::HookFailed { .. } => i18n::t(language, "welcome.error.hookFailed"),
+        GitError::Parse { .. } => i18n::t(language, "welcome.error.parse"),
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn git_errors_use_localized_text() {
+        assert_eq!(
+            localized_error("en", &GitError::GitMissing),
+            i18n::t("en", "welcome.error.gitMissing")
+        );
+        let not_repo = GitError::NotARepository {
+            path: "/tmp/not-a-repo".to_string(),
+        };
+        let message = localized_error("en", &not_repo);
+        assert!(message.contains("/tmp/not-a-repo"));
+        assert!(!message.contains("不是 Git 仓库"));
     }
 }

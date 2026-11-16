@@ -17,8 +17,6 @@
     "choose": "Choose…",
     "clone": "Clone Repository",
     "cloneHint": "Fetches all branches and tags.",
-    "tipTitle": "Tip",
-    "tipBody": "Press ⌘O to open a repository, ⌘P for the command palette.",
     "noRecent": "No recent repositories",
     "openFolder": "Open…",
     "cloneWorking": "Cloning…",
@@ -36,7 +34,18 @@
     "missingUrl": "Enter a repository URL",
     "missingDestination": "Choose a destination folder",
     "missingDirectory": "Choose a folder to initialize",
-    "cloneCancelled": "Clone cancelled"
+    "cloneCancelled": "Clone cancelled",
+    "tipLead": "gitui restores every repository from your last session.",
+    "tipRest": "You can change this in Settings › General.",
+    "error": {
+      "gitMissing": "Git was not found. Install Git or set its path in Settings › Git.",
+      "notRepo": "%{path} is not a Git repository.",
+      "unreadable": "Cannot read %{path}.",
+      "commandFailed": "The Git command failed.",
+      "spawn": "Could not start %{program}.",
+      "hookFailed": "A Git hook rejected the operation.",
+      "parse": "Could not parse Git output."
+    }
   },
   "shell": {
     "history": "History",
