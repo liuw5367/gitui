@@ -5,7 +5,6 @@
   },
   "welcome": {
     "repositories": "Repositories",
-    "recentCount": "%{count} recent",
     "search": "Search repositories",
     "groupToday": "Today",
     "groupWeek": "Previous 7 days",
@@ -17,10 +16,10 @@
     "choose": "Choose…",
     "clone": "Clone Repository",
     "cloneHint": "Fetches all branches and tags.",
-    "noRecent": "No recent repositories",
+    "noRecent": "No repositories yet",
     "openFolder": "Open…",
     "cloneWorking": "Cloning…",
-    "noRecentHint": "Open a repository with ⌘O, or clone one below.",
+    "noRecentHint": "Open a local repository on the right, or clone and create one from the tabs.",
     "branch": "Branch",
     "branchHint": "default branch",
     "depth": "Depth",
@@ -45,7 +44,14 @@
       "spawn": "Could not start %{program}.",
       "hookFailed": "A Git hook rejected the operation.",
       "parse": "Could not parse Git output."
-    }
+    },
+    "recentSummary": "%{recent} recent · %{open} open",
+    "noMatch": "No matching repositories",
+    "noMatchHint": "Try a different name or path.",
+    "groupEarlier": "Earlier",
+    "removeRepo": "Remove %{name} from recent repositories",
+    "settings": "Settings",
+    "updateUnavailable": "Update checks are not available in this build."
   },
   "shell": {
     "history": "History",

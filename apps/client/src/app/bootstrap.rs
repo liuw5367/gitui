@@ -212,6 +212,8 @@ pub(crate) fn app() -> impl IntoElement {
         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let init_path = signal(String::new());
     let repo_form = signal(features::welcome::state::RepoForm::Open);
+    let welcome_now = signal(store::now_unix());
+    let welcome_search_ref = element_ref();
 
     let current_filter: Arc<dyn Fn() -> LogFilter> = {
         let history_query = history_query;
@@ -330,26 +332,6 @@ pub(crate) fn app() -> impl IntoElement {
         merge: merge_commands.clone(),
     };
 
-    // 欢迎页（P3 批 B）：表单输入收进 WelcomeState，用例收进 WelcomeCommands。
-    let welcome_commands = features::welcome::commands::WelcomeCommands {
-        state: features::welcome::state::WelcomeState {
-            query: welcome_query,
-            clone_url,
-            clone_destination,
-            clone_options,
-            init_files,
-            init_path,
-            clone_error,
-            init_error,
-            cloning,
-            clone_progress,
-            form: repo_form,
-        },
-        session: session.clone(),
-        language,
-        cancel: clone_cancel,
-    };
-
     // 同步（P3 批 A）：面板状态收进 SyncState，用例收进 SyncCommands。
     let sync_commands = features::sync::commands::SyncCommands {
         state: features::sync::state::SyncState { dialog: sync_state },
@@ -383,6 +365,29 @@ pub(crate) fn app() -> impl IntoElement {
         theme_mode,
         diff: diff_commands.clone(),
         git_info,
+    };
+
+    // 欢迎页（P3 批 B）：表单输入收进 WelcomeState，用例收进 WelcomeCommands。
+    let welcome_commands = features::welcome::commands::WelcomeCommands {
+        state: features::welcome::state::WelcomeState {
+            query: welcome_query,
+            clone_url,
+            clone_destination,
+            clone_options,
+            init_files,
+            init_path,
+            clone_error,
+            init_error,
+            cloning,
+            clone_progress,
+            form: repo_form,
+            search_ref: welcome_search_ref,
+            now: welcome_now,
+        },
+        session: session.clone(),
+        settings: settings_commands.clone(),
+        language,
+        cancel: clone_cancel,
     };
 
     // 搜索（P3 最后一片）：命令面板、视图模式与表单浮层收进 SearchState，命令分发
@@ -436,6 +441,17 @@ pub(crate) fn app() -> impl IntoElement {
         diff: diff_commands.clone(),
         language,
     };
+
+    // 欢迎页的相对时间与分组每分钟刷新一次，窗口开着时不会停在挂载时刻。
+    {
+        let welcome_now = welcome_now;
+        spawn(async move {
+            loop {
+                timer(std::time::Duration::from_secs(60)).await;
+                welcome_now.set(store::now_unix());
+            }
+        });
+    }
 
     // 原生菜单（设计板 22）：文案随语言重建。菜单项与命令面板共用同一批动作，
     // 因此不会指向空实现；系统角色项（关闭/撤销/最小化等）由系统给文案。

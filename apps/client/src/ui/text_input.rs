@@ -69,6 +69,37 @@ pub(crate) fn search_field(
     shortcut: Option<&'static str>,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
+    return search_field_inner(value, placeholder, shortcut, on_change, None);
+}
+
+/// 与 [`search_field`] 相同，并把输入框挂到 `handle` 上，供快捷键聚焦。
+pub(crate) fn search_field_ref(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    shortcut: Option<&'static str>,
+    on_change: impl Fn(&str) + 'static,
+    handle: &ElementRef,
+) -> impl IntoElement {
+    return search_field_inner(value, placeholder, shortcut, on_change, Some(*handle));
+}
+
+fn search_field_inner(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    shortcut: Option<&'static str>,
+    on_change: impl Fn(&str) + 'static,
+    handle: Option<ElementRef>,
+) -> impl IntoElement {
+    let mut input = nsh_base::input()
+        .value(value)
+        .placeholder(placeholder)
+        .on_change(move |text: &str| on_change(text))
+        .text_size(px(ui::BODY))
+        .text_color(move || design::text())
+        .flex_1();
+    if let Some(handle) = handle {
+        input = input.element_ref(&handle);
+    }
     let mut container = view()
         .h(px(ui::CONTROL))
         .flex_row()
@@ -89,15 +120,7 @@ pub(crate) fn search_field(
             ui::icon::IconSize::Inline,
             design::text3,
         ))
-        .child(
-            nsh_base::input()
-                .value(value)
-                .placeholder(placeholder)
-                .on_change(move |text: &str| on_change(text))
-                .text_size(px(ui::BODY))
-                .text_color(move || design::text())
-                .flex_1(),
-        );
+        .child(input);
     if let Some(combo) = shortcut {
         container = container.child(ui::badge::kbd(combo));
     }

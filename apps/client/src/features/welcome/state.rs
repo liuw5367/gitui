@@ -76,6 +76,10 @@ pub(crate) struct WelcomeState {
     pub(crate) clone_progress: Signal<String>,
     /// 当前选中的入口分段。
     pub(crate) form: Signal<RepoForm>,
+    /// 左栏搜索框的句柄，供 ⌘F 聚焦。
+    pub(crate) search_ref: ElementRef,
+    /// 当前时间（UTC 秒），每分钟刷新，供相对时间与分组使用。
+    pub(crate) now: Signal<i64>,
 }
 
 #[cfg(test)]

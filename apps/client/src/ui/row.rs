@@ -55,11 +55,8 @@ pub(crate) fn row(
     if let Some(leading) = leading {
         element = element.child(leading);
     }
-    let foreground = if selected {
-        design::token("sel-strong")
-    } else {
-        design::text()
-    };
+    // 选中行用 sel 底色；文字保持正文色，sel-strong 与底色对比度不足。
+    let foreground = design::text();
     let mut labels = view()
         .flex_1()
         .min_w_0()

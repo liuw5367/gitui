@@ -7,6 +7,7 @@ use crate::app::handles::AppHandles;
 use crate::app::session::Tab;
 use crate::brand;
 use crate::features;
+use nsh_core::desktop::WindowAttributes;
 use nsh_core::element::desktop::title_bar;
 use nsh_core::prelude::*;
 
@@ -21,10 +22,13 @@ pub(crate) fn open_welcome_window(handles: &AppHandles) {
     }
     let cmd = handles.welcome.clone();
     let open = cmd.session.welcome_open;
+    let mut attributes = WindowAttributes::default();
+    attributes.min_size = Some(Some(size(Points(1000.0), Points(560.0))));
     let welcome = nsh_core::element::desktop::window()
         .id("welcome")
         .title(brand::PRODUCT_NAME)
-        .default_size(size(Points(980.0), Points(620.0)))
+        .default_size(size(Points(1040.0), Points(690.0)))
+        .attributes(attributes)
         .open(open)
         .on_open_change(move |event| {
             if !event.open {

@@ -54,6 +54,26 @@ pub(crate) fn section_label(caption: impl Fn() -> String + 'static) -> impl Into
         );
 }
 
+/// 欢迎页左栏的分组标题：全大写、600 字重、0.5px 字距。
+///
+/// 主窗口侧栏用 sentence case；欢迎页画板把这里做成大写，作为入口页的区分。
+pub(crate) fn section_label_upper(caption: impl Fn() -> String + 'static) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h(px(23.0))
+        .flex_row()
+        .items_center()
+        .px(px(ui::GAP_LG))
+        .child(
+            text(move || caption().to_uppercase())
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(23.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .letter_spacing(px(0.5))
+                .text_color(move || design::text2()),
+        );
+}
+
 /// 空态：标题 + 说明 + 可选动作，垂直居中。
 pub(crate) fn empty(
     caption: impl Fn() -> String + 'static,

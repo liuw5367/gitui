@@ -42,6 +42,18 @@ pub(crate) fn confirm(
     };
 }
 
+/// 弹一次说明框；只有一个关闭按钮，用于能力尚未接通时的真实状态说明。
+pub(crate) fn alert(title: String, message: String, close_label: String) {
+    spawn(async move {
+        let _ = nsh_base::alert_dialog()
+            .title(title)
+            .description(message)
+            .cancel("close", close_label)
+            .show()
+            .await;
+    });
+}
+
 /// 在状态栏显示一条提示，到点自动清除。
 pub(crate) fn notify(notice: Signal<Option<String>>, message: impl Into<String>) {
     let message = message.into();

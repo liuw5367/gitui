@@ -65,6 +65,27 @@ pub(crate) fn count(value: impl Fn() -> String + 'static) -> impl IntoElement {
         .text_color(move || design::text3());
 }
 
+/// 分支 chip：高 16、圆角 4、等宽 11pt，只显示分支名。
+pub(crate) fn branch_chip(caption: impl Fn() -> String + 'static) -> impl IntoElement {
+    return view()
+        .h(px(16.0))
+        .px(px(5.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(move || design::line())
+        .bg(move || design::panel())
+        .child(
+            text(move || caption())
+                .text_size(px(ui::META))
+                .line_height(px(16.0))
+                .font_family(ui::MONO)
+                .text_color(move || design::text2()),
+        );
+}
+
 /// 键帽：高 18、圆角 4、1px 描边，11pt。
 pub(crate) fn kbd(caption: impl Into<SharedString>) -> impl IntoElement {
     let caption = caption.into();

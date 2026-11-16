@@ -140,11 +140,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 无障碍 role、选中与禁用状态来自 `nsh_base`；图标按钮由 `icon_button` 传
 `accessibility_label`；表格、树、页签的 role 由各自的 `nsh_base` 组件提供。
 
-**已知缺陷（待修）**：`ui/row.rs:59` 在选中时把文字色设成 `sel-strong`（浅色 `#D5E6FF`），
-而底色是 `sel`（`#E7F0FF`），对比度约 1.1:1，选中行的标题实际不可读；深色模式同样
-（`#1B3D60` on `#15324F`）。设置页侧栏（`features/settings/view.rs` 的 `row(.., selected, ..)`）
-会走到这条路径。正确做法是底色 `sel` + 文字 `text`。`sel-strong` 全库只在这一处被引用，
-改成 `text` 不会牵连别处。
+选中行使用 `sel` 底色 + 正文色 `text`，保证对比度；`sel-strong` 不再被页面引用。
 
 ## 6. 增改流程
 

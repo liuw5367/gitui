@@ -87,8 +87,16 @@ impl SessionHandle {
         crate::persist(&store_dir, active, tabs);
 
         let path_for_load = path.clone();
+        let branch_dir = store_dir.clone();
         spawn(async move {
             let loaded = crate::app::session::load_tab(path_for_load.as_str(), &filter);
+            // 读到 HEAD 后把分支写回最近仓库，欢迎页下次打开时能显示 chip。
+            let branch = match &loaded.head {
+                git::HeadState::Branch(name) => Some(name.clone()),
+                git::HeadState::Unborn { branch } => Some(branch.clone()),
+                git::HeadState::Detached { .. } => None,
+            };
+            let loaded_path = loaded.path.clone();
             let mut list = tabs.get_untracked();
             // 加载期间用户可能关掉了这个标签页，找不到就丢弃结果。
             let Some(index) = list
@@ -99,6 +107,10 @@ impl SessionHandle {
             };
             list[index] = loaded;
             tabs.set(list);
+            if let Some(branch) = branch {
+                store::set_recent_branch(&branch_dir, &loaded_path, &branch);
+                recent.set(store::load_recent(&branch_dir));
+            }
         });
     }
 

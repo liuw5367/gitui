@@ -5,7 +5,6 @@
   },
   "welcome": {
     "repositories": "仓库",
-    "recentCount": "最近 %{count} 个",
     "search": "搜索仓库",
     "groupToday": "今天",
     "groupWeek": "最近 7 天",
@@ -17,10 +16,10 @@
     "choose": "选择…",
     "clone": "克隆仓库",
     "cloneHint": "获取所有分支与标签。",
-    "noRecent": "还没有最近打开的仓库",
+    "noRecent": "还没有仓库",
     "openFolder": "打开…",
     "cloneWorking": "正在克隆…",
-    "noRecentHint": "按 ⌘O 打开仓库，或在下方克隆。",
+    "noRecentHint": "在右侧打开本地仓库，或从分段里克隆、新建一个。",
     "branch": "分支",
     "branchHint": "默认分支",
     "depth": "深度",
@@ -45,7 +44,14 @@
       "spawn": "无法启动 %{program}。",
       "hookFailed": "Git 钩子拒绝了这次操作。",
       "parse": "无法解析 Git 输出。"
-    }
+    },
+    "recentSummary": "最近 %{recent} 个 · 已打开 %{open} 个",
+    "noMatch": "没有匹配的仓库",
+    "noMatchHint": "换一个名称或路径试试。",
+    "groupEarlier": "更早",
+    "removeRepo": "从最近仓库里移除 %{name}",
+    "settings": "设置",
+    "updateUnavailable": "这个构建还没有接入更新检查。"
   },
   "shell": {
     "history": "历史",

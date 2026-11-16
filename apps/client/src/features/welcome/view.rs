@@ -13,23 +13,20 @@
 use super::commands::WelcomeCommands;
 use super::state::WelcomeState;
 use crate::design;
+use crate::features::SessionHandle;
+use crate::features::settings::state::Section;
 use crate::i18n;
 use crate::ui;
-use crate::ui::button::{ButtonSize, ButtonVariant, button};
+use crate::ui::button::{ButtonSize, ButtonVariant, button, button_icon, icon_button};
 use nsh_core::prelude::*;
 use store::RecentRepo;
-
-/// 打开时间距今不足这些秒时归入“今天”。
-const TODAY_SECONDS: i64 = 24 * 60 * 60;
-/// 归入“最近 7 天”的上限。
-const WEEK_SECONDS: i64 = 7 * 24 * 60 * 60;
 
 /// 欢迎页左栏宽度（设计板 01 的 `.wside`）。
 const SIDE_WIDTH: f32 = 312.0;
 /// 右栏内容的最大宽度（设计板 01 的 `.wsection`）。
 const MAIN_MAX_WIDTH: f32 = 600.0;
 /// 右栏内边距：上、左右、下。
-const MAIN_PAD: (f32, f32, f32) = (40.0, 48.0, 28.0);
+const MAIN_PAD: (f32, f32, f32) = (44.0, 54.0, 30.0);
 /// 英雄区应用标记的边长。
 const APP_MARK: f32 = 64.0;
 
@@ -44,7 +41,7 @@ pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoE
         .h_full()
         .flex_row()
         .bg(move || design::content())
-        .child(sidebar(language, recent, query, cmd.clone()))
+        .child(sidebar(language, recent, query, state.now, cmd.clone()))
         .child(
             view()
                 .flex_1()
@@ -133,11 +130,16 @@ fn sidebar(
     language: Signal<SharedString>,
     recent: Signal<Vec<RecentRepo>>,
     query: Signal<String>,
+    now: Signal<i64>,
     cmd: WelcomeCommands,
 ) -> impl IntoElement {
     let session = cmd.session.clone();
     let choose_folder = cmd.clone();
-    let now = store::now_unix();
+    let updates = cmd.clone();
+    let settings = cmd.clone();
+    let forget = cmd.clone();
+    let search_ref = cmd.state.search_ref;
+    let count_open = session.tabs;
     return view()
         .w(px(SIDE_WIDTH))
         .h_full()
@@ -146,7 +148,7 @@ fn sidebar(
         .bg(move || design::sidebar())
         .border_r_1()
         .border_color(move || design::line())
-        // 标题 + 打开按钮
+        // 标题 + 最近/已打开计数 + 打开按钮
         .child(
             view()
                 .w_full()
@@ -172,8 +174,11 @@ fn sidebar(
                             text(move || {
                                 i18n::with_arguments(
                                     language.get().as_str(),
-                                    "welcome.recentCount",
-                                    &[("count", recent.get().len().to_string())],
+                                    "welcome.recentSummary",
+                                    &[
+                                        ("recent", recent.get().len().to_string()),
+                                        ("open", count_open.get().len().to_string()),
+                                    ],
                                 )
                             })
                             .text_size(px(ui::META))
@@ -194,21 +199,28 @@ fn sidebar(
         )
         // 搜索
         .child(view().w_full().px(px(ui::GAP_LG)).pb(px(ui::GAP_SM)).child(
-            ui::text_input::search_field(
+            ui::text_input::search_field_ref(
                 query,
                 move || i18n::t(language.get().as_str(), "welcome.search"),
                 Some("⌘F"),
-                move |_text| {},
+                move |text| query.set(text.to_string()),
+                &search_ref,
             ),
         ))
+        // 最近仓库：分组、搜索过滤与空态都在同一个 dynamic 里，输入即更新。
         .child(
             view().w_full().flex_1().min_h_0().px(px(ui::GAP_SM)).child(
                 scroll().w_full().h_full().child(
                     view().w_full().py(px(ui::GAP_XS)).flex_col().child(dynamic(
                         move || -> AnyElement {
-                            if recent.get().is_empty() {
+                            let all = recent.get();
+                            let now_value = now.get();
+                            let query_value = query.get();
+                            if all.is_empty() {
                                 return ui::section::empty(
-                                    move || i18n::t(language.get().as_str(), "welcome.noRecent"),
+                                    move || {
+                                        i18n::t(language.get().as_str(), "welcome.noRecent")
+                                    },
                                     Some(Box::new(move || {
                                         i18n::t(language.get().as_str(), "welcome.noRecentHint")
                                     })),
@@ -216,36 +228,64 @@ fn sidebar(
                                 )
                                 .into_element();
                             }
-                            return view()
-                                .w_full()
-                                .flex_col()
-                                .child(repo_group(
-                                    language,
-                                    recent,
-                                    query,
-                                    now,
-                                    "welcome.groupToday",
-                                    0,
-                                    TODAY_SECONDS,
-                                    session.clone(),
-                                ))
-                                .child(repo_group(
-                                    language,
-                                    recent,
-                                    query,
-                                    now,
-                                    "welcome.groupWeek",
-                                    TODAY_SECONDS,
-                                    WEEK_SECONDS,
-                                    session.clone(),
-                                ))
+                            let visible: Vec<RecentRepo> = all
+                                .into_iter()
+                                .filter(|repo| matches_query(&repo.path, &query_value))
+                                .collect();
+                            if visible.is_empty() {
+                                return ui::section::empty(
+                                    move || {
+                                        i18n::t(language.get().as_str(), "welcome.noMatch")
+                                    },
+                                    Some(Box::new(move || {
+                                        i18n::t(language.get().as_str(), "welcome.noMatchHint")
+                                    })),
+                                    None,
+                                )
                                 .into_element();
+                            }
+                            // 已打开的仓库同时读取标签页，标签变化后选中态跟着更新。
+                            let open_paths: Vec<String> = count_open
+                                .get()
+                                .iter()
+                                .map(|tab| tab.path.clone())
+                                .collect();
+                            let mut list = view().w_full().flex_col();
+                            for (label_key, bucket) in [
+                                ("welcome.groupToday", RecentBucket::Today),
+                                ("welcome.groupWeek", RecentBucket::Week),
+                                ("welcome.groupEarlier", RecentBucket::Earlier),
+                            ] {
+                                let items: Vec<RecentRepo> = visible
+                                    .iter()
+                                    .filter(|repo| bucket_of(repo.opened_at, now_value) == bucket)
+                                    .cloned()
+                                    .collect();
+                                if items.is_empty() {
+                                    continue;
+                                }
+                                list = list.child(ui::section::section_label_upper(move || {
+                                    i18n::t(language.get().as_str(), label_key)
+                                }));
+                                for repo in items {
+                                    let selected = open_paths.iter().any(|path| path == &repo.path);
+                                    list = list.child(repo_row(
+                                        language,
+                                        repo,
+                                        now_value,
+                                        selected,
+                                        session.clone(),
+                                        forget.clone(),
+                                    ));
+                                }
+                            }
+                            return list.into_element();
                         },
                     )),
                 ),
             ),
         )
-        // 底部：版本与更新入口（更新检查尚未实现，只显示版本，不做假按钮）
+        // 底部：版本、检查更新与设置入口
         .child(
             view()
                 .w_full()
@@ -263,83 +303,113 @@ fn sidebar(
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "welcome.checkUpdates"))
-                        .text_size(px(ui::META))
-                        .line_height(px(ui::SECONDARY_LINE))
-                        .text_color(move || design::text3()),
-                ),
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "welcome.checkUpdates"),
+                    ButtonVariant::Ghost,
+                    ButtonSize::Small,
+                    false,
+                    {
+                        let updates = updates.clone();
+                        move || updates.check_updates()
+                    },
+                ))
+                .child(button_icon(
+                    move || i18n::t(language.get().as_str(), "welcome.settings"),
+                    "gear",
+                    ButtonVariant::Ghost,
+                    ButtonSize::Small,
+                    false,
+                    {
+                        let settings = settings.clone();
+                        move || settings.open_settings(Section::General)
+                    },
+                )),
         );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn repo_group(
+fn repo_row(
     language: Signal<SharedString>,
-    recent: Signal<Vec<RecentRepo>>,
-    query: Signal<String>,
+    repo: RecentRepo,
     now: i64,
-    label_key: &'static str,
-    from_seconds: i64,
-    to_seconds: i64,
-    session: crate::features::SessionHandle,
+    selected: bool,
+    session: SessionHandle,
+    cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    return view()
-        .w_full()
-        .mt(px(ui::GAP_SM))
-        .flex_col()
-        .child(ui::section::section_label(move || {
-            i18n::t(language.get().as_str(), label_key)
-        }))
-        .child(each(
-            recent,
-            |repo: &RecentRepo| repo.path.clone(),
-            move |repo, _| {
-                let age = (now - repo.get().opened_at).max(0);
-                let visible = age >= from_seconds
-                    && age < to_seconds
-                    && matches_query(&repo.get().path, &query.get());
-                let session = session.clone();
-                return view()
-                    .w_full()
-                    .h(move || if visible { px(44.0) } else { px(0.0) })
-                    .overflow_hidden()
-                    .child(ui::row::row(
-                        move || last_segment(&repo.get().path),
-                        Some((Box::new(move || home_path(&repo.get().path)), true)),
-                        Some(
-                            view()
-                                .w(px(26.0))
-                                .h(px(26.0))
-                                .flex_shrink_0()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(6.0))
-                                .border_1()
-                                .border_color(move || design::line())
-                                .bg(move || design::panel())
-                                .child(ui::icon::icon_view(
-                                    "folder",
-                                    ui::icon::IconSize::Inline,
-                                    design::text2,
-                                ))
-                                .into_element(),
-                        ),
-                        vec![
-                            ui::meta(move || {
-                                crate::dates::format(
-                                    language.get().as_str(),
-                                    repo.get().opened_at,
-                                    now,
-                                )
-                            })
-                            .into_element(),
-                        ],
-                        false,
-                        false,
-                        move || session.open_path(repo.get().path.clone()),
-                    ));
+    let path = repo.path.clone();
+    let name = last_segment(&path);
+    let subtitle = home_path(&path);
+    let branch = repo.branch.clone();
+    let opened_at = repo.opened_at;
+    let path_for_press = path.clone();
+    let path_for_remove = path.clone();
+    let name_for_remove = name.clone();
+    let language_for_time = language;
+    let language_for_remove = language;
+    let open = session;
+    let remove = cmd;
+    let leading = view()
+        .w(px(27.0))
+        .h(px(27.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(7.0))
+        .border_1()
+        .border_color(move || design::line())
+        .bg(move || {
+            if selected {
+                design::content()
+            } else {
+                design::panel()
+            }
+        })
+        .child(ui::icon::icon_view(
+            "folder",
+            ui::icon::IconSize::Inline,
+            move || {
+                if selected {
+                    design::accent()
+                } else {
+                    design::text2()
+                }
             },
-        ));
+        ))
+        .into_element();
+    let mut trailing: Vec<AnyElement> = Vec::new();
+    if !branch.is_empty() {
+        trailing.push(ui::badge::branch_chip(move || branch.clone()).into_element());
+    }
+    trailing.push(
+        ui::meta(move || {
+            crate::dates::format(language_for_time.get().as_str(), opened_at, now)
+        })
+        .into_element(),
+    );
+    trailing.push(
+        icon_button(
+            "x",
+            move || {
+                i18n::with_arguments(
+                    language_for_remove.get().as_str(),
+                    "welcome.removeRepo",
+                    &[("name", name_for_remove.clone())],
+                )
+            },
+            ButtonSize::Small,
+            false,
+            move || remove.forget_recent(path_for_remove.clone()),
+        )
+        .into_element(),
+    );
+    return ui::row::row(
+        move || name.clone(),
+        Some((Box::new(move || subtitle.clone()), true)),
+        Some(leading),
+        trailing,
+        selected,
+        false,
+        move || open.open_path(path_for_press.clone()),
+    );
 }
 
 fn hero(language: Signal<SharedString>) -> impl IntoElement {
@@ -355,8 +425,8 @@ fn hero(language: Signal<SharedString>) -> impl IntoElement {
                 .flex_shrink_0()
                 .items_center()
                 .justify_center()
-                .rounded(px(14.0))
-                .bg(move || design::token("primary-bg"))
+                .rounded(px(15.0))
+                .bg(move || design::accent2())
                 .child(ui::icon::brand_mark("branch", 30.0, || {
                     design::token("primary-foreground")
                 })),
@@ -393,10 +463,7 @@ fn entry_section(
     return view()
         .w_full()
         .max_w(px(MAIN_MAX_WIDTH))
-        .mt(px(28.0))
-        .pt(px(20.0))
-        .border_t_1()
-        .border_color(move || design::line())
+        .mt(px(24.0))
         .flex_col()
         .child(
             view()
@@ -445,7 +512,7 @@ fn entry_section(
         .child(
             view()
                 .w_full()
-                .mt(px(ui::GAP_LG))
+                .mt(px(14.0))
                 .flex_col()
                 .gap(px(ui::GAP_SM))
                 .child(
@@ -796,7 +863,7 @@ fn tip(language: Signal<SharedString>) -> impl IntoElement {
     return view()
         .w_full()
         .max_w(px(MAIN_MAX_WIDTH))
-        .mt(px(24.0))
+        .mt(px(26.0))
         .child(ui::feedback::card(
             view()
                 .w_full()
@@ -837,6 +904,25 @@ fn tip(language: Signal<SharedString>) -> impl IntoElement {
         ));
 }
 
+/// 最近仓库在左栏的三种时间分组。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RecentBucket {
+    Today,
+    Week,
+    Earlier,
+}
+
+/// 按 UTC 日切分，避免用 24 小时窗口把“昨天 23 点”算成今天。
+fn bucket_of(opened_at: i64, now: i64) -> RecentBucket {
+    let today = now.div_euclid(86_400);
+    let opened = opened_at.div_euclid(86_400);
+    return match (today - opened).max(0) {
+        0 => RecentBucket::Today,
+        days if days <= 7 => RecentBucket::Week,
+        _ => RecentBucket::Earlier,
+    };
+}
+
 fn matches_query(path: &str, query: &str) -> bool {
     if query.trim().is_empty() {
         return true;
@@ -862,4 +948,25 @@ fn home_path(path: &str) -> String {
         }
     }
     return path.to_string();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buckets_use_calendar_days() {
+        let now = 10 * 86_400 + 3_600;
+        assert_eq!(bucket_of(now, now), RecentBucket::Today);
+        assert_eq!(bucket_of(now - 86_400, now), RecentBucket::Week);
+        assert_eq!(bucket_of(now - 7 * 86_400, now), RecentBucket::Week);
+        assert_eq!(bucket_of(now - 8 * 86_400, now), RecentBucket::Earlier);
+    }
+
+    #[test]
+    fn query_matches_path_without_case() {
+        assert!(matches_query("/Users/Mia/Repo", "mia"));
+        assert!(matches_query("/Users/Mia/Repo", ""));
+        assert!(!matches_query("/Users/Mia/Repo", "git"));
+    }
 }

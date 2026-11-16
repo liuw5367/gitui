@@ -4,7 +4,7 @@
 //! 方法体由原 `Actions`（与 `lib.rs` 里的闭包）原样搬来，只把捕获的局部变量换成
 //! `self.*`；返回欢迎页这类会话动作走 `SessionHandle` 的方法。
 
-use super::state::SettingsState;
+use super::state::{Section, SettingsState};
 use crate::brand::ThemeMode;
 use crate::features::SessionHandle;
 use crate::i18n;
@@ -38,9 +38,16 @@ impl SettingsCommands {
         store::save_appearance(&self.store_dir, mode.id());
     }
 
-    /// 进入设置页（原 `Actions::go_settings`）。
+    /// 进入设置页（原 `Actions::go_settings`），并把主窗口带到前台。
     pub(crate) fn go_settings(&self) {
         self.session.screen.set(crate::Screen::Settings);
+        nsh_core::element::desktop::main_window().focus();
+    }
+
+    /// 进入设置页的指定分区；欢迎页的 Settings 与 Credentials 入口用它。
+    pub(crate) fn go_settings_section(&self, section: Section) {
+        self.state.settings_section.set(section);
+        self.go_settings();
     }
 
     /// 在英文与中文之间切换（原 `toggle_language`）。

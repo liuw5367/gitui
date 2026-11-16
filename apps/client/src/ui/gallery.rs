@@ -245,7 +245,8 @@ fn body(
                     .child(ui::badge::badge(move || "Warning".to_string(), Tone::Warning))
                     .child(ui::badge::badge(move || "Danger".to_string(), Tone::Danger))
                     .child(ui::badge::kbd("⌘P"))
-                    .child(ui::badge::kbd("⇧⌘F")),
+                    .child(ui::badge::kbd("⇧⌘F"))
+                    .child(ui::badge::branch_chip(move || "feature/hero".to_string())),
             ))
             .child(section(
                 "Banners",
@@ -283,6 +284,7 @@ fn body(
                         vec![ui::badge::kbd("⌘F").into_element()],
                     ))
                     .child(ui::section::section_label(move || "Branches".to_string()))
+                    .child(ui::section::section_label_upper(move || "Today".to_string()))
                     .child(ui::section::skeleton_row(&[120.0, 64.0, 40.0]))
                     .child(
                         view()

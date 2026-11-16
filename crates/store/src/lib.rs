@@ -14,11 +14,13 @@ use std::path::{Path, PathBuf};
 /// 最近仓库的数量上限。
 const MAX_RECENT: usize = 12;
 
-/// 一条最近仓库记录：路径与最后一次打开的时间（UTC 秒）。
+/// 一条最近仓库记录：路径、最后一次打开的时间（UTC 秒）与最近已知分支。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RecentRepo {
     pub path: String,
     pub opened_at: i64,
+    /// 最近一次打开时所在的分支；旧文件没有这一列时为空。
+    pub branch: String,
 }
 
 /// 会话：当前选中的 tab 与打开的仓库路径。空 `paths` 表示显示欢迎页。
@@ -382,10 +384,17 @@ pub fn load_recent(dir: &Path) -> Vec<RecentRepo> {
         if line.is_empty() {
             continue;
         }
-        // 旧格式只有路径；新格式是 `<时间>\t<路径>`。
-        let (opened_at, path) = match line.split_once('\t') {
-            Some((timestamp, path)) => (timestamp.parse().unwrap_or(0), path),
-            None => (0, line),
+        // 旧格式只有路径；随后是 `<时间>\t<路径>`；当前还会带可选的
+        // `<时间>\t<路径>\t<分支>`，第三列缺失时分支为空。
+        let (opened_at, path, branch) = match line.split_once('\t') {
+            Some((timestamp, rest)) => {
+                let (path, branch) = match rest.split_once('\t') {
+                    Some((path, branch)) => (path, branch),
+                    None => (rest, ""),
+                };
+                (timestamp.parse().unwrap_or(0), path, branch)
+            }
+            None => (0, line, ""),
         };
         if path.is_empty() {
             continue;
@@ -393,6 +402,7 @@ pub fn load_recent(dir: &Path) -> Vec<RecentRepo> {
         repos.push(RecentRepo {
             path: path.to_string(),
             opened_at,
+            branch: branch.to_string(),
         });
     }
     repos.truncate(MAX_RECENT);
@@ -407,12 +417,35 @@ pub fn now_unix() -> i64 {
         .unwrap_or(0);
 }
 
+/// 写回最近仓库；分支为空时仍用两列格式，旧版本可以继续读。
+fn write_recent(dir: &Path, repos: &[RecentRepo]) {
+    let lines: Vec<String> = repos
+        .iter()
+        .map(|repo| {
+            if repo.branch.is_empty() {
+                format!("{}\t{}", repo.opened_at, repo.path)
+            } else {
+                format!("{}\t{}\t{}", repo.opened_at, repo.path, repo.branch)
+            }
+        })
+        .collect();
+    let _ = write_lines(&recent_file(dir), &lines);
+}
+
 /// 保存最近仓库；把 `path` 放到最前（时间记为现在），去重并截断。
+///
+/// 同一路径再次打开时保留之前记录的分支，时间更新为现在。
 pub fn remember_recent(dir: &Path, repos: &[RecentRepo], path: &str) {
+    let branch = repos
+        .iter()
+        .find(|repo| repo.path == path)
+        .map(|repo| repo.branch.clone())
+        .unwrap_or_default();
     let mut next = Vec::with_capacity(repos.len() + 1);
     next.push(RecentRepo {
         path: path.to_string(),
         opened_at: now_unix(),
+        branch,
     });
     for existing in repos {
         if existing.path != path && !existing.path.is_empty() {
@@ -420,11 +453,7 @@ pub fn remember_recent(dir: &Path, repos: &[RecentRepo], path: &str) {
         }
     }
     next.truncate(MAX_RECENT);
-    let lines: Vec<String> = next
-        .iter()
-        .map(|repo| format!("{}\t{}", repo.opened_at, repo.path))
-        .collect();
-    let _ = write_lines(&recent_file(dir), &lines);
+    write_recent(dir, &next);
 }
 
 /// 从最近仓库里移除一条，返回剩余列表。
@@ -434,12 +463,25 @@ pub fn forget_recent(dir: &Path, repos: &[RecentRepo], path: &str) -> Vec<Recent
         .filter(|repo| repo.path != path)
         .cloned()
         .collect();
-    let lines: Vec<String> = next
-        .iter()
-        .map(|repo| format!("{}\t{}", repo.opened_at, repo.path))
-        .collect();
-    let _ = write_lines(&recent_file(dir), &lines);
+    write_recent(dir, &next);
     return next;
+}
+
+/// 记录某个最近仓库的分支，保持原来的打开时间。
+///
+/// 分支只在从仓库读到后写入；读取失败或路径已不在列表里时什么也不做。
+pub fn set_recent_branch(dir: &Path, path: &str, branch: &str) {
+    let mut repos = load_recent(dir);
+    let mut changed = false;
+    for repo in &mut repos {
+        if repo.path == path && repo.branch != branch {
+            repo.branch = branch.to_string();
+            changed = true;
+        }
+    }
+    if changed {
+        write_recent(dir, &repos);
+    }
 }
 
 /// 读取会话；文件缺失或格式不符时返回空会话。
@@ -666,6 +708,35 @@ mod tests {
         let loaded = load_session(dir.path());
         assert_eq!(loaded.active, 1);
         assert_eq!(loaded.paths, vec!["/a".to_string(), "/b".to_string()]);
+    }
+
+    #[test]
+    fn recent_reads_old_two_column_lines() {
+        let dir = TempDir::new("recent-old");
+        std::fs::write(dir.path().join("recent.txt"), "100\t/repo\n").expect("write");
+        let repos = load_recent(dir.path());
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].branch, "");
+    }
+
+    #[test]
+    fn branch_round_trips_without_changing_the_time() {
+        let dir = TempDir::new("recent-branch");
+        remember_recent(dir.path(), &[], "/repo");
+        let before = load_recent(dir.path())[0].opened_at;
+        set_recent_branch(dir.path(), "/repo", "feature/hero");
+        let after = load_recent(dir.path());
+        assert_eq!(after[0].branch, "feature/hero");
+        assert_eq!(after[0].opened_at, before);
+    }
+
+    #[test]
+    fn remembering_again_keeps_the_branch() {
+        let dir = TempDir::new("recent-keep-branch");
+        remember_recent(dir.path(), &[], "/repo");
+        set_recent_branch(dir.path(), "/repo", "main");
+        remember_recent(dir.path(), &load_recent(dir.path()), "/repo");
+        assert_eq!(load_recent(dir.path())[0].branch, "main");
     }
 
     #[test]

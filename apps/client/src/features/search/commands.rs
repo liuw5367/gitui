@@ -160,8 +160,17 @@ impl SearchCommands {
             "fetch" => self.sync.open_sync(Sync::Fetch),
             "pull" => self.sync.open_sync(Sync::Pull),
             "push" => self.sync.open_sync(Sync::Push),
-            // ⌘F 搜索与 ⇧⌘F 过滤共用历史视图的过滤浮层（手册 1.3）。
-            "filter" | "filterHistory" => {
+            // ⌘F：欢迎窗口打开时聚焦左栏搜索；主窗口里打开历史过滤浮层。
+            "filter" => {
+                if self.session.welcome_open.get_untracked() {
+                    self.welcome.focus_search();
+                } else {
+                    self.set_mode(crate::Mode::History);
+                    self.history.state.filter_open.set(true);
+                }
+            }
+            // ⇧⌘F 始终是历史过滤。
+            "filterHistory" => {
                 self.set_mode(crate::Mode::History);
                 self.history.state.filter_open.set(true);
             }

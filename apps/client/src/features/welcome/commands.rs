@@ -5,6 +5,8 @@
 
 use super::state::{CloneOptions, InitFiles, RepoForm, WelcomeState};
 use crate::features::SessionHandle;
+use crate::features::settings::commands::SettingsCommands;
+use crate::features::settings::state::Section;
 use crate::i18n;
 use domain::GitError;
 use nsh_core::prelude::*;
@@ -15,6 +17,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) struct WelcomeCommands {
     pub(crate) state: WelcomeState,
     pub(crate) session: SessionHandle,
+    /// 设置页入口：左栏 Settings 与克隆的 Credentials 都用它。
+    pub(crate) settings: SettingsCommands,
     /// 错误文案按当前语言取。
     pub(crate) language: Signal<SharedString>,
     /// 克隆的取消标志：后台轮询线程读它决定是否提前结束。
@@ -116,6 +120,17 @@ impl WelcomeCommands {
                         let list = recent.get_untracked();
                         // 复用既有的「记住最近仓库」入口，顺序与去重规则一致。
                         store::remember_recent(&store_dir, &list, path.as_str());
+                        // 克隆后不打开时也要尽量记下分支，欢迎页才能显示 chip。
+                        if let Ok(repo) = git::Repo::open(path.as_str()) {
+                            let branch = match repo.head_state() {
+                                git::HeadState::Branch(name) => Some(name),
+                                git::HeadState::Unborn { branch } => Some(branch),
+                                git::HeadState::Detached { .. } => None,
+                            };
+                            if let Some(branch) = branch {
+                                store::set_recent_branch(&store_dir, path.as_str(), &branch);
+                            }
+                        }
                         recent.set(store::load_recent(&store_dir));
                     }
                 }
@@ -156,6 +171,34 @@ impl WelcomeCommands {
                 &error,
             ))),
         }
+    }
+
+    /// 从左栏移除一条最近仓库；不影响已打开的标签页。
+    pub(crate) fn forget_recent(&self, path: String) {
+        let store_dir = self.session.store_dir.clone();
+        let recent = self.session.recent;
+        let next = store::forget_recent(&store_dir, &recent.get_untracked(), path.as_str());
+        recent.set(next);
+    }
+
+    /// 聚焦左栏搜索框（⌘F）。
+    pub(crate) fn focus_search(&self) {
+        self.state.search_ref.focus();
+    }
+
+    /// 打开设置页的指定分区。
+    pub(crate) fn open_settings(&self, section: Section) {
+        self.settings.go_settings_section(section);
+    }
+
+    /// Check for Updates：更新服务尚未接入，给出真实状态说明。
+    pub(crate) fn check_updates(&self) {
+        let language = self.language.get_untracked();
+        crate::interactions::alert(
+            i18n::t(language.as_str(), "welcome.checkUpdates"),
+            i18n::t(language.as_str(), "welcome.updateUnavailable"),
+            i18n::t(language.as_str(), "common.close"),
+        );
     }
 
     /// 切换 Open / Clone / Init 分段（原 `set_repo_form`）。
