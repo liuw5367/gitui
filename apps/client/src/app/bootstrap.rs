@@ -7,7 +7,7 @@ use crate::app::handles::AppHandles;
 use crate::app::session::Tab;
 use crate::brand::ThemeMode;
 use crate::filters::When;
-use crate::{Mode, Screen, acceptance, brand, design, features, filters, i18n, shortcuts, ui};
+use crate::{Mode, acceptance, brand, design, features, filters, i18n, shortcuts, ui};
 use git::LogFilter;
 use nsh_base::theme_overrides;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
@@ -176,12 +176,8 @@ pub(crate) fn app() -> impl IntoElement {
     if let Some(path) = acceptance::value("GITUI_REPO") {
         initial_tabs = vec![crate::app::session::load_tab(&path, &initial_filter)];
     }
-    // 验收开关：`GITUI_SETTINGS=1` 启动即进入设置页，用于截图核对。
-    let screen = signal(if acceptance::flag("GITUI_SETTINGS") {
-        Screen::Settings
-    } else {
-        Screen::Workspace
-    });
+    // 验收开关：`GITUI_SETTINGS=1` 启动即打开设置窗口，用于截图核对。
+    let settings_open = signal(acceptance::flag("GITUI_SETTINGS"));
     // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
     // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
     // 欢迎窗口是独立窗口且默认铺在主窗口之上，截图验收组件画廊时它会挡住画廊，
@@ -275,8 +271,8 @@ pub(crate) fn app() -> impl IntoElement {
     let session = features::SessionHandle {
         tabs,
         active,
-        screen,
         welcome_open,
+        settings_open,
         recent,
         store_dir: store_dir.clone(),
         filter: current_filter.clone(),
@@ -530,18 +526,12 @@ pub(crate) fn app() -> impl IntoElement {
     // 快捷键与命令面板导航；Esc 的浮层退出顺序也按同一份状态处理。
     crate::app::hotkeys::install(&handles, gallery_open);
 
-    // 欢迎页放在独立窗口里：它是入口页，不与多标签主窗口混在一起。
-    // `open_window` 同一 id 只建一次；在组件主体里建一次即可。
-    crate::app::windows::open_welcome_window(&handles);
-
+    // 欢迎与设置是两个独立窗口，由 `app::windows` 以声明式元素挂在这里：
+    // 它们的开与关只跟 `welcome_open` / `settings_open` 走。
     let current_tab = computed(move || tabs.get().get(active.get()).cloned());
     let language_value = language;
-    let screen_value = screen;
-    // 屏幕分支的 `dynamic` 会拿走一份句柄，设置页与工作区两屏共用同一个变量。
     let handles_for_screen = handles.clone();
-    let settings_for_screen = settings_commands.clone();
-    let refs_for_screen = refs_commands.clone();
-    let agent_for_screen = agent_commands.clone();
+    let search_for_overlay = handles.search.clone();
 
     return view()
         .w_full()
@@ -555,22 +545,10 @@ pub(crate) fn app() -> impl IntoElement {
                 .w_full()
                 .h_full()
                 .flex_col()
-                .child(dynamic(move || -> AnyElement {
-                    match screen_value.get() {
-                        Screen::Settings => features::settings::view::settings(
-                            &settings_for_screen.state,
-                            &settings_for_screen,
-                            current_tab.get(),
-                            &refs_for_screen,
-                            &agent_for_screen,
-                        )
-                        .into_element(),
-                        Screen::Workspace => {
-                            crate::app::workspace::workspace(&handles_for_screen).into_element()
-                        }
-                    }
-                })),
+                .child(crate::app::workspace::workspace(&handles_for_screen)),
         )
+        // 两个独立窗口（欢迎、设置）。它们的内容渲染在各自的窗口里。
+        .child(crate::app::windows::windows(&handles))
         .child(features::commit::rewrite_dialog::rewrite_dialog(
             &handles.commit.state,
             &handles.commit,
@@ -594,18 +572,13 @@ pub(crate) fn app() -> impl IntoElement {
             language_value,
             current_tab,
         ))
-        .child(features::search::form_dialog(
-            language_value,
-            handles.search.state.form,
-            {
-                let search = handles.search.clone();
-                Arc::new(move |form: features::search::FormState| search.submit_form(form))
-            },
-            {
-                let search = handles.search.clone();
-                Arc::new(move || search.cancel_form())
-            },
-        ))
+        // 表单浮层只在一扇窗口里画：设置窗口开着时归它（身份编辑从设置页进入）。
+        .child(dynamic(move || -> AnyElement {
+            if settings_open.get() {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            features::search::form_overlay(&search_for_overlay, language_value).into_element()
+        }))
         .child(dynamic({
             let search = handles.search.clone();
             move || -> AnyElement {

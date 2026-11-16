@@ -38,10 +38,9 @@ impl SettingsCommands {
         store::save_appearance(&self.store_dir, mode.id());
     }
 
-    /// 进入设置页（原 `Actions::go_settings`），并把主窗口带到前台。
+    /// 打开设置窗口（独立窗口，由 `settings_open` 驱动）。
     pub(crate) fn go_settings(&self) {
-        self.session.screen.set(crate::Screen::Settings);
-        nsh_core::element::desktop::main_window().focus();
+        self.session.settings_open.set(true);
     }
 
     /// 进入设置页的指定分区；欢迎页的 Settings 与 Credentials 入口用它。

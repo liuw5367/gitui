@@ -4,6 +4,7 @@
     "tagline": "原生 Git 客户端。"
   },
   "welcome": {
+    "windowTitle": "欢迎",
     "repositories": "仓库",
     "search": "搜索仓库",
     "groupToday": "今天",
@@ -407,6 +408,7 @@
     "dark": "外观：深色"
   },
   "settings": {
+    "title": "设置",
     "gitExecutable": "可执行文件",
     "gitExecutableHint": "gitui 直接调用这台 Mac 上的 Git。",
     "choose": "选择…",

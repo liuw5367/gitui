@@ -33,10 +33,10 @@ pub(crate) mod welcome;
 pub(crate) struct SessionHandle {
     pub(crate) tabs: Signal<Vec<Tab>>,
     pub(crate) active: Signal<usize>,
-    /// 当前屏幕（工作区 / 设置）；打开仓库与返回欢迎页都要切它。
-    pub(crate) screen: Signal<crate::Screen>,
-    /// 欢迎窗口是否打开（它是独立窗口，打开仓库后要关掉）。
+    /// 欢迎窗口是否打开（独立窗口；打开仓库后关掉，关掉最后一个标签页后重新打开）。
     pub(crate) welcome_open: Signal<bool>,
+    /// 设置窗口是否打开（独立窗口；菜单、工具栏与 Done 都只改这个信号）。
+    pub(crate) settings_open: Signal<bool>,
     /// 最近仓库列表：打开、克隆或扫描后写入。
     pub(crate) recent: Signal<Vec<store::RecentRepo>>,
     /// 应用数据目录：会话、最近仓库与设置都落在这里。
@@ -59,7 +59,6 @@ impl SessionHandle {
         let tabs = self.tabs;
         let active = self.active;
         let recent = self.recent;
-        let screen = self.screen;
         let store_dir = self.store_dir.clone();
         let current_filter = self.filter.clone();
         let filter = current_filter();
@@ -80,7 +79,6 @@ impl SessionHandle {
         tabs.set(list);
         store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
         recent.set(store::load_recent(&store_dir));
-        screen.set(crate::Screen::Workspace);
         // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
         welcome_open.set(false);
         nsh_core::element::desktop::main_window().focus();
@@ -114,10 +112,14 @@ impl SessionHandle {
         });
     }
 
-    /// 返回欢迎页（原 `Actions::go_welcome`）：切回工作区并打开欢迎窗口。
+    /// 打开欢迎窗口（独立窗口，由 `welcome_open` 驱动）。
     pub(crate) fn go_welcome(&self) {
-        self.screen.set(crate::Screen::Workspace);
         self.welcome_open.set(true);
+    }
+
+    /// 关闭设置窗口（由 `settings_open` 驱动）。
+    pub(crate) fn close_settings(&self) {
+        self.settings_open.set(false);
     }
 
     /// 打开仓库管理页（原 `Actions::go_repo_manager`）：入口就是欢迎窗口。
@@ -257,7 +259,6 @@ impl SessionHandle {
     pub(crate) fn cycle_tab(&self, forward: bool) {
         let tabs = self.tabs;
         let active = self.active;
-        let screen = self.screen;
         let count = tabs.get_untracked().len();
         if count < 2 {
             return;
@@ -269,17 +270,14 @@ impl SessionHandle {
             (current + count - 1) % count
         };
         active.set(next);
-        screen.set(crate::Screen::Workspace);
     }
 
     /// 切到第 `slot` 个标签页；越界不动（不把用户送到空标签）。
     pub(crate) fn activate_slot(&self, slot: usize) {
         let tabs = self.tabs;
         let active = self.active;
-        let screen = self.screen;
         if slot < tabs.get_untracked().len() {
             active.set(slot);
-            screen.set(crate::Screen::Workspace);
         }
     }
 }

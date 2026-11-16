@@ -4,6 +4,7 @@
     "tagline": "A native Git client."
   },
   "welcome": {
+    "windowTitle": "Welcome",
     "repositories": "Repositories",
     "search": "Search repositories",
     "groupToday": "Today",
@@ -407,6 +408,7 @@
     "dark": "Appearance: Dark"
   },
   "settings": {
+    "title": "Settings",
     "gitExecutable": "Executable",
     "gitExecutableHint": "gitui runs the Git binary on this Mac directly.",
     "choose": "Choose…",

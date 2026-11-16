@@ -10,7 +10,7 @@
 use super::commands::SettingsCommands;
 use super::state::{self, Section, SettingsState};
 use crate::brand::{self, ThemeMode};
-use crate::design::{self, metrics};
+use crate::design;
 use crate::features::agent::commands::AgentCommands;
 use crate::features::refs::commands::RefsCommands;
 use crate::i18n;
@@ -45,13 +45,11 @@ pub(crate) fn settings(
     let found_repos =
         store::scan_git_repositories(&store::load_git_scan_folders(&cmd.store_dir)).len();
     let git_info = cmd.git_info.clone();
-    let session = cmd.session.clone();
     return view()
         .w_full()
         .h_full()
         .flex_col()
         .bg(move || design::content())
-        .child(titlebar(language, session.clone()))
         .child(
             view()
                 .w_full()
@@ -95,44 +93,11 @@ pub(crate) fn settings(
                     crate::ui::button::ButtonSize::Regular,
                     false,
                     {
-                        let session = session.clone();
-                        move || session.go_welcome()
+                        let cmd = cmd.clone();
+                        move || cmd.session.close_settings()
                     },
                 )),
         );
-}
-
-fn titlebar(
-    language: Signal<SharedString>,
-    session: crate::features::SessionHandle,
-) -> impl IntoElement {
-    return view()
-        .w_full()
-        .h(px(metrics::TITLEBAR_PLAIN_H))
-        .px(px(metrics::WINDOW_PAD))
-        .flex_row()
-        .items_center()
-        .gap(px(8.0))
-        .bg(move || design::titlebar())
-        .border_b_1()
-        .border_color(move || design::line())
-        .window_drag(true)
-        .child(
-            text(move || i18n::t(language.get().as_str(), "settings.title"))
-                .text_size(px(crate::ui::TITLE))
-                .font_weight(FontWeight(600))
-                .text_color(move || design::text()),
-        )
-        .child(view().flex_1())
-        .child(crate::ui::button::icon_button_tuned(
-            "chev-left",
-            move || i18n::t(language.get().as_str(), "common.close"),
-            crate::ui::button::ButtonSize::Small,
-            Some(crate::ui::icon::IconSize::Inline),
-            None,
-            false,
-            move || session.go_welcome(),
-        ));
 }
 
 fn side(language: Signal<SharedString>, section: Signal<Section>) -> impl IntoElement {

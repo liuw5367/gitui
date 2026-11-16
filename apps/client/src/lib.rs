@@ -33,7 +33,7 @@ use nsh_core::prelude::*;
 pub use design::metrics;
 
 pub(crate) use app::windows::{persist, window_insets};
-pub(crate) use app::{Mode, Screen};
+pub(crate) use app::Mode;
 
 /// 应用根组件。
 #[component]

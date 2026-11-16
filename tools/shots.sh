@@ -17,7 +17,7 @@
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
 #   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
 #   GITUI_PALETTE=1     启动即打开命令面板（⌘K 的等价物）
-#   GITUI_SETTINGS=1    启动即进入设置页
+#   GITUI_SETTINGS=1    启动即打开设置窗口（独立窗口）
 #   GITUI_INSPECTOR=1   启动即展开右侧检查器（板 08 / 18）
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
@@ -105,10 +105,11 @@ if [ ! -x "$bin" ] || [ "$root/tools/winid.swift" -nt "$bin" ]; then
   CLANG_MODULE_CACHE_PATH="$swift_cache" SWIFT_MODULE_CACHE_PATH="$swift_cache" \
     swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
 fi
+# 欢迎页与设置页都是独立窗口，都比主窗口小：用 --smallest 取那一扇。
 window_flag="--id"
-if [ "$welcome_shot" = 1 ]; then
-  window_flag="--smallest"
-fi
+case "$name" in
+  welcome*|settings*) window_flag="--smallest" ;;
+esac
 # 等窗口出现的上限要按冷构建算：改动 rust 源码后 nsh 会重新编译，实测 60–100s，
 # 早先按热构建的 60s 设上限，改完代码必然超时（曾因此误以为「窗口没出现」）。
 for _ in $(seq 1 240); do
@@ -122,6 +123,12 @@ if [ -z "${window_id:-}" ]; then
   exit 1
 fi
 sleep "$settle_seconds"
+# 独立窗口（欢迎、设置）可能比主窗口晚出现：等待结束后再按"最小窗口"重取一次 id，
+# 否则截到的是先出现的主窗口。
+if [ "$window_flag" = "--smallest" ]; then
+  latest="$("$bin" nsh-app --smallest 2>/dev/null || true)"
+  [ -n "${latest:-}" ] && window_id="$latest"
+fi
 screencapture -x -l"$window_id" "$out"
 echo "截图：${out#"$root"/}（窗口 id $window_id）"
 
