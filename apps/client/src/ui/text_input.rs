@@ -60,6 +60,46 @@ pub(crate) fn text_input_bound(
     );
 }
 
+/// 路径输入：输入框 + 右侧键帽，整体一个描边容器。
+///
+/// 用于 Open 的仓库路径、Clone 的目标目录与 Init 的目录；⌘V 由系统输入框处理，
+/// 键帽只作提示。
+pub(crate) fn path_input(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    shortcut: Option<&'static str>,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    let mut container = view()
+        .h(px(ui::CONTROL))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_SM))
+        .px(px(ui::GAP))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .border_1()
+        .border_color(move || design::field_border())
+        .bg(move || design::field())
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .child(
+            nsh_base::input()
+                .value(value)
+                .placeholder(placeholder)
+                .on_change(move |text: &str| on_change(text))
+                .text_size(px(ui::BODY))
+                .text_color(move || design::text())
+                .flex_1(),
+        );
+    if let Some(combo) = shortcut {
+        container = container.child(ui::badge::kbd(combo));
+    }
+    return container;
+}
+
 /// 搜索框：左侧放大镜、右侧可选键帽，整体一个描边容器。
 ///
 /// 输入框自身不画边框，避免容器与输入框两道描边；焦点环画在容器上。

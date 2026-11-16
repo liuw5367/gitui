@@ -203,6 +203,8 @@ pub(crate) fn app() -> impl IntoElement {
     let clone_options = signal(features::welcome::state::CloneOptions::default());
     // Init 的附带文件（设计板 03）。
     let init_files = signal(features::welcome::state::InitFiles::default());
+    let welcome_open_path = signal(String::new());
+    let open_error = signal(Option::<String>::None);
     let clone_error = signal(Option::<String>::None);
     let init_error = signal(Option::<String>::None);
     let cloning = signal(false);
@@ -211,6 +213,8 @@ pub(crate) fn app() -> impl IntoElement {
     let clone_cancel: std::sync::Arc<std::sync::atomic::AtomicBool> =
         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let init_path = signal(String::new());
+    let init_name = signal(String::new());
+    let init_branch = signal("main".to_string());
     let repo_form = signal(features::welcome::state::RepoForm::Open);
     let welcome_now = signal(store::now_unix());
     let welcome_search_ref = element_ref();
@@ -376,6 +380,10 @@ pub(crate) fn app() -> impl IntoElement {
             clone_options,
             init_files,
             init_path,
+            init_name,
+            init_branch,
+            open_path: welcome_open_path,
+            open_error,
             clone_error,
             init_error,
             cloning,

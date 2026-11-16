@@ -18,6 +18,7 @@ pub(crate) enum RepoForm {
 pub(crate) struct InitFiles {
     pub(crate) gitignore: bool,
     pub(crate) readme: bool,
+    pub(crate) license: bool,
 }
 
 impl Default for InitFiles {
@@ -26,6 +27,7 @@ impl Default for InitFiles {
         return Self {
             gitignore: false,
             readme: true,
+            license: false,
         };
     }
 }
@@ -64,8 +66,13 @@ pub(crate) struct WelcomeState {
     pub(crate) clone_options: Signal<CloneOptions>,
     /// 初始化时要附带的文件。
     pub(crate) init_files: Signal<InitFiles>,
-    /// 初始化目标目录。
+    /// 初始化目标目录、仓库名与初始分支。
     pub(crate) init_path: Signal<String>,
+    pub(crate) init_name: Signal<String>,
+    pub(crate) init_branch: Signal<String>,
+    /// Open 表单的路径与错误。
+    pub(crate) open_path: Signal<String>,
+    pub(crate) open_error: Signal<Option<String>>,
     /// 克隆表单的错误。
     pub(crate) clone_error: Signal<Option<String>>,
     /// 初始化表单的错误；与克隆分开，切换分段时各自清空。
@@ -100,5 +107,6 @@ mod tests {
         let files = InitFiles::default();
         assert!(files.readme);
         assert!(!files.gitignore);
+        assert!(!files.license);
     }
 }

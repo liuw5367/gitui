@@ -172,6 +172,17 @@ fn body(
                         Some(Box::new(move || "This value is required.".to_string())),
                     ))
                     .child(ui::field::field(
+                        move || "Path with keycap".to_string(),
+                        ui::text_input::path_input(
+                            input_value,
+                            move || "~/Developer/repo".to_string(),
+                            Some("⌘V"),
+                            move |text| input_value.set(text.to_string()),
+                        ),
+                        Some(Box::new(move || "Paste a path or choose a folder.".to_string())),
+                        None,
+                    ))
+                    .child(ui::field::field(
                         move || "Multiline".to_string(),
                         ui::text_input::text_area(
                             area_value,

@@ -549,7 +549,7 @@ fn entry_section(
                 .child(dynamic(move || -> AnyElement {
                     match form.get() {
                         super::state::RepoForm::Open => {
-                            open_form(language, cmd.clone()).into_element()
+                            open_form(language, state.clone(), cmd.clone()).into_element()
                         }
                         super::state::RepoForm::Clone => {
                             clone_form(language, state.clone(), cmd.clone()).into_element()
@@ -562,24 +562,104 @@ fn entry_section(
         );
 }
 
-fn open_form(language: Signal<SharedString>, cmd: WelcomeCommands) -> impl IntoElement {
-    let choose_folder = cmd.clone();
+fn open_form(
+    language: Signal<SharedString>,
+    state: WelcomeState,
+    cmd: WelcomeCommands,
+) -> impl IntoElement {
+    let path = state.open_path;
+    let error = state.open_error;
+    let recent = cmd.session.recent;
+    let choose = cmd.clone();
+    let open = cmd.clone();
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
-        .flex_row()
-        .items_center()
-        .gap(px(ui::GAP))
-        .child(button(
-            move || i18n::t(language.get().as_str(), "welcome.openFolder"),
-            ButtonVariant::Primary,
-            ButtonSize::Regular,
-            false,
-            {
-                let choose_folder = choose_folder.clone();
-                move || choose_folder.choose_folder()
-            },
-        ));
+        .flex_col()
+        .gap(px(ui::GAP_LG))
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_end()
+                .gap(px(ui::GAP))
+                .child(view().flex_1().min_w_0().child(ui::field::field(
+                    move || i18n::t(language.get().as_str(), "welcome.repositoryPath"),
+                    ui::text_input::path_input(
+                        path,
+                        move || "~/Developer/gitui".to_string(),
+                        Some("⌘V"),
+                        move |text| path.set(text.to_string()),
+                    ),
+                    None,
+                    None,
+                )))
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "welcome.choose"),
+                    ButtonVariant::Secondary,
+                    ButtonSize::Regular,
+                    false,
+                    {
+                        let choose = choose.clone();
+                        move || choose.choose_open_path()
+                    },
+                )),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(ui::GAP))
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "welcome.openAction"),
+                    ButtonVariant::Primary,
+                    ButtonSize::Regular,
+                    false,
+                    {
+                        let open = open.clone();
+                        move || open.open_repository()
+                    },
+                ))
+                .child(ui::secondary(move || {
+                    i18n::t(language.get().as_str(), "welcome.openHint")
+                })),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .child(ui::meta(move || {
+                    if recent.get().is_empty() {
+                        i18n::t(language.get().as_str(), "welcome.openMeta")
+                    } else {
+                        String::new()
+                    }
+                }))
+                .child(view().flex_1())
+                .child(ui::badge::kbd("⌘O")),
+        )
+        .child(form_error(error));
+}
+
+fn form_error(error: Signal<Option<String>>) -> impl IntoElement {
+    return dynamic(move || -> AnyElement {
+        match error.get() {
+            Some(message) => {
+                return view()
+                    .w_full()
+                    .child(
+                        text(move || message.clone())
+                            .text_size(px(ui::SECONDARY))
+                            .line_height(px(ui::SECONDARY_LINE))
+                            .text_color(move || design::danger()),
+                    )
+                    .into_element();
+            }
+            None => return view().w_full().h(px(0.0)).into_element(),
+        }
+    });
 }
 
 fn clone_form(
@@ -587,7 +667,7 @@ fn clone_form(
     state: WelcomeState,
     cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let choose_folder = cmd.clone();
+    let choose_destination = cmd.clone();
     let clone_repository = cmd.clone();
     let set_url = state.clone_url;
     let set_destination = state.clone_destination;
@@ -618,10 +698,10 @@ fn clone_form(
                 .gap(px(ui::GAP))
                 .child(view().flex_1().min_w_0().child(ui::field::field(
                     move || i18n::t(language.get().as_str(), "welcome.destination"),
-                    ui::text_input::text_input(
+                    ui::text_input::path_input(
                         set_destination,
                         move || "~/Developer/repo".to_string(),
-                        false,
+                        Some("⌘V"),
                         move |text| set_destination.set(text.to_string()),
                     ),
                     None,
@@ -633,8 +713,8 @@ fn clone_form(
                     ButtonSize::Regular,
                     false,
                     {
-                        let choose_folder = choose_folder.clone();
-                        move || choose_folder.choose_folder()
+                        let choose_destination = choose_destination.clone();
+                        move || choose_destination.choose_clone_destination()
                     },
                 )),
         )
@@ -784,8 +864,11 @@ fn init_form(
     state: WelcomeState,
     cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let init_repository = cmd.clone();
+    let create = cmd.clone();
+    let choose = cmd.clone();
     let path = state.init_path;
+    let name = state.init_name;
+    let branch = state.init_branch;
     let files = state.init_files;
     let error = state.init_error;
     return view()
@@ -793,23 +876,78 @@ fn init_form(
         .pt(px(ui::GAP_SM))
         .flex_col()
         .gap(px(ui::GAP_LG))
-        .child(ui::field::field(
-            move || i18n::t(language.get().as_str(), "repoManager.initPath"),
-            ui::text_input::text_input(
-                path,
-                move || "~/Developer/new-repo".to_string(),
-                false,
-                move |text| path.set(text.to_string()),
-            ),
-            None,
-            None,
-        ))
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_end()
+                .gap(px(ui::GAP))
+                .child(view().flex_1().min_w_0().child(ui::field::field(
+                    move || i18n::t(language.get().as_str(), "repoManager.initPath"),
+                    ui::text_input::path_input(
+                        path,
+                        move || "~/Developer/new-project".to_string(),
+                        Some("⌘V"),
+                        move |text| path.set(text.to_string()),
+                    ),
+                    None,
+                    None,
+                )))
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "welcome.choose"),
+                    ButtonVariant::Secondary,
+                    ButtonSize::Regular,
+                    false,
+                    {
+                        let choose = choose.clone();
+                        move || choose.choose_init_folder()
+                    },
+                )),
+        )
         .child(
             view()
                 .w_full()
                 .flex_row()
                 .items_center()
-                .gap(px(ui::GAP_XL))
+                .gap(px(ui::GAP))
+                .child(view().flex_1().min_w_0().child(ui::field::field(
+                    move || i18n::t(language.get().as_str(), "welcome.repoName"),
+                    ui::text_input::text_input(
+                        name,
+                        move || "new-project".to_string(),
+                        false,
+                        move |text| name.set(text.to_string()),
+                    ),
+                    None,
+                    None,
+                )))
+                .child(view().w(px(160.0)).child(ui::field::field(
+                    move || i18n::t(language.get().as_str(), "welcome.initialBranch"),
+                    ui::text_input::text_input(
+                        branch,
+                        move || "main".to_string(),
+                        false,
+                        move |text| branch.set(text.to_string()),
+                    ),
+                    None,
+                    None,
+                ))),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_col()
+                .gap(px(4.0))
+                .child(ui::check::check_row(
+                    move || i18n::t(language.get().as_str(), "welcome.readme"),
+                    move || files.get().readme,
+                    false,
+                    move |next| {
+                        let mut updated = files.get_untracked();
+                        updated.readme = next;
+                        files.set(updated);
+                    },
+                ))
                 .child(ui::check::check_row(
                     move || i18n::t(language.get().as_str(), "welcome.gitignore"),
                     move || files.get().gitignore,
@@ -821,42 +959,37 @@ fn init_form(
                     },
                 ))
                 .child(ui::check::check_row(
-                    move || i18n::t(language.get().as_str(), "welcome.readme"),
-                    move || files.get().readme,
+                    move || i18n::t(language.get().as_str(), "welcome.license"),
+                    move || files.get().license,
                     false,
                     move |next| {
                         let mut updated = files.get_untracked();
-                        updated.readme = next;
+                        updated.license = next;
                         files.set(updated);
                     },
                 )),
         )
-        .child(button(
-            move || i18n::t(language.get().as_str(), "repoManager.initAction"),
-            ButtonVariant::Primary,
-            ButtonSize::Regular,
-            false,
-            {
-                let init_repository = init_repository.clone();
-                move || init_repository.init_repository()
-            },
-        ))
-        .child(dynamic(move || -> AnyElement {
-            match error.get() {
-                Some(message) => {
-                    return view()
-                        .w_full()
-                        .child(
-                            text(move || message.clone())
-                                .text_size(px(ui::SECONDARY))
-                                .line_height(px(ui::SECONDARY_LINE))
-                                .text_color(move || design::danger()),
-                        )
-                        .into_element();
-                }
-                None => return view().w_full().h(px(0.0)).into_element(),
-            }
-        }));
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(ui::GAP))
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "repoManager.initAction"),
+                    ButtonVariant::Primary,
+                    ButtonSize::Regular,
+                    false,
+                    {
+                        let create = create.clone();
+                        move || create.init_repository()
+                    },
+                ))
+                .child(ui::secondary(move || {
+                    i18n::t(language.get().as_str(), "welcome.initHint")
+                })),
+        )
+        .child(form_error(error));
 }
 
 fn tip(language: Signal<SharedString>) -> impl IntoElement {

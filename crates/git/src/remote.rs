@@ -237,31 +237,64 @@ impl Repo {
 
 /// 在 `directory` 初始化一个空仓库（`git init -b main`）。
 pub fn init_repository(directory: &str) -> Result<(), GitError> {
+    return init_branch(directory, "main");
+}
+
+/// 用指定分支初始化；分支为空时回退 `main`。
+fn init_branch(directory: &str, branch: &str) -> Result<(), GitError> {
+    let branch = if branch.trim().is_empty() {
+        "main"
+    } else {
+        branch.trim()
+    };
     let path = Path::new(directory);
     std::fs::create_dir_all(path).map_err(|error| GitError::Unreadable {
         path: path.display().to_string(),
         reason: error.to_string(),
     })?;
-    run_git(Path::new("."), &["init", "-q", "-b", "main", directory])?;
+    run_git(Path::new("."), &["init", "-q", "-b", branch, directory])?;
     return Ok(());
 }
 
-/// 克隆 `url` 到 `destination`；目标目录必须不存在或为空。
-/// 初始化的附带文件（设计板 03 的 Init 表单）。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// 初始化的附带文件与分支（设计板 03 的 Init 表单）。
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InitOptions {
-    /// 生成 `.gitignore`（内容按常见 macOS + Rust 组合）。
+    /// 生成 `.gitignore`（macOS + Swift 的常见条目）。
     pub gitignore: bool,
-    /// 生成 `README.md` 并作为首个提交。
+    /// 生成 `README.md`。
     pub readme: bool,
+    /// 生成 MIT `LICENSE`。
+    pub license: bool,
+    /// README 标题；为空时用目录名。
+    pub name: String,
+    /// 初始分支；为空时用 `main`。
+    pub branch: String,
+}
+
+impl Default for InitOptions {
+    fn default() -> Self {
+        return Self {
+            gitignore: false,
+            readme: true,
+            license: false,
+            name: String::new(),
+            branch: "main".to_string(),
+        };
+    }
 }
 
 /// 带附带文件的初始化；目录非空时只初始化、不追加文件。
 pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError> {
-    init_repository(directory)?;
+    init_branch(directory, options.branch.as_str())?;
     let root = Path::new(directory);
-    let has_gitignore = root.join(".gitignore").exists();
-    if options.gitignore && !has_gitignore {
+    let name = match options.name.trim() {
+        "" => root
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "repository".to_string()),
+        name => name.to_string(),
+    };
+    if options.gitignore && !root.join(".gitignore").exists() {
         std::fs::write(root.join(".gitignore"), DEFAULT_GITIGNORE).map_err(|error| {
             GitError::Unreadable {
                 path: root.join(".gitignore").display().to_string(),
@@ -269,12 +302,7 @@ pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError>
             }
         })?;
     }
-    let has_readme = root.join("README.md").exists();
-    if options.readme && !has_readme {
-        let name = root
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| "repository".to_string());
+    if options.readme && !root.join("README.md").exists() {
         std::fs::write(root.join("README.md"), format!("# {name}\n")).map_err(|error| {
             GitError::Unreadable {
                 path: root.join("README.md").display().to_string(),
@@ -282,11 +310,57 @@ pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError>
             }
         })?;
     }
+    if options.license && !root.join("LICENSE").exists() {
+        let holder = license_holder(root, name.as_str());
+        let year = utc_year();
+        std::fs::write(
+            root.join("LICENSE"),
+            format!("MIT License\n\nCopyright (c) {year} {holder}\n\n{MIT_BODY}\n"),
+        )
+        .map_err(|error| GitError::Unreadable {
+            path: root.join("LICENSE").display().to_string(),
+            reason: error.to_string(),
+        })?;
+    }
     return Ok(());
 }
 
-/// 生成的 `.gitignore` 内容（固定的最小集合，不猜用户的技术栈）。
-const DEFAULT_GITIGNORE: &str = "\n# macOS\n.DS_Store\n\n# Editors\n.idea/\n.vscode/\n\n# Build output\ntarget/\ndist/\nnode_modules/\n";
+/// LICENSE 的版权人：优先 Git 用户名，其次邮箱，最后用仓库作者。
+fn license_holder(root: &Path, name: &str) -> String {
+    for key in ["user.name", "user.email"] {
+        if let Ok(bytes) = run_git(root, &["config", "--get", key]) {
+            let value = String::from_utf8_lossy(&bytes).trim().to_string();
+            if !value.is_empty() {
+                return value;
+            }
+        }
+    }
+    return format!("The {name} authors");
+}
+
+/// 当前 UTC 年份；系统时间不可用时回退 1970。
+fn utc_year() -> i64 {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    // Howard Hinnant 的 civil_from_days，只取年份。
+    let days = seconds.div_euclid(86_400) + 719_468;
+    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+    let doe = days - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    return year + if month <= 2 { 1 } else { 0 };
+}
+
+/// 生成的 `.gitignore` 内容：macOS + Swift 的最小集合。
+const DEFAULT_GITIGNORE: &str = "\n# macOS\n.DS_Store\n\n# Xcode\nDerivedData/\nxcuserdata/\n*.xcuserstate\n\n# Swift Package Manager\n.build/\n.swiftpm/\n";
+
+/// MIT 许可正文；年份与版权人由调用处补在前两行。
+const MIT_BODY: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.";
 
 pub fn clone(url: &str, destination: &str) -> Result<(), GitError> {
     return clone_with(url, destination, &CloneOptions::default());
@@ -698,6 +772,38 @@ mod tests {
     }
 
     #[test]
+    fn init_with_branch_name_and_license() {
+        let dir = TempDir::new("init-branch");
+        let target = dir.path().join("custom");
+        let target_text = target.display().to_string();
+        init_with(
+            target_text.as_str(),
+            &InitOptions {
+                gitignore: true,
+                readme: true,
+                license: true,
+                name: "My Project".to_string(),
+                branch: "trunk".to_string(),
+            },
+        )
+        .expect("init");
+        let repo = Repo::open(target_text.as_str()).expect("open");
+        let branch = match repo.head_state() {
+            crate::query::HeadState::Branch(branch) => branch,
+            crate::query::HeadState::Unborn { branch } => branch,
+            other => panic!("unexpected head: {other:?}"),
+        };
+        assert_eq!(branch, "trunk");
+        let readme = std::fs::read_to_string(target.join("README.md")).expect("readme");
+        assert!(readme.starts_with("# My Project"), "README: {readme}");
+        let license = std::fs::read_to_string(target.join("LICENSE")).expect("license");
+        assert!(license.starts_with("MIT License"));
+        assert!(license.contains("Copyright (c)"));
+        let ignore = std::fs::read_to_string(target.join(".gitignore")).expect("ignore");
+        assert!(ignore.contains("DerivedData/"));
+    }
+
+    #[test]
     fn init_with_writes_the_requested_files() {
         let dir = TempDir::new("init-files");
         let target = dir.path().join("fresh");
@@ -707,6 +813,7 @@ mod tests {
             &InitOptions {
                 gitignore: true,
                 readme: true,
+                ..Default::default()
             },
         )
         .expect("init");
@@ -722,6 +829,7 @@ mod tests {
             &InitOptions {
                 gitignore: false,
                 readme: true,
+                ..Default::default()
             },
         )
         .expect("re-init");

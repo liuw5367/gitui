@@ -28,8 +28,8 @@
     "depthFifty": "Shallow 50",
     "recurse": "Recurse submodules",
     "openAfterClone": "Open after clone",
-    "gitignore": "Add .gitignore",
-    "readme": "Add README.md",
+    "gitignore": "Add a .gitignore (macOS + Swift)",
+    "readme": "Create a README.md",
     "missingUrl": "Enter a repository URL",
     "missingDestination": "Choose a destination folder",
     "missingDirectory": "Choose a folder to initialize",
@@ -51,7 +51,16 @@
     "groupEarlier": "Earlier",
     "removeRepo": "Remove %{name} from recent repositories",
     "settings": "Settings",
-    "updateUnavailable": "Update checks are not available in this build."
+    "updateUnavailable": "Update checks are not available in this build.",
+    "repositoryPath": "Repository path",
+    "openAction": "Open Repository",
+    "openHint": "Also accepts a path to a worktree or a submodule.",
+    "openMeta": "Nothing listed yet — clone or create one from the tabs.",
+    "repoName": "Repository name",
+    "initialBranch": "Initial branch",
+    "license": "Add an MIT LICENSE",
+    "initHint": "Creates the folder if it does not exist.",
+    "missingPath": "Choose a repository path"
   },
   "shell": {
     "history": "History",
@@ -168,7 +177,7 @@
     "openTitle": "Open a repository",
     "openHint": "Choose a folder that already contains a Git repository.",
     "initTitle": "Create a repository",
-    "initHint": "Creates a new repository in the folder you name, on branch main.",
+    "initHint": "Run `git init` in a new or existing folder.",
     "initPath": "Folder",
     "initAction": "Create Repository"
   },

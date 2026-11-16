@@ -45,7 +45,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | `PullOptions` | `strategy`（`Merge` / `Rebase` / `FfOnly`）、`autostash`、`rebase_local` |
 | `PushOptions` | `tags`、`force_with_lease`、`all_branches` |
 | `CloneOptions` | `branch`、`depth`（0 表示完整克隆）、`recurse_submodules` |
-| `InitOptions` | `gitignore`、`readme` |
+| `InitOptions` | `gitignore`、`readme`、`license`、`name`、`branch` |
 | `LogFilter` | `query`、`author`、`since`、`until`、`reference` |
 
 `PushOptions::force_with_lease` 对应 `--force-with-lease`，远端被别人改动时拒绝覆盖。`PullOptions::strategy` 对应 `--no-rebase`、`--rebase` 与 `--ff-only`。
@@ -60,6 +60,16 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 目标目录非空时直接报错，不覆盖已有内容。`clone_with` 是同步版本，返回 `Result<(), GitError>`。
 
+## 初始化
+
+`init_repository` 用 `main` 建仓库；`init_with` 按 `InitOptions` 指定分支、README 标题与附带文件：
+
+- `branch` 为空时回退 `main`；
+- `name` 为空时用目录名作 README 标题；
+- `gitignore` 写 macOS + Swift 的最小集合；
+- `license` 写 MIT，版权人依次取 `git config user.name`、`user.email`，都为空时写 `The <name> authors`；
+- 已存在的同名文件不覆盖。
+
 ## 测试
 
 ```sh
@@ -67,7 +77,7 @@ cd crates/git
 cargo test
 ```
 
-当前 62 项通过（含从 `domain` 搬来的网络错误分类测试）。测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏、冲突解决与多步操作、同步选项与强推保护、克隆选项与取消、blame、reflog 与错误路径。
+当前 63 项通过（含从 `domain` 搬来的网络错误分类测试）。测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏、冲突解决与多步操作、同步选项与强推保护、克隆选项与取消、blame、reflog 与错误路径。
 
 ## 依赖
 

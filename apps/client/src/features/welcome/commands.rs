@@ -39,6 +39,75 @@ impl WelcomeCommands {
         });
     }
 
+    /// 选一个目录并把路径写进调用方给的信号；三个表单的 Choose… 用它。
+    fn pick_directory(set: Arc<dyn Fn(String) + 'static>) {
+        let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
+        spawn(async move {
+            if let Ok(Some(paths)) = answer.await {
+                if let Some(path) = paths.first() {
+                    set(path.display().to_string());
+                }
+            }
+        });
+    }
+
+    /// Open 表单的 Choose…：只填路径，不打开仓库。
+    pub(crate) fn choose_open_path(&self) {
+        let open_path = self.state.open_path;
+        Self::pick_directory(Arc::new(move |path| open_path.set(path)));
+    }
+
+    /// Clone 表单的 Choose…：只填目标目录，不打开仓库。
+    pub(crate) fn choose_clone_destination(&self) {
+        let destination = self.state.clone_destination;
+        Self::pick_directory(Arc::new(move |path| destination.set(path)));
+    }
+
+    /// Init 表单的 Choose…：填目录；仓库名仍为空时用目录名补上。
+    pub(crate) fn choose_init_folder(&self) {
+        let init_path = self.state.init_path;
+        let init_name = self.state.init_name;
+        Self::pick_directory(Arc::new(move |path| {
+            if init_name.get_untracked().trim().is_empty() {
+                let name = path
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default();
+                init_name.set(name.to_string());
+            }
+            init_path.set(path);
+        }));
+    }
+
+    /// 校验并打开 Open 表单的路径；失败留在欢迎页显示错误。
+    pub(crate) fn open_repository(&self) {
+        let open_path = self.state.open_path;
+        let open_error = self.state.open_error;
+        let session = self.session.clone();
+        let language = self.language;
+        let path = open_path.get_untracked();
+        if path.trim().is_empty() {
+            open_error.set(Some(i18n::t(
+                language.get_untracked().as_str(),
+                "welcome.missingPath",
+            )));
+            return;
+        }
+        match git::Repo::open(path.trim()) {
+            Ok(_) => {
+                open_error.set(None);
+                session.open_path(path.trim().to_string());
+            }
+            Err(error) => {
+                open_error.set(Some(localized_error(
+                    language.get_untracked().as_str(),
+                    &error,
+                )));
+            }
+        }
+    }
+
     /// 开始克隆（原 `clone_repository`）：逐 100ms 轮询子进程，可取消。
     pub(crate) fn clone_repository(&self) {
         let clone_url = self.state.clone_url;
@@ -163,6 +232,9 @@ impl WelcomeCommands {
         let options = git::InitOptions {
             gitignore: files.gitignore,
             readme: files.readme,
+            license: files.license,
+            name: self.state.init_name.get_untracked(),
+            branch: self.state.init_branch.get_untracked(),
         };
         match git::init_with(path.trim(), &options) {
             Ok(()) => session.open_path(path.trim().to_string()),
@@ -205,6 +277,7 @@ impl WelcomeCommands {
     pub(crate) fn set_repo_form(&self, form: RepoForm) {
         self.state.form.set(form);
         // 错误跟着表单走：切换后旧表单的失败不能出现在新表单里。
+        self.state.open_error.set(None);
         self.state.clone_error.set(None);
         self.state.init_error.set(None);
     }

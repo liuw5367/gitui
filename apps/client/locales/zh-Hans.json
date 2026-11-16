@@ -28,8 +28,8 @@
     "depthFifty": "浅 50",
     "recurse": "递归子模块",
     "openAfterClone": "克隆后打开",
-    "gitignore": "生成 .gitignore",
-    "readme": "生成 README.md",
+    "gitignore": "添加 .gitignore（macOS + Swift）",
+    "readme": "创建 README.md",
     "missingUrl": "缺少仓库地址",
     "missingDestination": "缺少目标位置",
     "missingDirectory": "缺少要初始化的目录",
@@ -51,7 +51,16 @@
     "groupEarlier": "更早",
     "removeRepo": "从最近仓库里移除 %{name}",
     "settings": "设置",
-    "updateUnavailable": "这个构建还没有接入更新检查。"
+    "updateUnavailable": "这个构建还没有接入更新检查。",
+    "repositoryPath": "仓库路径",
+    "openAction": "打开仓库",
+    "openHint": "也可以填写 worktree 或子模块的路径。",
+    "openMeta": "列表为空时，可以从分段里克隆或新建一个。",
+    "repoName": "仓库名",
+    "initialBranch": "初始分支",
+    "license": "添加 MIT LICENSE",
+    "initHint": "目录不存在时会创建。",
+    "missingPath": "请选择仓库路径"
   },
   "shell": {
     "history": "历史",
@@ -168,7 +177,7 @@
     "openTitle": "打开仓库",
     "openHint": "选择一个已经包含 Git 仓库的目录。",
     "initTitle": "新建仓库",
-    "initHint": "在指定目录初始化仓库，分支为 main。",
+    "initHint": "在新的或已有目录里运行 `git init`。",
     "initPath": "目录",
     "initAction": "新建仓库"
   },
