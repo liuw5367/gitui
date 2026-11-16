@@ -18,7 +18,7 @@
 ├───────────────────────────────┬──────────────────────────────────────────────────────────────────┤
 │                               │                                                                  │
 │Repositories                   │▛▀▀▜  gitui                                                       │
-│6 recent / 3 open      Open…   │▙▄▄▟  A native Git client for macOS.                              │
+│6 recent / 3 open      Open…   │▙▄▄▟  A native Git client.                                        │
 │┌──────────────────────┐       │                                                                  │
 ││ ⌕ search repos   ⌘F  │       │[ Open ][ Clone ][ Init ]                                         │
 │└──────────────────────┘       │                                                                  │
@@ -94,8 +94,9 @@
 底栏：版本号（如 `gitui 0.9.2 (412)`）、弹性空隙、`Check for Updates` 文字链接、带 11pt 齿轮的
 `Settings` 链接。
 
-**空列表（01b）**：副标题改成「No repositories yet」；列表位置换成两行空态文案——「No repositories
-yet」+「Open a local repository on the right, or clone and create one from the tabs.」；分组标题不出现。
+**空列表（01b）**：副标题改成「No repositories yet」；列表位置换成虚线卡片（`border:1px dashed`、
+内距 24×16、圆角 9）——40×40 图标块 + 「No repositories yet」+「Open a local repository on the right,
+or clone and create one from the tabs.」；分组标题不出现。
 
 ## 3. 右栏的三种表单
 
@@ -153,13 +154,13 @@ Repository name            Initial branch
 │ new-project                │  │ main                   │
 └────────────────────────────┘  └────────────────────────┘
 ☑ Create a README.md
-☐ Add a .gitignore (macOS + Swift)
+☐ Add a .gitignore
 ☐ Add an MIT LICENSE
 [ Create Repository ]   Creates the folder if it does not exist.
 ```
 
 - Folder 与 `Choose…` 同行；下一行 `grid 1fr 160px` 放 Repository name（预填 `new-project`）与 Initial branch（预填 `main`）。
-- 三个复选**竖排**（行距 4）：README、.gitignore（限定 macOS + Swift）、MIT LICENSE。板上只勾第一项。
+- 三个复选**竖排**（行距 4）：README、.gitignore（通用最小集合）、MIT LICENSE。板上只勾第一项。
 - 主按钮 `Create Repository` + hint「Creates the folder if it does not exist.」。
 
 ## 4. 状态与切换
@@ -223,7 +224,7 @@ Repository name            Initial branch
 | Init | Folder | 单行 30 高 + `⌘V` | 占位 `~/Developer/new-project` |
 | Init | Repository name | 单行 30 高 | 预填 `new-project` |
 | Init | Initial branch | 单行 30 高 | 预填 `main` |
-| Init | README / .gitignore / LICENSE | 三个复选 | Create a README.md、Add a .gitignore (macOS + Swift)、Add an MIT LICENSE |
+| Init | README / .gitignore / LICENSE | 三个复选 | Create a README.md、Add a .gitignore、Add an MIT LICENSE |
 
 ## 7. 文案要点
 

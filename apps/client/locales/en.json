@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "gitui",
-    "tagline": "A native Git client for macOS."
+    "tagline": "A native Git client."
   },
   "welcome": {
     "repositories": "Repositories",
@@ -20,6 +20,8 @@
     "openFolder": "Open…",
     "cloneWorking": "Cloning…",
     "noRecentHint": "Open a local repository on the right, or clone and create one from the tabs.",
+    "scan": "Scan Repositories",
+    "scanUnavailable": "Repository scanning isn't available in this build.",
     "branch": "Branch",
     "branchHint": "default branch",
     "depth": "Depth",
@@ -28,7 +30,7 @@
     "depthFifty": "Shallow 50",
     "recurse": "Recurse submodules",
     "openAfterClone": "Open after clone",
-    "gitignore": "Add a .gitignore (macOS + Swift)",
+    "gitignore": "Add a .gitignore",
     "readme": "Create a README.md",
     "missingUrl": "Enter a repository URL",
     "missingDestination": "Choose a destination folder",
@@ -50,7 +52,6 @@
     "noMatchHint": "Try a different name or path.",
     "groupEarlier": "Earlier",
     "removeRepo": "Remove %{name} from recent repositories",
-    "settings": "Settings",
     "updateUnavailable": "Update checks are not available in this build.",
     "repositoryPath": "Repository path",
     "openAction": "Open Repository",

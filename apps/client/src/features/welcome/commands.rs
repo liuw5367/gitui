@@ -51,10 +51,34 @@ impl WelcomeCommands {
         });
     }
 
-    /// Open 表单的 Choose…：只填路径，不打开仓库。
-    pub(crate) fn choose_open_path(&self) {
-        let open_path = self.state.open_path;
-        Self::pick_directory(Arc::new(move |path| open_path.set(path)));
+    /// Open 表单的主操作：有值就校验并打开，没值先选目录，选完再校验打开。
+    pub(crate) fn open_or_choose(&self) {
+        if !self.state.open_path.get_untracked().trim().is_empty() {
+            self.open_repository();
+            return;
+        }
+        let open = self.clone();
+        let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
+        spawn(async move {
+            let Ok(Some(paths)) = answer.await else {
+                return;
+            };
+            let Some(chosen) = paths.first() else {
+                return;
+            };
+            open.state.open_path.set(chosen.display().to_string());
+            open.open_repository();
+        });
+    }
+
+    /// 空列表里的扫描入口：扫描尚未接入，给出真实状态说明。
+    pub(crate) fn scan_repositories(&self) {
+        let language = self.language.get_untracked();
+        crate::interactions::alert(
+            i18n::t(language.as_str(), "welcome.scan"),
+            i18n::t(language.as_str(), "welcome.scanUnavailable"),
+            i18n::t(language.as_str(), "common.close"),
+        );
     }
 
     /// Clone 表单的 Choose…：只填目标目录，不打开仓库。

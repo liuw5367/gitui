@@ -1,7 +1,11 @@
 //! 文本输入：`nsh_core` 的原生输入框（NSTextField / NSTextView），这里统一外观。
 //!
-//! 高度、内边距、圆角与描边按原生刻度；失焦与聚焦不改尺寸，错误态换描边颜色，
-//! 并在调用方补一行 11pt 的错误文案（不只靠颜色表达）。
+//! 全部输入框走同一套外观：高 28、左右内距 8、圆角 6、1px 描边；聚焦时描边换成
+//! 主题色（不靠外发光，也不改尺寸），错误态换成危险色，并在调用方补一行 11pt 的
+//! 错误文案（不只靠颜色表达）。
+//!
+//! "容器 + 内部输入框"的字段（路径、URL、搜索）用 [`field_frame`]：焦点落在内部
+//! 输入框上，所以外框必须用 `focus_within`，写在容器上的 `focus_visible` 不会触发。
 
 use crate::design::{self, metrics};
 use crate::ui;
@@ -70,34 +74,21 @@ pub(crate) fn path_input(
     shortcut: Option<&'static str>,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
-    let mut container = view()
-        .h(px(ui::CONTROL))
-        .flex_row()
-        .items_center()
-        .gap(px(ui::GAP_SM))
-        .px(px(ui::GAP))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .border_1()
-        .border_color(move || design::field_border())
-        .bg(move || design::field())
-        .focus_visible(move |style| {
-            style
-                .outline(px(ui::FOCUS_WIDTH))
-                .outline_color(move || ui::focus_color())
-        })
-        .child(
-            nsh_base::input()
-                .value(value)
-                .placeholder(placeholder)
-                .on_change(move |text: &str| on_change(text))
-                .text_size(px(ui::BODY))
-                .text_color(move || design::text())
-                .flex_1(),
-        );
+    let mut children: Vec<AnyElement> = vec![
+        nsh_base::input()
+            .value(value)
+            .placeholder(placeholder)
+            .on_change(move |text: &str| on_change(text))
+            .text_size(px(ui::BODY))
+            .text_color(move || design::text())
+            .flex_1()
+            .min_w_0()
+            .into_element(),
+    ];
     if let Some(combo) = shortcut {
-        container = container.child(ui::badge::kbd(combo));
+        children.push(ui::badge::kbd(combo).into_element());
     }
-    return container;
+    return field_frame(children);
 }
 
 /// URL 输入：左侧地球图标，右侧无键帽；克隆地址用它。
@@ -106,40 +97,23 @@ pub(crate) fn url_input(
     placeholder: impl Fn() -> String + 'static,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
-    return view()
-        .h(px(ui::CONTROL))
-        .flex_row()
-        .items_center()
-        .gap(px(ui::GAP_SM))
-        .px(px(ui::GAP))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .border_1()
-        .border_color(move || design::field_border())
-        .bg(move || design::field())
-        .focus_visible(move |style| {
-            style
-                .outline(px(ui::FOCUS_WIDTH))
-                .outline_color(move || ui::focus_color())
-        })
-        .child(ui::icon::icon_view(
-            "globe",
-            ui::icon::IconSize::Inline,
-            design::text3,
-        ))
-        .child(
-            nsh_base::input()
-                .value(value)
-                .placeholder(placeholder)
-                .on_change(move |text: &str| on_change(text))
-                .text_size(px(ui::BODY))
-                .text_color(move || design::text())
-                .flex_1(),
-        );
+    return field_frame(vec![
+        ui::icon::icon_view("globe", ui::icon::IconSize::Inline, design::text3).into_element(),
+        nsh_base::input()
+            .value(value)
+            .placeholder(placeholder)
+            .on_change(move |text: &str| on_change(text))
+            .text_size(px(ui::BODY))
+            .text_color(move || design::text())
+            .flex_1()
+            .min_w_0()
+            .into_element(),
+    ]);
 }
 
 /// 搜索框：左侧放大镜、右侧可选键帽，整体一个描边容器。
 ///
-/// 输入框自身不画边框，避免容器与输入框两道描边；焦点环画在容器上。
+/// 输入框自身不画边框，避免容器与输入框两道描边；聚焦时由外框换描边色。
 pub(crate) fn search_field(
     value: Signal<String>,
     placeholder: impl Fn() -> String + 'static,
@@ -173,11 +147,28 @@ fn search_field_inner(
         .on_change(move |text: &str| on_change(text))
         .text_size(px(ui::BODY))
         .text_color(move || design::text())
-        .flex_1();
+        .flex_1()
+        .min_w_0();
     if let Some(handle) = handle {
         input = input.element_ref(&handle);
     }
-    let mut container = view()
+    let mut children: Vec<AnyElement> = vec![
+        ui::icon::icon_view("search", ui::icon::IconSize::Inline, design::text3).into_element(),
+        input.into_element(),
+    ];
+    if let Some(combo) = shortcut {
+        children.push(ui::badge::kbd(combo).into_element());
+    }
+    return field_frame(children);
+}
+
+/// 输入框外框：所有"容器 + 内部输入框"的字段共用同一套高度、内距、圆角与描边。
+///
+/// 焦点落在内部输入框上，所以边框用 `focus_within` 变主题色；写在容器上的
+/// `focus_visible` 永远不会触发（此前"聚焦时边框不变色"就是它）。
+fn field_frame(children: Vec<AnyElement>) -> impl IntoElement {
+    let mut frame = view()
+        .w_full()
         .h(px(ui::CONTROL))
         .flex_row()
         .items_center()
@@ -187,24 +178,14 @@ fn search_field_inner(
         .border_1()
         .border_color(move || design::field_border())
         .bg(move || design::field())
-        .focus_visible(move |style| {
-            style
-                .outline(px(ui::FOCUS_WIDTH))
-                .outline_color(move || ui::focus_color())
-        })
-        .child(ui::icon::icon_view(
-            "search",
-            ui::icon::IconSize::Inline,
-            design::text3,
-        ))
-        .child(input);
-    if let Some(combo) = shortcut {
-        container = container.child(ui::badge::kbd(combo));
+        .focus_within(move |style| style.border_color(move || design::accent()));
+    for child in children {
+        frame = frame.child(child);
     }
-    return container;
+    return frame;
 }
 
-/// 共用外观：焦点环、描边、底色与 13pt 文字。
+/// 共用外观：描边、底色与 13pt 文字；聚焦换描边色，错误换危险色。
 fn style_input(input: nsh_core::element::Input, invalid: bool, height: f32) -> impl IntoElement {
     return input
         .w_full()
@@ -224,9 +205,5 @@ fn style_input(input: nsh_core::element::Input, invalid: bool, height: f32) -> i
         .bg(move || design::field())
         .text_size(px(ui::BODY))
         .text_color(move || design::text())
-        .focus_visible(move |style| {
-            style
-                .outline(px(ui::FOCUS_WIDTH))
-                .outline_color(move || ui::focus_color())
-        });
+        .focus(move |style| style.border_color(move || design::accent()));
 }

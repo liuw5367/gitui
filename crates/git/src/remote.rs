@@ -259,7 +259,7 @@ fn init_branch(directory: &str, branch: &str) -> Result<(), GitError> {
 /// 初始化的附带文件与分支（设计板 03 的 Init 表单）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InitOptions {
-    /// 生成 `.gitignore`（macOS + Swift 的常见条目）。
+    /// 生成 `.gitignore`（通用最小集合，不绑定具体语言）。
     pub gitignore: bool,
     /// 生成 `README.md`。
     pub readme: bool,
@@ -356,8 +356,11 @@ fn utc_year() -> i64 {
     return year + if month <= 2 { 1 } else { 0 };
 }
 
-/// 生成的 `.gitignore` 内容：macOS + Swift 的最小集合。
-const DEFAULT_GITIGNORE: &str = "\n# macOS\n.DS_Store\n\n# Xcode\nDerivedData/\nxcuserdata/\n*.xcuserstate\n\n# Swift Package Manager\n.build/\n.swiftpm/\n";
+/// 生成的 `.gitignore` 内容：通用最小集合（系统垃圾、编辑器目录、日志与环境文件）。
+///
+/// 不写具体语言或框架的条目：初始化面板只提供一个通用勾选项，替用户决定技术栈
+/// 会在错误的时候写出错误的忽略规则。
+const DEFAULT_GITIGNORE: &str = "\n# macOS\n.DS_Store\n\n# Editors\n.idea/\n.vscode/\n\n# Logs\n*.log\n\n# Environment\n.env\n";
 
 /// MIT 许可正文；年份与版权人由调用处补在前两行。
 const MIT_BODY: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.";
@@ -800,7 +803,8 @@ mod tests {
         assert!(license.starts_with("MIT License"));
         assert!(license.contains("Copyright (c)"));
         let ignore = std::fs::read_to_string(target.join(".gitignore")).expect("ignore");
-        assert!(ignore.contains("DerivedData/"));
+        assert!(ignore.contains(".DS_Store"));
+        assert!(!ignore.contains("DerivedData/"), "不再内置 Xcode/Swift 条目");
     }
 
     #[test]

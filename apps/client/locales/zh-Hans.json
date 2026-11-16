@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "gitui",
-    "tagline": "面向 macOS 的原生 Git 客户端。"
+    "tagline": "原生 Git 客户端。"
   },
   "welcome": {
     "repositories": "仓库",
@@ -20,6 +20,8 @@
     "openFolder": "打开…",
     "cloneWorking": "正在克隆…",
     "noRecentHint": "在右侧打开本地仓库，或从分段里克隆、新建一个。",
+    "scan": "扫描仓库",
+    "scanUnavailable": "这个构建还没有接入仓库扫描。",
     "branch": "分支",
     "branchHint": "默认分支",
     "depth": "深度",
@@ -28,7 +30,7 @@
     "depthFifty": "浅 50",
     "recurse": "递归子模块",
     "openAfterClone": "克隆后打开",
-    "gitignore": "添加 .gitignore（macOS + Swift）",
+    "gitignore": "添加 .gitignore",
     "readme": "创建 README.md",
     "missingUrl": "缺少仓库地址",
     "missingDestination": "缺少目标位置",
@@ -50,7 +52,6 @@
     "noMatchHint": "换一个名称或路径试试。",
     "groupEarlier": "更早",
     "removeRepo": "从最近仓库里移除 %{name}",
-    "settings": "设置",
     "updateUnavailable": "这个构建还没有接入更新检查。",
     "repositoryPath": "仓库路径",
     "openAction": "打开仓库",

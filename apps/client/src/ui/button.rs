@@ -125,13 +125,13 @@ pub(crate) fn button_icon(
         );
 }
 
-pub(crate) fn button(
-    label: impl Fn() -> String + 'static,
+/// 按钮外壳：变体、尺寸、焦点与按压行为。内容由 [`button`] / [`button_hint`] 补。
+fn button_shell(
     variant: ButtonVariant,
     size: ButtonSize,
     disabled: bool,
     on_press: impl Fn() + 'static,
-) -> impl IntoElement {
+) -> nsh_base::ButtonElement {
     let mut element = nsh_base::button()
         .disabled(disabled)
         .opacity(if disabled { 0.45 } else { 1.0 })
@@ -173,19 +173,63 @@ pub(crate) fn button(
             .hover(move |style| style.opacity(0.9))
             .active(move |style| style.opacity(0.8)),
     };
+    return element;
+}
 
-    let foreground = match variant {
+/// 变体的前景色。
+fn foreground(variant: ButtonVariant) -> AdaptiveColor {
+    return match variant {
         ButtonVariant::Primary | ButtonVariant::Danger => design::token("primary-foreground"),
         ButtonVariant::Secondary => design::text(),
         ButtonVariant::Ghost => design::text2(),
     };
-    return element.child(
+}
+
+pub(crate) fn button(
+    label: impl Fn() -> String + 'static,
+    variant: ButtonVariant,
+    size: ButtonSize,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let color = foreground(variant);
+    return button_shell(variant, size, disabled, on_press).child(
         text(move || label())
             .text_size(px(size.font()))
             .line_height(px(size.line()))
             .font_weight(FontWeight::MEDIUM)
-            .text_color(move || foreground),
+            .text_color(move || color),
     );
+}
+
+/// 文字按钮 + 行内快捷键提示：欢迎页的 `Open Repository  ⌘O`。
+///
+/// 提示用同一前景色的弱化不透明度，不再套一层键帽——键帽是给输入框旁与行尾用的，
+/// 放在实心主按钮上会变成第二块底色。
+pub(crate) fn button_hint(
+    label: impl Fn() -> String + 'static,
+    hint: impl Fn() -> String + 'static,
+    variant: ButtonVariant,
+    size: ButtonSize,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let color = foreground(variant);
+    return button_shell(variant, size, disabled, on_press)
+        .child(
+            text(move || label())
+                .text_size(px(size.font()))
+                .line_height(px(size.line()))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(move || color),
+        )
+        .child(
+            text(move || hint())
+                .text_size(px(size.font() - 1.0))
+                .line_height(px(size.line()))
+                .text_color(move || color)
+                .opacity(0.72),
+        );
 }
 
 /// 图标按钮：内容只有一个图标，`label` 同时作为无障碍名称。

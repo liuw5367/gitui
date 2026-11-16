@@ -6,7 +6,7 @@
 use crate::design;
 use crate::ui;
 use crate::ui::badge::Tone;
-use crate::ui::button::{button, icon_button, ButtonSize, ButtonVariant};
+use crate::ui::button::{button, button_hint, icon_button, ButtonSize, ButtonVariant};
 use crate::ui::feedback::BannerTone;
 use nsh_core::prelude::*;
 
@@ -114,6 +114,14 @@ fn body(
                         true,
                         || {},
                     ))
+                    .child(button_hint(
+                        move || "Open Repository".to_string(),
+                        || "⌘O".to_string(),
+                        ButtonVariant::Primary,
+                        ButtonSize::Regular,
+                        false,
+                        || {},
+                    ))
                     .child(button(
                         move || "Small".to_string(),
                         ButtonVariant::Secondary,
@@ -203,6 +211,65 @@ fn body(
                         ),
                         None,
                         None,
+                    )),
+            ))
+            .child(section(
+                "Rows",
+                view()
+                    .w_full()
+                    .flex_col()
+                    .gap(px(ui::GAP))
+                    .child(ui::row::row_sized(
+                        move || "gitui".to_string(),
+                        Some((Box::new(move || "~/Developer/gitui".to_string()), true)),
+                        Some(
+                            ui::icon::icon_view("folder", ui::icon::IconSize::Inline, design::text2)
+                                .into_element(),
+                        ),
+                        vec![ui::badge::branch_chip(move || "main".to_string()).into_element()],
+                        false,
+                        false,
+                        47.0,
+                        || {},
+                    ))
+                    .child(ui::row::row_stacked(
+                        move || "atlas-web".to_string(),
+                        Some((Box::new(move || "~/Developer/atlas-web".to_string()), true)),
+                        Some(
+                            ui::icon::icon_view("folder", ui::icon::IconSize::Inline, design::accent)
+                                .into_element(),
+                        ),
+                        vec![ui::badge::branch_chip(move || "feature/hero".to_string())
+                            .into_element()],
+                        vec![
+                            ui::meta(move || "2m".to_string()).into_element(),
+                            icon_button(
+                                "x",
+                                move || "Remove".to_string(),
+                                ButtonSize::Small,
+                                false,
+                                || {},
+                            )
+                            .into_element(),
+                        ],
+                        true,
+                        false,
+                        47.0,
+                        || {},
+                    ))
+                    .child(ui::row::row_stacked(
+                        move || "A repository with a very long name".to_string(),
+                        Some((Box::new(move || "~/Developer/a-very-long-path".to_string()), true)),
+                        Some(
+                            ui::icon::icon_view("folder", ui::icon::IconSize::Inline, design::text2)
+                                .into_element(),
+                        ),
+                        vec![ui::badge::branch_chip(move || "release".to_string()).into_element()],
+                        vec![ui::meta(move || "Nov 6".to_string()).into_element()],
+                        false,
+                        false,
+                        47.0,
+                        || {},
                     )),
             ))
             .child(section(
@@ -326,7 +393,24 @@ fn body(
                                 Some(Box::new(move || "This repository has no commits yet.".to_string())),
                                 None,
                             )),
-                    ),
+                    )
+                    .child(ui::section::empty_card(
+                        "folder-plus",
+                        move || "No repositories yet".to_string(),
+                        Some(Box::new(move || {
+                            "Open a local repository, or clone and create one.".to_string()
+                        })),
+                        Some(
+                            button(
+                                move || "Scan Repositories".to_string(),
+                                ButtonVariant::Secondary,
+                                ButtonSize::Small,
+                                false,
+                                || {},
+                            )
+                            .into_element(),
+                        ),
+                    )),
             ))
             .child(section(
                 "Dialog",

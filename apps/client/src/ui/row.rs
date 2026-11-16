@@ -27,7 +27,98 @@ pub(crate) fn row(
     );
 }
 
-/// 同 [`row`]，行高由调用方给；欢迎页的行是画板的 47。
+/// 两行仓库行：左侧图标，右侧第一行「名称 + 行内附属 + 行尾动作」，第二行路径。
+///
+/// 与 [`row_sized`] 的区别只在行内结构：`row_sized` 把 trailing 放在两行文字的右侧，
+/// 这里放在第一行右侧，第二行因此占满整行宽度（欢迎页画板的 `.wrepo`）。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn row_stacked(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    aside: Vec<AnyElement>,
+    trailing: Vec<AnyElement>,
+    selected: bool,
+    disabled: bool,
+    height: f32,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let mut element = nsh_base::button()
+        .disabled(disabled)
+        .opacity(if disabled { 0.45 } else { 1.0 })
+        .w_full()
+        .h(px(height))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_SM))
+        .px(px(ui::GAP))
+        .rounded(px(6.0))
+        .bg(move || {
+            if selected {
+                design::selected()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .hover(move |style| {
+            if selected {
+                style
+            } else {
+                style.bg(move || design::hover())
+            }
+        })
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .on_press(move |_: &()| on_press());
+    if let Some(leading) = leading {
+        element = element.child(leading);
+    }
+    // 第一行：名称（可省略）、行内附属（分支 chip）、弹性空隙、行尾（时间、删除）。
+    let foreground = design::text();
+    let mut first = view()
+        .w_full()
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_XS))
+        .child(
+            view()
+                .min_w_0()
+                .flex_shrink(1.0)
+                .child(
+                    text(move || caption())
+                        .text_size(px(ui::BODY))
+                        .line_height(px(ui::BODY_LINE))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(move || foreground)
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                ),
+        );
+    for item in aside {
+        first = first.child(item);
+    }
+    first = first.child(view().flex_1());
+    for item in trailing {
+        first = first.child(item);
+    }
+    let mut labels = view().w_full().min_w_0().flex_col().child(first);
+    if let Some((hint, mono)) = subtitle {
+        let mut line = text(move || hint())
+            .text_size(px(ui::SECONDARY))
+            .line_height(px(ui::SECONDARY_LINE))
+            .text_color(move || design::text3())
+            .text_overflow(nsh_core::EllipsizeMode::Tail);
+        if mono {
+            line = line.font_family(ui::MONO);
+        }
+        labels = labels.child(line);
+    }
+    return element.child(labels);
+}
+
+/// 同 [`row`]，行高由调用方给。
 pub(crate) fn row_sized(
     caption: impl Fn() -> String + 'static,
     subtitle: Option<(Box<dyn Fn() -> String>, bool)>,

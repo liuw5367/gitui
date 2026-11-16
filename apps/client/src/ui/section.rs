@@ -74,6 +74,65 @@ pub(crate) fn section_label_upper(caption: impl Fn() -> String + 'static) -> imp
         );
 }
 
+/// 空态卡片：虚线描边 + 图标块 + 标题 + 说明 + 可选动作。
+///
+/// 欢迎页画板 01b 的空列表用的就是这个形状（`.wside` 里 dashed 卡片）；与
+/// [`empty`] 的区别是它有容器外观，且只在"确实没有内容"时使用——搜索无匹配
+/// 仍是纯文字空态。
+pub(crate) fn empty_card(
+    icon: &'static str,
+    caption: impl Fn() -> String + 'static,
+    description: Option<Box<dyn Fn() -> String>>,
+    action: Option<AnyElement>,
+) -> impl IntoElement {
+    let mut block = view()
+        .w_full()
+        .flex_col()
+        .items_center()
+        .gap(px(ui::GAP_XS))
+        .px(px(ui::GAP_XL))
+        .py(px(24.0))
+        .rounded(px(9.0))
+        .border_1()
+        .border_dashed()
+        .border_color(move || design::line_strong())
+        .bg(move || design::content())
+        .child(
+            view()
+                .w(px(40.0))
+                .h(px(40.0))
+                .mb(px(5.0))
+                .items_center()
+                .justify_center()
+                .rounded(px(10.0))
+                .bg(move || design::panel2())
+                .child(ui::icon::icon_view(
+                    icon,
+                    ui::icon::IconSize::Illustration,
+                    design::text3,
+                )),
+        )
+        .child(
+            text(move || caption())
+                .text_size(px(ui::BODY))
+                .line_height(px(ui::BODY_LINE))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(move || design::text()),
+        );
+    if let Some(hint) = description {
+        block = block.child(
+            text(move || hint())
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::text3()),
+        );
+    }
+    if let Some(action) = action {
+        block = block.child(view().mt(px(ui::GAP)).child(action));
+    }
+    return block;
+}
+
 /// 空态：标题 + 说明 + 可选动作，垂直居中。
 pub(crate) fn empty(
     caption: impl Fn() -> String + 'static,

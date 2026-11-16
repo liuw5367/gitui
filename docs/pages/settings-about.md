@@ -15,7 +15,7 @@
 │ ● ● ●                                      Settings                   gitui 0.9.2            │
 ├─────────────────────────┬────────────────────────────────────────────────────────────────────┤
 │                         │ About gitui                                                        │
-│ ▣ gitui                 │ A native Git client for macOS.                                     │
+│ ▣ gitui                 │ A native Git client.                                     │
 │   Version 0.9.2         │                                                                    │
 │                         │ ▣ gitui                                                            │
 │ Application             │ Version 0.9.2 (412) · Apple Silicon · Up to date                   │

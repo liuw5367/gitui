@@ -17,16 +17,16 @@ use crate::features::SessionHandle;
 use crate::features::settings::state::Section;
 use crate::i18n;
 use crate::ui;
-use crate::ui::button::{ButtonSize, ButtonVariant, button, button_icon, icon_button};
+use crate::ui::button::{ButtonSize, ButtonVariant, button, button_hint, icon_button};
 use nsh_core::prelude::*;
 use store::RecentRepo;
 
 /// 欢迎页左栏宽度（设计板 01 的 `.wside`）。
 const SIDE_WIDTH: f32 = 312.0;
-/// 右栏内容的最大宽度（设计板 01 的 `.wsection`）。
-const MAIN_MAX_WIDTH: f32 = 600.0;
+/// 右栏内容的最大宽度（设计板 01 的 `.wsection`；窗口收窄后同步收窄）。
+const MAIN_MAX_WIDTH: f32 = 520.0;
 /// 右栏内边距：上、左右、下。
-const MAIN_PAD: (f32, f32, f32) = (44.0, 54.0, 30.0);
+const MAIN_PAD: (f32, f32, f32) = (44.0, 40.0, 30.0);
 /// 英雄区应用标记的边长。
 const APP_MARK: f32 = 64.0;
 
@@ -71,6 +71,9 @@ pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoE
 }
 
 /// 克隆进行中的提示：浮在右下角，不遮挡表单。
+///
+/// 未克隆时整块不渲染——留下 0 高的带边框卡片会画出一条横线（右下角那条多余的
+/// 横线就是它）。
 fn cloning_indicator(
     language: Signal<SharedString>,
     cloning: Signal<bool>,
@@ -82,48 +85,48 @@ fn cloning_indicator(
         .absolute()
         .bottom(px(ui::GAP_XL))
         .right(px(ui::GAP_XL))
-        .h(move || if cloning.get() { px(36.0) } else { px(0.0) })
-        .flex_row()
-        .items_center()
-        .gap(px(ui::GAP))
-        .px(px(ui::GAP_LG))
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(move || design::line())
-        .bg(move || design::panel())
-        .overflow_hidden()
-        .child(ui::icon::icon_view(
-            "refresh",
-            ui::icon::IconSize::Inline,
-            design::accent,
-        ))
-        .child(
-            text(move || {
-                if !cloning.get() {
-                    return String::new();
-                }
-                let stage = progress.get();
-                if stage.trim().is_empty() {
-                    i18n::t(language.get().as_str(), "welcome.cloneWorking")
-                } else {
-                    stage
-                }
-            })
-            .text_size(px(ui::SECONDARY))
-            .line_height(px(ui::SECONDARY_LINE))
-            .text_color(move || design::text2())
-            .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .child(button(
-            move || i18n::t(language.get().as_str(), "common.cancel"),
-            ButtonVariant::Secondary,
-            ButtonSize::Small,
-            false,
-            {
-                let cancel = cancel.clone();
-                move || cancel.cancel_clone()
-            },
-        ));
+        .child(dynamic(move || -> AnyElement {
+            if !cloning.get() {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            let stage = progress.get();
+            let label = if stage.trim().is_empty() {
+                i18n::t(language.get().as_str(), "welcome.cloneWorking")
+            } else {
+                stage
+            };
+            let cancel = cancel.clone();
+            return view()
+                .h(px(36.0))
+                .flex_row()
+                .items_center()
+                .gap(px(ui::GAP))
+                .px(px(ui::GAP_LG))
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(move || design::line())
+                .bg(move || design::panel())
+                .child(ui::icon::icon_view(
+                    "refresh",
+                    ui::icon::IconSize::Inline,
+                    design::accent,
+                ))
+                .child(
+                    text(move || label.clone())
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text2())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "common.cancel"),
+                    ButtonVariant::Secondary,
+                    ButtonSize::Small,
+                    false,
+                    move || cancel.cancel_clone(),
+                ))
+                .into_element();
+        }));
 }
 
 fn sidebar(
@@ -136,8 +139,8 @@ fn sidebar(
     let session = cmd.session.clone();
     let choose_folder = cmd.clone();
     let updates = cmd.clone();
-    let settings = cmd.clone();
     let forget = cmd.clone();
+    let scan = cmd.clone();
     let search_ref = cmd.state.search_ref;
     let count_open = session.tabs;
     return view()
@@ -217,16 +220,36 @@ fn sidebar(
                             let now_value = now.get();
                             let query_value = query.get();
                             if all.is_empty() {
-                                return ui::section::empty(
-                                    move || {
-                                        i18n::t(language.get().as_str(), "welcome.noRecent")
-                                    },
-                                    Some(Box::new(move || {
-                                        i18n::t(language.get().as_str(), "welcome.noRecentHint")
-                                    })),
-                                    None,
-                                )
-                                .into_element();
+                                let scan = scan.clone();
+                                return view()
+                                    .w_full()
+                                    .px(px(ui::GAP_SM))
+                                    .pt(px(24.0))
+                                    .child(ui::section::empty_card(
+                                        "folder-plus",
+                                        move || {
+                                            i18n::t(language.get().as_str(), "welcome.noRecent")
+                                        },
+                                        Some(Box::new(move || {
+                                            i18n::t(language.get().as_str(), "welcome.noRecentHint")
+                                        })),
+                                        Some(
+                                            button(
+                                                move || {
+                                                    i18n::t(
+                                                        language.get().as_str(),
+                                                        "welcome.scan",
+                                                    )
+                                                },
+                                                ButtonVariant::Secondary,
+                                                ButtonSize::Small,
+                                                false,
+                                                move || scan.scan_repositories(),
+                                            )
+                                            .into_element(),
+                                        ),
+                                    ))
+                                    .into_element();
                             }
                             let visible: Vec<RecentRepo> = all
                                 .into_iter()
@@ -287,7 +310,7 @@ fn sidebar(
                 ),
             ),
         )
-        // 底部：版本、检查更新与设置入口
+        // 底部：版本与检查更新
         .child(
             view()
                 .w_full()
@@ -313,17 +336,6 @@ fn sidebar(
                     {
                         let updates = updates.clone();
                         move || updates.check_updates()
-                    },
-                ))
-                .child(button_icon(
-                    move || i18n::t(language.get().as_str(), "welcome.settings"),
-                    "gear",
-                    ButtonVariant::Ghost,
-                    ButtonSize::Small,
-                    false,
-                    {
-                        let settings = settings.clone();
-                        move || settings.open_settings(Section::General)
                     },
                 )),
         );
@@ -377,10 +389,11 @@ fn repo_row(
             },
         ))
         .into_element();
-    let mut trailing: Vec<AnyElement> = Vec::new();
+    let mut aside: Vec<AnyElement> = Vec::new();
     if !branch.is_empty() {
-        trailing.push(ui::badge::branch_chip(move || branch.clone()).into_element());
+        aside.push(ui::badge::branch_chip(move || branch.clone()).into_element());
     }
+    let mut trailing: Vec<AnyElement> = Vec::new();
     trailing.push(
         ui::meta(move || {
             crate::dates::format(language_for_time.get().as_str(), opened_at, now)
@@ -404,10 +417,12 @@ fn repo_row(
         .into_element(),
     );
     // 画板的行高 47、删除按钮 19、分支 chip 10pt；这里用原生 47 / 22 / 11。
-    return ui::row::row_sized(
+    // 第一行：名称 + 分支 chip + 时间 + ×；第二行：路径。
+    return ui::row::row_stacked(
         move || name.clone(),
         Some((Box::new(move || subtitle.clone()), true)),
         Some(leading),
+        aside,
         trailing,
         selected,
         false,
@@ -644,13 +659,14 @@ fn open_form(
     let path = state.open_path;
     let error = state.open_error;
     let recent = cmd.session.recent;
-    let choose = cmd.clone();
-    let open = cmd.clone();
+    let open = cmd;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
         .flex_col()
         .gap(px(ui::GAP_LG))
+        // 字段与主操作同行：有值校验后打开，无值先选目录再校验打开（两者都是
+        // 同一个按钮，不再另起一行主按钮）。
         .child(
             view()
                 .w_full()
@@ -668,51 +684,24 @@ fn open_form(
                     None,
                     None,
                 )))
-                .child(button(
-                    move || i18n::t(language.get().as_str(), "welcome.choose"),
-                    ButtonVariant::Secondary,
-                    ButtonSize::Regular,
-                    false,
-                    {
-                        let choose = choose.clone();
-                        move || choose.choose_open_path()
-                    },
-                )),
-        )
-        .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_center()
-                .gap(px(ui::GAP))
-                .child(button(
+                .child(button_hint(
                     move || i18n::t(language.get().as_str(), "welcome.openAction"),
+                    || "⌘O".to_string(),
                     ButtonVariant::Primary,
                     ButtonSize::Regular,
                     false,
-                    {
-                        let open = open.clone();
-                        move || open.open_repository()
-                    },
-                ))
-                .child(ui::secondary(move || {
-                    i18n::t(language.get().as_str(), "welcome.openHint")
-                })),
+                    move || open.open_or_choose(),
+                )),
         )
+        // 列表为空时给下一步；有最近仓库时这一行不占位置。
         .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_center()
-                .child(ui::meta(move || {
-                    if recent.get().is_empty() {
-                        i18n::t(language.get().as_str(), "welcome.openMeta")
-                    } else {
-                        String::new()
-                    }
-                }))
-                .child(view().flex_1())
-                .child(ui::badge::kbd("⌘O")),
+            view().w_full().flex_row().items_center().child(ui::meta(move || {
+                if recent.get().is_empty() {
+                    i18n::t(language.get().as_str(), "welcome.openMeta")
+                } else {
+                    String::new()
+                }
+            })),
         )
         .child(form_error(error));
 }
@@ -823,8 +812,9 @@ fn clone_form(
                 )))
                 .child(
                     view()
-                        // 画板是 150；原生 11pt 的三个分段放不下，这里放宽到 200。
-                        .w(px(200.0))
+                        // 画板是 150。三个分段按内容取宽（约 210），写死宽度会把
+                        // 最右侧的 Shallow 50 裁掉；branch 只占剩余宽度。
+                        .flex_shrink_0()
                         .flex_col()
                         .gap(px(ui::GAP_XS))
                         .child(ui::field::label(move || {

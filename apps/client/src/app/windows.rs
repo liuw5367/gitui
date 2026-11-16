@@ -22,14 +22,14 @@ pub(crate) fn open_welcome_window(handles: &AppHandles) {
     }
     let cmd = handles.welcome.clone();
     let open = cmd.session.welcome_open;
-    // 画板是 38 高自定义标题栏；这里用原生标题栏，齿轮/问号由左栏 Settings
-    // 与应用菜单承担。最小宽 1000 是画板未规定的实现约束，保证右栏仍可读。
+    // 画板是 38 高自定义标题栏；这里用原生标题栏，Settings 由应用菜单承担。
+    // 最小宽 900 是画板未规定的实现约束，保证右栏仍可读（表单最大宽 520）。
     let mut attributes = WindowAttributes::default();
-    attributes.min_size = Some(Some(size(Points(1000.0), Points(560.0))));
+    attributes.min_size = Some(Some(size(Points(900.0), Points(560.0))));
     let welcome = nsh_core::element::desktop::window()
         .id("welcome")
         .title(brand::PRODUCT_NAME)
-        .default_size(size(Points(1040.0), Points(690.0)))
+        .default_size(size(Points(960.0), Points(690.0)))
         .attributes(attributes)
         .open(open)
         .on_open_change(move |event| {
