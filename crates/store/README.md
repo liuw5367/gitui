@@ -7,9 +7,9 @@
 `default_dir(directory)`：
 
 - 设置了 `APP_HOME` 时返回它；
-- 否则返回 `~/Library/Application Support/<directory>`。
+- 否则返回 `~/.config/<directory>`。
 
-应用传入 `brand::STORAGE_DIR` 的值（见 [apps/client](../../apps/client/README.md)）。
+应用传入 `brand::STORAGE_DIR` 的值（当前为 `gitui`，见 [apps/client](../../apps/client/README.md)）。
 
 ## 文件
 
@@ -52,7 +52,7 @@ cd crates/store
 cargo test
 ```
 
-当前 16 项通过，覆盖各文件的往返读写、缺失文件的默认值、最近仓库的去重与上限、分支列与旧格式兼容、会话下标夹取、变更清单按仓库隔离、快捷键覆盖项、Agent 策略与审计、扫描深度与噪音目录过滤。
+当前 17 项通过，覆盖默认目录规则、各文件的往返读写、缺失文件的默认值、最近仓库的去重与上限、分支列与旧格式兼容、会话下标夹取、变更清单按仓库隔离、快捷键覆盖项、Agent 策略与审计、扫描深度与噪音目录过滤。
 
 ## 使用方
 

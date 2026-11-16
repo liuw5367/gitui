@@ -5,11 +5,10 @@ target/
 # nsh 生成的脚手架与本地构建目录
 apps/client/.nsh/
 
-# 本地测试与截图目录
+# 本地工具缓存、测试与截图；统一放在 .tmp/ 下
 .tmp/
-.nsh-home/
-.swift-cache/
-files.local/
+files.local
+*.local.*
 
 # 编辑器与系统文件
 .idea/

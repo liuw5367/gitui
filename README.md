@@ -58,7 +58,7 @@ nsh run
 APP_HOME=/tmp/app-home nsh run
 ```
 
-应用支持目录在 macOS 上位于 `~/Library/Application Support/` 下，目录名取 `apps/client/src/brand.rs` 的 `STORAGE_DIR`；其中保存会话、最近仓库、设置、变更清单、快捷键、语言、外观与 Agent 状态。
+应用数据默认在 `~/.config/gitui`，目录名取 `apps/client/src/brand.rs` 的 `STORAGE_DIR`；`APP_HOME` 可以覆盖。其中保存会话、最近仓库、设置、变更清单、快捷键、语言、外观与 Agent 状态。
 
 打包用 `apps/client/scripts/release-macos.sh`。脚本调用 `nsh package --target macos`；设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 

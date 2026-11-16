@@ -6,7 +6,7 @@
 //! - `session.txt`：第一行是当前 tab 下标，其后每行是一个打开中的仓库路径。
 //!
 //! 所有函数都接受目录参数，便于测试用临时目录；应用层用 [`default_dir`] 取得
-//! `~/Library/Application Support/gitui`。写入采用“先写临时文件再改名”，避免
+//! `~/.config/gitui`。写入采用“先写临时文件再改名”，避免
 //! 中途失败留下半个文件。路径里若含换行会被跳过，避免破坏行格式。
 
 use std::path::{Path, PathBuf};
@@ -32,7 +32,7 @@ pub struct Session {
     pub paths: Vec<String>,
 }
 
-/// `~/Library/Application Support/<directory>`；`APP_HOME` 可用于测试或便携使用。
+/// `~/.config/<directory>`；`APP_HOME` 可用于测试或便携使用。
 ///
 /// 目录名由调用方传入，避免把产品名写死在存储层。
 pub fn default_dir(directory: &str) -> PathBuf {
@@ -42,7 +42,12 @@ pub fn default_dir(directory: &str) -> PathBuf {
     let base = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    return base.join("Library/Application Support").join(directory);
+    return config_dir(&base, directory);
+}
+
+/// 用户目录下的应用数据目录；单独成函数，便于测试路径规则。
+fn config_dir(home: &Path, directory: &str) -> PathBuf {
+    return home.join(".config").join(directory);
 }
 
 fn language_file(dir: &Path) -> PathBuf {
@@ -737,6 +742,14 @@ mod tests {
         set_recent_branch(dir.path(), "/repo", "main");
         remember_recent(dir.path(), &load_recent(dir.path()), "/repo");
         assert_eq!(load_recent(dir.path())[0].branch, "main");
+    }
+
+    #[test]
+    fn default_dir_lives_under_dot_config() {
+        assert_eq!(
+            config_dir(Path::new("/Users/mia"), "gitui"),
+            PathBuf::from("/Users/mia/.config/gitui")
+        );
     }
 
     #[test]

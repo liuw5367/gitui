@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # 生成确定性测试仓库与对应的 bare 远程。
 #
-#   ./fixtures/gen-repo.sh                 # 生成到项目内的 .tmp/fixture
+#   ./fixtures/gen-repo.sh                 # 生成到项目内的 .tmp/fixtures/repo
 #   ./fixtures/gen-repo.sh <目标>          # 生成到指定位置
 #
 # 产出：
 #   <目标>/                 工作仓库，三分支、标签、贮藏、子模块、冲突提交、钩子
 #   <目标>-remote.git/      本机 bare 远程，供 fetch/pull/push 验收
 #
-# 默认产物位于项目根的 .tmp/ 下；该目录已加入 .gitignore，不进入版本控制。
+# 默认产物位于项目根的 .tmp/fixtures/ 下；该目录已加入 .gitignore，不进入版本控制。
 # 同一输入每次生成同样的历史（提交时间固定），便于截图与断言比较。
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-target="${1:-$root/.tmp/fixture}"
+target="${1:-$root/.tmp/fixtures/repo}"
 # 相对路径先转成绝对路径：下面会 cd 进目标仓库，远程路径必须仍然指向原位置。
 case "$target" in
   /*) ;;

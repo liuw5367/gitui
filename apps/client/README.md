@@ -15,7 +15,7 @@ nsh run
 APP_HOME=/tmp/app-home nsh run
 ```
 
-- 应用支持目录由 `src/brand.rs` 的 `STORAGE_DIR` 决定，`APP_HOME` 可以直接覆盖；解析规则见 [store README](../../crates/store/README.md)。
+- 应用数据目录默认是 `~/.config/gitui`，由 `src/brand.rs` 的 `STORAGE_DIR` 决定；`APP_HOME` 可以直接覆盖。解析规则见 [store README](../../crates/store/README.md)。
 - 窗口初始内容区 1392×852，与设计板的内容区一致；最小尺寸为 1100×700。
 - 打包用 `scripts/release-macos.sh`：脚本调用 `nsh package --target macos`，设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 

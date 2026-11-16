@@ -3,7 +3,7 @@
 #
 # 为什么需要重定向：nsh 的开发会话锁写在 $HOME/Library/Caches/nsh/dev-sessions，
 # 沙箱或只读缓存目录下会得到 "Operation not permitted"。把 HOME 指到仓库内的
-# .nsh-home 后，锁、增量缓存与应用数据都落在工作区内，可写也可清理。
+# .tmp/nsh-home 后，锁、增量缓存与应用数据都落在工作区内，可写也可清理。
 #
 # 用法：
 #   tools/shots.sh gallery            # 组件画廊（GITUI_GALLERY=1，并关掉欢迎窗口）
@@ -29,8 +29,9 @@
 #   GITUI_WELCOME_FORM=clone tools/shots.sh welcome-clone
 #   tools/shots.sh <名字> [秒数]      # 自定义名字与「应用出现后」的额外等待（默认 8）
 #
-# 产物：files.local/shots/<名字>.png（应用窗口截图；只作为行为证据，
-# 不作为像素验收基线）。files.local/ 已在 .gitignore 中排除，截图不入库。
+# 产物：.tmp/shots/<名字>.png（应用窗口截图；只作为行为证据，
+# 不作为像素验收基线）。.tmp/ 已在 .gitignore 中排除，截图不入库。
+# 工具缓存：winid、重定向 HOME 与 Swift 模块缓存都在项目内 .tmp/ 下。
 # 应用在截图后退出。
 #
 # 开关只在 debug 构建里生效（apps/client/src/acceptance.rs）：`nsh run` 是 debug，
@@ -40,12 +41,14 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 name="${1:?用法: tools/shots.sh <gallery|welcome|名字> [秒数]}"
 settle_seconds="${2:-8}"
-home_dir="$root/.nsh-home"
-app_home="$home_dir/app-home"
-out_dir="$root/files.local/shots"
+home_dir="$root/.tmp/nsh-home"
+app_home="$root/.tmp/app-home"
+swift_cache="$root/.tmp/swift-cache"
+bin="$root/.tmp/bin/winid"
+out_dir="$root/.tmp/shots"
 out="$out_dir/$name.png"
 
-mkdir -p "$home_dir" "$out_dir"
+mkdir -p "$home_dir" "$app_home" "$swift_cache" "$(dirname "$bin")" "$out_dir"
 
 welcome_shot=0
 case "$name" in
@@ -55,7 +58,7 @@ esac
 # 欢迎页要求空会话；清空脚本自己的应用数据目录，不碰仓库其它内容。
 if [ "$welcome_shot" = 1 ]; then
   case "$app_home" in
-    "$home_dir"/app-home) rm -rf -- "$app_home" ;;
+    "$root"/.tmp/app-home) rm -rf -- "$app_home" ;;
     *) echo "拒绝清理非预期目录：$app_home" >&2; exit 1 ;;
   esac
 fi
@@ -98,10 +101,8 @@ echo "启动应用（HOME=$home_dir）…"
 )
 
 # 取窗口 id：主窗口最大；欢迎页是较小的独立窗口，用 --smallest。
-bin="/tmp/winid"
 if [ ! -x "$bin" ] || [ "$root/tools/winid.swift" -nt "$bin" ]; then
-  mkdir -p "$root/.swift-cache"
-  CLANG_MODULE_CACHE_PATH="$root/.swift-cache" SWIFT_MODULE_CACHE_PATH="$root/.swift-cache" \
+  CLANG_MODULE_CACHE_PATH="$swift_cache" SWIFT_MODULE_CACHE_PATH="$swift_cache" \
     swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
 fi
 window_flag="--id"

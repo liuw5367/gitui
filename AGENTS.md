@@ -16,6 +16,7 @@
 - 产品名尚未最终确定。名称与标识只在 `apps/client/src/brand.rs`、`apps/client/nsh.json` 与 `apps/client/scripts/release-macos.sh` 定义；不要在代码或文档里另造名称。
 - 设计稿在 `designs/graft-git`，由 design 单独维护。页面以 NSH 原生组件为基础，尽量采用平台原生样式；生产实现只引用设计源，不引入 TSX、JS 运行时、HTML 或 WebView。
 - `fixtures/gen-repo.sh` 默认把测试仓库与 bare 远程写入 `.tmp/`；该目录已被 `.gitignore` 排除，不要提交生成物。
+- 应用数据默认在 `~/.config/gitui`；开发工具缓存写 `tmp/`（已忽略），截图写 `files.local/`（已忽略）。
 
 ## 修改约定
 

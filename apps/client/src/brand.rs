@@ -10,8 +10,8 @@ pub const PRODUCT_NAME: &str = "gitui";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 构建号；打包时由 `scripts/release-macos.sh` 覆盖 `nsh.json` 的 `build`。
 pub const BUILD: &str = "1";
-/// 应用支持目录名（`~/Library/Application Support/<name>`）。
-pub const STORAGE_DIR: &str = "gitclient";
+/// 应用数据目录名（`~/.config/<name>`）。
+pub const STORAGE_DIR: &str = "gitui";
 /// 外观偏好，与 `nsh.json` 的 `appearance` 同义。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ThemeMode {
