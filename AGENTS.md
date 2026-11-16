@@ -12,7 +12,7 @@
 ## 项目事实
 
 - 跨平台原生 Git 客户端，Rust + NSH 0.5.0；当前只实现 macOS 端（AppKit），其他平台不展开。
-- 仓库没有根 Cargo workspace。`apps/client` 用 path 依赖引用四个 crate，每个 crate 独立构建与测试；不要合并成根 workspace，除非用户明确要求。
+- 根目录是 Cargo workspace（`Cargo.toml` 的 `members` = 四个 crate + `apps/client`），共用一份 `Cargo.lock` 与一个 `target/`。**crate 边界仍然独立**：`domain` / `git` / `store` / `agent` 是库，`apps/client` 是唯一二进制；不要把逻辑搬进 `apps/client` 之外的地方，也不要把四个 crate 合成一个。依赖方向只有 `git → domain` 和四个 crate → `apps/client`；不要引入反向边。
 - 产品名尚未最终确定。名称与标识只在 `apps/client/src/brand.rs`、`apps/client/nsh.json` 与 `apps/client/scripts/release-macos.sh` 定义；不要在代码或文档里另造名称。
 - 设计稿在 `designs/graft-git`，由 design 单独维护。页面以 NSH 原生组件为基础，尽量采用平台原生样式；生产实现只引用设计源，不引入 TSX、JS 运行时、HTML 或 WebView。
 - `fixtures/gen-repo.sh` 默认把测试仓库与 bare 远程写入 `.tmp/`；该目录已被 `.gitignore` 排除，不要提交生成物。
@@ -28,11 +28,7 @@
 ## 验证
 
 ```sh
-(cd crates/domain && cargo test)
-(cd crates/git && cargo test)
-(cd crates/store && cargo test)
-(cd crates/agent && cargo test)
-(cd apps/client && cargo test)
+cargo test
 (cd apps/client && nsh check)
 tools/check-ui.sh
 python3 tools/design/tokens.py

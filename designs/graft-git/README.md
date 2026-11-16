@@ -9,7 +9,6 @@
 | `project/canvas.json` | 画板定义（顺序、标题、分组） | 是 |
 | `project/*.dc.html` | 每个画板一个 Design Component | 是 |
 | `project/assets/*.bin` | 共享样式表（`0a859d3b…` 是可读 CSS）与图片资源 | 是 |
-| `spec/*.json` | `tools/design/geometry.py` 从样式表与内联 style 提取的几何规格 | 是 |
 | `exports/` | 独立 HTML（4 MB）与 PNG 1x/2x | **否**（`.gitignore` 忽略） |
 | `reference/` | 需要就地比对时放 1x 参考图 | **否** |
 
@@ -31,4 +30,7 @@
 ## 编号与文件
 
 画板编号（`01`–`30`）与 PNG 文件名一致；编号到 `.dc.html` 的对应关系写在
-`tools/design/geometry.py` 的 `BOARD_FILES` 里，`spec/<编号>.json` 按编号命名。
+`project/canvas.json` 的 `boards` 里（`title` 是编号与名称，键是文件名）。
+
+逐页的版式、状态与按钮写在仓库的 `docs/pages/<主题>.md`，那些文档直接引用画板值，
+是当前唯一的几何对照来源（旧的 `spec/*.json` 与它的提取脚本已删除）。

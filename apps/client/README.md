@@ -60,17 +60,16 @@ APP_HOME=/tmp/app-home nsh run
 - 语言：`src/i18n.rs` 用进程内信号保存当前语言，设置页切换后立即生效；缺键时回退英文，再缺失则返回键名。`locales` 两边的键集合由测试保证一致。
 - 主题：`theme.json` 提供 light/dark token，经 `theme_overrides` 注入；深色模式与浅色模式各有一组值，`theme_tests` 与设计 CSS 逐键比对。
 - 存储：会话、最近仓库、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；文件格式见 [crates/store/README.md](../../crates/store/README.md)。
-- 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY` 等环境变量可以直接进入指定页面或浮层，完整列表见脚本头注释。
+- 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME` 可以直接进入指定页面或浮层，完整列表见脚本头注释。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
 
 ## 测试
 
 ```sh
-cd apps/client
-cargo test
+cargo test -p nsh-app        # 等价于在本目录运行 cargo test
 nsh check
 ```
 
-`cargo test` 当前 80 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
+仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 80 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
 
 - `model`：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步、改写、reflog、引用操作、变更清单、冲突解决、过滤与对比、树形选项。
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。

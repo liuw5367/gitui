@@ -1,78 +1,15 @@
-# Dependencies
-node_modules/
-.pnpm-store/
-
-# Build output
-dist/
-build/
-.output/
-.tscache/
-.react-router/
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.*
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# OS
-Thumbs.db
-
-# Vite
-*.local
-
-# React Router / Remix
-/.cache/
-
-# Supabase
-supabase/.branches/
-
-# Drizzle
-drizzle/meta/
-
-# Testing
-coverage/
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# TypeScript
-*.tsbuildinfo
-
-# PWA
-public/sw.js
-public/workbox-*.js
-public/sw.js.map
-public/workbox-*.js.map
-
-# Misc
-*.pem
-
-*.local.*
-dev-dist
-
-# Rust build output (the app's Cargo.lock is kept)
+# Rust / NSH 构建产物
+# workspace 共用根 target/；根 Cargo.lock 入库，不再有每个 crate 的 lock。
 target/
-crates/*/Cargo.lock
 
-# 本地临时产物（fixtures/gen-repo.sh 等）
+# nsh 生成的脚手架与本地构建目录
+apps/client/.nsh/
+
+# 本地测试与截图目录
 .tmp/
-
-# 渲染验证用的本地 HOME（tools/shots.sh 创建）
 .nsh-home/
-
-# winid.swift 的编译缓存（tools/shots.sh 创建）
 .swift-cache/
+
+# 编辑器与系统文件
+.idea/
+.DS_Store

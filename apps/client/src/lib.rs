@@ -4,6 +4,7 @@
 //! 打开/克隆/初始化仓库、按条件筛选历史、多提交对比、查看提交内单文件补丁。
 //! 写路径在后续阶段加入。
 
+mod acceptance;
 pub mod brand;
 mod dates;
 mod design;
@@ -263,20 +264,16 @@ pub fn App() -> impl IntoElement {
     let filter_author = signal(String::new());
     let filter_when = signal(SharedString::from(When::All.id()));
     let filter_open = signal(false);
-    // 验收开关：`GITUI_INSPECTOR=1` 启动即展开右侧检查器（板 08 / 18 需要它）。
-    let inspector_open = signal(
-        std::env::var("GITUI_INSPECTOR")
-            .map(|value| value == "1")
-            .unwrap_or(false),
-    );
+    // 验收开关（debug 构建）：`GITUI_INSPECTOR=1` 启动即展开右侧检查器（板 08 / 18）。
+    let inspector_open = signal(acceptance::flag("GITUI_INSPECTOR"));
     let compare_mode = signal(false);
     // 验收开关：`GITUI_MODE=history|changes|refs|agent` 指定启动时的主视图，
     // 用于逐个巡检各页渲染（历史表曾整行不可见却连续几轮被截图判过）。
-    let mode = signal(match std::env::var("GITUI_MODE").as_deref() {
-        Ok("changes") => Mode::Changes,
-        Ok("refs") => Mode::Refs,
-        Ok("agent") => Mode::Agent,
-        Ok("blame") => Mode::Blame,
+    let mode = signal(match acceptance::value("GITUI_MODE").as_deref() {
+        Some("changes") => Mode::Changes,
+        Some("refs") => Mode::Refs,
+        Some("agent") => Mode::Agent,
+        Some("blame") => Mode::Blame,
         _ => Mode::History,
     });
     let commit_summary = signal(String::new());
@@ -284,18 +281,10 @@ pub fn App() -> impl IntoElement {
     let changelist_open = signal(false);
     // 验收开关：`GITUI_PALETTE=1` 启动即打开命令面板（⌘K 的等价物），
     // 用于截图核对面板与列表项。
-    let palette_open = signal(
-        std::env::var("GITUI_PALETTE")
-            .map(|value| value == "1")
-            .unwrap_or(false),
-    );
+    let palette_open = signal(acceptance::flag("GITUI_PALETTE"));
     // 组件画廊（P0 的验收入口）：⌘⇧D 打开，Esc 关闭。P6 并入命令面板。
     // `GITUI_GALLERY=1` 用于截图验收：不依赖键盘自动化也能直接看到组件层。
-    let gallery_open = signal(
-        std::env::var("GITUI_GALLERY")
-            .map(|value| value == "1")
-            .unwrap_or(false),
-    );
+    let gallery_open = signal(acceptance::flag("GITUI_GALLERY"));
     let settings_state = signal(store::load_settings(&store_dir));
     {
         // 日期格式是全局显示偏好，装进 dates 模块供各视图直接读取。
@@ -303,7 +292,7 @@ pub fn App() -> impl IntoElement {
         crate::dates::load(loaded.date_format.as_str(), loaded.date_pattern.as_str());
     }
     // 验收开关：`GITUI_FORM=1` 启动即打开「新建分支」表单，用于核对表单弹层。
-    let form_state = signal(if std::env::var("GITUI_FORM").map(|v| v == "1").unwrap_or(false) {
+    let form_state = signal(if acceptance::flag("GITUI_FORM") {
         Some(screens::FormState::new(screens::FormKind::NewBranch))
     } else {
         None
@@ -333,7 +322,7 @@ pub fn App() -> impl IntoElement {
     let conflict_base_open = signal(false);
     // 验收开关：`GITUI_SYNC=1` 启动即打开同步面板，用于截图核对弹层外观
     // （遮罩深浅、圆角、阴影、关闭行为）。与 GITUI_GALLERY 同思路。
-    let sync_state = signal(if std::env::var("GITUI_SYNC").map(|v| v == "1").unwrap_or(false) {
+    let sync_state = signal(if acceptance::flag("GITUI_SYNC") {
         Some(screens::SyncDialogState::new(crate::model::Sync::Fetch))
     } else {
         None
@@ -403,17 +392,11 @@ pub fn App() -> impl IntoElement {
     // 验收与命令行入口：`GITUI_REPO=/path/to/repo` 直接打开指定仓库，
     // 优先于会话恢复。截图验收需要它——没有打开的仓库，历史表与变更页
     // 根本不会渲染，截图只能看到欢迎页。
-    if let Ok(path) = std::env::var("GITUI_REPO") {
-        let path = path.trim().to_string();
-        if !path.is_empty() {
-            initial_tabs = vec![model::load_tab(&path, &initial_filter)];
-        }
+    if let Some(path) = acceptance::value("GITUI_REPO") {
+        initial_tabs = vec![model::load_tab(&path, &initial_filter)];
     }
     // 验收开关：`GITUI_SETTINGS=1` 启动即进入设置页，用于截图核对。
-    let screen = signal(if std::env::var("GITUI_SETTINGS")
-        .map(|value| value == "1")
-        .unwrap_or(false)
-    {
+    let screen = signal(if acceptance::flag("GITUI_SETTINGS") {
         Screen::Settings
     } else {
         Screen::Workspace
@@ -422,9 +405,7 @@ pub fn App() -> impl IntoElement {
     // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
     // 欢迎窗口是独立窗口且默认铺在主窗口之上，截图验收组件画廊时它会挡住画廊，
     // 之前把「截到欢迎页的空白」误当成「画廊没渲染」，就是因为它。
-    let suppress_welcome = std::env::var("GITUI_NO_WELCOME")
-        .map(|value| value == "1")
-        .unwrap_or(false);
+    let suppress_welcome = acceptance::flag("GITUI_NO_WELCOME");
     let welcome_open = signal(initial_tabs.is_empty() && !suppress_welcome);
     let active = signal(session.active.min(initial_tabs.len().saturating_sub(1)));
     if initial_tabs.is_empty() {

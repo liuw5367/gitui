@@ -64,19 +64,19 @@ APP_HOME=/tmp/app-home nsh run
 
 ## 验证
 
-仓库没有根 Cargo workspace，每个 crate 与客户端分别运行测试：
+根目录是 Cargo workspace：`crates/domain`、`crates/git`、`crates/store`、`crates/agent` 与 `apps/client` 是成员，共用一份 `Cargo.lock` 与一个 `target/`。crate 边界不变，单独验证某个 crate 用 `cargo test -p <name>`。
 
 ```sh
-(cd crates/domain && cargo test)
-(cd crates/git && cargo test)
-(cd crates/store && cargo test)
-(cd crates/agent && cargo test)
-(cd apps/client && cargo test)
+cargo test                       # 全部：domain 20 / git 59 / store 13 / agent 12 / nsh-app 80
+(cd apps/client && cargo test)   # 只跑客户端，等价于 cargo test -p nsh-app
 (cd apps/client && nsh check)
 tools/check-ui.sh
+python3 tools/design/tokens.py
 ```
 
-`crates/git` 与 `apps/client` 的测试会在临时目录创建真实仓库，需要 PATH 中有 `git`。`crates/git` 还用本机 bare 远程验证 fetch/pull/push，不依赖网络。`nsh check` 对客户端执行 `cargo check`。`tools/check-ui.sh` 检查 `src/ui` 与已迁移页面的字号、颜色和直接引用约束。
+`cargo test -p <crate>` 里的 crate 名是 `domain`、`git`、`store`、`agent`、`nsh-app`。
+
+`crates/git` 与 `apps/client` 的测试会在临时目录创建真实仓库，需要 PATH 中有 `git`。`crates/git` 还用本机 bare 远程验证 fetch/pull/push，不依赖网络。`nsh check` 对客户端执行 `cargo check`。`tools/check-ui.sh` 检查 `src/ui` 与已迁移页面的字号、颜色和直接引用约束；`tools/design/tokens.py` 校验 `docs/design/TOKENS.md` 的色值表与 `theme.json` 一致。
 
 `fixtures/gen-repo.sh` 生成人工验收用的测试仓库与 bare 远程，默认写入 `.tmp/fixture` 与 `.tmp/fixture-remote.git`；`.tmp/` 已在 `.gitignore` 中忽略。需要改位置时把目标路径作为第一个参数传入；清理时删除 `.tmp/` 即可。
 

@@ -1,0 +1,18 @@
+# 统一 workspace：一份 lock、一份 target、一条 `cargo test`。
+#
+# 只统一构建与测试入口，不改各 crate 的边界：`crates/*` 仍是独立库
+# （domain / git / store / agent），`apps/client` 仍是唯一的二进制。
+# 需要单独验证某个 crate 时用 `cargo test -p <name>`。
+#
+# 依赖方向（不要引入反向边）：
+#   domain ← git
+#   domain / git / store / agent ← apps/client
+[workspace]
+resolver = "3"
+members = [
+    "apps/client",
+    "crates/agent",
+    "crates/domain",
+    "crates/git",
+    "crates/store",
+]

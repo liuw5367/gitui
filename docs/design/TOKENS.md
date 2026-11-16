@@ -239,7 +239,7 @@
 `BUTTON_H`、`DIFF_FONT` 等）是「设计稿逐值还原」阶段的产物，原生刻度之后已不再驱动界面：
 `FONT_*` 一组与 `BUTTON_H`、`DIFF_FONT` 目前没有外部引用，`FIELD_H`、`COMMIT_ROW_H`、
 `HISTORY_H`、`SIDE_ROW_H` 只剩个别调用点。**调尺寸改 `native`，不要改这些**；它们留着是
-因为 `spec/*.json` 的对照表和画板还按这些值说话，删掉就少了一份复核依据。
+因为画板与 `docs/pages/` 的逐页文档还按这些值说话，删掉就少了一份对照依据。
 
 注意同名不同层：`metrics::FONT_META` 是画板值 9.5，`native::FONT_META` 是实现的 11。
 没有前缀的那个属于旧基准。
@@ -286,4 +286,4 @@
 - 几个键目前没有读取点：`press`、`purple`、`shadow-menu`。菜单走系统 `NSMenu` 绘制，
   阴影用不到；`press` 与 `purple` 是设计稿里有、界面还没用上的语义。
 - `metrics.rs` 上半部分的画板逐值常量与 `native` 刻度并存，前者已不再驱动界面，
-  但没有删除；`spec/*.json` 的对照仍引用它们。
+  但没有删除；`docs/pages/` 的逐页文档仍按这些画板值描述尺寸。

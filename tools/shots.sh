@@ -11,7 +11,7 @@
 # 只截应用窗口：先用 tools/winid.swift 取窗口 id，再 screencapture -l 精确截取。
 # 整屏截图会截到最前面的别的程序（曾经截到编辑器并误判「界面空白」）。
 #
-# 两个环境变量的作用：
+# 环境变量的作用（每个都可单独设，也可以组合）：
 #   GITUI_GALLERY=1     打开组件画廊（主窗口的覆盖层）
 #   GITUI_SYNC=1        启动即打开同步面板（验收弹层用）
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
@@ -27,6 +27,9 @@
 #
 # 产物：docs/verify/native/<名字>.png（整屏截图，含桌面背景；只作为行为证据，
 # 不作为像素验收基线）。应用在截图后退出。
+#
+# 开关只在 debug 构建里生效（apps/client/src/acceptance.rs）：`nsh run` 是 debug，
+# 打包出来的应用不读任何 GITUI_*，所以截图脚本必须配 `nsh run` 使用。
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
