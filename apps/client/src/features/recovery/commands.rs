@@ -1,12 +1,12 @@
 //! 恢复的用例：撤销 reflog、重置到某个提交、拣选与回滚提交。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` 并更新当前标签页，不写布局。
+//! 这里只调本功能的 `ops` 并更新当前标签页，不写布局。
 
+use super::ops;
 use crate::features::SessionHandle;
 use crate::i18n;
 use crate::interactions;
-use crate::model;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -20,7 +20,7 @@ pub(crate) struct RecoveryCommands {
 
 impl RecoveryCommands {
     /// 历史操作共用体：`kind` 为 `checkout`、`cherry` 或 `revert`，都先确认再落
-    /// 到 `model` → git。检出与拣选/回滚共用同一个确认框，因此留在同一处。
+    /// 到 `ops` → git。检出与拣选/回滚共用同一个确认框，因此留在同一处。
     fn history_action(&self, kind: &'static str, sha: String) {
         let tabs = self.session.tabs;
         let active = self.session.active;
@@ -61,9 +61,9 @@ impl RecoveryCommands {
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
                 let result = match kind {
-                    "checkout" => model::checkout_commit(tab, sha.as_str()),
-                    "cherry" => model::cherry_pick(tab, sha.as_str()),
-                    _ => model::revert_commit(tab, sha.as_str()),
+                    "checkout" => ops::checkout_commit(tab, sha.as_str()),
+                    "cherry" => ops::cherry_pick(tab, sha.as_str()),
+                    _ => ops::revert_commit(tab, sha.as_str()),
                 };
                 match result {
                     Ok(_) => {
@@ -118,7 +118,7 @@ impl RecoveryCommands {
                 let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
                 if let Some(tab) = list.get_mut(current) {
-                    model::undo_to_reflog(tab, index);
+                    ops::undo_to_reflog(tab, index);
                     tabs.set(list);
                 }
             }
@@ -159,7 +159,7 @@ impl RecoveryCommands {
                 let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
                 if let Some(tab) = list.get_mut(current) {
-                    if let Err(detail) = model::reset_to(tab, sha.as_str(), mode) {
+                    if let Err(detail) = ops::reset_to(tab, sha.as_str(), mode) {
                         tab.error = Some(detail);
                     }
                     tabs.set(list);

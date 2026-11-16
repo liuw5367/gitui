@@ -1,11 +1,11 @@
 //! 冲突解决的用例：打开视图、切换冲突文件、接受一侧、标记已解决、继续与放弃。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` 并更新本功能的状态，不写布局。
+//! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
+use super::ops;
 use super::state::MergeState;
 use crate::features::SessionHandle;
-use crate::model;
 use domain::conflict::Side;
 use nsh_core::prelude::*;
 
@@ -28,7 +28,7 @@ impl MergeCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::open_conflict(tab);
+            ops::open_conflict(tab);
             conflict_result.set(tab.conflict_text.clone());
             tabs.set(list);
         }
@@ -42,7 +42,7 @@ impl MergeCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::select_conflict(tab, index);
+            ops::select_conflict(tab, index);
             conflict_result.set(tab.conflict_text.clone());
             tabs.set(list);
         }
@@ -56,7 +56,7 @@ impl MergeCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::step_conflict(tab, forward);
+            ops::step_conflict(tab, forward);
             conflict_result.set(tab.conflict_text.clone());
             tabs.set(list);
         }
@@ -70,7 +70,7 @@ impl MergeCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            let merged = model::conflict_take_side(tab, side);
+            let merged = ops::conflict_take_side(tab, side);
             conflict_result.set(merged);
             tabs.set(list);
         }
@@ -87,7 +87,7 @@ impl MergeCommands {
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             let resolved = conflict_result.get_untracked();
-            match model::mark_conflict_resolved(tab, resolved.as_str()) {
+            match ops::mark_conflict_resolved(tab, resolved.as_str()) {
                 Ok(()) => {
                     conflict_result.set(tab.conflict_text.clone());
                     let lang = language.get_untracked();
@@ -111,7 +111,7 @@ impl MergeCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match model::continue_operation(tab) {
+            match ops::continue_operation(tab) {
                 Ok(_) => {
                     let lang = language.get_untracked();
                     crate::interactions::notify(
@@ -144,7 +144,7 @@ impl MergeCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::resolve_conflict(tab, path.as_str(), ours);
+            ops::resolve_conflict(tab, path.as_str(), ours);
             tabs.set(list);
         }
     }
@@ -178,7 +178,7 @@ impl MergeCommands {
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                model::abort_operation(tab);
+                ops::abort_operation(tab);
                 tabs.set(list);
             }
         });

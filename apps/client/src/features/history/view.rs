@@ -15,7 +15,7 @@ use crate::features::commit::commands::CommitCommands;
 use crate::features::refs::commands::RefsCommands;
 use crate::filters::When;
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use crate::ui::badge::kbd;
 use crate::features::search::commands::SearchCommands;
 use nsh_core::element::desktop::MenuItem;
@@ -804,12 +804,12 @@ fn commit_menu(
         MenuItem::new(i18n::t(lang, "form.newBranch")).on_select({
             let search = search_for_form.clone();
             let sha = sha.clone();
-            move || search.open_form_from(crate::screens::FormKind::NewBranch, sha.clone())
+            move || search.open_form_from(crate::features::search::FormKind::NewBranch, sha.clone())
         }),
         MenuItem::new(i18n::t(lang, "form.newTag")).on_select({
             let search = search_for_form.clone();
             let sha = sha.clone();
-            move || search.open_form_from(crate::screens::FormKind::NewTag, sha.clone())
+            move || search.open_form_from(crate::features::search::FormKind::NewTag, sha.clone())
         }),
         MenuItem::separator(),
         MenuItem::new(i18n::t(lang, "menu.cherryPick")).on_select({

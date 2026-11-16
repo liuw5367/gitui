@@ -2,44 +2,43 @@
 //!
 //! diff 区显示三种内容之一：选中提交的补丁、提交内单个文件的补丁、两个提交的区间
 //! 补丁。打开失败时在正文区显示错误面板。
+//!
+//! P4 起这是主窗口版式的组装根：参数收成一个 `AppHandles`，各功能句柄按需克隆。
 
+use crate::app::handles::AppHandles;
+use crate::app::session::{Sync, Tab};
 use crate::design;
 use crate::features::agent::commands::AgentCommands;
 use crate::features::changes::commands::ChangesCommands;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::history::commands::HistoryCommands;
-use crate::features::merge::commands::MergeCommands;
 use crate::features::history::{inspector, view as history_view};
 use crate::features::refs;
 use crate::features::refs::commands::RefsCommands;
-use crate::features::sync::commands::SyncCommands;
+use crate::features::search::commands::SearchCommands;
 use crate::i18n;
-use crate::model;
-use crate::model::Tab;
 use crate::shared::diff;
 use crate::shell;
-use crate::features::search::commands::SearchCommands;
 use nsh_core::prelude::*;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn workspace(
-    language: Signal<SharedString>,
-    tabs: Signal<Vec<Tab>>,
-    active: Signal<usize>,
-    inspector_open: Signal<bool>,
-    changes: ChangesCommands,
-    settings_state: Signal<store::Settings>,
-    agent: AgentCommands,
-    notice: Signal<Option<String>>,
-    refs: RefsCommands,
-    sync: SyncCommands,
-    history: HistoryCommands,
-    merge: MergeCommands,
-    commit: CommitCommands,
-    session: crate::features::SessionHandle,
-    settings: crate::features::settings::commands::SettingsCommands,
-    search: SearchCommands,
-) -> impl IntoElement {
+/// 主窗口版式：工具条 + 侧栏 + 主体 + 状态栏。
+pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement {
+    let language = handles.language;
+    let tabs = handles.session.tabs;
+    let active = handles.session.active;
+    let notice = handles.session.notice;
+    let inspector_open = handles.search.inspector_open;
+    let settings_state = handles.settings.state.settings_state;
+    let changes = handles.changes.clone();
+    let agent = handles.agent.clone();
+    let refs = handles.refs.clone();
+    let sync = handles.sync.clone();
+    let history = handles.history.clone();
+    let merge = handles.merge.clone();
+    let commit = handles.commit.clone();
+    let session = handles.session.clone();
+    let settings = handles.settings.clone();
+    let search = handles.search.clone();
     // 主区模式由搜索功能持有（工具栏分段与命令面板的命令都改它）。
     let mode = search.state.mode;
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -70,7 +69,7 @@ pub(crate) fn workspace(
             &search,
             {
                 let sync = sync.clone();
-                std::sync::Arc::new(move |kind: model::Sync| sync.open_sync(kind))
+                std::sync::Arc::new(move |kind: Sync| sync.open_sync(kind))
             },
             inspector_open,
         ))
@@ -114,7 +113,6 @@ pub(crate) fn workspace(
         .child(shell::statusbar(language, current, notice));
 }
 
-#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn match_body(
     language: Signal<SharedString>,
@@ -178,7 +176,6 @@ fn match_body(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 fn body(
     language: Signal<SharedString>,
     tab: Tab,
@@ -214,7 +211,7 @@ fn body(
                 "compare.range",
                 &[("from", from_short), ("to", to_short)],
             );
-            (label, model::compare_patch(&tab).unwrap_or_default())
+            (label, crate::features::history::ops::compare_patch(&tab).unwrap_or_default())
         }
         None => match tab.file_patch.clone() {
             Some((path, patch)) => (path, patch),
@@ -232,7 +229,7 @@ fn body(
     // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
     let refs_tab = signal(refs::state::RefsTab::Refs);
     let group_by_directory = settings_state.get_untracked().file_tree;
-    let tree_options = crate::model::TreeOptions::from_settings(&settings_state.get_untracked());
+    let tree_options = crate::app::session::TreeOptions::from_settings(&settings_state.get_untracked());
     let commit_for_panel = commit.clone();
     let history_for_inspector = history.clone();
     let search_for_body = search.clone();
@@ -281,7 +278,7 @@ fn body(
                             .min_h_0()
                             .into_element(),
                         crate::Mode::Blame => {
-                            crate::screens::blame_view(language, tab_for_history.clone(), notice)
+                            crate::features::history::blame_view(language, tab_for_history.clone(), notice)
                                 .into_element()
                         }
                         crate::Mode::Refs => refs::view::refs_view(

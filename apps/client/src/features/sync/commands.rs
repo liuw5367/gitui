@@ -1,11 +1,12 @@
 //! 同步的用例：打开/关闭面板、切换选项、执行 fetch/pull/push 与清掉失败状态。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` 并更新本功能的状态，不写布局。
+//! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
+use super::ops;
 use super::state::{SyncDialogState, SyncState};
+use crate::app::session::{Sync, SyncOptions};
 use crate::features::SessionHandle;
-use crate::model;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -20,7 +21,7 @@ pub(crate) struct SyncCommands {
 
 impl SyncCommands {
     /// 打开同步面板；已经打开时只切 tab，保留当前选项（原 `open_sync`）。
-    pub(crate) fn open_sync(&self, kind: model::Sync) {
+    pub(crate) fn open_sync(&self, kind: Sync) {
         let sync_state = self.state.dialog;
         let mut state = sync_state
             .get_untracked()
@@ -56,7 +57,7 @@ impl SyncCommands {
     /// 执行同步动作，并把结果留在面板里（原 `run_sync`）。
     ///
     /// 推送被远端拒绝（非快进）时不自动强推，而是弹「拉取变基 / 拉取合并 / 取消」。
-    pub(crate) fn run_sync(&self, kind: model::Sync) {
+    pub(crate) fn run_sync(&self, kind: Sync) {
         let tabs = self.session.tabs;
         let active = self.session.active;
         let sync_state = self.state.dialog;
@@ -67,13 +68,13 @@ impl SyncCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::sync_with(tab, kind, &options);
+            ops::sync_with(tab, kind, &options);
             let result = match (&tab.sync_message, tab.sync_failed) {
                 (Some(message), false) => Ok(message.clone()),
                 (Some(message), true) => Err(message.clone()),
                 (None, _) => Ok(String::new()),
             };
-            let rejected = kind == model::Sync::Push
+            let rejected = kind == Sync::Push
                 && tab.sync_failed
                 && tab.sync_fault == Some(domain::NetworkFault::Rejected);
             tabs.set(list);
@@ -117,7 +118,7 @@ impl SyncCommands {
                 } else {
                     git::PullStrategy::Merge
                 };
-                let pull_options = model::SyncOptions {
+                let pull_options = SyncOptions {
                     pull: git::PullOptions {
                         strategy,
                         ..options.pull.clone()
@@ -126,11 +127,11 @@ impl SyncCommands {
                 };
                 let mut list = tabs.get_untracked();
                 if let Some(tab) = list.get_mut(active.get_untracked()) {
-                    model::sync_with(tab, model::Sync::Pull, &pull_options);
+                    ops::sync_with(tab, Sync::Pull, &pull_options);
                     let pulled = !tab.sync_failed;
                     // 拉取成功后再推一次；失败就只报拉取结果，不再连环弹框。
                     if pulled {
-                        model::sync_with(tab, model::Sync::Push, &options);
+                        ops::sync_with(tab, Sync::Push, &options);
                     }
                     let outcome = match (&tab.sync_message, tab.sync_failed) {
                         (Some(message), false) => Some((message.clone(), false)),
@@ -167,7 +168,7 @@ impl SyncCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::clear_sync_fault(tab);
+            ops::clear_sync_fault(tab);
             tabs.set(list);
         }
     }

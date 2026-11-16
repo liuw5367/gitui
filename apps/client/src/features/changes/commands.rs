@@ -1,12 +1,13 @@
 //! 变更/暂存的用例：选中变更、暂存与丢弃、按 hunk/行应用、变更清单。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model`，不写布局。
+//! 这里只调本功能的 `ops` 与 `app::ops`，不写布局。
 
+use super::ops;
 use super::state::ChangesState;
+use crate::app::ops::stage_all_or_none;
 use crate::features::SessionHandle;
 use crate::features::merge::commands::MergeCommands;
-use crate::model;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -28,7 +29,7 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::load_change_diff(tab, index);
+            ops::load_change_diff(tab, index);
             self.session.tabs.set(list);
         }
     }
@@ -38,7 +39,7 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::toggle_stage(tab, index);
+            ops::toggle_stage(tab, index);
             self.session.tabs.set(list);
         }
     }
@@ -75,7 +76,7 @@ impl ChangesCommands {
                 let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
                 if let Some(tab) = list.get_mut(current) {
-                    model::discard_change(tab, index);
+                    ops::discard_change(tab, index);
                     tabs.set(list);
                 }
             }
@@ -89,7 +90,7 @@ impl ChangesCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::stage_all_or_none(tab, true);
+            stage_all_or_none(tab, true);
             tabs.set(list);
         }
     }
@@ -101,7 +102,7 @@ impl ChangesCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::stage_all_or_none(tab, false);
+            stage_all_or_none(tab, false);
             tabs.set(list);
         }
     }
@@ -115,7 +116,7 @@ impl ChangesCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match model::apply_piece(tab, hunk, line, reverse) {
+            match ops::apply_piece(tab, hunk, line, reverse) {
                 Ok(()) => {
                     let lang = language.get_untracked();
                     crate::interactions::notify(
@@ -134,7 +135,7 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::set_active_changelist(tab, name);
+            ops::set_active_changelist(tab, name);
             self.session.tabs.set(list);
         }
     }
@@ -144,7 +145,7 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::move_to_changelist(tab, path.as_str(), list_name.as_deref());
+            ops::move_to_changelist(tab, path.as_str(), list_name.as_deref());
             self.session.tabs.set(list);
         }
     }
@@ -154,7 +155,7 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::create_changelist(tab, name.as_str());
+            ops::create_changelist(tab, name.as_str());
             self.session.tabs.set(list);
         }
     }

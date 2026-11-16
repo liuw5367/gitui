@@ -1,16 +1,17 @@
 //! 引用管理的用例：检出/新建/删除分支，推送/删除标签，远程、贮藏、身份与引用合并。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` 并更新本功能的状态，不写布局。
+//! 这里只调本功能的 `ops` 与 `app::ops`，不写布局。
 
+use super::ops;
 use super::state::RefsState;
+use crate::app::ops::identity;
 use crate::features::SessionHandle;
 use crate::features::history::commands::HistoryCommands;
 use crate::features::recovery::commands::RecoveryCommands;
 use crate::features::search::commands::SearchCommands;
+use crate::features::search::form_dialog::FormKind;
 use crate::features::sync::commands::SyncCommands;
-use crate::model;
-use crate::screens;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -43,11 +44,11 @@ impl RefsCommands {
         let dirty = tabs
             .get_untracked()
             .get(current)
-            .is_some_and(model::is_dirty);
+            .is_some_and(ops::is_dirty);
         if !dirty {
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                model::checkout_branch(tab, branch.as_str());
+                ops::checkout_branch(tab, branch.as_str());
                 tabs.set(list);
             }
             return;
@@ -85,7 +86,7 @@ impl RefsCommands {
             let stash = action.as_str() == "stash";
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                model::checkout_branch_with(tab, branch.as_str(), stash);
+                ops::checkout_branch_with(tab, branch.as_str(), stash);
                 let failed = tab.error.clone();
                 tabs.set(list);
                 if let Some(detail) = failed {
@@ -108,7 +109,7 @@ impl RefsCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            if let Err(detail) = model::checkout_new_branch(tab, name.as_str(), from.as_str()) {
+            if let Err(detail) = ops::checkout_new_branch(tab, name.as_str(), from.as_str()) {
                 tab.error = Some(detail);
             }
             tabs.set(list);
@@ -141,7 +142,7 @@ impl RefsCommands {
                 let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
                 if let Some(tab) = list.get_mut(current) {
-                    model::delete_branch(tab, branch.as_str());
+                    ops::delete_branch(tab, branch.as_str());
                     tabs.set(list);
                 }
             }
@@ -157,7 +158,7 @@ impl RefsCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match model::push_tag(tab, name.as_str()) {
+            match ops::push_tag(tab, name.as_str()) {
                 Ok(_) => {
                     let lang = language.get_untracked();
                     crate::interactions::notify(
@@ -181,9 +182,9 @@ impl RefsCommands {
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             let result = if kind == "apply" {
-                model::apply_stash(tab, reference.as_str())
+                ops::apply_stash(tab, reference.as_str())
             } else {
-                model::pop_stash(tab, reference.as_str())
+                ops::pop_stash(tab, reference.as_str())
             };
             match result {
                 Ok(()) => {
@@ -233,7 +234,7 @@ impl RefsCommands {
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                let _ = model::drop_stash(tab, reference.as_str());
+                let _ = ops::drop_stash(tab, reference.as_str());
                 tabs.set(list);
             }
         });
@@ -263,7 +264,7 @@ impl RefsCommands {
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                let _ = model::drop_tag(tab, name.as_str());
+                let _ = ops::drop_tag(tab, name.as_str());
                 tabs.set(list);
             }
         });
@@ -293,7 +294,7 @@ impl RefsCommands {
             let current = active.get_untracked();
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
-                let _ = model::drop_remote(tab, name.as_str());
+                let _ = ops::drop_remote(tab, name.as_str());
                 tabs.set(list);
             }
         });
@@ -306,7 +307,7 @@ impl RefsCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            if let Err(detail) = model::merge_reference(tab, reference.as_str()) {
+            if let Err(detail) = ops::merge_reference(tab, reference.as_str()) {
                 tab.error = Some(detail);
             }
             tabs.set(list);
@@ -327,7 +328,7 @@ impl RefsCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match model::checkout_default_branch(tab) {
+            match ops::checkout_default_branch(tab) {
                 Ok(()) => {
                     let lang = language.get_untracked();
                     crate::interactions::notify(
@@ -349,9 +350,9 @@ impl RefsCommands {
         let Some(tab) = list.get(active.get_untracked()) else {
             return;
         };
-        let (name, email) = model::identity(tab);
+        let (name, email) = identity(tab);
         self.search
-            .open_form_prefilled(screens::FormKind::Identity, name, email);
+            .open_form_prefilled(FormKind::Identity, name, email);
     }
 
     /// 清掉仓库级身份，回到全局配置（原 `clear_identity`）。
@@ -364,7 +365,7 @@ impl RefsCommands {
         let Some(tab) = list.get(active.get_untracked()) else {
             return;
         };
-        match model::clear_identity(tab) {
+        match ops::clear_identity(tab) {
             Ok(()) => {
                 let lang = language.get_untracked();
                 crate::interactions::notify(

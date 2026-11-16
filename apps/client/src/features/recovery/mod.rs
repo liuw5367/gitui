@@ -4,3 +4,4 @@
 //! 因此目录里只有用例；视图经 `features::refs` / `features::history` 调用。
 
 pub(crate) mod commands;
+pub(crate) mod ops;

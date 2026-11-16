@@ -1,14 +1,14 @@
 //! 提交历史的用例：选中提交/文件、对比、筛选与刷新。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` 并更新本功能的状态，不写布局。
+//! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
+use super::ops;
 use super::state::HistoryState;
 use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::recovery::commands::RecoveryCommands;
 use crate::filters::When;
-use crate::model;
 use crate::shared::diff::DiffCommands;
 use nsh_core::prelude::*;
 
@@ -35,7 +35,7 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::select_commit(tab, index);
+            ops::select_commit(tab, index);
             self.session.tabs.set(list);
         }
     }
@@ -45,7 +45,7 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::select_file(tab, index);
+            ops::select_file(tab, index);
             self.session.tabs.set(list);
         }
     }
@@ -55,7 +55,7 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::toggle_compare(tab, index);
+            ops::toggle_compare(tab, index);
             self.session.tabs.set(list);
         }
     }
@@ -79,7 +79,7 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            model::set_compare_refs(tab, base, target);
+            ops::set_compare_refs(tab, base, target);
             self.session.tabs.set(list);
         }
     }
@@ -89,7 +89,7 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get(current).cloned() {
-            list[current] = model::reload_with_filter(&tab, &(self.state.filter)());
+            list[current] = ops::reload_with_filter(&tab, &(self.state.filter)());
             self.session.tabs.set(list);
         }
     }
@@ -119,7 +119,7 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            if model::select_by_sha(tab, sha.as_str()) {
+            if ops::select_by_sha(tab, sha.as_str()) {
                 self.mode.set(crate::Mode::History);
                 self.session.tabs.set(list);
             } else {

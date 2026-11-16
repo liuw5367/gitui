@@ -8,7 +8,7 @@
 
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use crate::ui;
 use nsh_core::prelude::*;
 

@@ -13,7 +13,7 @@ use super::state::HistoryState;
 use crate::design;
 use crate::features::recovery::commands::RecoveryCommands;
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use nsh_core::prelude::*;
 
 /// 面板宽度（设计板 `.insp`）。

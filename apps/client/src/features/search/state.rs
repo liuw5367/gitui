@@ -18,5 +18,5 @@ pub(crate) struct SearchState {
     /// 工作区主区的模式；工具栏分段与命令面板的命令都改它。
     pub(crate) mode: Signal<crate::Mode>,
     /// 表单浮层（分支/标签/远程/贮藏/身份）；`None` 表示关闭。
-    pub(crate) form: Signal<Option<crate::screens::FormState>>,
+    pub(crate) form: Signal<Option<super::form_dialog::FormState>>,
 }

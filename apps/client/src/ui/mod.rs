@@ -168,15 +168,15 @@ mod guard_tests {
         "features/agent/view.rs",
         "features/merge/view.rs",
         "features/sync/view.rs",
-        "screens/form_dialog.rs",
+        "features/search/form_dialog.rs",
         "features/commit/hook_sheet.rs",
         "features/commit/rewrite_dialog.rs",
         "features/history/inspector.rs",
         "features/changes/view.rs",
         "features/history/view.rs",
         "features/search/view.rs",
-        "screens/blame_view.rs",
-        "screens/workspace.rs",
+        "features/history/blame.rs",
+        "app/workspace.rs",
     ];
 
     fn src_root() -> PathBuf {

@@ -8,7 +8,7 @@ use super::commands::CommitCommands;
 use super::state::CommitState;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use nsh_core::prelude::*;
 
 /// 面板宽度（与提交文件面板一致）。

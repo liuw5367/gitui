@@ -14,7 +14,7 @@ use crate::design::{self, metrics};
 use crate::features::agent::commands::AgentCommands;
 use crate::features::refs::commands::RefsCommands;
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -450,7 +450,7 @@ fn main(
 /// 身份按当前仓库读（仓库级 config），没有打开仓库时回落到全局配置。
 fn identity(tab: Option<&Tab>) -> (String, String) {
     if let Some(tab) = tab {
-        return crate::model::identity(tab);
+        return crate::app::ops::identity(tab);
     }
     let read = |key: &str| {
         return std::process::Command::new("git")

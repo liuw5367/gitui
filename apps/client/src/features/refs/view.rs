@@ -12,7 +12,7 @@ use super::commands::RefsCommands;
 use super::state::{RefsState, RefsTab};
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use crate::ui;
 use crate::features::search::commands::SearchCommands;
 use nsh_core::element::desktop::MenuItem;
@@ -322,9 +322,9 @@ pub(crate) fn refs_view(
     let table_cmd = cmd.clone();
     let table_search = search.clone();
     // 新建表单归搜索功能：这里只把入口包成按钮要的回调。
-    let open_form: std::sync::Arc<dyn Fn(crate::screens::FormKind)> = {
+    let open_form: std::sync::Arc<dyn Fn(crate::features::search::FormKind)> = {
         let search = search.clone();
-        std::sync::Arc::new(move |kind: crate::screens::FormKind| search.open_form(kind))
+        std::sync::Arc::new(move |kind: crate::features::search::FormKind| search.open_form(kind))
     };
     return view()
         .w_full()
@@ -354,7 +354,7 @@ pub(crate) fn refs_view(
                     "form.newBranch",
                     {
                         let open_form = open_form.clone();
-                        move || open_form(crate::screens::FormKind::NewBranch)
+                        move || open_form(crate::features::search::FormKind::NewBranch)
                     },
                 ))
                 .child(create_button(
@@ -362,7 +362,7 @@ pub(crate) fn refs_view(
                     "form.newTag",
                     {
                         let open_form = open_form.clone();
-                        move || open_form(crate::screens::FormKind::NewTag)
+                        move || open_form(crate::features::search::FormKind::NewTag)
                     },
                 ))
                 .child(create_button(
@@ -370,7 +370,7 @@ pub(crate) fn refs_view(
                     "form.addRemote",
                     {
                         let open_form = open_form.clone();
-                        move || open_form(crate::screens::FormKind::AddRemote)
+                        move || open_form(crate::features::search::FormKind::AddRemote)
                     },
                 ))
                 .child(create_button(
@@ -378,7 +378,7 @@ pub(crate) fn refs_view(
                     "form.newStash",
                     {
                         let open_form = open_form.clone();
-                        move || open_form(crate::screens::FormKind::NewStash)
+                        move || open_form(crate::features::search::FormKind::NewStash)
                     },
                 ))
                 .child(tab_button(language, RefsTab::Refs, selected_tab))
@@ -445,9 +445,9 @@ fn refs_table(
             crate::shared::os::reveal_path(notice, language, path)
         })
     };
-    let open_form_from: std::sync::Arc<dyn Fn(crate::screens::FormKind, String)> = {
+    let open_form_from: std::sync::Arc<dyn Fn(crate::features::search::FormKind, String)> = {
         let search = search.clone();
-        std::sync::Arc::new(move |kind: crate::screens::FormKind, from: String| {
+        std::sync::Arc::new(move |kind: crate::features::search::FormKind, from: String| {
             search.open_form_from(kind, from)
         })
     };
@@ -499,9 +499,9 @@ fn refs_table(
         std::sync::Arc::new(move |reference: String| cmd.drop_stash(reference))
     };
     // 远程行的「取回」打开同步面板：那是同步功能的入口，走它的用例。
-    let fetch: std::sync::Arc<dyn Fn(crate::model::Sync)> = {
+    let fetch: std::sync::Arc<dyn Fn(crate::app::session::Sync)> = {
         let sync = cmd.sync.clone();
-        std::sync::Arc::new(move |kind: crate::model::Sync| sync.open_sync(kind))
+        std::sync::Arc::new(move |kind: crate::app::session::Sync| sync.open_sync(kind))
     };
     let mut sections: Vec<AnyElement> = Vec::new();
     // 分支：检出、检出为新本地分支、比较、合并、重命名、删除、复制。
@@ -574,7 +574,7 @@ fn refs_table(
                 {
                     let open_form = open_form.clone();
                     let name = name_for_menu.clone();
-                    move || open_form(crate::screens::FormKind::RenameBranch, name.clone())
+                    move || open_form(crate::features::search::FormKind::RenameBranch, name.clone())
                 },
             ),
             ui::menu::action(
@@ -629,7 +629,7 @@ fn refs_table(
                     let edit_form = edit_form.clone();
                     let name = name.clone();
                     move || {
-                        edit_form(crate::screens::FormKind::EditRemote, name.clone());
+                        edit_form(crate::features::search::FormKind::EditRemote, name.clone());
                     }
                 },
             ),
@@ -638,7 +638,7 @@ fn refs_table(
                 true,
                 {
                     let fetch = fetch.clone();
-                    move || fetch(crate::model::Sync::Fetch)
+                    move || fetch(crate::app::session::Sync::Fetch)
                 },
             ),
             ui::menu::action(
@@ -902,9 +902,9 @@ fn reflog_list(
     let recovery = cmd.recovery.clone();
     let show_in_history = cmd.history.clone();
     let notice = cmd.notice;
-    let open_form_from: std::sync::Arc<dyn Fn(crate::screens::FormKind, String)> = {
+    let open_form_from: std::sync::Arc<dyn Fn(crate::features::search::FormKind, String)> = {
         let search = search.clone();
-        std::sync::Arc::new(move |kind: crate::screens::FormKind, from: String| {
+        std::sync::Arc::new(move |kind: crate::features::search::FormKind, from: String| {
             search.open_form_from(kind, from)
         })
     };
@@ -1003,7 +1003,7 @@ fn reflog_list(
                                 let sha = sha.clone();
                                 move || {
                                     open_form(
-                                        crate::screens::FormKind::NewBranch,
+                                        crate::features::search::FormKind::NewBranch,
                                         sha.clone(),
                                     )
                                 }

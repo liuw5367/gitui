@@ -2,6 +2,7 @@
 
 pub(crate) mod commands;
 pub(crate) mod hook_sheet;
+pub(crate) mod ops;
 pub(crate) mod rewrite_dialog;
 pub(crate) mod state;
 pub(crate) mod view;

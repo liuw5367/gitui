@@ -11,7 +11,7 @@ use super::state::ChangesState;
 use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use domain::diff::DiffLineKind;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
@@ -25,7 +25,7 @@ pub(crate) fn changes(
     cmd: &ChangesCommands,
     tab: Tab,
     group_by_directory: bool,
-    tree: crate::model::TreeOptions,
+    tree: crate::app::session::TreeOptions,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let total = tab.changes.len();
@@ -173,7 +173,7 @@ fn changes_list(
     staged_count: usize,
     total: usize,
     group_by_directory: bool,
-    tree: crate::model::TreeOptions,
+    tree: crate::app::session::TreeOptions,
 ) -> impl IntoElement + use<> {
     let changelist_open = state.changelist_open;
     // 外部打开与复制的提示文案取自本功能的用例，视图不再经 `Actions` 中转。

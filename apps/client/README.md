@@ -23,15 +23,15 @@ APP_HOME=/tmp/app-home nsh run
 
 | 路径 | 内容 |
 |---|---|
-| `src/lib.rs` | 根组件：窗口、主题、语言、屏幕路由与动作集合 |
+| `src/lib.rs` | 根组件：模块声明、`App` 转发与根导出（引导见 `src/app/bootstrap.rs`） |
 | `src/main.rs` | 原生后端入口；指定窗口标题、初始尺寸与平台分支 |
 | `src/brand.rs` | 产品名、版本、构建号与存储目录名 |
 | `src/design/` | 颜色 token（`mod.rs`）、几何与原生刻度（`metrics.rs`）、图标 sprite（`icons.rs`） |
 | `src/shell/` | 标题栏（仓库标签页）、工具栏、状态栏与状态横幅 |
-| `src/screens/` | 欢迎页、设置、引用、变更、冲突、blame、同步面板、命令面板、表单与钩子日志 |
-| `src/workspace/` | 侧栏、历史表、diff、检查器、提交面板与 Agent 面板 |
+| `src/features/` | 功能切片：`state`（信号集合）、`commands`（用例）、`view`（渲染）与 `ops`（对 `Tab` 的写操作）；欢迎、历史、变更、提交、引用、同步、冲突、恢复、Agent、设置与搜索各一目录 |
+| `src/shared/` | 跨功能件：diff 视图与显示开关（`diff.rs`）、平台查询（`os.rs`） |
 | `src/ui/` | 应用自有的组件层：按钮、输入、表格、树、分段、菜单、弹层与反馈 |
-| `src/model.rs` | 标签页状态与数据装载；把 `git` 与 `store` 的结果整理成界面可渲染的结构 |
+| `src/app/` | 应用组装层：引导与首屏（`bootstrap.rs`）、主窗口版式（`workspace.rs`）、菜单（`menu.rs`）、快捷键（`hotkeys.rs`）、窗口与会话持久化（`windows.rs`）、标签页壳（`session.rs`）、句柄集合（`handles.rs`）与跨功能写操作（`ops.rs`） |
 | `src/i18n.rs` | 读取 `locales/*.json`，按当前语言取文案 |
 | `src/shortcuts.rs` | 快捷键注册表：默认值、改键与显示 |
 | `src/filters.rs` | 历史筛选条件到 `git log` 参数的转换 |
@@ -69,9 +69,9 @@ cargo test -p nsh-app        # 等价于在本目录运行 cargo test
 nsh check
 ```
 
-仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 80 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
+仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 81 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
 
-- `model`：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步、改写、reflog、引用操作、变更清单、冲突解决、过滤与对比、树形选项。
+- `features/*/ops`（连同 `app/session.rs`、`app/ops.rs`）：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步、改写、reflog、引用操作、变更清单、冲突解决、过滤与对比、树形选项。
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。
 - `i18n`：两种语言的键集合一致、占位符替换、缺键回退、相对时间与日期格式。
 - `ui`：守卫测试、图标 sprite、表格列宽、树节点、组件尺寸、diff 布局。

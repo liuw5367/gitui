@@ -7,7 +7,7 @@ use super::commands::CommitCommands;
 use super::state::CommitState;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use nsh_core::prelude::*;
 
 /// 日志弹层：居中、可滚动、Esc 或点背景关闭。

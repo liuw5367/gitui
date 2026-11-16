@@ -1,11 +1,13 @@
 //! 提交的用例：提交、跳过钩子、面板开关、钩子日志弹层与历史改写。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` 并更新本功能的状态，不写布局。
+//! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
+use super::ops;
 use super::state::{CommitState, RewriteKind, RewriteState};
+use crate::app::ops::sync;
+use crate::app::session::Sync;
 use crate::features::SessionHandle;
-use crate::model;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -37,7 +39,7 @@ impl CommitCommands {
         if let Some(tab) = list.get_mut(current) {
             tab.summary = commit_summary.get_untracked();
             tab.description = commit_description.get_untracked();
-            model::commit_staged_with(tab, no_verify);
+            ops::commit_staged_with(tab, no_verify);
             if tab.hook_ok {
                 commit_summary.set(String::new());
                 commit_description.set(String::new());
@@ -50,7 +52,7 @@ impl CommitCommands {
             if push_after {
                 let mut list = list;
                 if let Some(tab) = list.get_mut(current) {
-                    model::sync(tab, model::Sync::Push);
+                    sync(tab, Sync::Push);
                     tabs.set(list);
                 }
                 crate::interactions::notify(
@@ -117,7 +119,7 @@ impl CommitCommands {
         let blocker = {
             let list = tabs.get_untracked();
             list.get(active.get_untracked())
-                .and_then(model::rewrite_blocker)
+                .and_then(ops::rewrite_blocker)
         };
         rewrite_state.set(Some(RewriteState::new(
             RewriteKind::Reword { sha, short, summary: summary.clone() },
@@ -134,7 +136,7 @@ impl CommitCommands {
         let blocker = {
             let list = tabs.get_untracked();
             list.get(active.get_untracked())
-                .and_then(model::rewrite_blocker)
+                .and_then(ops::rewrite_blocker)
         };
         // 结果说明默认取最旧那条提交的说明，用户可改。
         let message = commits
@@ -177,9 +179,9 @@ impl CommitCommands {
         };
         let result = match &state.kind {
             RewriteKind::Reword { sha, .. } => {
-                model::reword_commit(tab, sha.as_str(), state.message.as_str())
+                ops::reword_commit(tab, sha.as_str(), state.message.as_str())
             }
-            RewriteKind::Squash { from, to, .. } => model::squash_commits(
+            RewriteKind::Squash { from, to, .. } => ops::squash_commits(
                 tab,
                 from.as_str(),
                 to.as_str(),
@@ -222,7 +224,7 @@ impl CommitCommands {
         if let Some(tab) = list.get_mut(current) {
             let lang = language.get_untracked();
             let message = crate::i18n::t(lang.as_str(), "state.initialCommitMessage");
-            match model::create_initial_commit(tab, message.as_str()) {
+            match ops::create_initial_commit(tab, message.as_str()) {
                 Ok(()) => crate::interactions::notify(
                     notice,
                     crate::i18n::t(lang.as_str(), "toast.historyDone"),

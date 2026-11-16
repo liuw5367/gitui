@@ -3,16 +3,17 @@
 //! 方法体由原 `Actions`（与 `lib.rs` 里的局部闭包）原样搬来，只把捕获的信号换成
 //! `self.*`；会话动作（关页签、前/后切页签）走 `SessionHandle` 的方法。
 
+use super::form_dialog::{FormKind, FormState};
+use super::ops;
 use super::state::SearchState;
 use super::view;
+use crate::app::session::Sync;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::history::commands::HistoryCommands;
 use crate::features::settings::commands::SettingsCommands;
 use crate::features::sync::commands::SyncCommands;
 use crate::features::welcome::commands::WelcomeCommands;
 use crate::features::SessionHandle;
-use crate::model;
-use crate::screens;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -52,14 +53,14 @@ impl SearchCommands {
     }
 
     /// 打开表单浮层（原 `open_form`）。
-    pub(crate) fn open_form(&self, kind: screens::FormKind) {
-        self.state.form.set(Some(screens::FormState::new(kind)));
+    pub(crate) fn open_form(&self, kind: FormKind) {
+        self.state.form.set(Some(FormState::new(kind)));
     }
 
     /// 打开表单并把第二个字段预填（原 `open_form_from`）：从某个提交新建分支/标签、
     /// 重命名分支或改远程 URL 时用。
-    pub(crate) fn open_form_from(&self, kind: screens::FormKind, from: String) {
-        let mut state = screens::FormState::new(kind);
+    pub(crate) fn open_form_from(&self, kind: FormKind, from: String) {
+        let mut state = FormState::new(kind);
         state.second = from;
         self.state.form.set(Some(state));
     }
@@ -67,11 +68,11 @@ impl SearchCommands {
     /// 打开表单并同时预填前两个字段（身份编辑：姓名与邮箱）。
     pub(crate) fn open_form_prefilled(
         &self,
-        kind: screens::FormKind,
+        kind: FormKind,
         first: String,
         second: String,
     ) {
-        let mut state = screens::FormState::new(kind);
+        let mut state = FormState::new(kind);
         state.first = first;
         state.second = second;
         self.state.form.set(Some(state));
@@ -83,7 +84,7 @@ impl SearchCommands {
     }
 
     /// 提交表单：按种类执行对应的 Git 写操作，失败时把原因留在对话框里。
-    pub(crate) fn submit_form(&self, form: screens::FormState) {
+    pub(crate) fn submit_form(&self, form: FormState) {
         let tabs = self.session.tabs;
         let active = self.session.active;
         let form_state = self.state.form;
@@ -101,27 +102,27 @@ impl SearchCommands {
             return;
         }
         let result = match form.kind {
-            screens::FormKind::NewBranch => {
-                model::create_branch(tab, first.as_str(), second.as_str(), form.flag)
+            FormKind::NewBranch => {
+                ops::create_branch(tab, first.as_str(), second.as_str(), form.flag)
             }
-            screens::FormKind::NewTag => model::create_tag(
+            FormKind::NewTag => ops::create_tag(
                 tab,
                 first.as_str(),
                 second.as_str(),
                 form.third.as_str(),
                 form.flag,
             ),
-            screens::FormKind::AddRemote => model::add_remote(tab, first.as_str(), second.as_str()),
-            screens::FormKind::NewStash => model::stash_changes(tab, first.as_str(), form.flag),
+            FormKind::AddRemote => ops::add_remote(tab, first.as_str(), second.as_str()),
+            FormKind::NewStash => ops::stash_changes(tab, first.as_str(), form.flag),
             // 重命名与改 URL：`second` 是被改对象的原名，`first` 是新值。
-            screens::FormKind::RenameBranch => {
-                model::rename_branch(tab, second.as_str(), first.as_str())
+            FormKind::RenameBranch => {
+                ops::rename_branch(tab, second.as_str(), first.as_str())
             }
-            screens::FormKind::EditRemote => {
-                model::edit_remote(tab, second.as_str(), first.as_str())
+            FormKind::EditRemote => {
+                ops::edit_remote(tab, second.as_str(), first.as_str())
             }
             // 身份：`first` 是姓名，`second` 是邮箱。
-            screens::FormKind::Identity => model::set_identity(tab, first.as_str(), second.as_str()),
+            FormKind::Identity => ops::set_identity(tab, first.as_str(), second.as_str()),
         };
         tabs.set(list);
         match result {
@@ -156,9 +157,9 @@ impl SearchCommands {
                 let compare_mode = self.history.state.compare_mode;
                 compare_mode.set(!compare_mode.get_untracked())
             }
-            "fetch" => self.sync.open_sync(model::Sync::Fetch),
-            "pull" => self.sync.open_sync(model::Sync::Pull),
-            "push" => self.sync.open_sync(model::Sync::Push),
+            "fetch" => self.sync.open_sync(Sync::Fetch),
+            "pull" => self.sync.open_sync(Sync::Pull),
+            "push" => self.sync.open_sync(Sync::Push),
             // ⌘F 搜索与 ⇧⌘F 过滤共用历史视图的过滤浮层（手册 1.3）。
             "filter" | "filterHistory" => {
                 self.set_mode(crate::Mode::History);

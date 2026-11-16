@@ -3,7 +3,7 @@
 //! 只放属于本功能、且不跨功能的信号；同步结果（`sync_message` / `sync_failed` /
 //! `sync_fault`）是每个仓库各自的数据，挂在 `Tab` 上，仍留在 `Tab` 里。
 
-use crate::model::{Sync, SyncOptions};
+use crate::app::session::{Sync, SyncOptions};
 use nsh_core::prelude::*;
 
 /// 对话框状态：种类 + 选项 + 结果。

@@ -1,9 +1,10 @@
-//! 功能切片：每个功能一个目录，固定 `state` / `commands` / `view` 三个文件。
+//! 功能切片：每个功能一个目录，`state` / `commands` / `view` 之外可以有 `ops`。
 //!
 //! `state.rs` 只放本功能的 `Signal` 集合，`commands.rs` 只放本功能的用例（调
-//! `git::Repo` / `model` 并更新 state），`view.rs` 只放本功能的渲染。
+//! `git::Repo` / `ops` 并更新 state），`ops.rs` 放本功能对 `Tab` 的写操作，
+//! `view.rs` 只放本功能的渲染。
 
-use crate::model::Tab;
+use crate::app::session::Tab;
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -72,7 +73,7 @@ impl SessionHandle {
                 active.set(index);
             }
             None => {
-                list.push(crate::model::placeholder_tab(path.as_str(), &filter));
+                list.push(crate::app::session::placeholder_tab(path.as_str(), &filter));
                 active.set(list.len() - 1);
             }
         }
@@ -87,7 +88,7 @@ impl SessionHandle {
 
         let path_for_load = path.clone();
         spawn(async move {
-            let loaded = crate::model::load_tab(path_for_load.as_str(), &filter);
+            let loaded = crate::app::session::load_tab(path_for_load.as_str(), &filter);
             let mut list = tabs.get_untracked();
             // 加载期间用户可能关掉了这个标签页，找不到就丢弃结果。
             let Some(index) = list
@@ -138,7 +139,7 @@ impl SessionHandle {
         let Some(tab) = list.get(current) else {
             return;
         };
-        let parent = crate::model::parent_path(tab.path.as_str());
+        let parent = crate::app::session::parent_path(tab.path.as_str());
         if !parent.is_empty() {
             self.open_path(parent);
         }
@@ -149,7 +150,7 @@ impl SessionHandle {
         let current = self.active.get_untracked();
         let mut list = self.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match crate::model::init_here(tab) {
+            match crate::app::session::init_here(tab) {
                 Ok(()) => {
                     let lang = self.language.get_untracked();
                     crate::interactions::notify(

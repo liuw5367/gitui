@@ -1,13 +1,15 @@
 //! Agent 的用例：提议计划、逐步/整单执行、编辑计划、权限与运行设置。
 //!
 //! 方法体由原 `Actions` 里的闭包原样搬来，只把捕获的局部变量换成 `self.*`；
-//! 这里只调 `model` / `agent` 并更新本功能的状态，不写布局。
+//! 这里只调 `app::ops` / `commit::ops` / `agent` 并更新状态，不写布局。
 
 use super::state::AgentState;
+use crate::app::ops::{stage_all_or_none, sync};
+use crate::app::session::Sync;
 use crate::features::SessionHandle;
+use crate::features::commit::ops::commit_staged;
 use crate::i18n;
 use crate::interactions;
-use crate::model;
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 
@@ -139,11 +141,11 @@ impl AgentCommands {
         };
         let detail = match step.action {
             agent::Action::StageAll => {
-                model::stage_all_or_none(tab, true);
+                stage_all_or_none(tab, true);
                 "staged all".to_string()
             }
             agent::Action::UnstageAll => {
-                model::stage_all_or_none(tab, false);
+                stage_all_or_none(tab, false);
                 "unstaged all".to_string()
             }
             // 只读动作与强推不是 plan 的步骤：前者不产生副作用，后者必须由人
@@ -154,19 +156,19 @@ impl AgentCommands {
                     .argument
                     .clone()
                     .unwrap_or_else(|| commit_summary.get_untracked());
-                model::commit_staged(tab);
+                commit_staged(tab);
                 tab.hook_log.clone().unwrap_or_default()
             }
             agent::Action::Fetch => {
-                model::sync(tab, model::Sync::Fetch);
+                sync(tab, Sync::Fetch);
                 tab.sync_message.clone().unwrap_or_default()
             }
             agent::Action::Pull => {
-                model::sync(tab, model::Sync::Pull);
+                sync(tab, Sync::Pull);
                 tab.sync_message.clone().unwrap_or_default()
             }
             agent::Action::Push => {
-                model::sync(tab, model::Sync::Push);
+                sync(tab, Sync::Push);
                 tab.sync_message.clone().unwrap_or_default()
             }
             agent::Action::Discard => "skipped: destructive".to_string(),

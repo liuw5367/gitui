@@ -7,7 +7,7 @@ use super::commands::SyncCommands;
 use super::state::SyncState;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::{Sync, SyncOptions, Tab};
+use crate::app::session::{Sync, SyncOptions, Tab};
 use nsh_core::prelude::*;
 
 /// 三个 tab 的显示顺序。

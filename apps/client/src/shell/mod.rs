@@ -4,10 +4,10 @@
 //! P1 中 Fetch/Pull/Push、Branch/Stash、Agent 还没有对应的写路径或同步实现，
 //! 这些按钮按禁用态渲染，不伪装成可用。
 
+use crate::app::session::{RepoProblem, Sync, Tab};
 use crate::design::{self, metrics};
-use crate::i18n;
-use crate::model::Tab;
 use crate::features::search::commands::SearchCommands;
+use crate::i18n;
 use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -199,7 +199,7 @@ pub(crate) fn toolbar(
     change_count: impl Fn() -> u32 + 'static,
     mode: Signal<crate::Mode>,
     search: &SearchCommands,
-    sync: std::sync::Arc<dyn Fn(crate::model::Sync) -> ()>,
+    sync: std::sync::Arc<dyn Fn(Sync) -> ()>,
     panel_open: Signal<bool>,
 ) -> impl IntoElement {
     // 工具栏的分段与两个入口都改主区模式，因此直接调搜索功能的用例。
@@ -241,13 +241,13 @@ pub(crate) fn toolbar(
         ))
         .child(crate::ui::v_separator())
         .child(tool_button(language, "refresh", "shell.fetch", move || {
-            do_fetch(crate::model::Sync::Fetch)
+            do_fetch(Sync::Fetch)
         }))
         .child(tool_button(language, "down", "shell.pull", move || {
-            do_pull(crate::model::Sync::Pull)
+            do_pull(Sync::Pull)
         }))
         .child(tool_button(language, "up", "shell.push", move || {
-            do_push(crate::model::Sync::Push)
+            do_push(Sync::Push)
         }))
         .child(crate::ui::v_separator())
         .child(tool_button(language, "branch", "shell.branch", {
@@ -347,16 +347,16 @@ pub(crate) fn state_banner(
     let visible = move || {
         return tab.get().is_some_and(|tab| {
             // 打不开的仓库优先级最高：其它状态在它上面都没有意义。
-            tab.problem != crate::model::RepoProblem::None
+            tab.problem != RepoProblem::None
                 || matches!(tab.head, git::HeadState::Detached { .. })
                 || matches!(tab.head, git::HeadState::Unborn { .. })
                 || tab.sync_fault.is_some()
         });
     };
-    let create_branch: std::sync::Arc<dyn Fn(crate::screens::FormKind, String)> = {
+    let create_branch: std::sync::Arc<dyn Fn(crate::features::search::FormKind, String)> = {
         let search = search.clone();
         std::sync::Arc::new(
-            move |kind: crate::screens::FormKind, from: String| search.open_form_from(kind, from),
+            move |kind: crate::features::search::FormKind, from: String| search.open_form_from(kind, from),
         )
     };
     // 「回到 main」「关闭同步失败横幅」已归引用管理与同步功能的用例。
@@ -387,9 +387,9 @@ pub(crate) fn state_banner(
             // 语言值克隆进各个闭包（`SharedString` 克隆很便宜），避免借用逃逸。
             let language_now = language.get();
             // 打不开的仓库：给出能直接补救的三个动作，而不是让用户看着报错。
-            if current.problem != crate::model::RepoProblem::None {
+            if current.problem != RepoProblem::None {
                 let path = current.path.clone();
-                let not_found = current.problem == crate::model::RepoProblem::NotFound;
+                let not_found = current.problem == RepoProblem::NotFound;
                 let locate = session.clone();
                 let init_here = session.clone();
                 let open_parent = session.clone();
@@ -550,7 +550,7 @@ pub(crate) fn state_banner(
                                     let create_branch = create_branch.clone();
                                     let sha = sha.clone();
                                     move || {
-                                        create_branch(crate::screens::FormKind::NewBranch, sha.clone())
+                                        create_branch(crate::features::search::FormKind::NewBranch, sha.clone())
                                     }
                                 },
                             )

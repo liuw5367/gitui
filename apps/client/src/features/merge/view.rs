@@ -10,7 +10,7 @@ use super::commands::MergeCommands;
 use super::state::MergeState;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::model::Tab;
+use crate::app::session::Tab;
 use domain::conflict::{self, Side};
 use nsh_core::prelude::*;
 
