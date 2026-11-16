@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gitui — Menus and dialogs</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/0a859d3b7b7fd8e4958bfb63b7af439a">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+
+<div class="gallery-page">
+  <div>
+    <h1 class="gallery-title">Menus &amp; dialogs</h1>
+    <div class="gallery-sub">IDEA / Fork-style commit, branch, remote, reset and filter interactions. Each card is drawn at native macOS density.</div>
+  </div>
+
+  <div class="gallery-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Branch · context menu</div>
+      <div class="menu flat" role="menu" aria-label="Branch actions">
+        <button class="mi" role="menuitem" type="button">Checkout</button>
+        <button class="mi" role="menuitem" type="button">New Branch from 'main'…</button>
+        <button class="mi" role="menuitem" type="button">Compare with Current Branch</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Rebase Current onto 'main'</button>
+        <button class="mi" role="menuitem" type="button">Merge 'main' into Current</button>
+        <button class="mi" role="menuitem" type="button">New Tag…</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Rename…</button>
+        <button class="mi" role="menuitem" type="button">Delete…</button>
+        <button class="mi" role="menuitem" type="button">Copy Branch Name<span class="sc">⌥⌘C</span></button>
+        <button class="mi" role="menuitem" type="button">Push 'main' to origin</button>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Reset current branch</div>
+      <div class="dialog">
+        <div class="dialog-head">
+          <div><div class="t">Reset Current Branch</div><div class="s">main → 3f2a1c9</div></div>
+          <span class="x">×</span>
+        </div>
+        <div class="dialog-body">
+          <div class="hint" style="margin-bottom:6px">Move the current branch. Choose what happens to the index and working tree.</div>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-soft)">
+            <input type="radio" name="reset-kind" style="margin-top:2px">
+            <span><b style="font-size:11px;font-weight:500;color:var(--text)">Soft</b><span style="display:block;font-size:9px;color:var(--text3);line-height:1.4">Move HEAD only. Keep the index and working tree.</span></span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-soft)">
+            <input type="radio" name="reset-kind" checked="" style="margin-top:2px">
+            <span><b style="font-size:11px;font-weight:500;color:var(--text)">Mixed</b><span style="display:block;font-size:9px;color:var(--text3);line-height:1.4">Move HEAD and reset the index. Keep working-tree changes.</span></span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:7px 0">
+            <input type="radio" name="reset-kind" style="margin-top:2px">
+            <span><b style="font-size:11px;font-weight:500;color:var(--text)">Hard</b><span style="display:block;font-size:9px;color:var(--text3);line-height:1.4">Discard the index and all uncommitted changes.</span></span>
+          </label>
+          <div class="dialog-note" style="color:var(--danger)">Hard reset permanently discards uncommitted changes.</div>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn" type="button">Cancel</button>
+          <span class="spacer"></span>
+          <button class="btn" type="button" style="color:var(--danger)">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Squash commits</div>
+      <div class="dialog">
+        <div class="dialog-head">
+          <div><div class="t">Squash 3 Commits</div><div class="s">into 3f2a1c9</div></div>
+          <span class="x">×</span>
+        </div>
+        <div class="dialog-body">
+          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:9px">
+            <div style="display:flex;gap:7px;align-items:center;font-size:10px"><span class="mono" style="color:var(--text3)">3f2a1c9</span><span style="color:var(--text)">Fix diff hunk alignment</span></div>
+            <div style="display:flex;gap:7px;align-items:center;font-size:10px"><span class="mono" style="color:var(--text3)">8b41e07</span><span style="color:var(--text)">Add split/unified toggle</span></div>
+            <div style="display:flex;gap:7px;align-items:center;font-size:10px"><span class="mono" style="color:var(--text3)">c72d9a4</span><span style="color:var(--text)">Release 1.4.0</span></div>
+          </div>
+          <label class="label">Resulting message</label>
+          <textarea class="textarea" style="min-height:56px">Fix wrapped-line hunk alignment and split view</textarea>
+          <div class="dialog-note">Creates a new commit and replaces the selected 3 commits.</div>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn" type="button">Cancel</button>
+          <span class="spacer"></span>
+          <button class="btn primary" type="button">Squash</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Remote branch · context menu</div>
+      <div class="menu flat" role="menu" aria-label="Remote branch actions">
+        <button class="mi" role="menuitem" type="button">Checkout as New Local Branch</button>
+        <button class="mi" role="menuitem" type="button">Compare with Current</button>
+        <button class="mi" role="menuitem" type="button">Merge into Current</button>
+        <button class="mi" role="menuitem" type="button">Rebase Current onto</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Pull into Current</button>
+        <button class="mi" role="menuitem" type="button">Delete Remote Branch…</button>
+        <button class="mi" role="menuitem" type="button">Copy Name</button>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>New branch</div>
+      <div class="dialog">
+        <div class="dialog-head"><div class="t">New Branch</div><span class="x">×</span></div>
+        <div class="dialog-body">
+          <label class="label" for="nb-name">Name</label>
+          <div class="field"><input id="nb-name" value="feature/history-filters" spellcheck="false"></div>
+          <label class="label" style="margin-top:9px" for="nb-from">From</label>
+          <div class="field"><input id="nb-from" value="3f2a1c9 · main" readonly=""></div>
+          <label class="checkrow" style="margin-top:8px"><input type="checkbox" checked=""> Checkout after create</label>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn" type="button">Cancel</button>
+          <span class="spacer"></span>
+          <button class="btn primary" type="button">Create Branch</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Edit commit message</div>
+      <div class="dialog">
+        <div class="dialog-head"><div class="t">Edit Commit Message</div><span class="x">×</span></div>
+        <div class="dialog-body">
+          <label class="label" for="ec-msg">Message</label>
+          <textarea class="textarea" id="ec-msg">Fix diff hunk alignment on wrapped lines</textarea>
+          <div class="dialog-note">Rewords 3f2a1c9 only. Descendant commits are unchanged.</div>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn" type="button">Cancel</button>
+          <span class="spacer"></span>
+          <button class="btn primary" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Commit filters</div>
+      <div class="menu flat" role="menu" aria-label="Commit filters">
+        <div class="mlabel">Show commits</div>
+        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox" checked=""> Only my commits</button>
+        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox" checked=""> Hide merge commits</button>
+        <button class="mi" role="menuitemcheckbox" type="button"><input type="checkbox"> Hide tagged commits</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Last 7 days<span class="sc">⌘7</span></button>
+        <button class="mi" role="menuitem" type="button">Author · Mia Chen</button>
+        <button class="mi" role="menuitem" type="button">Path · src/</button>
+        <button class="mi" role="menuitem" type="button">Message · hunk</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Apply Filter<span class="sc">↵</span></button>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>New tag</div>
+      <div class="dialog">
+        <div class="dialog-head"><div class="t">New Tag</div><span class="x">×</span></div>
+        <div class="dialog-body">
+          <label class="label" for="nt-name">Tag name</label>
+          <div class="field"><input id="nt-name" value="v1.4.1" spellcheck="false"></div>
+          <label class="label" style="margin-top:9px" for="nt-target">Target</label>
+          <div class="field"><input id="nt-target" value="3f2a1c9 · Fix wrapped-line hunk alignment" readonly=""></div>
+          <label class="label" style="margin-top:9px" for="nt-msg">Message</label>
+          <textarea class="textarea" id="nt-msg" style="min-height:44px">Release 1.4.1</textarea>
+          <label class="checkrow" style="margin-top:7px"><input type="checkbox" checked=""> Annotated tag</label>
+        </div>
+        <div class="dialog-foot">
+          <button class="btn" type="button">Cancel</button>
+          <span class="spacer"></span>
+          <button class="btn primary" type="button">Create Tag</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Branch comparison</div>
+      <div class="compare-card">
+        <div class="compare-head">Compare Branches <span class="spacer"></span><span class="hint">⌘⇧C</span></div>
+        <div class="compare-body">
+          <div class="branch-pair"><span class="ref branch">main</span><span class="ar">↔</span><span class="ref branch">feature/diff-view</span></div>
+          <div class="compare-stats"><span>12 commits ahead</span><span>0 behind</span><span>14 files changed</span></div>
+          <div style="display:flex;gap:6px;margin-top:12px"><a class="btn small primary" href="CompareRefs.dc.html">Open Comparison</a><button class="btn small" type="button">Swap</button></div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Stash · context menu</div>
+      <div class="menu flat" role="menu" aria-label="Stash actions">
+        <button class="mi" role="menuitem" type="button">Stash Changes…</button>
+        <button class="mi" role="menuitem" type="button">Stash Selected Files…</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Apply Stash</button>
+        <button class="mi" role="menuitem" type="button">Pop Stash</button>
+        <button class="mi" role="menuitem" type="button">Drop Stash…</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Show Diff</button>
+        <button class="mi" role="menuitem" type="button">Copy Stash Name<span class="sc">⌥⌘C</span></button>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Submodule · context menu</div>
+      <div class="menu flat" role="menu" aria-label="Submodule actions">
+        <button class="mi" role="menuitem" type="button">Update Submodule</button>
+        <button class="mi" role="menuitem" type="button">Update to Latest</button>
+        <button class="mi" role="menuitem" type="button">Sync URL</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Open in New Tab</button>
+        <button class="mi" role="menuitem" type="button">Commit Submodule Change</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Remove Submodule…</button>
+        <button class="mi" role="menuitem" type="button">Copy Path</button>
+      </div>
+    </div>
+
+    <div class="gallery-cell">
+      <div class="gallery-cap"><span class="sw"></span>Worktree · context menu</div>
+      <div class="menu flat" role="menu" aria-label="Worktree actions">
+        <button class="mi" role="menuitem" type="button">Open in New Window</button>
+        <button class="mi" role="menuitem" type="button">New Worktree…</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Remove Worktree…</button>
+        <button class="mi" role="menuitem" type="button">Prune Worktrees</button>
+        <div class="msep"></div>
+        <button class="mi" role="menuitem" type="button">Reveal in Finder</button>
+        <button class="mi" role="menuitem" type="button">Copy Path</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# 已迁到 ui 层的页面文件（相对 apps/client/src/）。
+#
+# 每完成一组就往这里追加该组的文件；P8 时应覆盖 features/、app/、shell/ 下的
+# 全部界面文件。tools/check-ui.sh 会检查这些文件不再直接引用 nsh_base、不再出现
+# 裸 on_press、字号字面量与自带色板。
+#
+# P0：只有 ui 层本身，页面从 P1 开始迁。
+
+features/welcome/view.rs
+features/settings/view.rs
+features/settings/general.rs
+features/settings/git.rs
+features/settings/shortcuts.rs
+features/settings/about.rs
+features/settings/agent.rs
+features/refs/view.rs
+features/commit/view.rs
+features/agent/view.rs
+features/merge/view.rs
+features/sync/view.rs
+features/search/form_dialog.rs
+features/commit/hook_sheet.rs
+features/commit/rewrite_dialog.rs
+features/history/inspector.rs
+features/changes/view.rs
+features/history/view.rs
+features/search/view.rs
+features/history/blame.rs
+app/workspace.rs

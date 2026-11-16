@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gitui — Welcome · Init</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/0a859d3b7b7fd8e4958bfb63b7af439a">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+
+<div class="desktop welcome">
+  <div class="window" style="width:min(1040px,100%);height:min(690px,calc(100vh - 48px))">
+
+    <div class="titlebar">
+      <div class="lights" aria-hidden="true">
+        <span class="light red"></span>
+        <span class="light yellow"></span>
+        <span class="light green"></span>
+      </div>
+      <div class="win-title">gitui</div>
+      <div class="title-right">
+        <a class="tb-icon" href="Settings.dc.html" aria-label="Settings">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.1"></circle><path d="M8 2.1v1.5M8 12.4v1.5M2.1 8h1.5M12.4 8h1.5M3.8 3.8l1.1 1.1M11.1 11.1l1.1 1.1M12.2 3.8l-1.1 1.1M4.9 11.1l-1.1 1.1"></path>
+          </svg>
+        </a>
+        <button class="tb-icon" type="button" aria-label="Help">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.1"></circle><path d="M6.2 6.1a1.9 1.9 0 1 1 3.1 1.5c-.7.6-1.3 1-1.3 2"></path><path d="M8 12.1h.01"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="wbody">
+
+      <aside class="wside">
+        <div class="wside-top">
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <div style="flex:1;min-width:0">
+              <div class="wside-title">Repositories</div>
+              <div class="wside-sub">6 recent · 3 open</div>
+            </div>
+            <a class="btn small" href="Workspace.dc.html" aria-label="Open Repository" style="margin-top:1px">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.2h4l1.2 1.6h5.8v6.8h-11z"></path></svg>
+              Open…
+            </a>
+          </div>
+        </div>
+
+        <div class="field wsearch">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.6"></circle><path d="M10.4 10.4 14 14"></path>
+          </svg>
+          <label class="sr" for="repo-search">Search repositories</label>
+          <input id="repo-search" type="text" placeholder="Search repositories">
+          <span class="kbd">⌘F</span>
+        </div>
+
+        
+
+        <div class="wgroup">
+          <div class="wglabel">Today</div>
+
+          <div class="wrepo on">
+            <span class="wico">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.8" y="2.2" width="10.4" height="11.6" rx="2"></rect><path d="M5.4 5.4h5M5.4 8h5M5.4 10.6h3"></path>
+              </svg>
+            </span>
+            <a class="wi" href="Workspace.dc.html" aria-label="Open gitui, last opened 2 minutes ago" style="text-decoration:none">
+              <span class="wn" style="display:block">gitui</span>
+              <span class="wp" style="display:block">~/Developer/gitui</span>
+            </a>
+            <span class="ref branch" style="flex:none">main</span>
+            <span class="wt">2m</span>
+            <button class="iconbtn" type="button" aria-label="Remove gitui from recent repositories" style="width:19px;height:19px;font-size:13px;line-height:1;color:var(--text3)">×</button>
+          </div>
+
+          <div class="wrepo">
+            <span class="wico">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.8" y="2.2" width="10.4" height="11.6" rx="2"></rect><path d="M5.4 5.4h5M5.4 8h5M5.4 10.6h3"></path>
+              </svg>
+            </span>
+            <a class="wi" href="Workspace.dc.html" aria-label="Open atlas-web, last opened yesterday" style="text-decoration:none">
+              <span class="wn" style="display:block">atlas-web</span>
+              <span class="wp" style="display:block">~/Work/atlas-web</span>
+            </a>
+            <span class="ref branch" style="flex:none">feature/hero</span>
+            <span class="wt">Yesterday</span>
+            <button class="iconbtn" type="button" aria-label="Remove atlas-web from recent repositories" style="width:19px;height:19px;font-size:13px;line-height:1;color:var(--text3)">×</button>
+          </div>
+
+          <div class="wrepo">
+            <span class="wico">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.8" y="2.2" width="10.4" height="11.6" rx="2"></rect><path d="M5.4 5.4h5M5.4 8h5M5.4 10.6h3"></path>
+              </svg>
+            </span>
+            <a class="wi" href="Workspace.dc.html" aria-label="Open docs-site, last opened Monday" style="text-decoration:none">
+              <span class="wn" style="display:block">docs-site</span>
+              <span class="wp" style="display:block">~/Work/docs-site</span>
+            </a>
+            <span class="ref branch" style="flex:none">main</span>
+            <span class="wt">Mon</span>
+            <button class="iconbtn" type="button" aria-label="Remove docs-site from recent repositories" style="width:19px;height:19px;font-size:13px;line-height:1;color:var(--text3)">×</button>
+          </div>
+        </div>
+
+        <div class="wgroup">
+          <div class="wglabel">Previous 7 days</div>
+
+          <div class="wrepo">
+            <span class="wico">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.8" y="2.2" width="10.4" height="11.6" rx="2"></rect><path d="M5.4 5.4h5M5.4 8h5M5.4 10.6h3"></path>
+              </svg>
+            </span>
+            <a class="wi" href="Workspace.dc.html" aria-label="Open dotfiles, last opened November 6" style="text-decoration:none">
+              <span class="wn" style="display:block">dotfiles</span>
+              <span class="wp" style="display:block">~/.dotfiles</span>
+            </a>
+            <span class="ref branch" style="flex:none">main</span>
+            <span class="wt">Nov 6</span>
+            <button class="iconbtn" type="button" aria-label="Remove dotfiles from recent repositories" style="width:19px;height:19px;font-size:13px;line-height:1;color:var(--text3)">×</button>
+          </div>
+
+          <div class="wrepo">
+            <span class="wico">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.8" y="2.2" width="10.4" height="11.6" rx="2"></rect><path d="M5.4 5.4h5M5.4 8h5M5.4 10.6h3"></path>
+              </svg>
+            </span>
+            <a class="wi" href="Workspace.dc.html" aria-label="Open spectra, last opened November 2" style="text-decoration:none">
+              <span class="wn" style="display:block">spectra</span>
+              <span class="wp" style="display:block">~/Labs/spectra</span>
+            </a>
+            <span class="ref branch" style="flex:none">main</span>
+            <span class="wt">Nov 2</span>
+            <button class="iconbtn" type="button" aria-label="Remove spectra from recent repositories" style="width:19px;height:19px;font-size:13px;line-height:1;color:var(--text3)">×</button>
+          </div>
+
+          <div class="wrepo">
+            <span class="wico">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2.8" y="2.2" width="10.4" height="11.6" rx="2"></rect><path d="M5.4 5.4h5M5.4 8h5M5.4 10.6h3"></path>
+              </svg>
+            </span>
+            <a class="wi" href="Workspace.dc.html" aria-label="Open billing-api, last opened October 28" style="text-decoration:none">
+              <span class="wn" style="display:block">billing-api</span>
+              <span class="wp" style="display:block">~/Work/billing-api</span>
+            </a>
+            <span class="ref branch" style="flex:none">release</span>
+            <span class="wt">Oct 28</span>
+            <button class="iconbtn" type="button" aria-label="Remove billing-api from recent repositories" style="width:19px;height:19px;font-size:13px;line-height:1;color:var(--text3)">×</button>
+          </div>
+        </div>
+
+        <div class="wfoot">
+          <span>gitui 0.9.2 (412)</span>
+          <span class="spacer"></span>
+          <a href="#">Check for Updates</a>
+          <a href="Settings.dc.html" aria-label="Open settings" style="display:inline-flex;align-items:center;gap:4px">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="8" cy="8" r="2.1"></circle><path d="M8 2.1v1.5M8 12.4v1.5M2.1 8h1.5M12.4 8h1.5M3.8 3.8l1.1 1.1M11.1 11.1l1.1 1.1M12.2 3.8l-1.1 1.1M4.9 11.1l-1.1 1.1"></path>
+            </svg>
+            Settings
+          </a>
+        </div>
+      </aside>
+
+      <main class="wmain">
+        <div class="hero">
+          <div class="appmark" aria-hidden="true" style="width:40px;height:40px;border-radius:10px">
+            <svg width="22" height="22" viewBox="0 0 36 36" fill="none">
+              <circle cx="11" cy="9" r="3.2" stroke="#FFFFFF" stroke-width="2.1"></circle>
+              <circle cx="25" cy="9" r="3.2" stroke="#FFFFFF" stroke-width="2.1"></circle>
+              <path d="M11 12.2v12.6" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round"></path>
+              <path d="M25 12.2c0 6.2-4.4 9.4-14 10.6" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round"></path>
+              <circle cx="11" cy="27" r="1.7" fill="#FFFFFF"></circle>
+            </svg>
+          </div>
+          <div class="ht">
+            <h1 class="wtitle" style="font-size:23px">gitui</h1>
+            <div class="wsub2" style="margin-top:3px">A native Git client for macOS.</div>
+          </div>
+        </div>
+
+        <div class="seg" role="tablist" aria-label="Start a repository" style="margin-top:24px">
+          <button type="button" role="tab" aria-selected="false">Open</button>
+          <button type="button" role="tab" aria-selected="false">Clone</button>
+          <button class="on" type="button" role="tab" aria-selected="true">Init</button>
+        </div>
+
+        <section class="wsection" style="margin-top:14px;padding-top:0;border-top:0">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div style="min-width:0">
+              <div class="wsection-title">Create a repository</div>
+              <div class="wsection-sub">Run <span class="mono">git init</span> in a new or existing folder.</div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:15px;max-width:560px">
+            <label class="label" for="init-path">Folder</label>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end">
+              <div class="field" style="height:30px">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.3 5.6h4l1.2-1.7h6.2v8.4H2.3z"></path>
+                </svg>
+                <input id="init-path" type="text" placeholder="~/Developer/new-project" spellcheck="false">
+                <span class="kbd">⌘V</span>
+              </div>
+              <button class="btn" type="button" style="height:30px">Choose…</button>
+            </div>
+
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 160px;gap:8px">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <label class="label" for="init-name">Repository name</label>
+                <div class="field" style="height:30px">
+                  <input id="init-name" type="text" value="new-project" spellcheck="false">
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <label class="label" for="init-branch">Initial branch</label>
+                <div class="field" style="height:30px">
+                  <input id="init-branch" type="text" value="main" spellcheck="false">
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label class="checkrow"><input type="checkbox" checked=""> Create a README.md</label>
+              <label class="checkrow"><input type="checkbox" checked=""> Add a .gitignore (macOS + Swift)</label>
+              <label class="checkrow"><input type="checkbox"> Add an MIT LICENSE</label>
+            </div>
+
+            <div class="clone-actions">
+              <button class="btn primary" type="button" style="height:30px">Create Repository</button>
+              <span class="hint">Creates the folder if it does not exist.</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="welcome-tip">
+          <span class="ico">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.1"></circle><path d="M8 7.2v3.6"></path><path d="M8 5h.01"></path>
+            </svg>
+          </span>
+          <span><b>gitui restores every repository from your last session.</b> You can change this in Settings › General.</span>
+        </div>
+
+        <svg class="watermark" width="380" height="220" viewBox="0 0 380 220" fill="none" aria-hidden="true">
+          <path d="M50 24v172" stroke="currentColor" stroke-width="2"></path>
+          <path d="M50 96c0 52 40 76 104 84h176" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+          <path d="M154 70h176" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+          <circle cx="50" cy="24" r="7" stroke="currentColor" stroke-width="2"></circle>
+          <circle cx="50" cy="96" r="7" fill="currentColor"></circle>
+          <circle cx="154" cy="70" r="7" stroke="currentColor" stroke-width="2"></circle>
+          <circle cx="154" cy="180" r="7" stroke="currentColor" stroke-width="2"></circle>
+          <circle cx="330" cy="70" r="7" fill="currentColor"></circle>
+          <circle cx="330" cy="180" r="7" stroke="currentColor" stroke-width="2"></circle>
+        </svg>
+      </main>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

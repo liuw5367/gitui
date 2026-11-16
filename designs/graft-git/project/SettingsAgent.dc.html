@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gitui — Agent settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/0a859d3b7b7fd8e4958bfb63b7af439a">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-branch" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.9v6.2"></path><circle cx="4.5" cy="3.3" r="1.6"></circle><circle cx="11.5" cy="5.1" r="1.6"></circle><path d="M11.5 6.7c0 2.5-2.1 3.7-6 4.2"></path></g></symbol>
+  <symbol id="i-gear" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.1"></circle><path d="M8 2.1v1.5M8 12.4v1.5M2.1 8h1.5M12.4 8h1.5M3.8 3.8l1.1 1.1M11.1 11.1l1.1 1.1M12.2 3.8l-1.1 1.1M4.9 11.1l-1.1 1.1"></path></g></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.5h4.1l1.2-1.6h6.1v8.3H2.3z"></path></g></symbol>
+  <symbol id="i-info" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.1"></circle><path d="M8 7.2v3.6"></path><path d="M8 5h.01"></path></g></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.2 8 10l4-3.8"></path></g></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.3 6.5 11.6 12.8 4.8"></path></g></symbol>
+  <symbol id="i-keys" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="4" width="12.4" height="8" rx="1.6"></rect><path d="M4 6.5h.01M6.2 6.5h.01M8.4 6.5h.01M10.6 6.5h.01M12.8 6.5h.01M4.4 9.5h7.2"></path></g></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.6" rx="1.4"></rect><path d="M5.4 7V5.3a2.6 2.6 0 0 1 5.2 0V7"></path></g></symbol>
+</svg>
+
+<div class="desktop settings">
+  <div class="window">
+    <div class="titlebar">
+      <div class="lights" aria-hidden="true">
+        <span class="light red"></span><span class="light yellow"></span><span class="light green"></span>
+      </div>
+      <div class="win-title">Settings</div>
+      <div class="title-right"><span>gitui 0.9.2</span></div>
+    </div>
+
+    <div class="settings-body">
+      <aside class="settings-side">
+        <div style="padding:6px 10px 12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="appmark" style="width:28px;height:28px;border-radius:7px;box-shadow:none">
+              <svg width="15" height="15" viewBox="0 0 16 16" style="color:#fff"><use href="#i-branch"></use></svg>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--text)">gitui</div>
+              <div class="hint">Version 0.9.2</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sg">Application</div>
+        <a class="settings-nav" href="Settings.dc.html"><span class="si"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-gear"></use></svg></span>General</a>
+        <a class="settings-nav" href="SettingsShortcuts.dc.html"><span class="si"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-keys"></use></svg></span>Shortcuts</a>
+        <a class="settings-nav on" href="SettingsAgent.dc.html"><span class="si"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-branch"></use></svg></span>Agent</a>
+        <div class="sg">Git</div>
+        <a class="settings-nav" href="SettingsGit.dc.html"><span class="si"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-branch"></use></svg></span>Git</a>
+        <a class="settings-nav" href="SettingsCredentials.dc.html"><span class="si"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-lock"></use></svg></span>Credentials</a>
+        <div class="sg">About</div>
+        <a class="settings-nav" href="SettingsAbout.dc.html"><span class="si"><svg width="14" height="14" viewBox="0 0 16 16"><use href="#i-info"></use></svg></span>About gitui</a>
+      </aside>
+
+      <main class="settings-main">
+        <h1 class="settings-title">Agent</h1>
+        <div class="settings-sub">Model endpoint, credentials, and protocol for the gitui agent.</div>
+
+        <section class="settings-sec" style="border-top:0;margin-top:14px;padding-top:0">
+          <div class="settings-sec-title">Provider protocol</div>
+          <div class="settings-sec-sub">Pick the wire format your endpoint speaks. Requests are built to match it.</div>
+          <div class="set-row">
+            <div class="sl"><b>Protocol</b><span>OpenAI chat completions or Anthropic messages.</span></div>
+            <div class="sr"><div class="radio-pills"><span class="on">OpenAI</span><span>Anthropic</span></div></div>
+          </div>
+          <div class="set-row" style="padding-top:0">
+            <div class="sl"><b>Wire format</b><span>Anthropic uses /v1/messages and x-api-key; OpenAI uses /v1/chat/completions and Bearer auth.</span></div>
+            <div class="sr"><span class="hint">POST /v1/chat/completions</span></div>
+          </div>
+        </section>
+
+        <section class="settings-sec">
+          <div class="settings-sec-title">Endpoint</div>
+          <div class="settings-sec-sub">Any OpenAI- or Anthropic-compatible base URL, including self-hosted gateways.</div>
+          <div class="set-row">
+            <div class="sl"><b>Base URL</b><span>Scheme and host, with any path prefix. No trailing slash.</span></div>
+            <div class="sr"><div class="set-field" style="width:280px"><input value="https://api.openai.com" aria-label="Agent base URL" spellcheck="false"></div></div>
+          </div>
+          <div class="set-row" style="padding-top:0">
+            <div class="sl"><b>Resolved endpoint</b><span>What the first request will hit.</span></div>
+            <div class="sr"><span class="hint mono">https://api.openai.com/v1/chat/completions</span></div>
+          </div>
+          <div class="set-row">
+            <div class="sl"><b>App key</b><span>Stored in the macOS Keychain, never in the repository.</span></div>
+            <div class="sr"><div class="set-field" style="width:280px"><input type="password" value="sk-proj-••••••••••••••••••••7d1f" aria-label="Agent app key"></div></div>
+          </div>
+          <div class="set-row" style="padding-top:0">
+            <div class="sl"><b>Connection</b><span>Verifies the key and lists models.</span></div>
+            <div class="sr"><button class="btn small" type="button">Test Connection</button><span class="hint" style="color:var(--ok)">Connected · 42 models</span></div>
+          </div>
+        </section>
+
+        <section class="settings-sec">
+          <div class="settings-sec-title">Model</div>
+          <div class="settings-sec-sub">Used for chat, commit messages, and change explanations.</div>
+          <div class="set-row">
+            <div class="sl"><b>Model</b><span>Fetched from the endpoint above.</span></div>
+            <div class="sr"><select aria-label="Agent model" style="height:26px;padding:0 8px;border:1px solid var(--field-border);border-radius:6px;background:var(--field);font-size:11px;color:var(--text)">
+              <option selected="">gpt-4.1</option><option>gpt-4o-mini</option><option>o4-mini</option>
+            </select></div>
+          </div>
+          <div class="set-row">
+            <div class="sl"><b>Temperature</b><span>Lower is more deterministic for commit messages.</span></div>
+            <div class="sr"><div class="set-field" style="width:80px"><input value="0.2" aria-label="Temperature"></div></div>
+          </div>
+          <div class="set-row">
+            <div class="sl"><b>Max tokens</b><span>Cap for a single reply.</span></div>
+            <div class="sr"><div class="set-field" style="width:90px"><input value="4096" aria-label="Max tokens"></div></div>
+          </div>
+        </section>
+
+        <section class="settings-sec">
+          <div class="settings-sec-title">Privacy</div>
+          <div class="settings-sec-sub">What leaves this machine when the agent runs.</div>
+          <div class="set-row">
+            <div class="sl"><b>Send diffs</b><span>Diff hunks are included with each request.</span></div>
+            <div class="sr"><input type="checkbox" checked="" aria-label="Send diffs to the agent endpoint"></div>
+          </div>
+          <div class="set-row">
+            <div class="sl"><b>Send repository path</b><span>Absolute paths are replaced with the repository root when off.</span></div>
+            <div class="sr"><input type="checkbox" aria-label="Send repository paths"></div>
+          </div>
+          <div class="set-row">
+            <div class="sl"><b>Local log</b><span>Requests and tool results are recorded for review.</span></div>
+            <div class="sr"><a class="btn small" href="SettingsCredentials.dc.html">Open Log</a></div>
+          </div>
+        </section>
+</main>
+    </div>
+
+    <div class="settings-foot">
+      <span class="status-dot"></span>
+      <span class="hint">Changes are saved automatically</span>
+      <span class="spacer"></span>
+      <a class="btn" href="Workspace.dc.html">Done</a>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
