@@ -21,6 +21,9 @@ pub(crate) fn open_welcome_window(handles: &AppHandles) {
         return;
     }
     let cmd = handles.welcome.clone();
+    // 快捷键按窗口绑定：`on_key` 属于 `current_window`，所以欢迎页的 ⌘F / ⌘O 必须
+    // 在它的内容里绑定；主窗口那份 `mod+f`（历史过滤）不会在这个窗口触发。
+    let keys = handles.welcome.clone();
     let open = cmd.session.welcome_open;
     // 画板是 38 高自定义标题栏；这里用原生标题栏，Settings 由应用菜单承担。
     // 最小宽 900 是画板未规定的实现约束，保证右栏仍可读（表单最大宽 520）。
@@ -38,6 +41,10 @@ pub(crate) fn open_welcome_window(handles: &AppHandles) {
             }
         })
         .content(move || {
+            let focus = keys.clone();
+            on_key("mod+f", move |_| focus.focus_search());
+            let open_repository = keys.clone();
+            on_key("mod+o", move |_| open_repository.open_or_choose());
             return features::welcome::view::welcome(&cmd.state, &cmd);
         });
     let _ = nsh_core::element::desktop::open_window(welcome);
