@@ -282,3 +282,62 @@ pub(crate) fn check_group(children: impl IntoElement) -> impl IntoElement {
         .border_color(move || design::line())
         .child(children);
 }
+
+/// 复选行，用按钮实现整行按压；用于会被 `dynamic` 重建的表单。
+///
+/// `nsh_base::checkbox` 的 `checked` 是绑定到当前 owner 的 prop，动态区域销毁时
+/// 会读到已释放的 owner。表单里的复选改用按压目标 + 自绘方框，避开这条销毁路径；
+/// 键盘与无障碍语义仍由按钮提供，方框只表达状态。
+pub(crate) fn check_row_button(
+    caption: impl Fn() -> String + 'static,
+    checked: bool,
+    on_change: impl Fn(bool) + 'static,
+) -> impl IntoElement {
+    let label: SharedString = caption().into();
+    return nsh_base::button()
+        .accessibility_label(Some(label))
+        .h(px(ui::ROW))
+        .w_full()
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP))
+        .child(
+            view()
+                .w(px(14.0))
+                .h(px(14.0))
+                .flex_shrink_0()
+                .items_center()
+                .justify_center()
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(move || {
+                    if checked {
+                        design::token("primary-bg")
+                    } else {
+                        design::field_border()
+                    }
+                })
+                .bg(move || {
+                    if checked {
+                        design::token("primary-bg")
+                    } else {
+                        design::field()
+                    }
+                })
+                .child(if checked {
+                    ui::icon::icon_view("check", ui::icon::IconSize::Button, || {
+                        design::token("primary-foreground")
+                    })
+                    .into_element()
+                } else {
+                    view().w(px(0.0)).h(px(0.0)).into_element()
+                }),
+        )
+        .on_press(move |_: &()| on_change(!checked))
+        .child(
+            text(move || caption())
+                .text_size(px(ui::BODY))
+                .line_height(px(ui::BODY_LINE))
+                .text_color(move || design::text()),
+        );
+}

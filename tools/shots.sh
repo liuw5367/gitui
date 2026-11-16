@@ -22,11 +22,16 @@
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
 #                       会把画廊挡在后面，截出来就是一片白
-#   tools/shots.sh welcome            # 欢迎页
+#   GITUI_WELCOME_FORM=open|clone|init   欢迎页初始分段
+#   GITUI_WELCOME_STATE=empty|recent|clone-error
+#   GITUI_WELCOME_RECENT=path|branch:path|branch   recent 状态的种子数据
+#   tools/shots.sh welcome            # 欢迎页（清空应用数据，保证从空列表开始）
+#   GITUI_WELCOME_FORM=clone tools/shots.sh welcome-clone
 #   tools/shots.sh <名字> [秒数]      # 自定义名字与「应用出现后」的额外等待（默认 8）
 #
-# 产物：docs/verify/native/<名字>.png（整屏截图，含桌面背景；只作为行为证据，
-# 不作为像素验收基线）。应用在截图后退出。
+# 产物：files.local/shots/<名字>.png（应用窗口截图；只作为行为证据，
+# 不作为像素验收基线）。files.local/ 已在 .gitignore 中排除，截图不入库。
+# 应用在截图后退出。
 #
 # 开关只在 debug 构建里生效（apps/client/src/acceptance.rs）：`nsh run` 是 debug，
 # 打包出来的应用不读任何 GITUI_*，所以截图脚本必须配 `nsh run` 使用。
@@ -36,10 +41,24 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 name="${1:?用法: tools/shots.sh <gallery|welcome|名字> [秒数]}"
 settle_seconds="${2:-8}"
 home_dir="$root/.nsh-home"
-out_dir="$root/docs/verify/native"
+app_home="$home_dir/app-home"
+out_dir="$root/files.local/shots"
 out="$out_dir/$name.png"
 
 mkdir -p "$home_dir" "$out_dir"
+
+welcome_shot=0
+case "$name" in
+  welcome*) welcome_shot=1 ;;
+esac
+
+# 欢迎页要求空会话；清空脚本自己的应用数据目录，不碰仓库其它内容。
+if [ "$welcome_shot" = 1 ]; then
+  case "$app_home" in
+    "$home_dir"/app-home) rm -rf -- "$app_home" ;;
+    *) echo "拒绝清理非预期目录：$app_home" >&2; exit 1 ;;
+  esac
+fi
 
 # `GITUI_DIRTY=1` 在 GITUI_REPO 指向的仓库里制造一处未提交改动，
 # 让 Changes / diff 视图有内容可截（干净的 fixture 里它们是空的）。
@@ -61,8 +80,9 @@ fi
 echo "启动应用（HOME=$home_dir）…"
 (
   cd "$root/apps/client"
+  APP_HOME="$app_home" \
   HOME="$home_dir" \
-  GITUI_NO_WELCOME=1 \
+  GITUI_NO_WELCOME="$([ "$welcome_shot" = 1 ] && echo 0 || echo 1)" \
   GITUI_GALLERY="$([ "$name" = "gallery" ] && echo 1 || echo 0)" \
   GITUI_SYNC="${GITUI_SYNC:-0}" \
   GITUI_FORM="${GITUI_FORM:-0}" \
@@ -70,21 +90,28 @@ echo "启动应用（HOME=$home_dir）…"
   GITUI_PALETTE="${GITUI_PALETTE:-0}" \
   GITUI_SETTINGS="${GITUI_SETTINGS:-0}" \
   GITUI_INSPECTOR="${GITUI_INSPECTOR:-0}" \
+  GITUI_WELCOME_FORM="${GITUI_WELCOME_FORM:-}" \
+  GITUI_WELCOME_STATE="${GITUI_WELCOME_STATE:-}" \
+  GITUI_WELCOME_RECENT="${GITUI_WELCOME_RECENT:-}" \
     nsh run >"$home_dir/run-$name.log" 2>&1 &
   echo $! >"$home_dir/run-$name.pid"
 )
 
-# 取窗口 id：最大的那个窗口就是主窗口。
+# 取窗口 id：主窗口最大；欢迎页是较小的独立窗口，用 --smallest。
 bin="/tmp/winid"
-if [ ! -x "$bin" ]; then
+if [ ! -x "$bin" ] || [ "$root/tools/winid.swift" -nt "$bin" ]; then
   mkdir -p "$root/.swift-cache"
   CLANG_MODULE_CACHE_PATH="$root/.swift-cache" SWIFT_MODULE_CACHE_PATH="$root/.swift-cache" \
     swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
 fi
+window_flag="--id"
+if [ "$welcome_shot" = 1 ]; then
+  window_flag="--smallest"
+fi
 # 等窗口出现的上限要按冷构建算：改动 rust 源码后 nsh 会重新编译，实测 60–100s，
 # 早先按热构建的 60s 设上限，改完代码必然超时（曾因此误以为「窗口没出现」）。
 for _ in $(seq 1 240); do
-  window_id="$("$bin" nsh-app --id 2>/dev/null || true)"
+  window_id="$("$bin" nsh-app "$window_flag" 2>/dev/null || true)"
   [ -n "${window_id:-}" ] && break
   sleep 1
 done

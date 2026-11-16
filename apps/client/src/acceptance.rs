@@ -5,7 +5,8 @@
 //!
 //! 变量清单（`tools/shots.sh` 的头注释也列了一份）：
 //! `GITUI_REPO`、`GITUI_MODE`、`GITUI_INSPECTOR`、`GITUI_PALETTE`、`GITUI_GALLERY`、
-//! `GITUI_FORM`、`GITUI_SYNC`、`GITUI_SETTINGS`、`GITUI_NO_WELCOME`。
+//! `GITUI_FORM`、`GITUI_SYNC`、`GITUI_SETTINGS`、`GITUI_NO_WELCOME`、
+//! `GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT`。
 //! `GITUI_DIRTY` 由脚本自己改文件，应用不读。
 
 /// `name` 的值是否为 `1`。release 构建里恒为 false。

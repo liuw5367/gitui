@@ -16,11 +16,10 @@ pub(crate) struct Segment {
 /// 分段控件。`selected` 是当前选中段的 `id`。
 pub(crate) fn segmented(
     segments: Vec<Segment>,
-    selected: impl Fn() -> &'static str + 'static,
+    selected: &'static str,
     on_select: impl Fn(&'static str) + 'static,
 ) -> impl IntoElement {
     let on_select = std::rc::Rc::new(on_select);
-    let selected: std::rc::Rc<dyn Fn() -> &'static str> = std::rc::Rc::new(selected);
     let mut tabs = nsh_base::tabs()
         .h(px(ui::CONTROL))
         .flex_row()
@@ -34,18 +33,11 @@ pub(crate) fn segmented(
     for segment in segments {
         let id = segment.id;
         let label = segment.label;
-        let chosen = selected.clone();
-        let is_selected: std::rc::Rc<dyn Fn() -> bool> =
-            std::rc::Rc::new(move || chosen() == id);
+        let is_selected = id == selected;
         let press = on_select.clone();
-        let selected_state = is_selected.clone();
-        let background = is_selected.clone();
-        let border = is_selected.clone();
-        let hover = is_selected.clone();
-        let foreground = is_selected.clone();
         tabs = tabs.child(
             nsh_base::tab()
-                .selected(move || selected_state())
+                .selected(is_selected)
                 .selected_style(|style| style.font_weight(FontWeight::MEDIUM))
                 .h(px(ui::CONTROL - 4.0))
                 .px(px(10.0))
@@ -54,7 +46,7 @@ pub(crate) fn segmented(
                 .justify_center()
                 .rounded(px(metrics::RADIUS_CONTROL - 1.0))
                 .bg(move || {
-                    if background() {
+                    if is_selected {
                         design::content()
                     } else {
                         AdaptiveColor::TRANSPARENT
@@ -62,14 +54,14 @@ pub(crate) fn segmented(
                 })
                 .border_1()
                 .border_color(move || {
-                    if border() {
+                    if is_selected {
                         design::line()
                     } else {
                         AdaptiveColor::TRANSPARENT
                     }
                 })
                 .hover(move |style| {
-                    if hover() {
+                    if is_selected {
                         style
                     } else {
                         style.bg(move || design::hover())
@@ -86,7 +78,7 @@ pub(crate) fn segmented(
                         .text_size(px(ui::BODY))
                         .line_height(px(ui::CONTROL - 4.0))
                         .text_color(move || {
-                            if foreground() {
+                            if is_selected {
                                 design::text()
                             } else {
                                 design::text2()

@@ -54,6 +54,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | `text_input` / `text_area` / `text_input_bound` / `search_field` | `ui/text_input.rs` | `nsh_base::input` | 单行 28；多行高度自定 | focus、invalid |
 | `field` / `label` / `help` / `error` | `ui/field.rs` | `view` + `text` | 标签 13 + 控件 + 说明/错误 11 | invalid |
 | `check_row` / `check_inline` / `check_group` | `ui/check.rs` | `nsh_base::checkbox` | 行 28；指示器 14（inline 12–14） | checked、disabled |
+| `check_row_button` | `ui/check.rs` | `nsh_base::button` + 自绘方框 | 行 28 | 按压切换；用于会被 `dynamic` 重建的表单（避开 `Prop` 销毁） |
 | `switch_row` | `ui/check.rs` | `nsh_base::switch` | 轨道 38×22 | checked、disabled |
 | `indicator` / `indicator_action` | `ui/check.rs` | `view` / `nsh_base::button` | 12×12 | checked |
 | `segmented` | `ui/segmented.rs` | `nsh_base::tabs` + `tab` | 高 28，圆角 6 | 选中（底色 + MEDIUM）、hover、focus |

@@ -211,12 +211,15 @@ fn body(
                     .w_full()
                     .flex_col()
                     .gap(px(ui::GAP))
-                    .child(ui::check::check_row(
-                        move || "Checkbox row".to_string(),
-                        move || checked.get(),
-                        false,
-                        move |next| checked.set(next),
-                    ))
+                    .child(dynamic(move || {
+                        let value = checked.get();
+                        return ui::check::check_row_button(
+                            move || "Checkbox row".to_string(),
+                            value,
+                            move |next| checked.set(next),
+                        )
+                        .into_element();
+                    }))
                     .child(ui::check::check_row(
                         move || "Disabled checkbox".to_string(),
                         false,
@@ -230,28 +233,32 @@ fn body(
                         false,
                         move |next| switched.set(next),
                     ))
-                    .child(ui::segmented::segmented(
-                        vec![
-                            ui::segmented::Segment {
-                                id: "history",
-                                label: Box::new(move || "History".to_string()),
-                            },
-                            ui::segmented::Segment {
-                                id: "changes",
-                                label: Box::new(move || "Changes".to_string()),
-                            },
-                            ui::segmented::Segment {
-                                id: "refs",
-                                label: Box::new(move || "Refs".to_string()),
-                            },
-                        ],
-                        move || match segment.get().as_ref() {
+                    .child(dynamic(move || {
+                        let selected = match segment.get().as_ref() {
                             "changes" => "changes",
                             "refs" => "refs",
                             _ => "history",
-                        },
-                        move |id| segment.set(SharedString::from(id)),
-                    )),
+                        };
+                        return ui::segmented::segmented(
+                            vec![
+                                ui::segmented::Segment {
+                                    id: "history",
+                                    label: Box::new(move || "History".to_string()),
+                                },
+                                ui::segmented::Segment {
+                                    id: "changes",
+                                    label: Box::new(move || "Changes".to_string()),
+                                },
+                                ui::segmented::Segment {
+                                    id: "refs",
+                                    label: Box::new(move || "Refs".to_string()),
+                                },
+                            ],
+                            selected,
+                            move |id| segment.set(SharedString::from(id)),
+                        )
+                        .into_element();
+                    })),
             ))
             .child(section(
                 "Badges & keys",

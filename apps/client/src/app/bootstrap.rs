@@ -193,6 +193,28 @@ pub(crate) fn app() -> impl IntoElement {
         initial_tabs.clear();
     }
     let tabs = signal(initial_tabs);
+    // 验收开关：欢迎页的表单与状态；只影响 debug 构建。
+    let welcome_state = acceptance::value("GITUI_WELCOME_STATE");
+    let welcome_form = acceptance::value("GITUI_WELCOME_FORM");
+    if welcome_state.as_deref() == Some("recent")
+        && let Some(entries) = acceptance::value("GITUI_WELCOME_RECENT")
+    {
+        let mut list = store::load_recent(&store_dir);
+        for entry in entries.split(':').filter(|entry| !entry.trim().is_empty()) {
+            let (path, branch) = match entry.split_once('|') {
+                Some((path, branch)) => (path.trim(), Some(branch.trim())),
+                None => (entry.trim(), None),
+            };
+            if path.is_empty() {
+                continue;
+            }
+            store::remember_recent(&store_dir, &list, path);
+            if let Some(branch) = branch.filter(|branch| !branch.is_empty()) {
+                store::set_recent_branch(&store_dir, path, branch);
+            }
+            list = store::load_recent(&store_dir);
+        }
+    }
     let recent = signal(store::load_recent(&store_dir));
 
     // 欢迎页与仓库管理页的输入框。
@@ -207,6 +229,12 @@ pub(crate) fn app() -> impl IntoElement {
     let open_error = signal(Option::<String>::None);
     let clone_error = signal(Option::<String>::None);
     let init_error = signal(Option::<String>::None);
+    if welcome_state.as_deref() == Some("clone-error") {
+        clone_error.set(Some(i18n::t(
+            language.get_untracked().as_str(),
+            "welcome.error.commandFailed",
+        )));
+    }
     let cloning = signal(false);
     // 克隆进度（git 的 stderr 最后一行）与取消标志。
     let clone_progress = signal(String::new());
@@ -215,7 +243,15 @@ pub(crate) fn app() -> impl IntoElement {
     let init_path = signal(String::new());
     let init_name = signal(String::new());
     let init_branch = signal("main".to_string());
-    let repo_form = signal(features::welcome::state::RepoForm::Open);
+    let repo_form = signal(if welcome_state.as_deref() == Some("clone-error") {
+        features::welcome::state::RepoForm::Clone
+    } else {
+        match welcome_form.as_deref() {
+            Some("clone") => features::welcome::state::RepoForm::Clone,
+            Some("init") => features::welcome::state::RepoForm::Init,
+            _ => features::welcome::state::RepoForm::Open,
+        }
+    });
     let welcome_now = signal(store::now_unix());
     let welcome_search_ref = element_ref();
 

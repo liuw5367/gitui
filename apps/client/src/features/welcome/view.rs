@@ -475,43 +475,45 @@ fn entry_section(
                 .flex_row()
                 .items_center()
                 .gap(px(ui::GAP_LG))
-                .child(ui::segmented::segmented(
-                    vec![
-                        ui::segmented::Segment {
-                            id: "open",
-                            label: Box::new(move || {
-                                i18n::t(language.get().as_str(), "repoManager.tabOpen")
-                            }),
-                        },
-                        ui::segmented::Segment {
-                            id: "clone",
-                            label: Box::new(move || {
-                                i18n::t(language.get().as_str(), "repoManager.tabClone")
-                            }),
-                        },
-                        ui::segmented::Segment {
-                            id: "init",
-                            label: Box::new(move || {
-                                i18n::t(language.get().as_str(), "repoManager.tabInit")
-                            }),
-                        },
-                    ],
-                    move || match form.get() {
+                .child(dynamic(move || {
+                    let selected = match form.get() {
                         super::state::RepoForm::Open => "open",
                         super::state::RepoForm::Clone => "clone",
                         super::state::RepoForm::Init => "init",
-                    },
-                    {
-                        let set_form = set_form.clone();
+                    };
+                    let set_form = set_form.clone();
+                    return ui::segmented::segmented(
+                        vec![
+                            ui::segmented::Segment {
+                                id: "open",
+                                label: Box::new(move || {
+                                    i18n::t(language.get().as_str(), "repoManager.tabOpen")
+                                }),
+                            },
+                            ui::segmented::Segment {
+                                id: "clone",
+                                label: Box::new(move || {
+                                    i18n::t(language.get().as_str(), "repoManager.tabClone")
+                                }),
+                            },
+                            ui::segmented::Segment {
+                                id: "init",
+                                label: Box::new(move || {
+                                    i18n::t(language.get().as_str(), "repoManager.tabInit")
+                                }),
+                            },
+                        ],
+                        selected,
                         move |id| {
                             set_form.set_repo_form(match id {
                                 "clone" => super::state::RepoForm::Clone,
                                 "init" => super::state::RepoForm::Init,
                                 _ => super::state::RepoForm::Open,
                             })
-                        }
-                    },
-                )),
+                        },
+                    )
+                    .into_element();
+                })),
         )
         .child(
             view()
@@ -579,6 +581,10 @@ fn entry_section(
                                 return view().w(px(0.0)).into_element();
                             }
                             let options = state.clone_options;
+                            let selected = match options.get().protocol {
+                                CloneProtocol::Https => "https",
+                                CloneProtocol::Ssh => "ssh",
+                            };
                             return ui::segmented::segmented(
                                 vec![
                                     ui::segmented::Segment {
@@ -600,10 +606,7 @@ fn entry_section(
                                         }),
                                     },
                                 ],
-                                move || match options.get().protocol {
-                                    CloneProtocol::Https => "https",
-                                    CloneProtocol::Ssh => "ssh",
-                                },
+                                selected,
                                 move |id| {
                                     let mut next = options.get_untracked();
                                     next.protocol = if id == "ssh" {
@@ -827,70 +830,74 @@ fn clone_form(
                         .child(ui::field::label(move || {
                             i18n::t(language.get().as_str(), "welcome.depth")
                         }))
-                        .child(ui::segmented::segmented(
-                            vec![
-                                ui::segmented::Segment {
-                                    id: "full",
-                                    label: Box::new(move || {
-                                        i18n::t(language.get().as_str(), "welcome.depthFull")
-                                    }),
-                                },
-                                ui::segmented::Segment {
-                                    id: "one",
-                                    label: Box::new(move || {
-                                        i18n::t(language.get().as_str(), "welcome.depthOne")
-                                    }),
-                                },
-                                ui::segmented::Segment {
-                                    id: "fifty",
-                                    label: Box::new(move || {
-                                        i18n::t(language.get().as_str(), "welcome.depthFifty")
-                                    }),
-                                },
-                            ],
-                            move || match options.get().depth {
+                        .child(dynamic(move || {
+                            let selected = match options.get().depth {
                                 1 => "one",
                                 50 => "fifty",
                                 _ => "full",
-                            },
-                            move |id| {
-                                let mut next = options.get_untracked();
-                                next.depth = match id {
-                                    "one" => 1,
-                                    "fifty" => 50,
-                                    _ => 0,
-                                };
-                                options.set(next);
-                            },
-                        )),
+                            };
+                            return ui::segmented::segmented(
+                                vec![
+                                    ui::segmented::Segment {
+                                        id: "full",
+                                        label: Box::new(move || {
+                                            i18n::t(language.get().as_str(), "welcome.depthFull")
+                                        }),
+                                    },
+                                    ui::segmented::Segment {
+                                        id: "one",
+                                        label: Box::new(move || {
+                                            i18n::t(language.get().as_str(), "welcome.depthOne")
+                                        }),
+                                    },
+                                    ui::segmented::Segment {
+                                        id: "fifty",
+                                        label: Box::new(move || {
+                                            i18n::t(language.get().as_str(), "welcome.depthFifty")
+                                        }),
+                                    },
+                                ],
+                                selected,
+                                move |id| {
+                                    let mut next = options.get_untracked();
+                                    next.depth = match id {
+                                        "one" => 1,
+                                        "fifty" => 50,
+                                        _ => 0,
+                                    };
+                                    options.set(next);
+                                },
+                            )
+                            .into_element();
+                        })),
                 ),
         )
-        .child(
-            view()
+        .child(dynamic(move || {
+            let current = options.get();
+            return view()
                 .w_full()
                 .flex_col()
                 .gap(px(4.0))
-                .child(ui::check::check_row(
+                .child(ui::check::check_row_button(
                     move || i18n::t(language.get().as_str(), "welcome.recurse"),
-                    move || options.get().recurse_submodules,
-                    false,
+                    current.recurse_submodules,
                     move |next| {
                         let mut options_next = options.get_untracked();
                         options_next.recurse_submodules = next;
                         options.set(options_next);
                     },
                 ))
-                .child(ui::check::check_row(
+                .child(ui::check::check_row_button(
                     move || i18n::t(language.get().as_str(), "welcome.openAfterClone"),
-                    move || options.get().open_after_clone,
-                    false,
+                    current.open_after_clone,
                     move |next| {
                         let mut options_next = options.get_untracked();
                         options_next.open_after_clone = next;
                         options.set(options_next);
                     },
-                )),
-        )
+                ))
+                .into_element();
+        }))
         // 账号行：凭据流程尚未接入，显示未登录状态；按钮只做设置页导航。
         .child(
             view()
@@ -942,22 +949,23 @@ fn clone_form(
                 .flex_row()
                 .items_center()
                 .gap(px(ui::GAP))
-                .child(button(
-                    move || {
-                        if cloning.get() {
-                            i18n::t(language.get().as_str(), "welcome.cloneWorking")
-                        } else {
-                            i18n::t(language.get().as_str(), "welcome.clone")
-                        }
-                    },
-                    ButtonVariant::Primary,
-                    ButtonSize::Regular,
-                    move || cloning.get(),
-                    {
-                        let clone_repository = clone_repository.clone();
-                        move || clone_repository.clone_repository()
-                    },
-                ))
+                .child(dynamic(move || {
+                    let busy = cloning.get();
+                    let clone_repository = clone_repository.clone();
+                    let label_key = if busy {
+                        "welcome.cloneWorking"
+                    } else {
+                        "welcome.clone"
+                    };
+                    return button(
+                        move || i18n::t(language.get().as_str(), label_key),
+                        ButtonVariant::Primary,
+                        ButtonSize::Regular,
+                        busy,
+                        move || clone_repository.clone_repository(),
+                    )
+                    .into_element();
+                }))
                 .child(ui::secondary(move || {
                     let language = language.get();
                     let hint = i18n::t(language.as_str(), "welcome.cloneHint");
@@ -1045,42 +1053,41 @@ fn init_form(
                     None,
                 ))),
         )
-        .child(
-            view()
+        .child(dynamic(move || {
+            let current = files.get();
+            return view()
                 .w_full()
                 .flex_col()
                 .gap(px(4.0))
-                .child(ui::check::check_row(
+                .child(ui::check::check_row_button(
                     move || i18n::t(language.get().as_str(), "welcome.readme"),
-                    move || files.get().readme,
-                    false,
+                    current.readme,
                     move |next| {
                         let mut updated = files.get_untracked();
                         updated.readme = next;
                         files.set(updated);
                     },
                 ))
-                .child(ui::check::check_row(
+                .child(ui::check::check_row_button(
                     move || i18n::t(language.get().as_str(), "welcome.gitignore"),
-                    move || files.get().gitignore,
-                    false,
+                    current.gitignore,
                     move |next| {
                         let mut updated = files.get_untracked();
                         updated.gitignore = next;
                         files.set(updated);
                     },
                 ))
-                .child(ui::check::check_row(
+                .child(ui::check::check_row_button(
                     move || i18n::t(language.get().as_str(), "welcome.license"),
-                    move || files.get().license,
-                    false,
+                    current.license,
                     move |next| {
                         let mut updated = files.get_untracked();
                         updated.license = next;
                         files.set(updated);
                     },
-                )),
-        )
+                ))
+                .into_element();
+        }))
         .child(
             view()
                 .w_full()

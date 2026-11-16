@@ -9,6 +9,7 @@ apps/client/.nsh/
 .tmp/
 .nsh-home/
 .swift-cache/
+files.local/
 
 # 编辑器与系统文件
 .idea/

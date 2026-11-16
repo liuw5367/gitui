@@ -84,11 +84,12 @@ python3 tools/design/tokens.py
 
 当前入口是这份 README、[客户端 README](apps/client/README.md) 与四个 crate README：[domain](crates/domain/README.md)、[git](crates/git/README.md)、[store](crates/store/README.md)、[agent](crates/agent/README.md)。
 
-设计系统文档在 [docs/design/](docs/design/README.md)：[DESIGN-SYSTEM.md](docs/design/DESIGN-SYSTEM.md)（视觉语言）、[TOKENS.md](docs/design/TOKENS.md)（token 契约，色值表由 `tools/design/tokens.py` 从 `theme.json` 生成）、[UI-KIT.md](docs/design/UI-KIT.md)（组件层规则）、[DEVIATIONS.md](docs/design/DEVIATIONS.md)（与画板的已知差异）；[docs/README.md](docs/README.md) 是文档目录索引。2026-11-15 的旧文档整体归档在 [archive/2026-11-15-docs/](archive/2026-11-15-docs/)，该目录冻结，只作历史参考；归档中的状态结论不代表当前实现。
+设计系统文档在 [docs/design/](docs/design/README.md)：[DESIGN-SYSTEM.md](docs/design/DESIGN-SYSTEM.md)（视觉语言）、[TOKENS.md](docs/design/TOKENS.md)（token 契约，色值表由 `tools/design/tokens.py` 从 `theme.json` 生成）、[UI-KIT.md](docs/design/UI-KIT.md)（组件层规则）、[DEVIATIONS.md](docs/design/DEVIATIONS.md)（与画板的已知差异）；页面开发规范与验收门槛在 [docs/development/](docs/development/README.md)；[docs/README.md](docs/README.md) 是文档目录索引。2026-11-15 的旧文档整体归档在 [archive/2026-11-15-docs/](archive/2026-11-15-docs/)，该目录冻结，只作历史参考；归档中的状态结论不代表当前实现。
 
 ## 已知限制
 
-- 凭据与登录流程未实现。设置页的 Sign in 只给出提示，应用不保存 token；同步失败会归类为 auth、offline 或 rejected。
+- 凭据与登录流程未实现。设置页的 Sign in 只给出提示，应用不保存 token；同步失败会归类为 auth、offline 或 rejected。欢迎页的账号行显示未登录状态，Credentials 只做设置页导航。
+- 更新检查与帮助内容未实现。欢迎页的 Check for Updates 只给出说明，Help 保留在应用菜单。
 - 设置里的 Git 路径（`use_system_git`、`git_path`）会保存，`crates/git` 仍固定调用 PATH 中的 `git`。
 - 历史改写只有固定形态的 reword（单条提交）与 squash（连续区间），交互式 rebase 的 todo 编辑未实现。
 - Agent 的自动化档位与预览时长会保存，暂不改变执行流程；权限与受保护分支仍然生效。

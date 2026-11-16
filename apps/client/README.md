@@ -49,6 +49,8 @@ APP_HOME=/tmp/app-home nsh run
 - 已迁移的页面文件登记在 `tools/ui-migrated.txt`，不得直接引用 `nsh_base`、不得给裸 `view()` 挂 `.on_press`、不得自带色板或字体族。
 - `tools/check-ui.sh` 与 `src/ui` 的守卫测试检查同一组约束，两者都通过才算满足。
 
+页面开发流程、响应式契约与完成门槛见 [docs/development/page-development.md](../../docs/development/page-development.md)。
+
 设计稿位于 [designs/graft-git](../../designs/graft-git/)，由 design 单独维护；页面实现只引用画板与共享样式，不把 HTML/CSS 或 WebView 带进应用。
 
 `ui` 层采用 macOS 原生刻度：正文 13、次要文字 11、元数据 11、代码 12/18、控件 22/28/32、行高 24/28、工具栏 52、状态栏 24；系统刻度决定字号与控件高度。
@@ -60,7 +62,7 @@ APP_HOME=/tmp/app-home nsh run
 - 语言：`src/i18n.rs` 用进程内信号保存当前语言，设置页切换后立即生效；缺键时回退英文，再缺失则返回键名。`locales` 两边的键集合由测试保证一致。
 - 主题：`theme.json` 提供 light/dark token，经 `theme_overrides` 注入；深色模式与浅色模式各有一组值，`theme_tests` 与设计 CSS 逐键比对。
 - 存储：会话、最近仓库、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；文件格式见 [crates/store/README.md](../../crates/store/README.md)。
-- 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME` 可以直接进入指定页面或浮层，完整列表见脚本头注释。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
+- 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；产物写入 `files.local/shots/`（已被 `.gitignore` 排除，不提交）。`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME`、`GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT` 可以直接进入指定页面或浮层，完整列表见脚本头注释。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
 
 ## 测试
 
@@ -69,7 +71,7 @@ cargo test -p nsh-app        # 等价于在本目录运行 cargo test
 nsh check
 ```
 
-仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 81 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
+仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 87 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
 
 - `features/*/ops`（连同 `app/session.rs`、`app/ops.rs`）：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步、改写、reflog、引用操作、变更清单、冲突解决、过滤与对比、树形选项。
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。
