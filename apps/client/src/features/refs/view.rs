@@ -1,57 +1,330 @@
-//! 引用与追溯（设计板 09 / 30 / 17）：Refs 表与 Reflog 列表。
+//! 引用管理（设计板 09 / 30 / 17）：左侧侧栏 + 右侧 Refs 表与 Reflog 列表。
 //!
-//! 两张表共用同一个右侧主区，通过顶部页签切换：
-//! - Refs：分支、远程、标签、贮藏、工作树的完整列表（名称、上游、追踪、说明），
-//!   行高 28，与设计稿的 `.refs` 表一致；
-//! - Reflog：最近的引用移动，提供「撤销到此处」（`reset --hard`，需确认）。
+//! 侧栏是 Branches / Remotes / Tags / Stashes / Submodules / Worktrees 六组，行高 25、
+//! 分组标题 27；Refs 表是同一批数据的完整列表（名称、上游、追踪、说明），行高 28，
+//! 与设计稿的 `.refs` 表一致；Reflog 是最近的引用移动，提供「撤销到此处」
+//! （`reset --hard`，需确认）。
 //!
-//! 写操作（新建分支/标签、删除、添加远程、贮藏）需要输入与确认流程，本阶段只读 +
-//! 撤销，其余按「尚未实现」标注。
+//! 入口 `refs_sidebar` 画侧栏、`refs_view` 画主区，两者都收本功能的状态与用例；
+//! 跨功能的动作（新建分支/标签、复制、在 Finder 中显示）仍从 `Actions` 取。
+
+use super::commands::RefsCommands;
+use super::state::{RefsState, RefsTab};
 use crate::design::{self, metrics};
-use crate::features::history::commands::HistoryCommands;
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
 use crate::ui;
+use crate::Actions;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
-/// 页签。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefsTab {
-    Refs,
-    Reflog,
-}
-impl RefsTab {
-    fn key(self) -> &'static str {
-        return match self {
-            RefsTab::Refs => "refs.title",
-            RefsTab::Reflog => "reflog.title",
-        };
-    }
-}
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn refs_view(
+
+pub(crate) fn refs_sidebar(
+    _state: &RefsState,
+    cmd: &RefsCommands,
     language: Signal<SharedString>,
     tab: Tab,
-    reflog_query: Signal<String>,
-    selected_tab: Signal<RefsTab>,
-    set_tab: std::sync::Arc<dyn Fn(RefsTab)>,
-    actions: Actions,
-    history: HistoryCommands,
-) -> impl IntoElement {
-    let now = store::now_unix();
-    // 「比较」与「在历史中显示」属于提交历史功能，refs 只是入口：
-    // 这里把它的命令包成回调，沿用原来的参数位。
-    let compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
-        let history = history.clone();
-        std::sync::Arc::new(move |base: Option<String>, target: Option<String>| {
-            history.set_compare_refs(base, target)
-        })
+) -> impl IntoElement + use<> {
+    let refs = tab.refs;
+    let mut groups: Vec<AnyElement> = Vec::new();
+
+    // 右键菜单的回调要 `Arc<dyn Fn>`，这里把本功能的用例包一层。
+    let checkout: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.checkout_branch(name))
     };
+    let delete: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.delete_branch(name))
+    };
+    let new_branch: std::sync::Arc<dyn Fn(String, String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String, from: String| cmd.checkout_new_branch(name, from))
+    };
+    let merge: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.merge_reference(name))
+    };
+    let branch_rows: Vec<AnyElement> = refs
+        .branches
+        .iter()
+        .map(|branch| {
+            branch_row(
+                language,
+                branch.name.clone(),
+                branch.current,
+                branch.ahead,
+                branch.behind,
+                checkout.clone(),
+                delete.clone(),
+                new_branch.clone(),
+                merge.clone(),
+            )
+        })
+        .collect();
+    groups.push(group(
+        language,
+        "sidebar.branches",
+        refs.branches.len(),
+        branch_rows,
+    ));
+
+    let remote_rows: Vec<AnyElement> = refs
+        .remotes
+        .iter()
+        .map(|remote| plain_row(remote.clone(), "globe", design::text2))
+        .collect();
+    groups.push(group(
+        language,
+        "sidebar.remotes",
+        refs.remotes.len(),
+        remote_rows,
+    ));
+
+    let tag_rows: Vec<AnyElement> = refs
+        .tags
+        .iter()
+        .map(|tag| plain_row(tag.clone(), "tag", design::text2))
+        .collect();
+    groups.push(group(language, "sidebar.tags", refs.tags.len(), tag_rows));
+
+    let stash_rows: Vec<AnyElement> = refs
+        .stashes
+        .iter()
+        .map(|stash| plain_row(stash.summary.clone(), "archive", design::text2))
+        .collect();
+    groups.push(group(
+        language,
+        "sidebar.stashes",
+        refs.stashes.len(),
+        stash_rows,
+    ));
+
+    let submodule_rows: Vec<AnyElement> = refs
+        .submodules
+        .iter()
+        .map(|path| plain_row(path.clone(), "folder", design::text2))
+        .collect();
+    groups.push(group(
+        language,
+        "sidebar.submodules",
+        refs.submodules.len(),
+        submodule_rows,
+    ));
+
+    let worktree_rows: Vec<AnyElement> = refs
+        .worktrees
+        .iter()
+        .map(|path| plain_row(short_path(path), "folder", design::text2))
+        .collect();
+    groups.push(group(
+        language,
+        "sidebar.worktrees",
+        refs.worktrees.len(),
+        worktree_rows,
+    ));
+
+    return view()
+        .w(px(metrics::SIDEBAR_W))
+        .h_full()
+        .flex_shrink_0()
+        .flex_col()
+        .bg(move || design::sidebar())
+        .border_r_1()
+        .border_color(move || design::line())
+        .child(
+            scroll().w_full().h_full().child(
+                view()
+                    .w_full()
+                    .pt(px(metrics::SIDE_SCROLL_PAD.0))
+                    .pb(px(metrics::SIDE_SCROLL_PAD.2))
+                    .px(px(metrics::SIDE_SCROLL_PAD.1))
+                    .flex_col()
+                    .child(groups),
+            ),
+        );
+}
+
+/// 分组：标题行（箭头、名称、计数）加该组的行。
+fn group(
+    language: Signal<SharedString>,
+    key: &'static str,
+    count: usize,
+    rows: Vec<AnyElement>,
+) -> AnyElement {
+    return view()
+        .w_full()
+        .flex_col()
+        .child(
+            view()
+                .w_full()
+                .h(px(metrics::SIDE_HEAD_H))
+                .mt(px(8.0))
+                .px(px(6.0))
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .child(crate::ui::icon::icon_view("chev-down", crate::ui::icon::IconSize::Compact, design::text3))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), key))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .font_weight(FontWeight(600))
+                        .text_color(move || design::text3()),
+                )
+                .child(view().flex_1())
+                .child(
+                    text(count.to_string())
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
+                ),
+        )
+        .child(rows)
+        .into_element();
+}
+
+fn branch_row(
+    language: Signal<SharedString>,
+    name: String,
+    current: bool,
+    ahead: u32,
+    behind: u32,
+    checkout: std::sync::Arc<dyn Fn(String)>,
+    delete: std::sync::Arc<dyn Fn(String)>,
+    new_branch: std::sync::Arc<dyn Fn(String, String)>,
+    merge: std::sync::Arc<dyn Fn(String)>,
+) -> AnyElement {
+    let checkout_name = name.clone();
+    let delete_name = name.clone();
+    let new_branch_name = name.clone();
+    let merge_name = name.clone();
+    let is_current = current;
+    return view()
+        .w_full()
+        .h(px(metrics::SIDE_ROW_H))
+        .px(px(7.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .bg(move || {
+            if current {
+                design::selected()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .hover(|style| style.bg(move || design::hover()))
+        // 右键：切换分支 / 删除分支（当前分支的两项都禁用）。
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let checkout = checkout.clone();
+            let delete = delete.clone();
+            let new_branch = new_branch.clone();
+            let merge = merge.clone();
+            let checkout_name = checkout_name.clone();
+            let delete_name = delete_name.clone();
+            let new_branch_name = new_branch_name.clone();
+            let merge_name = merge_name.clone();
+            let items = vec![
+                ui::menu::action(
+                    i18n::t(language.get().as_str(), "branch.checkout"),
+                    !is_current,
+                    move || checkout(checkout_name.clone()),
+                ),
+                ui::menu::action(
+                    i18n::t(language.get().as_str(), "branch.checkoutAsNew"),
+                    true,
+                    move || new_branch(new_branch_name.clone(), new_branch_name.clone()),
+                ),
+                ui::menu::divider(),
+                ui::menu::action(
+                    i18n::t(language.get().as_str(), "branch.mergeInto"),
+                    !is_current,
+                    move || merge(merge_name.clone()),
+                ),
+                ui::menu::divider(),
+                ui::menu::danger(
+                    i18n::t(language.get().as_str(), "branch.delete"),
+                    !is_current,
+                    move || delete(delete_name.clone()),
+                ),
+            ];
+            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+        })
+        .child(crate::ui::icon::icon_view(
+            "branch",
+            crate::ui::icon::IconSize::Button,
+            if current { design::accent } else { design::text3 },
+        ))
+        .child(
+            text(name)
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || design::text())
+                .flex_1()
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(
+            text(move || {
+                let mut track = String::new();
+                if ahead > 0 {
+                    track.push_str(&format!("↑{}", ahead));
+                }
+                if behind > 0 {
+                    track.push_str(&format!("↓{}", behind));
+                }
+                return track;
+            })
+            .text_size(px(crate::ui::SECONDARY))
+            .text_color(move || design::text3()),
+        )
+        .into_element();
+}
+
+fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) -> AnyElement {
+    return view()
+        .w_full()
+        .h(px(metrics::SIDE_ROW_H))
+        .px(px(7.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .hover(|style| style.bg(move || design::hover()))
+        .child(crate::ui::icon::icon_view(icon, crate::ui::icon::IconSize::Compact, color))
+        .child(
+            text(label)
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || design::text2())
+                .flex_1()
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .into_element();
+}
+
+fn short_path(path: &str) -> String {
+    return path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_string();
+}
+
+pub(crate) fn refs_view(
+    state: &RefsState,
+    cmd: &RefsCommands,
+    language: Signal<SharedString>,
+    tab: Tab,
+    actions: Actions,
+    selected_tab: Signal<RefsTab>,
+) -> impl IntoElement + use<> {
+    let now = store::now_unix();
+    let reflog_query = state.reflog_query;
+    // 「在历史中显示」属于提交历史功能，refs 只是入口：把它的用例包成回调。
     let show_in_history: std::sync::Arc<dyn Fn(String)> = {
-        let history = history.clone();
+        let history = cmd.history.clone();
         std::sync::Arc::new(move |sha: String| history.show_in_history(sha))
     };
+    // 表格在 `dynamic` 里重建，先克隆一份用例，闭包才拿得到 `'static` 数据。
+    let table_cmd = cmd.clone();
     return view()
         .w_full()
         .h_full()
@@ -107,23 +380,13 @@ pub(crate) fn refs_view(
                         move || open_form(crate::screens::FormKind::NewStash)
                     },
                 ))
-                .child(tab_button(
-                    language,
-                    RefsTab::Refs,
-                    selected_tab,
-                    set_tab.clone(),
-                ))
-                .child(tab_button(
-                    language,
-                    RefsTab::Reflog,
-                    selected_tab,
-                    set_tab.clone(),
-                )),
+                .child(tab_button(language, RefsTab::Refs, selected_tab))
+                .child(tab_button(language, RefsTab::Reflog, selected_tab)),
         )
         .child(dynamic(move || -> AnyElement {
             match selected_tab.get() {
                 RefsTab::Refs => {
-                    refs_table(language, tab.clone(), actions.clone(), compare_refs.clone())
+                    refs_table(language, tab.clone(), actions.clone(), &table_cmd)
                         .into_element()
                 }
                 RefsTab::Reflog => {
@@ -144,7 +407,6 @@ fn tab_button(
     language: Signal<SharedString>,
     which: RefsTab,
     selected: Signal<RefsTab>,
-    set_selected: std::sync::Arc<dyn Fn(RefsTab)>,
 ) -> impl IntoElement {
     // 页签：选中的用 Secondary 表达，未选中用 Ghost。
     let variant = if selected.get_untracked() == which {
@@ -157,15 +419,67 @@ fn tab_button(
         variant,
         crate::ui::button::ButtonSize::Small,
         false,
-        move || set_selected(which),
+        move || selected.set(which),
     );
 }
 fn refs_table(
     language: Signal<SharedString>,
     tab: Tab,
     actions: Actions,
-    compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
+    cmd: &RefsCommands,
 ) -> impl IntoElement {
+    // 「比较」与各段引用行的写动作要 `Arc<dyn Fn>`，这里把用例包成回调。
+    let compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
+        let history = cmd.history.clone();
+        std::sync::Arc::new(move |base: Option<String>, target: Option<String>| {
+            history.set_compare_refs(base, target)
+        })
+    };
+    let checkout: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.checkout_branch(name))
+    };
+    let checkout_new: std::sync::Arc<dyn Fn(String, String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String, from: String| cmd.checkout_new_branch(name, from))
+    };
+    let merge: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.merge_reference(name))
+    };
+    let delete: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.delete_branch(name))
+    };
+    let drop_remote: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.drop_remote(name))
+    };
+    let push_tag: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.push_tag(name))
+    };
+    let drop_tag: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.drop_tag(name))
+    };
+    let apply_stash: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |reference: String| cmd.apply_stash(reference))
+    };
+    let pop_stash: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |reference: String| cmd.pop_stash(reference))
+    };
+    let drop_stash: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |reference: String| cmd.drop_stash(reference))
+    };
+    // 远程行的「取回」打开同步面板：那是同步功能的入口，走它的用例。
+    let fetch: std::sync::Arc<dyn Fn(crate::model::Sync)> = {
+        let sync = cmd.sync.clone();
+        std::sync::Arc::new(move |kind: crate::model::Sync| sync.open_sync(kind))
+    };
     let mut sections: Vec<AnyElement> = Vec::new();
     // 分支：检出、检出为新本地分支、比较、合并、重命名、删除、复制。
     let mut branch_rows: Vec<AnyElement> = Vec::new();
@@ -182,12 +496,12 @@ fn refs_table(
             String::new()
         };
         let is_current = branch.current;
-        let checkout = actions.checkout_branch.clone();
-        let checkout_new = actions.checkout_new_branch.clone();
-        let merge = actions.merge_reference.clone();
+        let checkout = checkout.clone();
+        let checkout_new = checkout_new.clone();
+        let merge = merge.clone();
         let compare = compare_refs.clone();
         let open_form = actions.open_form_from.clone();
-        let delete = actions.delete_branch.clone();
+        let delete = delete.clone();
         let copy_text = actions.copy_text.clone();
         let name_for_menu = name.clone();
         let items = vec![
@@ -274,8 +588,8 @@ fn refs_table(
     let mut remote_rows: Vec<AnyElement> = Vec::new();
     for (index, remote) in tab.refs.remotes.iter().enumerate() {
         let name = remote.clone();
-        let drop_remote = actions.drop_remote.clone();
-        let fetch = actions.open_sync.clone();
+        let drop_remote = drop_remote.clone();
+        let fetch = fetch.clone();
         let copy_text = actions.copy_text.clone();
         let edit_form = actions.open_form_from.clone();
         let url = tab
@@ -338,8 +652,8 @@ fn refs_table(
     let mut tag_rows: Vec<AnyElement> = Vec::new();
     for (index, tag) in tab.refs.tags.iter().enumerate() {
         let name = tag.clone();
-        let push = actions.push_tag.clone();
-        let drop_tag = actions.drop_tag.clone();
+        let push = push_tag.clone();
+        let drop_tag = drop_tag.clone();
         let copy_text = actions.copy_text.clone();
         let items = vec![
             ui::menu::action(
@@ -386,9 +700,9 @@ fn refs_table(
     for (index, stash) in tab.refs.stashes.iter().enumerate() {
         let reference = stash.reference.clone();
         let summary = stash.summary.clone();
-        let apply = actions.apply_stash.clone();
-        let pop = actions.pop_stash.clone();
-        let drop_stash = actions.drop_stash.clone();
+        let apply = apply_stash.clone();
+        let pop = pop_stash.clone();
+        let drop_stash = drop_stash.clone();
         let copy_text = actions.copy_text.clone();
         let items = vec![
             ui::menu::action(

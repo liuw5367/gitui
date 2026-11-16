@@ -5,6 +5,7 @@
 
 use super::state::ChangesState;
 use crate::features::SessionHandle;
+use crate::features::merge::commands::MergeCommands;
 use crate::model;
 use nsh_core::prelude::*;
 
@@ -16,6 +17,9 @@ pub(crate) struct ChangesCommands {
     pub(crate) language: Signal<SharedString>,
     /// 状态栏短提示（按 hunk/行应用成功后的提示）。
     pub(crate) notice: Signal<Option<String>>,
+    /// 冲突解决功能的用例：变更列表里冲突文件的「用 ours/theirs 解决」与
+    /// 「解决冲突」是冲突视图的入口。
+    pub(crate) merge: MergeCommands,
 }
 
 impl ChangesCommands {

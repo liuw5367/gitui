@@ -97,6 +97,7 @@ pub(crate) fn settings(
     shortcuts: ShortcutUi,
     notice: Signal<Option<String>>,
     diff: DiffCommands,
+    refs: &crate::features::refs::commands::RefsCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -136,6 +137,7 @@ pub(crate) fn settings(
                     shortcuts,
                     notice,
                     diff,
+                    refs,
                     actions,
                 )),
         )
@@ -338,8 +340,18 @@ fn main(
     shortcuts: ShortcutUi,
     notice: Signal<Option<String>>,
     diff: DiffCommands,
+    refs: &crate::features::refs::commands::RefsCommands,
     actions: Actions,
 ) -> impl IntoElement {
+    // 身份编辑已归引用管理：把它的用例包成回调，沿用原来的参数位。
+    let open_identity: std::sync::Arc<dyn Fn()> = {
+        let refs = refs.clone();
+        std::sync::Arc::new(move || refs.open_identity())
+    };
+    let clear_identity: std::sync::Arc<dyn Fn()> = {
+        let refs = refs.clone();
+        std::sync::Arc::new(move || refs.clear_identity())
+    };
     let (name, email) = identity;
     // 仓库级身份为空时说明会回落到全局配置，而不是显示一对空尖括号。
     let identity_text = if name.is_empty() && email.is_empty() {
@@ -397,8 +409,8 @@ fn main(
                             actions.set_date_style.clone(),
                             actions.set_date_pattern.clone(),
                             identity_text.clone(),
-                            actions.open_identity.clone(),
-                            actions.clear_identity.clone(),
+                            open_identity.clone(),
+                            clear_identity.clone(),
                         )
                         .into_element(),
                         Section::About => {

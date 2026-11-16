@@ -6,7 +6,11 @@
 use nsh_core::prelude::*;
 
 pub(crate) mod changes;
+pub(crate) mod commit;
 pub(crate) mod history;
+pub(crate) mod merge;
+pub(crate) mod refs;
+pub(crate) mod sync;
 
 /// 标签页集合与活动页签的句柄。用例要读写当前标签页时用它，避免逐个传信号。
 ///

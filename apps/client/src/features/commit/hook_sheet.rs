@@ -3,6 +3,8 @@
 //! 面板里只放末尾几行做提示，长输出（尤其是失败时的编译日志）放在这里看，
 //! 并提供复制与关闭。
 
+use super::commands::CommitCommands;
+use super::state::CommitState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
@@ -10,12 +12,20 @@ use crate::Actions;
 use nsh_core::prelude::*;
 
 /// 日志弹层：居中、可滚动、Esc 或点背景关闭。
+///
+/// 入口 `hook_sheet` 收本功能的状态与用例；弹层读取的钩子输出挂在 `Tab` 上，
+/// 复制到剪贴板仍走 `Actions` 的共用动作。
 pub(crate) fn hook_sheet(
+    _state: &CommitState,
+    cmd: &CommitCommands,
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
     actions: Actions,
 ) -> impl IntoElement {
-    let close = actions.toggle_hook_log.clone();
+    let close = {
+        let cmd = cmd.clone();
+        move |open: bool| cmd.toggle_hook_log(open)
+    };
     let copy_text = actions.copy_text.clone();
     let dismiss = close.clone();
     return crate::ui::dialog::scrim(

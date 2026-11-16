@@ -4,6 +4,8 @@
 //! 钩子失败时显示 `hook-box`：状态、耗时占位（0.5.0 没有钩子级的计时）、命令输出，
 //! 以及重试提示。提交按钮在说明为空或没有暂存内容时禁用。
 
+use super::commands::CommitCommands;
+use super::state::CommitState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
@@ -13,13 +15,17 @@ use nsh_core::prelude::*;
 /// 面板宽度（与提交文件面板一致）。
 pub(crate) const WIDTH: f32 = 320.0;
 
+/// 入口 `commit_panel` 收本功能的状态与用例；跨功能的动作（切到 Agent、请
+/// Agent 起草说明）仍从 `Actions` 取。
 pub(crate) fn commit_panel(
+    state: &CommitState,
+    cmd: &CommitCommands,
     language: Signal<SharedString>,
     tab: Tab,
-    summary: Signal<String>,
-    description: Signal<String>,
     actions: Actions,
 ) -> impl IntoElement {
+    let summary = state.summary;
+    let description = state.description;
     let staged: Vec<_> = tab
         .changes
         .iter()
@@ -30,11 +36,14 @@ pub(crate) fn commit_panel(
     let unstaged_count = tab.changes.len() - staged_count;
     let hook_log = tab.hook_log.clone();
     let hook_ok = tab.hook_ok;
-    let commit = actions.commit.clone();
+    let commit = {
+        let cmd = cmd.clone();
+        move || cmd.commit()
+    };
     let amend = tab.amend;
     let signoff = tab.signoff;
     let push_after = tab.push_after_commit;
-    let hook_actions = actions.clone();
+    let hook_cmd = cmd.clone();
     // 「改写上一条」时不需要暂存内容：只改提交说明也是合法操作。
     let can_commit = staged_count > 0 || amend;
     let mut staged_rows: Vec<AnyElement> = Vec::new();
@@ -235,7 +244,7 @@ pub(crate) fn commit_panel(
                             let Some(log) = hook_log.clone() else {
                                 return view().w_full().h(px(0.0)).into_element();
                             };
-                            return hook_box(language, log, hook_ok, hook_actions.clone())
+                            return hook_box(language, log, hook_ok, hook_cmd.clone())
                                 .into_element();
                         })),
                 )),
@@ -258,8 +267,8 @@ pub(crate) fn commit_panel(
                             "commit.amend",
                             amend,
                             {
-                                let set_commit_option = actions.set_commit_option.clone();
-                                move || set_commit_option("amend", !amend)
+                                let cmd = cmd.clone();
+                                move || cmd.set_commit_option("amend", !amend)
                             },
                         ))
                         .child(checkbox_row(
@@ -267,8 +276,8 @@ pub(crate) fn commit_panel(
                             "commit.signoff",
                             signoff,
                             {
-                                let set_commit_option = actions.set_commit_option.clone();
-                                move || set_commit_option("signoff", !signoff)
+                                let cmd = cmd.clone();
+                                move || cmd.set_commit_option("signoff", !signoff)
                             },
                         ))
                         .child(checkbox_row(
@@ -276,8 +285,8 @@ pub(crate) fn commit_panel(
                             "commit.pushAfter",
                             push_after,
                             {
-                                let set_commit_option = actions.set_commit_option.clone();
-                                move || set_commit_option("pushAfter", !push_after)
+                                let cmd = cmd.clone();
+                                move || cmd.set_commit_option("pushAfter", !push_after)
                             },
                         )),
                 )
@@ -369,7 +378,7 @@ fn hook_box(
     language: Signal<SharedString>,
     log: String,
     ok: bool,
-    actions: Actions,
+    cmd: CommitCommands,
 ) -> impl IntoElement {
     let has_log = !log.trim().is_empty();
     // 面板里只显示末尾若干行，完整内容在 `View full log` 弹层。
@@ -378,9 +387,18 @@ fn hook_box(
         let start = lines.len().saturating_sub(6);
         lines[start..].join("\n")
     };
-    let retry = actions.commit.clone();
-    let without_hooks = actions.commit_without_hooks.clone();
-    let open_log = actions.toggle_hook_log.clone();
+    let retry = {
+        let cmd = cmd.clone();
+        move || cmd.commit()
+    };
+    let without_hooks = {
+        let cmd = cmd.clone();
+        move || cmd.commit_without_hooks()
+    };
+    let open_log = {
+        let cmd = cmd.clone();
+        move |open: bool| cmd.toggle_hook_log(open)
+    };
     return view()
         .w_full()
         .flex_col()

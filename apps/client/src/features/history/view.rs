@@ -4,12 +4,14 @@
 //! 芯片显示当前筛选条件；点筛选图标打开浮层（设计板 05）。对比模式下点击提交是
 //! 加入/移出对比集合（设计板 06）。
 //!
-//! 入口 `history` 收本功能的状态与用例；跨功能的动作（改写、检出、复制等）仍从
-//! `Actions` 取。
+//! 入口 `history` 收本功能的状态与用例；改写与创建初始提交走 `cmd.commit`，
+//! 跨功能的动作（检出、复制等）仍从 `Actions` 取。
 
 use super::commands::HistoryCommands;
 use super::state::HistoryState;
 use crate::design::{self, metrics};
+use crate::features::commit::commands::CommitCommands;
+use crate::features::refs::commands::RefsCommands;
 use crate::filters::When;
 use crate::i18n;
 use crate::model::Tab;
@@ -31,10 +33,11 @@ pub(crate) fn history(
     state: &HistoryState,
     cmd: &HistoryCommands,
     tab: Tab,
-    language: Signal<SharedString>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     actions: Actions,
+    refs: &RefsCommands,
 ) -> impl IntoElement + use<> {
+    let language = cmd.language;
     let commits = tab.commits.clone();
     let selected = tab.selected;
     let compare = tab.compare.clone();
@@ -48,7 +51,11 @@ pub(crate) fn history(
         std::sync::Arc::new(move |index: usize| cmd.toggle_compare(index))
     };
     let row_actions = actions.clone();
-    let bar_actions = actions.clone();
+    // 提交功能的用例：右键菜单里的「改写说明 / 合并提交」与多选操作栏的「合并」。
+    let commit_for_rows = cmd.commit.clone();
+    let commit_for_bar = cmd.commit.clone();
+    // 右键菜单里的「检出 / 合并」来自引用管理，克隆一份进 `'static` 回调。
+    let refs_for_menu = refs.clone();
     // 空仓库与「筛选后无结果」要区分：前者要给创建初始提交的入口。
     let loading = tab.loading;
     let unborn = matches!(tab.head, git::HeadState::Unborn { .. });
@@ -56,7 +63,10 @@ pub(crate) fn history(
         git::HeadState::Unborn { branch } => branch.clone(),
         _ => tab.branch.clone(),
     };
-    let initial_commit = actions.create_initial_commit.clone();
+    let initial_commit = {
+        let commit = cmd.commit.clone();
+        std::sync::Arc::new(move || commit.create_initial_commit())
+    };
     // 合并提交的范围：取对比选区（至少两个），从旧到新列出来。
     let squash_range: Option<(String, String, Vec<(String, String)>)> =
         tab.compare_range().map(|(newest, oldest)| {
@@ -242,7 +252,9 @@ pub(crate) fn history(
                             let compare_mode_for_press = compare_mode;
                             let menu_select = select.clone();
                             let menu_actions = row_actions.clone();
+                            let menu_commit = commit_for_rows.clone();
                             let menu_squash = squash_range.clone();
+                            let menu_refs = refs_for_menu.clone();
                             let commits_for_press = rows_snapshot.clone();
                             let commits_for_menu = rows_snapshot.clone();
                             return crate::ui::table::table(crate::ui::table::TableSpec {
@@ -361,6 +373,8 @@ pub(crate) fn history(
                                         menu_actions.clone(),
                                         reset_request,
                                         menu_squash.clone(),
+                                        &menu_refs,
+                                        &menu_commit,
                                     );
                                     let _ = nsh_core::element::desktop::popup_menu_at(
                                         items,
@@ -382,7 +396,14 @@ pub(crate) fn history(
                 return view().w_full().h(px(0.0)).into_element();
             }
             // 这个动态块是 `Fn`，每次渲染都取一份新的克隆。
-            let open_squash = bar_actions.open_squash.clone();
+            let open_squash = {
+                let commit = commit_for_bar.clone();
+                std::sync::Arc::new(
+                    move |from: String, to: String, commits: Vec<(String, String)>| {
+                        commit.open_squash(from, to, commits)
+                    },
+                )
+            };
             let range = squash_range_for_bar.clone();
             let range_for_text = range.clone();
             let clear = clear_selection.clone();
@@ -722,6 +743,8 @@ fn commit_menu(
     actions: Actions,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     squash_range: Option<(String, String, Vec<(String, String)>)>,
+    refs: &RefsCommands,
+    commit_cmd: &CommitCommands,
 ) -> Vec<MenuItem> {
     let lang = language.get_untracked();
     let lang = lang.as_str();
@@ -730,14 +753,32 @@ fn commit_menu(
     // 范围只有在至少两个提交时才给出来，因此「有范围」等价于「可以合并」。
     let can_squash = squash_range.is_some();
     let sha = short.to_string();
-    let checkout = actions.checkout_commit.clone();
+    let checkout: std::sync::Arc<dyn Fn(String)> = {
+        let refs = refs.clone();
+        std::sync::Arc::new(move |sha: String| refs.checkout_commit(sha))
+    };
     let cherry = actions.cherry_pick.clone();
     let revert = actions.revert_commit.clone();
-    let merge = actions.merge_reference.clone();
+    let merge: std::sync::Arc<dyn Fn(String)> = {
+        let refs = refs.clone();
+        std::sync::Arc::new(move |sha: String| refs.merge_reference(sha))
+    };
     let open_form = actions.open_form_from.clone();
     let copy_text = actions.copy_text.clone();
-    let open_reword = actions.open_reword.clone();
-    let open_squash = actions.open_squash.clone();
+    let open_reword = {
+        let commit_cmd = commit_cmd.clone();
+        std::sync::Arc::new(move |sha: String, short: String, summary: String| {
+            commit_cmd.open_reword(sha, short, summary)
+        })
+    };
+    let open_squash = {
+        let commit_cmd = commit_cmd.clone();
+        std::sync::Arc::new(
+            move |from: String, to: String, commits: Vec<(String, String)>| {
+                commit_cmd.open_squash(from, to, commits)
+            },
+        )
+    };
 
     let mut items = vec![
         MenuItem::new(i18n::t(lang, "menu.openDiff")).on_select({

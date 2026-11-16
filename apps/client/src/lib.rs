@@ -78,53 +78,14 @@ pub(crate) struct Actions {
     pub(crate) close_tab: Arc<dyn Fn(usize)>,
     pub(crate) activate_tab: Arc<dyn Fn(usize)>,
     pub(crate) set_mode: Arc<dyn Fn(Mode)>,
-    pub(crate) commit: Arc<dyn Fn()>,
-    /// 跳过钩子提交（强确认）。
-    pub(crate) commit_without_hooks: Arc<dyn Fn()>,
-    /// 提交面板的三个开关：`amend` / `signoff` / `pushAfter`。
-    pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
-    /// 打开或关闭钩子完整日志弹层。
-    pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
     /// 把当前 diff 导出成 patch 文件。
     pub(crate) export_patch: Arc<dyn Fn()>,
-    /// 游离头时回到 main/master。
-    pub(crate) checkout_default_branch: Arc<dyn Fn()>,
     /// 在当前标签页目录里初始化仓库。
     pub(crate) init_here: Arc<dyn Fn()>,
     /// 重新定位仓库（缺失仓库的 Locate…）。
     pub(crate) locate_repo: Arc<dyn Fn()>,
     /// 打开当前路径的上一级（不是仓库时的 Open parent）。
     pub(crate) open_parent: Arc<dyn Fn()>,
-    /// 空仓库里创建第一个提交。
-    pub(crate) create_initial_commit: Arc<dyn Fn()>,
-    /// 清掉同步失败状态。
-    pub(crate) clear_sync_fault: Arc<dyn Fn()>,
-    /// 打开「改写提交说明」弹窗。
-    pub(crate) open_reword: Arc<dyn Fn(String, String, String)>,
-    /// 打开「合并提交」弹窗（from, to, 提交列表）。
-    pub(crate) open_squash: Arc<dyn Fn(String, String, Vec<(String, String)>)>,
-    /// 改写弹窗里编辑说明。
-    pub(crate) set_rewrite_message: Arc<dyn Fn(String)>,
-    /// 提交改写。
-    pub(crate) submit_rewrite: Arc<dyn Fn()>,
-    /// 关闭改写弹窗。
-    pub(crate) close_rewrite: Arc<dyn Fn()>,
-    /// 打开冲突视图。
-    pub(crate) open_conflict: Arc<dyn Fn()>,
-    /// 切换冲突文件。
-    pub(crate) select_conflict: Arc<dyn Fn(usize)>,
-    /// 前/后一个冲突文件。
-    pub(crate) step_conflict: Arc<dyn Fn(bool)>,
-    /// 用某一侧填充结果区。
-    pub(crate) apply_side: Arc<dyn Fn(domain::conflict::Side)>,
-    /// 标记当前冲突文件已解决。
-    pub(crate) mark_resolved: Arc<dyn Fn()>,
-    /// 继续被冲突打断的操作。
-    pub(crate) continue_op: Arc<dyn Fn()>,
-    /// 关闭冲突视图。
-    pub(crate) close_conflict: Arc<dyn Fn()>,
-    pub(crate) resolve_conflict: Arc<dyn Fn(String, bool)>,
-    pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
     pub(crate) set_theme: Arc<dyn Fn(ThemeMode)>,
     pub(crate) go_settings: Arc<dyn Fn()>,
@@ -146,31 +107,11 @@ pub(crate) struct Actions {
     pub(crate) set_review_millis: Arc<dyn Fn(u32)>,
     /// 切换某个分支的受保护状态。
     pub(crate) toggle_protected_branch: Arc<dyn Fn(String)>,
-    pub(crate) checkout_branch: Arc<dyn Fn(String)>,
-    pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) open_form: Arc<dyn Fn(screens::FormKind)>,
-    pub(crate) open_sync: Arc<dyn Fn(model::Sync)>,
-    /// 同步面板里的选项开关。
-    pub(crate) set_sync_option: Arc<dyn Fn(&'static str, bool)>,
-    pub(crate) run_sync: Arc<dyn Fn(model::Sync)>,
-    pub(crate) close_sync: Arc<dyn Fn()>,
-    pub(crate) drop_tag: Arc<dyn Fn(String)>,
-    pub(crate) drop_remote: Arc<dyn Fn(String)>,
-    pub(crate) drop_stash: Arc<dyn Fn(String)>,
-    pub(crate) checkout_new_branch: Arc<dyn Fn(String, String)>,
-    pub(crate) merge_reference: Arc<dyn Fn(String)>,
-    /// 切到某个提交（detached，先确认）。
-    pub(crate) checkout_commit: Arc<dyn Fn(String)>,
     /// 拣选提交（先确认）。
     pub(crate) cherry_pick: Arc<dyn Fn(String)>,
     /// 反向提交（先确认）。
     pub(crate) revert_commit: Arc<dyn Fn(String)>,
-    /// 推送标签。
-    pub(crate) push_tag: Arc<dyn Fn(String)>,
-    /// 应用贮藏（保留条目）。
-    pub(crate) apply_stash: Arc<dyn Fn(String)>,
-    /// 弹出贮藏（取出并删除条目）。
-    pub(crate) pop_stash: Arc<dyn Fn(String)>,
     /// 打开表单并把第二个字段预填（从某个提交新建分支/标签）。
     pub(crate) open_form_from: Arc<dyn Fn(screens::FormKind, String)>,
     pub(crate) reset_to: Arc<dyn Fn(String, git::ResetMode)>,
@@ -190,10 +131,6 @@ pub(crate) struct Actions {
     pub(crate) reveal_path: Arc<dyn Fn(String)>,
     /// 用浏览器打开链接。
     pub(crate) open_browser: Arc<dyn Fn(String)>,
-    /// 打开身份编辑表单（仓库级 user.name / user.email）。
-    pub(crate) open_identity: Arc<dyn Fn()>,
-    /// 清掉仓库级身份，回到全局配置。
-    pub(crate) clear_identity: Arc<dyn Fn()>,
     /// 扫描已配置目录里的仓库并加入最近列表。
     pub(crate) add_found_repos: Arc<dyn Fn()>,
     /// 选择 Git 可执行文件。
@@ -280,7 +217,7 @@ pub fn App() -> impl IntoElement {
     // diff 的三个显示开关（设计板 04）。
     let diff_options = signal(crate::shared::diff::DiffOptions::default());
     // 历史改写弹窗（改写说明 / 合并提交）。
-    let rewrite_state = signal(Option::<screens::RewriteState>::None);
+    let rewrite_state = signal(Option::<features::commit::state::RewriteState>::None);
     // 命令面板的高亮行。
     let palette_selected = signal(0_usize);
     // 快捷键：注册表、录制中的动作、设置页的搜索词与改键错误。
@@ -298,7 +235,7 @@ pub fn App() -> impl IntoElement {
     // 验收开关：`GITUI_SYNC=1` 启动即打开同步面板，用于截图核对弹层外观
     // （遮罩深浅、圆角、阴影、关闭行为）。与 GITUI_GALLERY 同思路。
     let sync_state = signal(if acceptance::flag("GITUI_SYNC") {
-        Some(screens::SyncDialogState::new(crate::model::Sync::Fetch))
+        Some(features::sync::state::SyncDialogState::new(crate::model::Sync::Fetch))
     } else {
         None
     });
@@ -441,10 +378,34 @@ pub fn App() -> impl IntoElement {
         settings: settings_state,
         store_dir: store_dir.clone(),
     };
+    // 冲突解决（P3 批 A）：结果区与 base 显隐收进 MergeState，用例收进
+    // MergeCommands；变更列表的冲突行要用它，所以先于 ChangesCommands 建。
+    let merge_commands = features::merge::commands::MergeCommands {
+        state: features::merge::state::MergeState {
+            result: conflict_result,
+            base_open: conflict_base_open,
+        },
+        session: features::SessionHandle { tabs, active },
+        language,
+        notice,
+    };
+    // 提交（P3 批 A）：说明、描述与改写弹窗收进 CommitState，用例收进
+    // CommitCommands；历史表的改写入口与空仓库的初始提交都要用它。
+    let commit_commands = features::commit::commands::CommitCommands {
+        state: features::commit::state::CommitState {
+            summary: commit_summary,
+            description: commit_description,
+            rewrite: rewrite_state,
+        },
+        session: features::SessionHandle { tabs, active },
+        language,
+        notice,
+    };
     let history_commands = features::history::commands::HistoryCommands {
         state: history_state,
         session: features::SessionHandle { tabs, active },
         diff: diff_commands,
+        commit: commit_commands.clone(),
         mode,
         notice,
         language,
@@ -458,6 +419,7 @@ pub fn App() -> impl IntoElement {
         session: features::SessionHandle { tabs, active },
         language,
         notice,
+        merge: merge_commands.clone(),
     };
 
     let open_path: Arc<dyn Fn(String)> = {
@@ -765,278 +727,19 @@ pub fn App() -> impl IntoElement {
         Arc::new(move |next: Mode| mode.set(next))
     };
 
-    // 提交：成功后按「Push after commit」决定是否立刻推送。
-    let commit_inner: Arc<dyn Fn(bool)> = {
-        let tabs = tabs;
-        let active = active;
-        let commit_summary = commit_summary;
-        let commit_description = commit_description;
-        let notice = notice;
-        let language = language;
-        Arc::new(move |no_verify: bool| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                tab.summary = commit_summary.get_untracked();
-                tab.description = commit_description.get_untracked();
-                model::commit_staged_with(tab, no_verify);
-                if tab.hook_ok {
-                    commit_summary.set(String::new());
-                    commit_description.set(String::new());
-                }
-                let push_after = tab.push_after_commit && tab.hook_ok;
-                if push_after {
-                    tab.push_after_commit = false;
-                }
-                tabs.set(list.clone());
-                if push_after {
-                    let mut list = list;
-                    if let Some(tab) = list.get_mut(current) {
-                        model::sync(tab, model::Sync::Push);
-                        tabs.set(list);
-                    }
-                    interactions::notify(
-                        notice,
-                        i18n::t(language.get_untracked().as_str(), "commit.pushed"),
-                    );
-                }
-            }
-        })
+    // 同步（P3 批 A）：面板状态收进 SyncState，用例收进 SyncCommands。
+    let sync_commands = features::sync::commands::SyncCommands {
+        state: features::sync::state::SyncState {
+            dialog: sync_state,
+        },
+        session: features::SessionHandle { tabs, active },
+        language,
+        notice,
     };
-
-    let commit: Arc<dyn Fn()> = {
-        let commit_inner = commit_inner.clone();
-        Arc::new(move || commit_inner(false))
-    };
-
-    // 跳过钩子：先强确认再提交（`--no-verify`）。
-    let commit_without_hooks: Arc<dyn Fn()> = {
-        let commit_inner = commit_inner.clone();
-        let language = language;
-        Arc::new(move || {
-            let language_now = language.get_untracked();
-            let pending = interactions::confirm(
-                i18n::t(language_now.as_str(), "confirm.noVerifyTitle"),
-                i18n::t(language_now.as_str(), "confirm.noVerifyMessage"),
-                "no_verify",
-                i18n::t(language_now.as_str(), "confirm.noVerifyAction"),
-                true,
-            );
-            let commit_inner = commit_inner.clone();
-            spawn(async move {
-                if pending.await {
-                    commit_inner(true);
-                }
-            });
-        })
-    };
-
-    // 面板上的三个开关（设计板 10）。
-    let set_commit_option: Arc<dyn Fn(&'static str, bool)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |kind: &'static str, value: bool| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                match kind {
-                    "amend" => tab.amend = value,
-                    "signoff" => tab.signoff = value,
-                    "pushAfter" => tab.push_after_commit = value,
-                    _ => return,
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    // 钩子完整日志弹层。
-    let toggle_hook_log: Arc<dyn Fn(bool)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |open: bool| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                tab.hook_open = open;
-                tabs.set(list);
-            }
-        })
-    };
-
-    let resolve_conflict: Arc<dyn Fn(String, bool)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |path: String, ours: bool| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::resolve_conflict(tab, path.as_str(), ours);
-                tabs.set(list);
-            }
-        })
-    };
-
-    // 同步动作：先在对话框里确认，再执行并留在对话框展示结果。
-    // 打开同步面板；已经打开时只切 tab，保留当前选项。
+    // 工具条、命令面板与引用行共用的「打开同步面板」入口。
     let open_sync: Arc<dyn Fn(model::Sync)> = {
-        let sync_state = sync_state;
-        Arc::new(move |kind: model::Sync| {
-            let mut state = sync_state
-                .get_untracked()
-                .unwrap_or_else(|| screens::SyncDialogState::new(kind));
-            state.kind = kind;
-            state.result = None;
-            sync_state.set(Some(state));
-        })
-    };
-
-    // 选项开关：键名固定，策略三项互斥。
-    let set_sync_option: Arc<dyn Fn(&'static str, bool)> = {
-        let sync_state = sync_state;
-        Arc::new(move |key: &'static str, value: bool| {
-            let Some(mut state) = sync_state.get_untracked() else {
-                return;
-            };
-            match key {
-                "prune" => state.options.fetch.prune = value,
-                "fetchTags" => state.options.fetch.tags = value,
-                "allRemotes" => state.options.fetch.all_remotes = value,
-                "autostash" => state.options.pull.autostash = value,
-                "rebaseLocal" => state.options.pull.rebase_local = value,
-                "pushTags" => state.options.push.tags = value,
-                "forceLease" => state.options.push.force_with_lease = value,
-                "allBranches" => state.options.push.all_branches = value,
-                "strategyMerge" => state.options.pull.strategy = git::PullStrategy::Merge,
-                "strategyRebase" => state.options.pull.strategy = git::PullStrategy::Rebase,
-                "strategyFfOnly" => state.options.pull.strategy = git::PullStrategy::FfOnly,
-                _ => return,
-            }
-            sync_state.set(Some(state));
-        })
-    };
-
-    let run_sync: Arc<dyn Fn(model::Sync)> = {
-        let tabs = tabs;
-        let active = active;
-        let sync_state = sync_state;
-        Arc::new(move |kind: model::Sync| {
-            let Some(state) = sync_state.get_untracked() else {
-                return;
-            };
-            let options = state.options.clone();
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::sync_with(tab, kind, &options);
-                let result = match (&tab.sync_message, tab.sync_failed) {
-                    (Some(message), false) => Ok(message.clone()),
-                    (Some(message), true) => Err(message.clone()),
-                    (None, _) => Ok(String::new()),
-                };
-                let rejected = kind == model::Sync::Push
-                    && tab.sync_failed
-                    && tab.sync_fault == Some(domain::NetworkFault::Rejected);
-                tabs.set(list);
-                sync_state.set(Some(screens::SyncDialogState {
-                    kind,
-                    options: options.clone(),
-                    result: Some(result),
-                    running: false,
-                }));
-                if !rejected {
-                    return;
-                }
-                // 远端已前进：不自动强推，让用户在「拉取变基 / 拉取合并 / 取消」里选。
-                let lang = language.get_untracked();
-                let title = i18n::t(lang.as_str(), "confirm.nonFastForwardTitle");
-                let message = i18n::t(lang.as_str(), "confirm.nonFastForwardMessage");
-                let rebase_label = i18n::t(lang.as_str(), "confirm.nonFastForwardRebase");
-                let merge_label = i18n::t(lang.as_str(), "confirm.nonFastForwardMerge");
-                let cancel_label = i18n::t(lang.as_str(), "common.cancel");
-                let pending = nsh_base::alert_dialog()
-                    .title(title)
-                    .description(message)
-                    .action("rebase", rebase_label)
-                    .action("merge", merge_label)
-                    .cancel("cancel", cancel_label)
-                    .show();
-                let language = language;
-                let notice = notice;
-                spawn(async move {
-                    let Ok(result) = pending.await else {
-                        return;
-                    };
-                    let Some(action) = result.action else {
-                        return;
-                    };
-                    if action.as_str() == "cancel" {
-                        return;
-                    }
-                    let strategy = if action.as_str() == "rebase" {
-                        git::PullStrategy::Rebase
-                    } else {
-                        git::PullStrategy::Merge
-                    };
-                    let pull_options = model::SyncOptions {
-                        pull: git::PullOptions {
-                            strategy,
-                            ..options.pull.clone()
-                        },
-                        ..options.clone()
-                    };
-                    let mut list = tabs.get_untracked();
-                    if let Some(tab) = list.get_mut(active.get_untracked()) {
-                        model::sync_with(tab, model::Sync::Pull, &pull_options);
-                        let pulled = !tab.sync_failed;
-                        // 拉取成功后再推一次；失败就只报拉取结果，不再连环弹框。
-                        if pulled {
-                            model::sync_with(tab, model::Sync::Push, &options);
-                        }
-                        let outcome = match (&tab.sync_message, tab.sync_failed) {
-                            (Some(message), false) => Some((message.clone(), false)),
-                            (Some(message), true) => Some((message.clone(), true)),
-                            (None, _) => None,
-                        };
-                        tabs.set(list);
-                        if let Some((message, failed)) = outcome {
-                            if failed {
-                                interactions::notify(notice, message);
-                            } else {
-                                let lang = language.get_untracked();
-                                interactions::notify(
-                                    notice,
-                                    i18n::t(lang.as_str(), "toast.pushed"),
-                                );
-                            }
-                        }
-                    }
-                });
-            }
-        })
-    };
-
-    let close_sync: Arc<dyn Fn()> = {
-        let sync_state = sync_state;
-        Arc::new(move || sync_state.set(None))
-    };
-
-    let resolve_conflict: Arc<dyn Fn(String, bool)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |path: String, ours: bool| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::resolve_conflict(tab, path.as_str(), ours);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let close_sync: Arc<dyn Fn()> = {
-        let sync_state = sync_state;
-        Arc::new(move || sync_state.set(None))
+        let sync_commands = sync_commands.clone();
+        Arc::new(move |kind: model::Sync| sync_commands.open_sync(kind))
     };
 
     let sync: Arc<dyn Fn(model::Sync)> = {
@@ -1052,42 +755,6 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let abort_operation: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move || {
-            let language_now = language.get_untracked();
-            let operation = tabs
-                .get_untracked()
-                .get(active.get_untracked())
-                .map(|tab| tab.operation.id().to_string())
-                .unwrap_or_default();
-            let pending = interactions::confirm(
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "confirm.abortTitle",
-                    &[("operation", operation)],
-                ),
-                i18n::t(language_now.as_str(), "confirm.abortMessage"),
-                "abort",
-                i18n::t(language_now.as_str(), "confirm.abortAction"),
-                true,
-            );
-            spawn(async move {
-                if !pending.await {
-                    return;
-                }
-                let current = active.get_untracked();
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    model::abort_operation(tab);
-                    tabs.set(list);
-                }
-            });
-        })
-    };
-
     // 命令面板与快捷键共用同一个分发器：命令 id 就是快捷键注册表里的动作 id。
     let run_command: Arc<dyn Fn(&'static str)> = {
         let open_repo = choose_folder.clone();
@@ -1095,7 +762,7 @@ pub fn App() -> impl IntoElement {
         // 刷新、对比模式与筛选浮层都归提交历史功能，命令分发经它的用例走。
         let history_cmd = history_commands.clone();
         let set_mode_cmd = set_mode.clone();
-        let commit_cmd = commit.clone();
+        let commit_cmd = commit_commands.clone();
         let inspector_open = inspector_open;
         let open_sync = open_sync.clone();
         let go_welcome = go_welcome.clone();
@@ -1138,7 +805,7 @@ pub fn App() -> impl IntoElement {
                 // ⌘↵：只在 Changes 里提交，避免在历史视图误提交。
                 "primary" => {
                     if mode_signal.get_untracked() == Mode::Changes {
-                        commit_cmd();
+                        commit_cmd.commit();
                     }
                 }
                 "prevTab" => cycle_tab(tabs_cmd, active_cmd, screen_cmd, false),
@@ -1332,7 +999,7 @@ pub fn App() -> impl IntoElement {
         let tabs = tabs;
         let active = active;
         let agent_plan = agent_plan;
-        let commit_summary = commit_summary;
+        let commit_summary = commit_commands.state.summary;
         Arc::new(move || {
             let current = active.get_untracked();
             let list = tabs.get_untracked();
@@ -1361,7 +1028,7 @@ pub fn App() -> impl IntoElement {
         let agent_audit = agent_audit;
         let agent_policies = agent_policies;
         let agent_settings = agent_settings;
-        let commit_summary = commit_summary;
+        let commit_summary = commit_commands.state.summary;
         let persist_audit = persist_audit.clone();
         Arc::new(move |index: usize| {
             let Some(plan) = agent_plan.get_untracked() else {
@@ -1650,37 +1317,6 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || form_state.set(None))
     };
 
-    let checkout_new_branch: Arc<dyn Fn(String, String)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |name: String, from: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                if let Err(detail) = model::checkout_new_branch(tab, name.as_str(), from.as_str())
-                {
-                    tab.error = Some(detail);
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let merge_reference: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |reference: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                if let Err(detail) = model::merge_reference(tab, reference.as_str()) {
-                    tab.error = Some(detail);
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
     // 重置不可撤销（--hard 会丢改动）：先确认。
     let reset_to: Arc<dyn Fn(String, git::ResetMode)> = {
         let tabs = tabs;
@@ -1711,203 +1347,6 @@ pub fn App() -> impl IntoElement {
                         if let Err(detail) = model::reset_to(tab, sha.as_str(), mode) {
                             tab.error = Some(detail);
                         }
-                        tabs.set(list);
-                    }
-                }
-            });
-        })
-    };
-
-    let drop_tag: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |name: String| {
-            let language_now = language.get_untracked();
-            let pending = interactions::confirm(
-                i18n::t(language_now.as_str(), "confirm.dropTagTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "confirm.dropTagMessage",
-                    &[("name", name.clone())],
-                ),
-                "drop",
-                i18n::t(language_now.as_str(), "confirm.deleteAction"),
-                true,
-            );
-            spawn(async move {
-                if !pending.await {
-                    return;
-                }
-                let current = active.get_untracked();
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    let _ = model::drop_tag(tab, name.as_str());
-                    tabs.set(list);
-                }
-            });
-        })
-    };
-
-    let drop_remote: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |name: String| {
-            let language_now = language.get_untracked();
-            let pending = interactions::confirm(
-                i18n::t(language_now.as_str(), "confirm.dropRemoteTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "confirm.dropRemoteMessage",
-                    &[("name", name.clone())],
-                ),
-                "drop",
-                i18n::t(language_now.as_str(), "confirm.removeAction"),
-                true,
-            );
-            spawn(async move {
-                if !pending.await {
-                    return;
-                }
-                let current = active.get_untracked();
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    let _ = model::drop_remote(tab, name.as_str());
-                    tabs.set(list);
-                }
-            });
-        })
-    };
-
-    let drop_stash: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |reference: String| {
-            let language_now = language.get_untracked();
-            let pending = interactions::confirm(
-                i18n::t(language_now.as_str(), "confirm.dropStashTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "confirm.dropStashMessage",
-                    &[("name", reference.clone())],
-                ),
-                "drop",
-                i18n::t(language_now.as_str(), "confirm.dropAction"),
-                true,
-            );
-            spawn(async move {
-                if !pending.await {
-                    return;
-                }
-                let current = active.get_untracked();
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    let _ = model::drop_stash(tab, reference.as_str());
-                    tabs.set(list);
-                }
-            });
-        })
-    };
-
-    let checkout_branch: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        let notice = notice;
-        Arc::new(move |branch: String| {
-            let current = active.get_untracked();
-            let dirty = tabs
-                .get_untracked()
-                .get(current)
-                .is_some_and(model::is_dirty);
-            if !dirty {
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    model::checkout_branch(tab, branch.as_str());
-                    tabs.set(list);
-                }
-                return;
-            }
-            // 有改动时先问：贮藏后切、把改动带过去、还是取消（手册第 4 节）。
-            let lang = language.get_untracked();
-            let title = i18n::t(lang.as_str(), "confirm.dirtyCheckoutTitle");
-            let message = i18n::with_arguments(
-                lang.as_str(),
-                "confirm.dirtyCheckoutMessage",
-                &[("branch", branch.clone())],
-            );
-            let stash_label = i18n::t(lang.as_str(), "confirm.dirtyCheckoutStash");
-            let carry_label = i18n::t(lang.as_str(), "confirm.dirtyCheckoutCarry");
-            let cancel_label = i18n::t(lang.as_str(), "common.cancel");
-            let pending = nsh_base::alert_dialog()
-                .title(title)
-                .description(message)
-                .action("stash", stash_label)
-                .action("carry", carry_label)
-                .cancel("cancel", cancel_label)
-                .show();
-            let language = language;
-            let notice = notice;
-            spawn(async move {
-                let Ok(result) = pending.await else {
-                    return;
-                };
-                let Some(action) = result.action else {
-                    return;
-                };
-                if action.as_str() == "cancel" {
-                    return;
-                }
-                let stash = action.as_str() == "stash";
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    model::checkout_branch_with(tab, branch.as_str(), stash);
-                    let failed = tab.error.clone();
-                    tabs.set(list);
-                    if let Some(detail) = failed {
-                        interactions::notify(notice, detail);
-                    } else if stash {
-                        let lang = language.get_untracked();
-                        interactions::notify(
-                            notice,
-                            i18n::t(lang.as_str(), "toast.stashedBeforeCheckout"),
-                        );
-                    }
-                }
-            });
-        })
-    };
-
-    // 删除分支不可撤销：先确认。
-    let delete_branch: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |branch: String| {
-            let language_now = language.get_untracked();
-            let pending = crate::ui::dialog::confirm_destructive(
-                i18n::t(language_now.as_str(), "branch.deleteTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "branch.deleteMessage",
-                    &[("name", branch.clone())],
-                ),
-                i18n::t(language_now.as_str(), "branch.deleteAction"),
-                i18n::t(language_now.as_str(), "common.cancel"),
-            );
-            let tabs = tabs;
-            let active = active;
-            spawn(async move {
-                if let Ok(result) = pending.await {
-                    if result.action.as_deref() != Some("delete") {
-                        return;
-                    }
-                    let current = active.get_untracked();
-                    let mut list = tabs.get_untracked();
-                    if let Some(tab) = list.get_mut(current) {
-                        model::delete_branch(tab, branch.as_str());
                         tabs.set(list);
                     }
                 }
@@ -2040,9 +1479,21 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let checkout_commit: Arc<dyn Fn(String)> = {
-        let history_action = history_action.clone();
-        Arc::new(move |sha: String| history_action("checkout", sha))
+
+    // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。
+    // 放在 `history_action` 之后，因为「切到某个提交」要复用它（同一个确认框）。
+    let refs_state = features::refs::state::RefsState {
+        reflog_query,
+    };
+    let refs_commands = features::refs::commands::RefsCommands {
+        state: refs_state,
+        session: features::SessionHandle { tabs, active },
+        language,
+        notice,
+        history: history_commands.clone(),
+        history_action: history_action.clone(),
+        form_state,
+        sync: sync_commands.clone(),
     };
 
     let cherry_pick: Arc<dyn Fn(String)> = {
@@ -2065,189 +1516,6 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    // 冲突视图（设计板 14）。
-    let open_conflict: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let conflict_result = conflict_result;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::open_conflict(tab);
-                conflict_result.set(tab.conflict_text.clone());
-                tabs.set(list);
-            }
-        })
-    };
-
-    let select_conflict: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        let conflict_result = conflict_result;
-        Arc::new(move |index: usize| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::select_conflict(tab, index);
-                conflict_result.set(tab.conflict_text.clone());
-                tabs.set(list);
-            }
-        })
-    };
-
-    let step_conflict: Arc<dyn Fn(bool)> = {
-        let tabs = tabs;
-        let active = active;
-        let conflict_result = conflict_result;
-        Arc::new(move |forward: bool| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::step_conflict(tab, forward);
-                conflict_result.set(tab.conflict_text.clone());
-                tabs.set(list);
-            }
-        })
-    };
-
-    let apply_side: Arc<dyn Fn(domain::conflict::Side)> = {
-        let tabs = tabs;
-        let active = active;
-        let conflict_result = conflict_result;
-        Arc::new(move |side: domain::conflict::Side| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let merged = model::conflict_take_side(tab, side);
-                conflict_result.set(merged);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let mark_resolved: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let conflict_result = conflict_result;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let resolved = conflict_result.get_untracked();
-                match model::mark_conflict_resolved(tab, resolved.as_str()) {
-                    Ok(()) => {
-                        conflict_result.set(tab.conflict_text.clone());
-                        let lang = language.get_untracked();
-                        interactions::notify(
-                            notice,
-                            i18n::t(lang.as_str(), "conflicts.marked"),
-                        );
-                    }
-                    Err(detail) => tab.error = Some(detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let continue_op: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                match model::continue_operation(tab) {
-                    Ok(_) => {
-                        let lang = language.get_untracked();
-                        interactions::notify(
-                            notice,
-                            i18n::t(lang.as_str(), "toast.historyDone"),
-                        );
-                    }
-                    Err(detail) => tab.error = Some(detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let close_conflict: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                tab.conflict_open = false;
-                tabs.set(list);
-            }
-        })
-    };
-
-    // 引用行上的动作：推送标签、应用/弹出贮藏。
-    let push_tag: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move |name: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                match model::push_tag(tab, name.as_str()) {
-                    Ok(_) => {
-                        let lang = language.get_untracked();
-                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.pushed"));
-                    }
-                    Err(detail) => tab.error = Some(detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let stash_action: Arc<dyn Fn(&'static str, String)> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move |kind: &'static str, reference: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let result = if kind == "apply" {
-                    model::apply_stash(tab, reference.as_str())
-                } else {
-                    model::pop_stash(tab, reference.as_str())
-                };
-                match result {
-                    Ok(()) => {
-                        let lang = language.get_untracked();
-                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.stashDone"));
-                    }
-                    Err(detail) => tab.error = Some(detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let apply_stash: Arc<dyn Fn(String)> = {
-        let stash_action = stash_action.clone();
-        Arc::new(move |reference: String| stash_action("apply", reference))
-    };
-
-    let pop_stash: Arc<dyn Fn(String)> = {
-        let stash_action = stash_action.clone();
-        Arc::new(move |reference: String| stash_action("pop", reference))
-    };
-
     // 键盘与命令面板共用同一个派发入口（Actions 会把它移走，因此先留一份）。
     let run_command_for_key = run_command.clone();
 
@@ -2262,167 +1530,7 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let open_identity: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let form_state = form_state;
-        Arc::new(move || {
-            let list = tabs.get_untracked();
-            let Some(tab) = list.get(active.get_untracked()) else {
-                return;
-            };
-            let (name, email) = model::identity(tab);
-            let mut state = screens::FormState::new(screens::FormKind::Identity);
-            state.first = name;
-            state.second = email;
-            form_state.set(Some(state));
-        })
-    };
-
-    let clear_identity: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let list = tabs.get_untracked();
-            let Some(tab) = list.get(active.get_untracked()) else {
-                return;
-            };
-            match model::clear_identity(tab) {
-                Ok(()) => {
-                    let lang = language.get_untracked();
-                    interactions::notify(notice, i18n::t(lang.as_str(), "toast.identityCleared"));
-                }
-                Err(detail) => interactions::notify(notice, detail),
-            }
-        })
-    };
-
-    // 历史改写（设计板 22）：打开 → 编辑说明 → 执行。
-    let open_reword: Arc<dyn Fn(String, String, String)> = {
-        let tabs = tabs;
-        let active = active;
-        let rewrite_state = rewrite_state;
-        Arc::new(move |sha: String, short: String, summary: String| {
-            let blocker = {
-                let list = tabs.get_untracked();
-                list.get(active.get_untracked())
-                    .and_then(model::rewrite_blocker)
-            };
-            rewrite_state.set(Some(screens::RewriteState::new(
-                screens::RewriteKind::Reword { sha, short, summary: summary.clone() },
-                summary,
-                blocker,
-            )));
-        })
-    };
-
-    let open_squash: Arc<dyn Fn(String, String, Vec<(String, String)>)> = {
-        let tabs = tabs;
-        let active = active;
-        let rewrite_state = rewrite_state;
-        Arc::new(move |from: String, to: String, commits: Vec<(String, String)>| {
-            let blocker = {
-                let list = tabs.get_untracked();
-                list.get(active.get_untracked())
-                    .and_then(model::rewrite_blocker)
-            };
-            // 结果说明默认取最旧那条提交的说明，用户可改。
-            let message = commits
-                .last()
-                .map(|(_, summary)| summary.clone())
-                .unwrap_or_default();
-            rewrite_state.set(Some(screens::RewriteState::new(
-                screens::RewriteKind::Squash { from, to, commits },
-                message,
-                blocker,
-            )));
-        })
-    };
-
-    let set_rewrite_message: Arc<dyn Fn(String)> = {
-        let rewrite_state = rewrite_state;
-        Arc::new(move |message: String| {
-            let mut state = match rewrite_state.get_untracked() {
-                Some(state) => state,
-                None => return,
-            };
-            state.message = message;
-            state.error = None;
-            rewrite_state.set(Some(state));
-        })
-    };
-
-    let submit_rewrite: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let rewrite_state = rewrite_state;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let Some(state) = rewrite_state.get_untracked() else {
-                return;
-            };
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            let Some(tab) = list.get_mut(current) else {
-                return;
-            };
-            let result = match &state.kind {
-                screens::RewriteKind::Reword { sha, .. } => {
-                    model::reword_commit(tab, sha.as_str(), state.message.as_str())
-                }
-                screens::RewriteKind::Squash { from, to, .. } => model::squash_commits(
-                    tab,
-                    from.as_str(),
-                    to.as_str(),
-                    state.message.as_str(),
-                ),
-            };
-            match result {
-                Ok(()) => {
-                    tabs.set(list);
-                    rewrite_state.set(None);
-                    let lang = language.get_untracked();
-                    interactions::notify(notice, i18n::t(lang.as_str(), "rewrite.done"));
-                }
-                Err(detail) => {
-                    tabs.set(list);
-                    let mut next = state;
-                    next.error = Some(detail);
-                    rewrite_state.set(Some(next));
-                }
-            }
-        })
-    };
-
-    let close_rewrite: Arc<dyn Fn()> = {
-        let rewrite_state = rewrite_state;
-        Arc::new(move || rewrite_state.set(None))
-    };
-
     // 状态横幅上的三个动作（设计板 16）。
-    let checkout_default_branch: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                match model::checkout_default_branch(tab) {
-                    Ok(()) => {
-                        let lang = language.get_untracked();
-                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.historyDone"));
-                    }
-                    Err(detail) => interactions::notify(notice, detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
 
     let init_here: Arc<dyn Fn()> = {
         let tabs = tabs;
@@ -2483,39 +1591,6 @@ pub fn App() -> impl IntoElement {
                 // 先打开再关旧的：关掉会让下标前移。
                 close_tab(index);
             });
-        })
-    };
-
-    let create_initial_commit: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let lang = language.get_untracked();
-                let message = i18n::t(lang.as_str(), "state.initialCommitMessage");
-                match model::create_initial_commit(tab, message.as_str()) {
-                    Ok(()) => interactions::notify(notice, i18n::t(lang.as_str(), "toast.historyDone")),
-                    Err(detail) => interactions::notify(notice, detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let clear_sync_fault: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::clear_sync_fault(tab);
-                tabs.set(list);
-            }
         })
     };
 
@@ -2747,34 +1822,13 @@ pub fn App() -> impl IntoElement {
         close_tab,
         activate_tab,
         set_mode,
-        commit,
-        commit_without_hooks,
-        set_commit_option,
-        toggle_hook_log,
-        checkout_default_branch,
         init_here,
         locate_repo,
         open_parent,
         export_patch,
-        create_initial_commit,
-        clear_sync_fault,
         set_automation,
         set_review_millis,
         toggle_protected_branch,
-        open_reword,
-        open_squash,
-        set_rewrite_message,
-        submit_rewrite,
-        close_rewrite,
-        open_conflict,
-        select_conflict,
-        step_conflict,
-        apply_side,
-        mark_resolved,
-        continue_op,
-        close_conflict,
-        resolve_conflict,
-        abort_operation,
         run_command,
         set_theme,
         go_settings,
@@ -2787,25 +1841,10 @@ pub fn App() -> impl IntoElement {
         add_agent_step,
         run_plan,
         set_agent_permission,
-        checkout_branch,
-        delete_branch,
         open_form,
-        open_sync,
-        set_sync_option,
-        run_sync,
-        close_sync,
-        drop_tag,
-        drop_remote,
-        drop_stash,
-        checkout_new_branch,
-        merge_reference,
-        checkout_commit,
         cherry_pick,
         revert_commit,
         open_form_from,
-        push_tag,
-        apply_stash,
-        pop_stash,
         reset_to,
         clone_repository,
         cancel_clone,
@@ -2826,8 +1865,6 @@ pub fn App() -> impl IntoElement {
         set_launch_restore,
         set_date_style,
         set_date_pattern,
-        open_identity,
-        clear_identity,
     };
 
     // 原生菜单（设计板 22）：文案随语言重建。菜单项与命令面板共用同一批动作，
@@ -2975,12 +2012,13 @@ pub fn App() -> impl IntoElement {
 
     // Esc 层层退出：先关最上面的浮层，再退到过滤器；都不开时什么也不做。
     on_key("escape", {
+        let sync_commands_for_esc = sync_commands.clone();
         let filter_open = history_commands.state.filter_open;
         let palette_open = palette_open;
         let changelist_open = changes_commands.state.changelist_open;
-        let sync_state = sync_state;
+        let sync_state = sync_commands_for_esc.state.dialog;
         let form_state = form_state;
-        let rewrite_state = rewrite_state;
+        let rewrite_state = commit_commands.state.rewrite;
         let tabs = tabs;
         let active = active;
         let recording = recording_shortcut;
@@ -3100,6 +2138,15 @@ pub fn App() -> impl IntoElement {
     let actions_for_view = actions.clone();
     let history_for_view = history_commands.clone();
     let changes_for_view = changes_commands.clone();
+    let refs_for_view = refs_commands.clone();
+    // 同步面板在 `dynamic` 之外渲染，工作区在它里面：两份克隆，避免被提前移走。
+    let sync_for_view = sync_commands.clone();
+    let sync_for_body = sync_commands.clone();
+    // 工作区与三个浮层各取一份，避免被提前移走。
+    let commit_for_workspace = commit_commands.clone();
+    let merge_for_workspace = merge_commands.clone();
+    let commit_for_dialogs = commit_commands.clone();
+    let merge_for_dialogs = merge_commands.clone();
 
     return view()
         .w_full()
@@ -3152,6 +2199,7 @@ pub fn App() -> impl IntoElement {
                             },
                             notice,
                             history_for_view.diff.clone(),
+                            &refs_for_view,
                             actions_for_view.clone(),
                         )
                         .into_element(),
@@ -3161,8 +2209,6 @@ pub fn App() -> impl IntoElement {
                             active,
                             inspector_open,
                             mode,
-                            commit_summary,
-                            commit_description,
                             changes_for_view.clone(),
                             settings_state,
                             agent_plan,
@@ -3170,41 +2216,40 @@ pub fn App() -> impl IntoElement {
                             agent_policies,
                             reset_request,
                             notice,
-                            reflog_query,
+                            refs_for_view.clone(),
+                            sync_for_body.clone(),
                             history_for_view.clone(),
+                            merge_for_workspace.clone(),
+                            commit_for_workspace.clone(),
                             actions_for_view.clone(),
                         )
                         .into_element(),
                     }
                 })),
         )
-        .child(screens::rewrite_dialog(
+        .child(features::commit::rewrite_dialog::rewrite_dialog(
+            &commit_for_dialogs.state,
+            &commit_for_dialogs,
             language,
-            rewrite_state,
-            actions.set_rewrite_message.clone(),
-            actions.submit_rewrite.clone(),
-            actions.close_rewrite.clone(),
         ))
-        .child(screens::conflict_view(
+        .child(features::merge::view::conflict_view(
+            &merge_for_dialogs.state,
+            &merge_for_dialogs,
             language,
             current_tab,
-            conflict_result,
-            conflict_base_open,
+        ))
+        .child(features::commit::hook_sheet::hook_sheet(
+            &commit_for_dialogs.state,
+            &commit_for_dialogs,
+            language,
+            current_tab,
             actions.clone(),
         ))
-        .child(screens::hook_sheet(
+        .child(features::sync::view::sync_dialog(
+            &sync_for_view.state,
+            &sync_for_view,
             language,
             current_tab,
-            actions.clone(),
-        ))
-        .child(screens::sync_dialog(
-            language,
-            current_tab,
-            sync_state,
-            actions.open_sync.clone(),
-            actions.set_sync_option.clone(),
-            actions.run_sync.clone(),
-            actions.close_sync.clone(),
         ))
         .child(screens::form_dialog(
             language,

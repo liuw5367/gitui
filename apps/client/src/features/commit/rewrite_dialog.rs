@@ -4,74 +4,32 @@
 //! 工作区不干净或有进行中的操作时，主按钮禁用并写明原因——改写历史前必须先让仓库
 //! 处于干净状态，否则 rebase 会带着改动一起跑。
 
+use super::commands::CommitCommands;
+use super::state::{CommitState, RewriteKind};
 use crate::design::{self, metrics};
 use crate::i18n;
 use nsh_core::prelude::*;
 
-/// 这次要做的改写。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RewriteKind {
-    /// 改写单个提交的说明。
-    Reword {
-        sha: String,
-        short: String,
-        summary: String,
-    },
-    /// 把 `from..=to` 合并成一个提交。
-    Squash {
-        from: String,
-        to: String,
-        /// 将被合并的提交（旧到新）：(短 SHA, 说明)。
-        commits: Vec<(String, String)>,
-    },
-}
-
-impl RewriteKind {
-    pub fn title_key(&self) -> &'static str {
-        return match self {
-            RewriteKind::Reword { .. } => "rewrite.rewordTitle",
-            RewriteKind::Squash { .. } => "rewrite.squashTitle",
-        };
-    }
-
-    pub fn action_key(&self) -> &'static str {
-        return match self {
-            RewriteKind::Reword { .. } => "rewrite.rewordAction",
-            RewriteKind::Squash { .. } => "rewrite.squashAction",
-        };
-    }
-}
-
-/// 弹窗状态。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RewriteState {
-    pub kind: RewriteKind,
-    pub message: String,
-    /// 提交失败时的原因。
-    pub error: Option<String>,
-    /// 不能改写的阻塞原因（工作区不干净等）；`None` 表示可以执行。
-    pub blocker: Option<String>,
-}
-
-impl RewriteState {
-    pub fn new(kind: RewriteKind, message: String, blocker: Option<String>) -> RewriteState {
-        return RewriteState {
-            kind,
-            message,
-            error: None,
-            blocker,
-        };
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
+/// 入口 `rewrite_dialog` 收本功能的状态与用例；语言单独传。
 pub(crate) fn rewrite_dialog(
+    state: &CommitState,
+    cmd: &CommitCommands,
     language: Signal<SharedString>,
-    state: Signal<Option<RewriteState>>,
-    on_change: std::sync::Arc<dyn Fn(String)>,
-    on_submit: std::sync::Arc<dyn Fn()>,
-    on_close: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
+    let state = state.rewrite;
+    // 视图回调要 `'static`，这里把本功能的命令各包一层。
+    let on_change: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |text: String| cmd.set_rewrite_message(text))
+    };
+    let on_submit: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.submit_rewrite())
+    };
+    let on_close: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.close_rewrite())
+    };
     let dismiss = on_close.clone();
     return crate::ui::dialog::scrim(
         move || state.get().is_some(),

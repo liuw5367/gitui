@@ -325,6 +325,9 @@ pub(crate) fn state_banner(
     tab: Memo<Option<Tab>>,
     active: Signal<usize>,
     actions: Actions,
+    refs: &crate::features::refs::commands::RefsCommands,
+    sync: &crate::features::sync::commands::SyncCommands,
+    commit: &crate::features::commit::commands::CommitCommands,
 ) -> impl IntoElement {
     let visible = move || {
         return tab.get().is_some_and(|tab| {
@@ -336,10 +339,20 @@ pub(crate) fn state_banner(
         });
     };
     let create_branch = actions.open_form_from.clone();
-    let checkout_main = actions.checkout_default_branch.clone();
-    let initial_commit = actions.create_initial_commit.clone();
+    // 「回到 main」「关闭同步失败横幅」已归引用管理与同步功能的用例。
+    let checkout_main: std::sync::Arc<dyn Fn()> = {
+        let refs = refs.clone();
+        std::sync::Arc::new(move || refs.checkout_default_branch())
+    };
+    let initial_commit: std::sync::Arc<dyn Fn()> = {
+        let commit = commit.clone();
+        std::sync::Arc::new(move || commit.create_initial_commit())
+    };
     let open_settings = actions.go_settings.clone();
-    let dismiss = actions.clear_sync_fault.clone();
+    let dismiss: std::sync::Arc<dyn Fn()> = {
+        let sync = sync.clone();
+        std::sync::Arc::new(move || sync.clear_sync_fault())
+    };
 
     return view()
         .w_full()
@@ -651,9 +664,12 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
 pub(crate) fn op_banner(
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
-    actions: Actions,
+    merge: &crate::features::merge::commands::MergeCommands,
 ) -> impl IntoElement {
-    let abort = actions.abort_operation.clone();
+    let abort: std::sync::Arc<dyn Fn()> = {
+        let merge = merge.clone();
+        std::sync::Arc::new(move || merge.abort_operation())
+    };
     let has_operation = move || {
         return !matches!(
             tab.get().map(|tab| tab.operation),

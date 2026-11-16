@@ -5,14 +5,18 @@
 
 use crate::design;
 use crate::features::changes::commands::ChangesCommands;
+use crate::features::commit::commands::CommitCommands;
 use crate::features::history::commands::HistoryCommands;
+use crate::features::merge::commands::MergeCommands;
 use crate::features::history::{inspector, view as history_view};
+use crate::features::refs;
+use crate::features::refs::commands::RefsCommands;
+use crate::features::sync::commands::SyncCommands;
 use crate::i18n;
 use crate::model;
 use crate::model::Tab;
 use crate::shared::diff;
 use crate::shell;
-use crate::workspace::{commit, sidebar};
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -23,8 +27,6 @@ pub(crate) fn workspace(
     active: Signal<usize>,
     inspector_open: Signal<bool>,
     mode: Signal<crate::Mode>,
-    commit_summary: Signal<String>,
-    commit_description: Signal<String>,
     changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
     agent_plan: Signal<Option<agent::Plan>>,
@@ -32,8 +34,11 @@ pub(crate) fn workspace(
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     notice: Signal<Option<String>>,
-    reflog_query: Signal<String>,
+    refs: RefsCommands,
+    sync: SyncCommands,
     history: HistoryCommands,
+    merge: MergeCommands,
+    commit: CommitCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -61,7 +66,10 @@ pub(crate) fn workspace(
             change_count,
             mode,
             actions.set_mode.clone(),
-            actions.open_sync.clone(),
+            {
+                let sync = sync.clone();
+                std::sync::Arc::new(move |kind: model::Sync| sync.open_sync(kind))
+            },
             actions.set_mode_refs.clone(),
             actions.set_mode_agent.clone(),
             inspector_open,
@@ -71,11 +79,14 @@ pub(crate) fn workspace(
             current,
             active,
             actions.clone(),
+            &refs,
+            &sync,
+            &commit,
         ))
         .child(shell::op_banner(
             language,
             current,
-            actions.clone(),
+            &merge,
         ))
         .child(shell::sync_banner(current))
         .child(
@@ -89,16 +100,15 @@ pub(crate) fn workspace(
                     current,
                     inspector_open,
                     mode,
-                    commit_summary,
-                    commit_description,
                     changes,
                     settings_state,
                     agent_plan,
                     agent_audit,
                     agent_policies,
                     reset_request,
-                    reflog_query,
+                    refs,
                     history,
+                    commit,
                     actions_for_body,
                 )),
         )
@@ -112,16 +122,15 @@ fn match_body(
     current: Memo<Option<Tab>>,
     inspector_open: Signal<bool>,
     mode: Signal<crate::Mode>,
-    commit_summary: Signal<String>,
-    commit_description: Signal<String>,
     changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
-    reflog_query: Signal<String>,
+    refs: RefsCommands,
     history: HistoryCommands,
+    commit: CommitCommands,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -161,16 +170,15 @@ fn match_body(
                 tab,
                 inspector_open,
                 mode,
-                commit_summary,
-                commit_description,
                 changes.clone(),
                 settings_state,
                 agent_plan,
                 agent_audit,
                 agent_policies,
                 reset_request,
-                reflog_query,
+                refs.clone(),
                 history.clone(),
+                commit.clone(),
                 actions,
             )
             .into_element();
@@ -185,16 +193,15 @@ fn body(
     tab: Tab,
     inspector_open: Signal<bool>,
     mode: Signal<crate::Mode>,
-    commit_summary: Signal<String>,
-    commit_description: Signal<String>,
     changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
-    reflog_query: Signal<String>,
+    refs: RefsCommands,
     history: HistoryCommands,
+    commit: CommitCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -234,21 +241,25 @@ fn body(
     let inspector_visible = inspector_open.get_untracked();
     let tab_for_changes = tab.clone();
     let inspector_tab = signal(inspector::InspectorTab::Files);
-    let refs_tab = signal(crate::screens::RefsTab::Refs);
-    let set_refs_tab = std::sync::Arc::new(move |next: crate::screens::RefsTab| refs_tab.set(next));
+    // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
+    let refs_tab = signal(refs::state::RefsTab::Refs);
     let group_by_directory = settings_state.get_untracked().file_tree;
     let tree_options = crate::model::TreeOptions::from_settings(&settings_state.get_untracked());
     let changes_actions = actions.clone();
     let history_actions = actions.clone();
     let inspector_actions = actions.clone();
-    let commit_actions = actions.clone();
+    let commit_for_panel = commit.clone();
     let history_for_inspector = history.clone();
-    let history_for_refs = history.clone();
     return view()
         .w_full()
         .h_full()
         .flex_row()
-        .child(sidebar::sidebar(language, tab_for_sidebar, actions.clone()))
+        .child(refs::view::refs_sidebar(
+            &refs.state,
+            &refs,
+            language,
+            tab_for_sidebar,
+        ))
         .child(
             view()
                 .flex_1()
@@ -266,9 +277,9 @@ fn body(
                                 &history.state,
                                 &history,
                                 tab_for_history.clone(),
-                                language,
                                 reset_request,
                                 history_actions.clone(),
+                                &refs,
                             ))
                             .child(diff::diff(
                                 &history.diff.state,
@@ -290,14 +301,13 @@ fn body(
                             history_actions.copy_text.clone(),
                         )
                         .into_element(),
-                        crate::Mode::Refs => crate::screens::refs_view(
+                        crate::Mode::Refs => refs::view::refs_view(
+                            &refs.state,
+                            &refs,
                             language,
                             tab_for_changes.clone(),
-                            reflog_query,
-                            refs_tab,
-                            set_refs_tab.clone(),
                             changes_actions.clone(),
-                            history_for_refs.clone(),
+                            refs_tab,
                         )
                         .into_element(),
                         crate::Mode::Changes => {
@@ -334,12 +344,12 @@ fn body(
                 )
                 .into_element(),
                 crate::Mode::Refs => view().w(px(0.0)).h_full().into_element(),
-                crate::Mode::Changes => commit::commit_panel(
+                crate::Mode::Changes => crate::features::commit::view::commit_panel(
+                    &commit_for_panel.state,
+                    &commit_for_panel,
                     language,
                     tab_for_inspector.clone(),
-                    commit_summary,
-                    commit_description,
-                    commit_actions.clone(),
+                    actions.clone(),
                 )
                 .into_element(),
                 _ => view().w(px(0.0)).h_full().into_element(),

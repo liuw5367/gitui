@@ -3,45 +3,41 @@
 //! 顶部三 tab 切换动作，中部是动作专属选项，底部执行并就地展示 Git 输出。
 //! 选项随动作切换保留在同一个状态里，不会因为来回切 tab 丢失。
 
+use super::commands::SyncCommands;
+use super::state::SyncState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::{Sync, SyncOptions, Tab};
 use nsh_core::prelude::*;
 
-/// 对话框状态：种类 + 选项 + 结果。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SyncDialogState {
-    pub kind: Sync,
-    pub options: SyncOptions,
-    /// 执行结果；`None` 表示还没执行。
-    pub result: Option<Result<String, String>>,
-    /// 正在执行。
-    pub running: bool,
-}
-
-impl SyncDialogState {
-    pub fn new(kind: Sync) -> SyncDialogState {
-        return SyncDialogState {
-            kind,
-            options: SyncOptions::default(),
-            result: None,
-            running: false,
-        };
-    }
-}
-
 /// 三个 tab 的显示顺序。
 const KINDS: [Sync; 3] = [Sync::Fetch, Sync::Pull, Sync::Push];
 
+/// 入口 `sync_dialog` 收本功能的状态与用例；语言与当前仓库单独传。
 pub(crate) fn sync_dialog(
+    state: &SyncState,
+    cmd: &SyncCommands,
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
-    state: Signal<Option<SyncDialogState>>,
-    set_kind: std::sync::Arc<dyn Fn(Sync)>,
-    set_option: std::sync::Arc<dyn Fn(&'static str, bool)>,
-    on_run: std::sync::Arc<dyn Fn(Sync)>,
-    on_close: std::sync::Arc<dyn Fn()>,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
+    let state = state.dialog;
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let set_kind: std::sync::Arc<dyn Fn(Sync)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |kind: Sync| cmd.open_sync(kind))
+    };
+    let set_option: std::sync::Arc<dyn Fn(&'static str, bool)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |key: &'static str, value: bool| cmd.set_sync_option(key, value))
+    };
+    let on_run: std::sync::Arc<dyn Fn(Sync)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |kind: Sync| cmd.run_sync(kind))
+    };
+    let on_close: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.close_sync())
+    };
     let dismiss = on_close.clone();
     return crate::ui::dialog::scrim(
         move || state.get().is_some(),

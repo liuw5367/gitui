@@ -6,10 +6,11 @@
 //! 结果区是一个真实的编辑框：接受某一侧只是把它填进去，仍可继续手改；标记已解决
 //! 会把内容写回文件并 `git add`。
 
+use super::commands::MergeCommands;
+use super::state::MergeState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
 use domain::conflict::{self, Side};
 use nsh_core::prelude::*;
 
@@ -89,20 +90,44 @@ fn base_text(text: &str) -> String {
     return out.join("\n");
 }
 
+/// 入口 `conflict_view` 收本功能的状态与用例；语言与当前仓库单独传。
 pub(crate) fn conflict_view(
+    state: &MergeState,
+    cmd: &MergeCommands,
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
-    result: Signal<String>,
-    base_open: Signal<bool>,
-    actions: Actions,
 ) -> impl IntoElement {
-    let close = actions.close_conflict.clone();
-    let select = actions.select_conflict.clone();
-    let apply_side = actions.apply_side.clone();
-    let mark = actions.mark_resolved.clone();
-    let step = actions.step_conflict.clone();
-    let continue_op = actions.continue_op.clone();
-    let abort = actions.abort_operation.clone();
+    let result = state.result;
+    let base_open = state.base_open;
+    // 视图回调要 `'static`，这里把本功能的命令各包一层。
+    let close = {
+        let cmd = cmd.clone();
+        move || cmd.close_conflict()
+    };
+    let select = {
+        let cmd = cmd.clone();
+        move |index: usize| cmd.select_conflict(index)
+    };
+    let apply_side = {
+        let cmd = cmd.clone();
+        move |side: Side| cmd.apply_side(side)
+    };
+    let mark = {
+        let cmd = cmd.clone();
+        move || cmd.mark_resolved()
+    };
+    let step = {
+        let cmd = cmd.clone();
+        move |forward: bool| cmd.step_conflict(forward)
+    };
+    let continue_op = {
+        let cmd = cmd.clone();
+        move || cmd.continue_op()
+    };
+    let abort = {
+        let cmd = cmd.clone();
+        move || cmd.abort_operation()
+    };
     return view()
         .absolute()
         .inset(px(0.0))

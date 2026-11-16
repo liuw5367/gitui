@@ -3,8 +3,9 @@
 //! 列表按「暂存 / 未暂存」两段呈现，段内按目录分组；行高 24、状态字母与 +/− 统计
 //! 来自设计稿。changelists 通过列表上方的选择器切换（本地存储，按仓库分组）。
 //!
-//! 入口 `changes` 收本功能的状态与用例；跨功能的动作（外部打开、复制、解冲突等）
-//! 仍从 `Actions` 取，语言取 `cmd.language`，因此参数总数仍是 6 个。
+//! 入口 `changes` 收本功能的状态与用例；跨功能的动作（外部打开、复制等）仍从
+//! `Actions` 取，冲突文件的解决走 `cmd.merge`，语言取 `cmd.language`，因此参数
+//! 总数仍是 6 个。
 
 use super::commands::ChangesCommands;
 use super::state::ChangesState;
@@ -466,7 +467,12 @@ fn changes_list(
     }
 
     if !tab.conflicts.is_empty() {
-        let resolve = actions.resolve_conflict.clone();
+        let resolve = {
+            let cmd = cmd.clone();
+            std::sync::Arc::new(move |path: String, ours: bool| {
+                cmd.merge.resolve_conflict(path, ours)
+            })
+        };
         let conflicts = tab.conflicts.clone();
         let mut rows: Vec<AnyElement> = Vec::new();
         for path in conflicts {
@@ -539,8 +545,8 @@ fn changes_list(
                                    crate::ui::button::ButtonSize::Small,
                                    false,
                                    {
-                                let open_conflict = actions.open_conflict.clone();
-                                move || open_conflict()
+                                let cmd = cmd.clone();
+                                move || cmd.merge.open_conflict()
                             },
                                )),
                 )
