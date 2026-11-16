@@ -7,7 +7,7 @@
 - [README.md](README.md)：项目定位、当前能力、环境、运行、验证与已知限制。
 - [apps/client/README.md](apps/client/README.md)：客户端结构、`ui` 层规则、存储、测试与改名点。
 - crate README：[domain](crates/domain/README.md)、[git](crates/git/README.md)、[store](crates/store/README.md)、[agent](crates/agent/README.md)。
-- `docs/` 是后续文档目录，当前为空；[archive/2026-11-15-docs/](archive/2026-11-15-docs/) 已冻结，只作历史参考，不代表当前实现。
+- 文档在 [docs/](docs/README.md)，按主题分目录：当前只有 [docs/design/](docs/design/README.md)（视觉语言、token 契约、组件层、偏离清单）；[archive/2026-11-15-docs/](archive/2026-11-15-docs/) 已冻结，只作历史参考，不代表当前实现。
 
 ## 项目事实
 
@@ -22,7 +22,7 @@
 - 先读对应 README；稳定的行为、契约或配置变化要同步更新最近的文档。
 - UI 改动遵守 `src/ui` 层规则：已迁移的页面文件不直接引用 `nsh_base`，不写字号字面量或十六进制颜色；字号取 `ui` 刻度，颜色取 `design`。
 - 不修改 `designs/` 与 `archive/`，除非用户明确要求。
-- 代码文件头注释可能滞后：`apps/client/src/lib.rs`、`apps/client/src/shell/mod.rs` 仍描述早期阶段；`apps/client/src/design/metrics.rs` 与 `apps/client/src/ui/mod.rs` 引用了已归档的文档或已删除的测试路径。以代码行为和当前 README 为准。
+- 代码文件头注释可能滞后：`apps/client/src/lib.rs`、`apps/client/src/shell/mod.rs` 仍描述早期阶段；`apps/client/src/design/metrics.rs` 仍引用 `tests/geometry.rs` 与已归档的计划。以代码行为和当前 README 为准。
 - 已知限制以根 README 为准：凭据流程、交互式 rebase、Git 路径设置、diff 的 fold/whitespace、Agent 自动化档位等不要当成已实现能力。
 
 ## 验证
@@ -35,6 +35,7 @@
 (cd apps/client && cargo test)
 (cd apps/client && nsh check)
 tools/check-ui.sh
+python3 tools/design/tokens.py
 ```
 
 - 测试需要 PATH 中有 `git`；`crates/git` 还用本机 bare 远程验证 fetch/pull/push，不依赖网络。

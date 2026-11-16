@@ -5,7 +5,7 @@
 //! - 不在页面里写 `text_size(px(..))` 字面量，字号取这里的常量；
 //! - 颜色只来自 `crate::design`，本层不写十六进制颜色。
 //!
-//! 尺寸口径是 macOS 原生刻度（见 `docs/DESIGN-HANDOFF.md` 的「原生刻度」一节），
+//! 尺寸口径是 macOS 原生刻度（见 `docs/design/TOKENS.md` 的「尺寸不是颜色 token」一节），
 //! 与设计稿的 9–10.5px 字号不同：设计稿决定结构与层级，系统刻度决定字号与控件高度。
 
 use crate::design;

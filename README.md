@@ -34,7 +34,7 @@
 | [tools/](tools/) | 设计几何提取、UI 约束检查与截图脚本 |
 | [fixtures/](fixtures/) | 确定性测试仓库与 bare 远程的生成脚本；默认产物写入 `.tmp/` |
 | [archive/](archive/) | 2026-11-15 归档的旧文档，冻结 |
-| `docs/` | 当前为空，留给后续文档 |
+| [docs/](docs/) | 按主题分目录的文档；当前只有设计系统（`docs/design/`） |
 
 ## 环境
 
@@ -84,7 +84,7 @@ tools/check-ui.sh
 
 当前入口是这份 README、[客户端 README](apps/client/README.md) 与四个 crate README：[domain](crates/domain/README.md)、[git](crates/git/README.md)、[store](crates/store/README.md)、[agent](crates/agent/README.md)。
 
-`docs/` 为空；2026-11-15 的旧文档整体归档在 [archive/2026-11-15-docs/](archive/2026-11-15-docs/)，该目录冻结，只作历史参考。归档中的状态结论不代表当前实现。
+设计系统文档在 [docs/design/](docs/design/README.md)：[DESIGN-SYSTEM.md](docs/design/DESIGN-SYSTEM.md)（视觉语言）、[TOKENS.md](docs/design/TOKENS.md)（token 契约，色值表由 `tools/design/tokens.py` 从 `theme.json` 生成）、[UI-KIT.md](docs/design/UI-KIT.md)（组件层规则）、[DEVIATIONS.md](docs/design/DEVIATIONS.md)（与画板的已知差异）；[docs/README.md](docs/README.md) 是文档目录索引。2026-11-15 的旧文档整体归档在 [archive/2026-11-15-docs/](archive/2026-11-15-docs/)，该目录冻结，只作历史参考；归档中的状态结论不代表当前实现。
 
 ## 已知限制
 

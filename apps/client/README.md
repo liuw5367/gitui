@@ -90,7 +90,7 @@ nsh check
 
 ## 已知限制
 
-- 部分文件头注释滞后于实现：`src/lib.rs` 仍描述只读阶段，`src/shell/mod.rs` 仍描述 P1 的禁用按钮；`src/design/metrics.rs` 与 `src/ui/mod.rs` 引用了已删除的测试路径或已归档的 `docs/` 文档。修改前以代码行为为准。
+- 部分文件头注释滞后于实现：`src/lib.rs` 仍描述只读阶段，`src/shell/mod.rs` 仍描述 P1 的禁用按钮；`src/design/metrics.rs` 仍引用 `tests/geometry.rs` 与已归档的计划。修改前以代码行为为准；设计系统口径见 [docs/design/](../../docs/design/README.md)。
 - 产品范围与用户可见限制见[项目 README](../../README.md) 的「已知限制」一节。
 
 ## 相关
