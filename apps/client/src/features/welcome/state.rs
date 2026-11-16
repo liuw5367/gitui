@@ -32,9 +32,18 @@ impl Default for InitFiles {
     }
 }
 
+/// Clone 表单的协议切换；只改 URL 示例，不改变克隆参数。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum CloneProtocol {
+    #[default]
+    Https,
+    Ssh,
+}
+
 /// Clone 表单的选项（设计板 03）：分支、深度、子模块、克隆后打开。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CloneOptions {
+    pub(crate) protocol: CloneProtocol,
     pub(crate) branch: String,
     /// 0 = 完整克隆。
     pub(crate) depth: u32,
@@ -46,6 +55,7 @@ impl Default for CloneOptions {
     fn default() -> Self {
         // 画板预填 main，并勾选两个复选。
         return Self {
+            protocol: CloneProtocol::Https,
             branch: "main".to_string(),
             depth: 0,
             recurse_submodules: true,
@@ -100,6 +110,7 @@ mod tests {
         assert_eq!(options.depth, 0);
         assert!(options.recurse_submodules);
         assert!(options.open_after_clone);
+        assert_eq!(options.protocol, CloneProtocol::Https);
     }
 
     #[test]

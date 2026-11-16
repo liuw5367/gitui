@@ -183,6 +183,16 @@ fn body(
                         None,
                     ))
                     .child(ui::field::field(
+                        move || "URL field".to_string(),
+                        ui::text_input::url_input(
+                            input_value,
+                            move || "https://github.com/owner/repo.git".to_string(),
+                            move |text| input_value.set(text.to_string()),
+                        ),
+                        None,
+                        None,
+                    ))
+                    .child(ui::field::field(
                         move || "Multiline".to_string(),
                         ui::text_input::text_area(
                             area_value,

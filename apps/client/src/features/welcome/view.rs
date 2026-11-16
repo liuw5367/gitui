@@ -11,7 +11,7 @@
 //! 无法生效的控件；差异记在 `docs/DESIGN-HANDOFF.md` 的偏离清单。
 
 use super::commands::WelcomeCommands;
-use super::state::WelcomeState;
+use super::state::{CloneProtocol, WelcomeState};
 use crate::design;
 use crate::features::SessionHandle;
 use crate::features::settings::state::Section;
@@ -250,6 +250,8 @@ fn sidebar(
                                 .iter()
                                 .map(|tab| tab.path.clone())
                                 .collect();
+                            // 画板只有 Today / Previous 7 days；超过 7 天的记录
+                            // 单独放进 Earlier，否则会从 12 条上限里消失。
                             let mut list = view().w_full().flex_col();
                             for (label_key, bucket) in [
                                 ("welcome.groupToday", RecentBucket::Today),
@@ -401,13 +403,15 @@ fn repo_row(
         )
         .into_element(),
     );
-    return ui::row::row(
+    // 画板的行高 47、删除按钮 19、分支 chip 10pt；这里用原生 47 / 22 / 11。
+    return ui::row::row_sized(
         move || name.clone(),
         Some((Box::new(move || subtitle.clone()), true)),
         Some(leading),
         trailing,
         selected,
         false,
+        47.0,
         move || open.open_path(path_for_press.clone()),
     );
 }
@@ -516,35 +520,102 @@ fn entry_section(
                 .flex_col()
                 .gap(px(ui::GAP_SM))
                 .child(
-                    text(move || {
-                        i18n::t(
-                            language.get().as_str(),
-                            match form.get() {
-                                super::state::RepoForm::Open => "repoManager.openTitle",
-                                super::state::RepoForm::Clone => "welcome.cloneTitle",
-                                super::state::RepoForm::Init => "repoManager.initTitle",
-                            },
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_start()
+                        .gap(px(ui::GAP))
+                        .child(
+                            view()
+                                .flex_1()
+                                .min_w_0()
+                                .flex_col()
+                                .child(
+                                    text(move || {
+                                        i18n::t(
+                                            language.get().as_str(),
+                                            match form.get() {
+                                                super::state::RepoForm::Open => {
+                                                    "repoManager.openTitle"
+                                                }
+                                                super::state::RepoForm::Clone => {
+                                                    "welcome.cloneTitle"
+                                                }
+                                                super::state::RepoForm::Init => {
+                                                    "repoManager.initTitle"
+                                                }
+                                            },
+                                        )
+                                    })
+                                    .text_size(px(ui::BODY))
+                                    .line_height(px(ui::BODY_LINE))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(move || design::text()),
+                                )
+                                .child(
+                                    text(move || {
+                                        i18n::t(
+                                            language.get().as_str(),
+                                            match form.get() {
+                                                super::state::RepoForm::Open => {
+                                                    "repoManager.openHint"
+                                                }
+                                                super::state::RepoForm::Clone => {
+                                                    "welcome.cloneSub"
+                                                }
+                                                super::state::RepoForm::Init => {
+                                                    "repoManager.initHint"
+                                                }
+                                            },
+                                        )
+                                    })
+                                    .text_size(px(ui::SECONDARY))
+                                    .line_height(px(ui::SECONDARY_LINE))
+                                    .text_color(move || design::text3()),
+                                ),
                         )
-                    })
-                    .text_size(px(ui::BODY))
-                    .line_height(px(ui::BODY_LINE))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(move || design::text()),
-                )
-                .child(
-                    text(move || {
-                        i18n::t(
-                            language.get().as_str(),
-                            match form.get() {
-                                super::state::RepoForm::Open => "repoManager.openHint",
-                                super::state::RepoForm::Clone => "welcome.cloneSub",
-                                super::state::RepoForm::Init => "repoManager.initHint",
-                            },
-                        )
-                    })
-                    .text_size(px(ui::SECONDARY))
-                    .line_height(px(ui::SECONDARY_LINE))
-                    .text_color(move || design::text3()),
+                        .child(dynamic(move || -> AnyElement {
+                            if form.get() != super::state::RepoForm::Clone {
+                                return view().w(px(0.0)).into_element();
+                            }
+                            let options = state.clone_options;
+                            return ui::segmented::segmented(
+                                vec![
+                                    ui::segmented::Segment {
+                                        id: "https",
+                                        label: Box::new(move || {
+                                            i18n::t(
+                                                language.get().as_str(),
+                                                "welcome.protocolHttps",
+                                            )
+                                        }),
+                                    },
+                                    ui::segmented::Segment {
+                                        id: "ssh",
+                                        label: Box::new(move || {
+                                            i18n::t(
+                                                language.get().as_str(),
+                                                "welcome.protocolSsh",
+                                            )
+                                        }),
+                                    },
+                                ],
+                                move || match options.get().protocol {
+                                    CloneProtocol::Https => "https",
+                                    CloneProtocol::Ssh => "ssh",
+                                },
+                                move |id| {
+                                    let mut next = options.get_untracked();
+                                    next.protocol = if id == "ssh" {
+                                        CloneProtocol::Ssh
+                                    } else {
+                                        CloneProtocol::Https
+                                    };
+                                    options.set(next);
+                                },
+                            )
+                            .into_element();
+                        })),
                 )
                 .child(dynamic(move || -> AnyElement {
                     match form.get() {
@@ -669,11 +740,14 @@ fn clone_form(
 ) -> impl IntoElement {
     let choose_destination = cmd.clone();
     let clone_repository = cmd.clone();
+    let credentials = cmd.clone();
     let set_url = state.clone_url;
     let set_destination = state.clone_destination;
     let options = state.clone_options;
     let error = state.clone_error;
     let cloning = state.cloning;
+    let url_for_hint = set_url;
+    let url_for_account = set_url;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
@@ -681,10 +755,12 @@ fn clone_form(
         .gap(px(ui::GAP_LG))
         .child(ui::field::field(
             move || i18n::t(language.get().as_str(), "welcome.url"),
-            ui::text_input::text_input(
+            ui::text_input::url_input(
                 set_url,
-                move || "https://github.com/owner/repo.git".to_string(),
-                false,
+                move || match options.get().protocol {
+                    CloneProtocol::Https => "https://github.com/owner/repo.git".to_string(),
+                    CloneProtocol::Ssh => "git@github.com:owner/repo.git".to_string(),
+                },
                 move |text| set_url.set(text.to_string()),
             ),
             None,
@@ -744,7 +820,8 @@ fn clone_form(
                 )))
                 .child(
                     view()
-                        .w(px(220.0))
+                        // 画板是 150；原生 11pt 的三个分段放不下，这里放宽到 200。
+                        .w(px(200.0))
                         .flex_col()
                         .gap(px(ui::GAP_XS))
                         .child(ui::field::label(move || {
@@ -791,9 +868,8 @@ fn clone_form(
         .child(
             view()
                 .w_full()
-                .flex_row()
-                .items_center()
-                .gap(px(ui::GAP_XL))
+                .flex_col()
+                .gap(px(4.0))
                 .child(ui::check::check_row(
                     move || i18n::t(language.get().as_str(), "welcome.recurse"),
                     move || options.get().recurse_submodules,
@@ -812,6 +888,51 @@ fn clone_form(
                         let mut options_next = options.get_untracked();
                         options_next.open_after_clone = next;
                         options.set(options_next);
+                    },
+                )),
+        )
+        // 账号行：凭据流程尚未接入，显示未登录状态；按钮只做设置页导航。
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(ui::GAP))
+                .px(px(ui::GAP))
+                .py(px(6.0))
+                .rounded(px(7.0))
+                .border_1()
+                .border_color(move || design::line())
+                .bg(move || design::panel())
+                .child(
+                    view()
+                        .w(px(8.0))
+                        .h(px(8.0))
+                        .rounded(px(4.0))
+                        .bg(move || design::text3()),
+                )
+                .child(
+                    text(move || {
+                        let language = language.get();
+                        let status = i18n::t(language.as_str(), "welcome.notSignedIn");
+                        return match remote_host(url_for_account.get().as_str()) {
+                            Some(host) => format!("{host} · {status}"),
+                            None => status,
+                        };
+                    })
+                    .text_size(px(ui::SECONDARY))
+                    .line_height(px(ui::SECONDARY_LINE))
+                    .text_color(move || design::text2()),
+                )
+                .child(view().flex_1())
+                .child(button(
+                    move || i18n::t(language.get().as_str(), "welcome.credentials"),
+                    ButtonVariant::Secondary,
+                    ButtonSize::Small,
+                    false,
+                    {
+                        let credentials = credentials.clone();
+                        move || credentials.open_settings(Section::Credentials)
                     },
                 )),
         )
@@ -838,25 +959,16 @@ fn clone_form(
                     },
                 ))
                 .child(ui::secondary(move || {
-                    i18n::t(language.get().as_str(), "welcome.cloneHint")
+                    let language = language.get();
+                    let hint = i18n::t(language.as_str(), "welcome.cloneHint");
+                    if url_for_hint.get().trim_start().starts_with("http://") {
+                        format!("{hint}  {}", i18n::t(language.as_str(), "welcome.cloneHttpHint"))
+                    } else {
+                        hint
+                    }
                 })),
         )
-        .child(dynamic(move || -> AnyElement {
-            match error.get() {
-                Some(message) => {
-                    return view()
-                        .w_full()
-                        .child(
-                            text(move || message.clone())
-                                .text_size(px(ui::SECONDARY))
-                                .line_height(px(ui::SECONDARY_LINE))
-                                .text_color(move || design::danger()),
-                        )
-                        .into_element();
-                }
-                None => return view().w_full().h(px(0.0)).into_element(),
-            }
-        }));
+        .child(form_error(error));
 }
 
 fn init_form(
@@ -1056,6 +1168,25 @@ fn bucket_of(opened_at: i64, now: i64) -> RecentBucket {
     };
 }
 
+/// 从克隆 URL 里取主机名；只用于账号行的短提示，不解析完整 URL。
+fn remote_host(url: &str) -> Option<String> {
+    let url = url.trim();
+    if let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) {
+        return rest
+            .split('/')
+            .next()
+            .filter(|host| !host.is_empty())
+            .map(|host| host.to_string());
+    }
+    // SSH 形式：git@host:owner/repo.git
+    let rest = url.strip_prefix("git@")?;
+    let host = rest.split(':').next().unwrap_or_default();
+    if host.is_empty() {
+        return None;
+    }
+    return Some(host.to_string());
+}
+
 fn matches_query(path: &str, query: &str) -> bool {
     if query.trim().is_empty() {
         return true;
@@ -1094,6 +1225,13 @@ mod tests {
         assert_eq!(bucket_of(now - 86_400, now), RecentBucket::Week);
         assert_eq!(bucket_of(now - 7 * 86_400, now), RecentBucket::Week);
         assert_eq!(bucket_of(now - 8 * 86_400, now), RecentBucket::Earlier);
+    }
+
+    #[test]
+    fn remote_host_reads_https_and_ssh() {
+        assert_eq!(remote_host("https://github.com/mia/gitui.git").as_deref(), Some("github.com"));
+        assert_eq!(remote_host("git@github.com:mia/gitui.git").as_deref(), Some("github.com"));
+        assert_eq!(remote_host(""), None);
     }
 
     #[test]

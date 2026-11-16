@@ -10,7 +10,7 @@
     "groupWeek": "Previous 7 days",
     "checkUpdates": "Check for Updates",
     "cloneTitle": "Clone a repository",
-    "cloneSub": "Paste an HTTPS or SSH URL. gitui creates the folder and fetches all branches and tags.",
+    "cloneSub": "HTTPS, HTTP or SSH URL — gitui creates the folder for you.",
     "url": "Repository URL",
     "destination": "Destination",
     "choose": "Choose…",
@@ -60,7 +60,12 @@
     "initialBranch": "Initial branch",
     "license": "Add an MIT LICENSE",
     "initHint": "Creates the folder if it does not exist.",
-    "missingPath": "Choose a repository path"
+    "missingPath": "Choose a repository path",
+    "protocolHttps": "HTTPS",
+    "protocolSsh": "SSH",
+    "notSignedIn": "Not signed in",
+    "credentials": "Credentials",
+    "cloneHttpHint": "http:// works for local mirrors."
   },
   "shell": {
     "history": "History",

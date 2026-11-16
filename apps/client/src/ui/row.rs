@@ -22,6 +22,22 @@ pub(crate) fn row(
     } else {
         ui::ROW
     };
+    return row_sized(
+        caption, subtitle, leading, trailing, selected, disabled, height, on_press,
+    );
+}
+
+/// 同 [`row`]，行高由调用方给；欢迎页的行是画板的 47。
+pub(crate) fn row_sized(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    trailing: Vec<AnyElement>,
+    selected: bool,
+    disabled: bool,
+    height: f32,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
     let mut element = nsh_base::button()
         .disabled(disabled)
         .opacity(if disabled { 0.45 } else { 1.0 })

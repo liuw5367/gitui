@@ -10,7 +10,7 @@
     "groupWeek": "最近 7 天",
     "checkUpdates": "检查更新",
     "cloneTitle": "克隆仓库",
-    "cloneSub": "粘贴 HTTPS 或 SSH 地址。gitui 会创建目录并获取所有分支与标签。",
+    "cloneSub": "HTTPS、HTTP 或 SSH 地址 —— gitui 会替你创建目录。",
     "url": "仓库地址",
     "destination": "目标位置",
     "choose": "选择…",
@@ -60,7 +60,12 @@
     "initialBranch": "初始分支",
     "license": "添加 MIT LICENSE",
     "initHint": "目录不存在时会创建。",
-    "missingPath": "请选择仓库路径"
+    "missingPath": "请选择仓库路径",
+    "protocolHttps": "HTTPS",
+    "protocolSsh": "SSH",
+    "notSignedIn": "未登录",
+    "credentials": "凭据",
+    "cloneHttpHint": "http:// 可用于本地镜像。"
   },
   "shell": {
     "history": "历史",

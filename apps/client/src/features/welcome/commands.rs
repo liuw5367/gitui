@@ -110,6 +110,10 @@ impl WelcomeCommands {
 
     /// 开始克隆（原 `clone_repository`）：逐 100ms 轮询子进程，可取消。
     pub(crate) fn clone_repository(&self) {
+        // 按钮在克隆中会被禁用；这里再拦一次，避免键盘重复触发。
+        if self.state.cloning.get_untracked() {
+            return;
+        }
         let clone_url = self.state.clone_url;
         let clone_destination = self.state.clone_destination;
         let clone_options = self.state.clone_options;

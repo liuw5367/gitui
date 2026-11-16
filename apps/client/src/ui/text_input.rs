@@ -100,6 +100,43 @@ pub(crate) fn path_input(
     return container;
 }
 
+/// URL 输入：左侧地球图标，右侧无键帽；克隆地址用它。
+pub(crate) fn url_input(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    return view()
+        .h(px(ui::CONTROL))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_SM))
+        .px(px(ui::GAP))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .border_1()
+        .border_color(move || design::field_border())
+        .bg(move || design::field())
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .child(ui::icon::icon_view(
+            "globe",
+            ui::icon::IconSize::Inline,
+            design::text3,
+        ))
+        .child(
+            nsh_base::input()
+                .value(value)
+                .placeholder(placeholder)
+                .on_change(move |text: &str| on_change(text))
+                .text_size(px(ui::BODY))
+                .text_color(move || design::text())
+                .flex_1(),
+        );
+}
+
 /// 搜索框：左侧放大镜、右侧可选键帽，整体一个描边容器。
 ///
 /// 输入框自身不画边框，避免容器与输入框两道描边；焦点环画在容器上。
