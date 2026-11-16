@@ -167,9 +167,9 @@ mod guard_tests {
         "workspace/sidebar.rs",
         "screens/hook_sheet.rs",
         "screens/rewrite_dialog.rs",
-        "workspace/inspector.rs",
-        "screens/changes_view.rs",
-        "workspace/history.rs",
+        "features/history/inspector.rs",
+        "features/changes/view.rs",
+        "features/history/view.rs",
         "screens/blame_view.rs",
         "screens/workspace.rs",
     ];

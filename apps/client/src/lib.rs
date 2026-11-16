@@ -8,11 +8,13 @@ mod acceptance;
 pub mod brand;
 mod dates;
 mod design;
+mod features;
 mod filters;
 mod i18n;
 mod interactions;
 mod model;
 mod screens;
+mod shared;
 mod shell;
 mod shortcuts;
 // ui 层已建立；P1–P7 逐组迁入后仍有为后续阶段准备的组件，P8 收尾时
@@ -75,16 +77,7 @@ pub(crate) struct Actions {
     pub(crate) choose_folder: Arc<dyn Fn()>,
     pub(crate) close_tab: Arc<dyn Fn(usize)>,
     pub(crate) activate_tab: Arc<dyn Fn(usize)>,
-    pub(crate) select_commit: Arc<dyn Fn(usize)>,
-    pub(crate) toggle_compare: Arc<dyn Fn(usize)>,
-    pub(crate) set_compare_mode: Arc<dyn Fn(bool)>,
-    pub(crate) select_file: Arc<dyn Fn(usize)>,
     pub(crate) set_mode: Arc<dyn Fn(Mode)>,
-    pub(crate) select_change: Arc<dyn Fn(usize)>,
-    pub(crate) toggle_stage: Arc<dyn Fn(usize)>,
-    pub(crate) discard_change: Arc<dyn Fn(usize)>,
-    pub(crate) stage_all: Arc<dyn Fn()>,
-    pub(crate) unstage_all: Arc<dyn Fn()>,
     pub(crate) commit: Arc<dyn Fn()>,
     /// 跳过钩子提交（强确认）。
     pub(crate) commit_without_hooks: Arc<dyn Fn()>,
@@ -92,12 +85,6 @@ pub(crate) struct Actions {
     pub(crate) set_commit_option: Arc<dyn Fn(&'static str, bool)>,
     /// 打开或关闭钩子完整日志弹层。
     pub(crate) toggle_hook_log: Arc<dyn Fn(bool)>,
-    /// 切换 diff 的并排/合并视图。
-    pub(crate) set_diff_split: Arc<dyn Fn(bool)>,
-    /// 按 hunk / 单行暂存或取消暂存。
-    pub(crate) apply_piece: Arc<dyn Fn(usize, Option<usize>, bool)>,
-    /// 切换 diff 显示开关（`fold` / `wrap` / `whitespace`）。
-    pub(crate) toggle_diff_option: Arc<dyn Fn(&'static str)>,
     /// 把当前 diff 导出成 patch 文件。
     pub(crate) export_patch: Arc<dyn Fn()>,
     /// 游离头时回到 main/master。
@@ -140,7 +127,6 @@ pub(crate) struct Actions {
     pub(crate) abort_operation: Arc<dyn Fn()>,
     pub(crate) run_command: Arc<dyn Fn(&'static str)>,
     pub(crate) set_theme: Arc<dyn Fn(ThemeMode)>,
-    pub(crate) set_file_tree: Arc<dyn Fn(bool)>,
     pub(crate) go_settings: Arc<dyn Fn()>,
     pub(crate) undo_reflog: Arc<dyn Fn(usize)>,
     pub(crate) set_mode_refs: Arc<dyn Fn()>,
@@ -160,7 +146,6 @@ pub(crate) struct Actions {
     pub(crate) set_review_millis: Arc<dyn Fn(u32)>,
     /// 切换某个分支的受保护状态。
     pub(crate) toggle_protected_branch: Arc<dyn Fn(String)>,
-    pub(crate) set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)>,
     pub(crate) checkout_branch: Arc<dyn Fn(String)>,
     pub(crate) delete_branch: Arc<dyn Fn(String)>,
     pub(crate) open_form: Arc<dyn Fn(screens::FormKind)>,
@@ -172,9 +157,6 @@ pub(crate) struct Actions {
     pub(crate) drop_tag: Arc<dyn Fn(String)>,
     pub(crate) drop_remote: Arc<dyn Fn(String)>,
     pub(crate) drop_stash: Arc<dyn Fn(String)>,
-    pub(crate) set_active_changelist: Arc<dyn Fn(Option<String>)>,
-    pub(crate) move_to_changelist: Arc<dyn Fn(String, Option<String>)>,
-    pub(crate) create_changelist: Arc<dyn Fn(String)>,
     pub(crate) checkout_new_branch: Arc<dyn Fn(String, String)>,
     pub(crate) merge_reference: Arc<dyn Fn(String)>,
     /// 切到某个提交（detached，先确认）。
@@ -183,8 +165,6 @@ pub(crate) struct Actions {
     pub(crate) cherry_pick: Arc<dyn Fn(String)>,
     /// 反向提交（先确认）。
     pub(crate) revert_commit: Arc<dyn Fn(String)>,
-    /// reflog 的「在历史中显示」：切到 History 并选中该提交。
-    pub(crate) show_in_history: Arc<dyn Fn(String)>,
     /// 推送标签。
     pub(crate) push_tag: Arc<dyn Fn(String)>,
     /// 应用贮藏（保留条目）。
@@ -194,14 +174,11 @@ pub(crate) struct Actions {
     /// 打开表单并把第二个字段预填（从某个提交新建分支/标签）。
     pub(crate) open_form_from: Arc<dyn Fn(screens::FormKind, String)>,
     pub(crate) reset_to: Arc<dyn Fn(String, git::ResetMode)>,
-    pub(crate) apply_filter: Arc<dyn Fn()>,
-    pub(crate) clear_filter: Arc<dyn Fn()>,
     pub(crate) clone_repository: Arc<dyn Fn()>,
     /// 取消正在进行的克隆。
     pub(crate) cancel_clone: Arc<dyn Fn()>,
     pub(crate) init_repository: Arc<dyn Fn()>,
     pub(crate) toggle_language: Arc<dyn Fn()>,
-    pub(crate) refresh: Arc<dyn Fn()>,
     pub(crate) go_welcome: Arc<dyn Fn()>,
     pub(crate) go_repo_manager: Arc<dyn Fn()>,
     pub(crate) set_repo_form: Arc<dyn Fn(RepoForm)>,
@@ -225,8 +202,6 @@ pub(crate) struct Actions {
     pub(crate) detect_git: Arc<dyn Fn()>,
     /// 切换「使用 PATH 里的 git」。
     pub(crate) toggle_git_path: Arc<dyn Fn()>,
-    /// 设置文件树的两项开关（`merge_empty_dirs` / `compact_single_child`）。
-    pub(crate) set_tree_flag: Arc<dyn Fn(&'static str, bool)>,
     /// 设置启动方式：true = 恢复上次会话，false = 显示欢迎页。
     pub(crate) set_launch_restore: Arc<dyn Fn(bool)>,
     /// 切换日期显示方式。
@@ -303,7 +278,7 @@ pub fn App() -> impl IntoElement {
     // diff 的并排/合并切换（设计板 04）。
     let diff_split = signal(false);
     // diff 的三个显示开关（设计板 04）。
-    let diff_options = signal(crate::workspace::diff::DiffOptions::default());
+    let diff_options = signal(crate::shared::diff::DiffOptions::default());
     // 历史改写弹窗（改写说明 / 合并提交）。
     let rewrite_state = signal(Option::<screens::RewriteState>::None);
     // 命令面板的高亮行。
@@ -445,6 +420,44 @@ pub fn App() -> impl IntoElement {
                 now,
             );
         })
+    };
+
+    // 提交历史（P2 竖切的第一片）：信号收进 HistoryState，用例收进 HistoryCommands。
+    let history_state = features::history::state::HistoryState {
+        query: history_query,
+        reference: filter_reference,
+        author: filter_author,
+        when: filter_when,
+        filter_open,
+        compare_mode,
+        filter: current_filter.clone(),
+    };
+    // diff 的显示开关由 history 与 changes 共用，因此放在 shared。
+    let diff_commands = crate::shared::diff::DiffCommands {
+        state: crate::shared::diff::DiffState {
+            split: diff_split,
+            options: diff_options,
+        },
+        settings: settings_state,
+        store_dir: store_dir.clone(),
+    };
+    let history_commands = features::history::commands::HistoryCommands {
+        state: history_state,
+        session: features::SessionHandle { tabs, active },
+        diff: diff_commands,
+        mode,
+        notice,
+        language,
+    };
+
+    // 变更/暂存（P2 竖切的第二片）：清单浮层开关收进 ChangesState，用例收进
+    // ChangesCommands；变更列表、选中项与选中补丁仍挂在 `Tab` 上。
+    let changes_state = features::changes::state::ChangesState { changelist_open };
+    let changes_commands = features::changes::commands::ChangesCommands {
+        state: changes_state,
+        session: features::SessionHandle { tabs, active },
+        language,
+        notice,
     };
 
     let open_path: Arc<dyn Fn(String)> = {
@@ -593,106 +606,6 @@ pub fn App() -> impl IntoElement {
                 persist(&store_dir, active, tabs);
             }
         })
-    };
-
-    let select_commit: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |index: usize| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::select_commit(tab, index);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let toggle_compare: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |index: usize| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::toggle_compare(tab, index);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let set_compare_mode: Arc<dyn Fn(bool)> = {
-        let tabs = tabs;
-        let active = active;
-        let compare_mode = compare_mode;
-        Arc::new(move |enabled: bool| {
-            compare_mode.set(enabled);
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                tab.comparing = enabled;
-                if !enabled {
-                    tab.compare.clear();
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let select_file: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |index: usize| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::select_file(tab, index);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let reload: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let current_filter = current_filter.clone();
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get(current).cloned() {
-                list[current] = model::reload_with_filter(&tab, &current_filter());
-                tabs.set(list);
-            }
-        })
-    };
-
-    let apply_filter: Arc<dyn Fn()> = {
-        let reload = reload.clone();
-        let filter_open = filter_open;
-        Arc::new(move || {
-            filter_open.set(false);
-            reload();
-        })
-    };
-
-    let clear_filter: Arc<dyn Fn()> = {
-        let history_query = history_query;
-        let filter_reference = filter_reference;
-        let filter_author = filter_author;
-        let filter_when = filter_when;
-        let reload = reload.clone();
-        Arc::new(move || {
-            history_query.set(String::new());
-            filter_reference.set(String::new());
-            filter_author.set(String::new());
-            filter_when.set(SharedString::from(When::All.id()));
-            reload();
-        })
-    };
-
-    let refresh: Arc<dyn Fn()> = {
-        let reload = reload.clone();
-        Arc::new(move || reload())
     };
 
     let clone_repository: Arc<dyn Fn()> = {
@@ -850,101 +763,6 @@ pub fn App() -> impl IntoElement {
     let set_mode: Arc<dyn Fn(Mode)> = {
         let mode = mode;
         Arc::new(move |next: Mode| mode.set(next))
-    };
-
-    let select_change: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |index: usize| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::load_change_diff(tab, index);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let toggle_stage: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |index: usize| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::toggle_stage(tab, index);
-                tabs.set(list);
-            }
-        })
-    };
-
-    // 丢弃不可撤销：先弹系统确认框，确认后才动工作区。
-    let discard_change: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |index: usize| {
-            let list = tabs.get_untracked();
-            let current = active.get_untracked();
-            let Some(tab) = list.get(current).cloned() else {
-                return;
-            };
-            let Some(entry) = tab.changes.get(index).cloned() else {
-                return;
-            };
-            let language_now = language.get_untracked();
-            let pending = crate::ui::dialog::confirm_destructive(
-                i18n::t(language_now.as_str(), "changes.discardTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "changes.discardMessage",
-                    &[("path", entry.path.clone())],
-                ),
-                i18n::t(language_now.as_str(), "changes.discardAction"),
-                i18n::t(language_now.as_str(), "common.cancel"),
-            );
-            let tabs = tabs;
-            let active = active;
-            spawn(async move {
-                if let Ok(result) = pending.await {
-                    if result.action.as_deref() != Some("discard") {
-                        return;
-                    }
-                    let current = active.get_untracked();
-                    let mut list = tabs.get_untracked();
-                    if let Some(tab) = list.get_mut(current) {
-                        model::discard_change(tab, index);
-                        tabs.set(list);
-                    }
-                }
-            });
-        })
-    };
-
-    let stage_all: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::stage_all_or_none(tab, true);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let unstage_all: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::stage_all_or_none(tab, false);
-                tabs.set(list);
-            }
-        })
     };
 
     // 提交：成功后按「Push after commit」决定是否立刻推送。
@@ -1274,11 +1092,11 @@ pub fn App() -> impl IntoElement {
     let run_command: Arc<dyn Fn(&'static str)> = {
         let open_repo = choose_folder.clone();
         let close_tab = close_tab.clone();
-        let refresh = refresh.clone();
+        // 刷新、对比模式与筛选浮层都归提交历史功能，命令分发经它的用例走。
+        let history_cmd = history_commands.clone();
         let set_mode_cmd = set_mode.clone();
         let commit_cmd = commit.clone();
         let inspector_open = inspector_open;
-        let compare_mode = compare_mode;
         let open_sync = open_sync.clone();
         let go_welcome = go_welcome.clone();
         let go_repo_manager = go_repo_manager.clone();
@@ -1288,7 +1106,6 @@ pub fn App() -> impl IntoElement {
         let palette_selected = palette_selected;
         let theme_mode = theme_mode;
         let store_dir = store_dir.clone();
-        let filter_open = filter_open;
         let mode_signal = mode;
         let tabs_cmd = tabs;
         let active_cmd = active;
@@ -1302,18 +1119,21 @@ pub fn App() -> impl IntoElement {
                     palette_open.set(true);
                 }
                 "closeTab" => close_tab(active_cmd.get_untracked()),
-                "refresh" => refresh(),
+                "refresh" => history_cmd.refresh(),
                 "history" => set_mode_cmd(Mode::History),
                 "changes" => set_mode_cmd(Mode::Changes),
                 "inspector" => inspector_open.set(!inspector_open.get_untracked()),
-                "compare" => compare_mode.set(!compare_mode.get_untracked()),
+                "compare" => {
+                    let compare_mode = history_cmd.state.compare_mode;
+                    compare_mode.set(!compare_mode.get_untracked())
+                }
                 "fetch" => open_sync(model::Sync::Fetch),
                 "pull" => open_sync(model::Sync::Pull),
                 "push" => open_sync(model::Sync::Push),
                 // ⌘F 搜索与 ⇧⌘F 过滤共用历史视图的过滤浮层（手册 1.3）。
                 "filter" | "filterHistory" => {
                     set_mode_cmd(Mode::History);
-                    filter_open.set(true);
+                    history_cmd.state.filter_open.set(true);
                 }
                 // ⌘↵：只在 Changes 里提交，避免在历史视图误提交。
                 "primary" => {
@@ -1445,18 +1265,6 @@ pub fn App() -> impl IntoElement {
             store::save_appearance(&store_dir, mode.id());
         })
     };
-
-    let set_file_tree: Arc<dyn Fn(bool)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |enabled: bool| {
-            let mut next = settings_state.get_untracked();
-            next.file_tree = enabled;
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
 
     let undo_reflog: Arc<dyn Fn(usize)> = {
         let tabs = tabs;
@@ -1842,45 +1650,6 @@ pub fn App() -> impl IntoElement {
         Arc::new(move || form_state.set(None))
     };
 
-    let set_active_changelist: Arc<dyn Fn(Option<String>)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |name: Option<String>| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::set_active_changelist(tab, name);
-                tabs.set(list);
-            }
-        })
-    };
-
-    let move_to_changelist: Arc<dyn Fn(String, Option<String>)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |path: String, list_name: Option<String>| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::move_to_changelist(tab, path.as_str(), list_name.as_deref());
-                tabs.set(list);
-            }
-        })
-    };
-
-    let create_changelist: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |name: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::create_changelist(tab, name.as_str());
-                tabs.set(list);
-            }
-        })
-    };
-
     let checkout_new_branch: Arc<dyn Fn(String, String)> = {
         let tabs = tabs;
         let active = active;
@@ -2143,19 +1912,6 @@ pub fn App() -> impl IntoElement {
                     }
                 }
             });
-        })
-    };
-
-    let set_compare_refs: Arc<dyn Fn(Option<String>, Option<String>)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |base: Option<String>, target: Option<String>| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::set_compare_refs(tab, base, target);
-                tabs.set(list);
-            }
         })
     };
 
@@ -2492,30 +2248,6 @@ pub fn App() -> impl IntoElement {
         Arc::new(move |reference: String| stash_action("pop", reference))
     };
 
-    let show_in_history: Arc<dyn Fn(String)> = {
-        let tabs = tabs;
-        let active = active;
-        let mode = mode;
-        let notice = notice;
-        let language = language;
-        Arc::new(move |sha: String| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                if model::select_by_sha(tab, sha.as_str()) {
-                    mode.set(Mode::History);
-                    tabs.set(list);
-                } else {
-                    let lang = language.get_untracked();
-                    interactions::notify(
-                        notice,
-                        i18n::t(lang.as_str(), "reflog.notFound"),
-                    );
-                }
-            }
-        })
-    };
-
     // 键盘与命令面板共用同一个派发入口（Actions 会把它移走，因此先留一份）。
     let run_command_for_key = run_command.clone();
 
@@ -2787,20 +2519,6 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let toggle_diff_option: Arc<dyn Fn(&'static str)> = {
-        let diff_options = diff_options;
-        Arc::new(move |which: &'static str| {
-            let mut next = diff_options.get_untracked();
-            match which {
-                "fold" => next.fold = !next.fold,
-                "wrap" => next.wrap = !next.wrap,
-                "whitespace" => next.whitespace = !next.whitespace,
-                _ => return,
-            }
-            diff_options.set(next);
-        })
-    };
-
     // 导出 patch：写到用户选择的路径。没有选择就不写，不落默认文件名。
     let export_patch: Arc<dyn Fn()> = {
         let tabs = tabs;
@@ -2836,32 +2554,6 @@ pub fn App() -> impl IntoElement {
                 }
             });
         })
-    };
-
-    let apply_piece: Arc<dyn Fn(usize, Option<usize>, bool)> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(
-            move |hunk: usize, line: Option<usize>, reverse: bool| {
-                let current = active.get_untracked();
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    match model::apply_piece(tab, hunk, line, reverse) {
-                        Ok(()) => {
-                            let lang = language.get_untracked();
-                            interactions::notify(
-                                notice,
-                                i18n::t(lang.as_str(), "changes.pieceApplied"),
-                            );
-                        }
-                        Err(detail) => tab.error = Some(detail),
-                    }
-                    tabs.set(list);
-                }
-            },
-        )
     };
 
     // Agent 的三项运行设置：自动化、预览时长、受保护分支。改动即持久化。
@@ -3037,27 +2729,7 @@ pub fn App() -> impl IntoElement {
         })
     };
 
-    let set_diff_split: Arc<dyn Fn(bool)> = {
-        let diff_split = diff_split;
-        Arc::new(move |split: bool| diff_split.set(split))
-    };
-
-    // 文件树两项与启动方式：改了就持久化。
-    let set_tree_flag: Arc<dyn Fn(&'static str, bool)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |which: &'static str, value: bool| {
-            let mut next = settings_state.get_untracked();
-            match which {
-                "merge_empty_dirs" => next.merge_empty_dirs = value,
-                "compact_single_child" => next.compact_single_child = value,
-                _ => return,
-            }
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
+    // 启动方式：改了就持久化。
     let set_launch_restore: Arc<dyn Fn(bool)> = {
         let settings_state = settings_state;
         let store_dir = store_dir.clone();
@@ -3074,16 +2746,7 @@ pub fn App() -> impl IntoElement {
         choose_folder: choose_folder.clone(),
         close_tab,
         activate_tab,
-        select_commit,
-        toggle_compare,
-        set_compare_mode,
-        select_file,
         set_mode,
-        select_change,
-        toggle_stage,
-        discard_change,
-        stage_all,
-        unstage_all,
         commit,
         commit_without_hooks,
         set_commit_option,
@@ -3092,9 +2755,6 @@ pub fn App() -> impl IntoElement {
         init_here,
         locate_repo,
         open_parent,
-        set_diff_split,
-        apply_piece,
-        toggle_diff_option,
         export_patch,
         create_initial_commit,
         clear_sync_fault,
@@ -3117,7 +2777,6 @@ pub fn App() -> impl IntoElement {
         abort_operation,
         run_command,
         set_theme,
-        set_file_tree,
         go_settings,
         undo_reflog,
         set_mode_refs,
@@ -3128,7 +2787,6 @@ pub fn App() -> impl IntoElement {
         add_agent_step,
         run_plan,
         set_agent_permission,
-        set_compare_refs,
         checkout_branch,
         delete_branch,
         open_form,
@@ -3139,27 +2797,20 @@ pub fn App() -> impl IntoElement {
         drop_tag,
         drop_remote,
         drop_stash,
-        set_active_changelist,
-        move_to_changelist,
-        create_changelist,
         checkout_new_branch,
         merge_reference,
         checkout_commit,
         cherry_pick,
         revert_commit,
         open_form_from,
-        show_in_history,
         push_tag,
         apply_stash,
         pop_stash,
         reset_to,
-        apply_filter,
-        clear_filter,
         clone_repository,
         cancel_clone,
         init_repository,
         toggle_language,
-        refresh,
         go_welcome,
         go_repo_manager,
         set_repo_form,
@@ -3172,7 +2823,6 @@ pub fn App() -> impl IntoElement {
         choose_git,
         detect_git,
         toggle_git_path,
-        set_tree_flag,
         set_launch_restore,
         set_date_style,
         set_date_pattern,
@@ -3325,9 +2975,9 @@ pub fn App() -> impl IntoElement {
 
     // Esc 层层退出：先关最上面的浮层，再退到过滤器；都不开时什么也不做。
     on_key("escape", {
-        let filter_open = filter_open;
+        let filter_open = history_commands.state.filter_open;
         let palette_open = palette_open;
-        let changelist_open = changelist_open;
+        let changelist_open = changes_commands.state.changelist_open;
         let sync_state = sync_state;
         let form_state = form_state;
         let rewrite_state = rewrite_state;
@@ -3448,6 +3098,8 @@ pub fn App() -> impl IntoElement {
     let language_value = language;
     let screen_value = screen;
     let actions_for_view = actions.clone();
+    let history_for_view = history_commands.clone();
+    let changes_for_view = changes_commands.clone();
 
     return view()
         .w_full()
@@ -3499,6 +3151,7 @@ pub fn App() -> impl IntoElement {
                                 restore: restore_shortcuts.clone(),
                             },
                             notice,
+                            history_for_view.diff.clone(),
                             actions_for_view.clone(),
                         )
                         .into_element(),
@@ -3506,17 +3159,11 @@ pub fn App() -> impl IntoElement {
                             language_value,
                             tabs,
                             active,
-                            history_query,
-                            filter_reference,
-                            filter_author,
-                            filter_when,
-                            filter_open,
                             inspector_open,
-                            compare_mode,
                             mode,
                             commit_summary,
                             commit_description,
-                            changelist_open,
+                            changes_for_view.clone(),
                             settings_state,
                             agent_plan,
                             agent_audit,
@@ -3524,8 +3171,7 @@ pub fn App() -> impl IntoElement {
                             reset_request,
                             notice,
                             reflog_query,
-                            diff_options,
-                            diff_split,
+                            history_for_view.clone(),
                             actions_for_view.clone(),
                         )
                         .into_element(),

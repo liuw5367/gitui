@@ -3,7 +3,12 @@
 //! 行内是设计稿的四列：图线 64、说明（含引用徽章）、作者 96、时间 58。工具条上的
 //! 芯片显示当前筛选条件；点筛选图标打开浮层（设计板 05）。对比模式下点击提交是
 //! 加入/移出对比集合（设计板 06）。
+//!
+//! 入口 `history` 收本功能的状态与用例；跨功能的动作（改写、检出、复制等）仍从
+//! `Actions` 取。
 
+use super::commands::HistoryCommands;
+use super::state::HistoryState;
 use crate::design::{self, metrics};
 use crate::filters::When;
 use crate::i18n;
@@ -20,24 +25,28 @@ const GRAPH_W: f32 = 64.0;
 /// 浮层宽度（设计板 `.filter-pop`）。
 const POP_W: f32 = 268.0;
 
-#[allow(clippy::too_many_arguments)]
+/// `use<>`：返回的元素只持有克隆出来的信号，不借用入参（edition 2024 的
+/// `impl Trait` 默认捕获入参生命周期，这里显式声明不捕获）。
 pub(crate) fn history(
-    language: Signal<SharedString>,
+    state: &HistoryState,
+    cmd: &HistoryCommands,
     tab: Tab,
-    query: Signal<String>,
-    filter_reference: Signal<String>,
-    filter_author: Signal<String>,
-    filter_when: Signal<SharedString>,
-    filter_open: Signal<bool>,
-    compare_mode: Signal<bool>,
+    language: Signal<SharedString>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     actions: Actions,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
     let commits = tab.commits.clone();
     let selected = tab.selected;
     let compare = tab.compare.clone();
-    let select = actions.select_commit.clone();
-    let toggle_compare = actions.toggle_compare.clone();
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let select: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |index: usize| cmd.select_commit(index))
+    };
+    let toggle_compare: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |index: usize| cmd.toggle_compare(index))
+    };
     let row_actions = actions.clone();
     let bar_actions = actions.clone();
     // 空仓库与「筛选后无结果」要区分：前者要给创建初始提交的入口。
@@ -78,11 +87,12 @@ pub(crate) fn history(
     let squash_range_for_bar = squash_range.clone();
     // 「清空选择」复用对比模式的取消：把 compare 集合清掉。
     let clear_selection: std::sync::Arc<dyn Fn()> = {
-        let set_compare_mode = actions.set_compare_mode.clone();
-        std::sync::Arc::new(move || set_compare_mode(false))
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.set_compare_mode(false))
     };
     let total = commits.len();
     let now = store::now_unix();
+    let query = state.query;
     let visible = {
         let commits = commits.clone();
         computed(move || {
@@ -111,21 +121,12 @@ pub(crate) fn history(
         .map(|branch| branch.name.clone())
         .collect();
     let authors = tab.authors.clone();
-    let branch_value = tab.branch.clone();
     let language_value = language;
-    // Compare refs 的可选项：当前分支 + 本地分支 + 远程 + 标签。
-    let mut refs_for_compare: Vec<String> = Vec::new();
-    for branch in &tab.refs.branches {
-        refs_for_compare.push(branch.name.clone());
-    }
-    for remote in &tab.refs.remotes {
-        refs_for_compare.push(remote.clone());
-    }
-    for tag in &tab.refs.tags {
-        refs_for_compare.push(tag.clone());
-    }
-    let compare_pair = (tab.compare_base.clone(), tab.compare_target.clone());
-    let set_compare_refs = actions.set_compare_refs.clone();
+    let filter_open = state.filter_open;
+    let compare_mode = state.compare_mode;
+    // 筛选浮层在 `dynamic` 里渲染，参数要能反复取用，因此这里各留一份克隆。
+    let filter_state = state.clone();
+    let filter_cmd = cmd.clone();
 
     return view()
         .w_full()
@@ -135,20 +136,7 @@ pub(crate) fn history(
         .bg(move || design::content())
         .border_b_1()
         .border_color(move || design::line())
-        .child(hist_bar(
-            language,
-            branch_value,
-            total,
-            filter_reference,
-            filter_author,
-            filter_when,
-            filter_open,
-            compare_mode,
-            refs_for_compare,
-            compare_pair,
-            set_compare_refs,
-            actions.clone(),
-        ))
+        .child(hist_bar(language, state, cmd, &tab))
         .child(
             view()
                 .w_full()
@@ -365,14 +353,14 @@ pub(crate) fn history(
                                     };
                                     let items = commit_menu(
                                         language_value,
-                                        commit.short.as_str(),
-                                        commit.summary.as_str(),
-                                        index,
-                                        menu_select.clone(),
+                                        &commit,
+                                        {
+                                            let select = menu_select.clone();
+                                            std::sync::Arc::new(move || select(index))
+                                        },
                                         menu_actions.clone(),
                                         reset_request,
                                         menu_squash.clone(),
-                                        can_squash,
                                     );
                                     let _ = nsh_core::element::desktop::popup_menu_at(
                                         items,
@@ -469,33 +457,54 @@ pub(crate) fn history(
                         language_value,
                         branches.clone(),
                         authors.clone(),
-                        filter_reference,
-                        filter_author,
-                        filter_when,
-                        actions.clone(),
+                        filter_state.clone(),
+                        filter_cmd.clone(),
                     )
                     .into_element();
                 })),
         );
 }
 
-#[allow(clippy::too_many_arguments)]
 fn hist_bar(
     language: Signal<SharedString>,
-    branch: String,
-    total: usize,
-    filter_reference: Signal<String>,
-    filter_author: Signal<String>,
-    filter_when: Signal<SharedString>,
-    filter_open: Signal<bool>,
-    compare_mode: Signal<bool>,
-    refs_list: Vec<String>,
-    compare_pair: (Option<String>, Option<String>),
-    set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
-    actions: Actions,
-) -> impl IntoElement {
-    let clear = actions.clear_filter.clone();
-    let set_compare_mode = actions.set_compare_mode.clone();
+    state: &HistoryState,
+    cmd: &HistoryCommands,
+    tab: &Tab,
+) -> impl IntoElement + use<> {
+    let filter_reference = state.reference;
+    let filter_author = state.author;
+    let filter_when = state.when;
+    let filter_open = state.filter_open;
+    let compare_mode = state.compare_mode;
+    let branch = tab.branch.clone();
+    let total = tab.commits.len();
+    // Compare refs 的可选项：当前分支 + 本地分支 + 远程 + 标签。
+    let mut refs_list: Vec<String> = Vec::new();
+    for branch in &tab.refs.branches {
+        refs_list.push(branch.name.clone());
+    }
+    for remote in &tab.refs.remotes {
+        refs_list.push(remote.clone());
+    }
+    for tag in &tab.refs.tags {
+        refs_list.push(tag.clone());
+    }
+    let compare_pair = (tab.compare_base.clone(), tab.compare_target.clone());
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |base: Option<String>, target: Option<String>| {
+            cmd.set_compare_refs(base, target)
+        })
+    };
+    let set_compare_mode: std::sync::Arc<dyn Fn(bool)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |enabled: bool| cmd.set_compare_mode(enabled))
+    };
+    let clear: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.clear_filter())
+    };
     return view()
         .w_full()
         .h(px(metrics::HIST_BAR_H))
@@ -706,20 +715,20 @@ fn skeleton_row(index: usize) -> AnyElement {
 ///
 /// 顺序：查看 → 引用类（检出/新建分支/新建标签）→ 改写类（拣选/回滚/合并）→
 /// 重置 → 复制。重置放在最后并用分隔线隔开，因为它会移动当前分支。
-#[allow(clippy::too_many_arguments)]
 fn commit_menu(
     language: Signal<SharedString>,
-    short: &str,
-    summary: &str,
-    index: usize,
-    select: std::sync::Arc<dyn Fn(usize)>,
+    commit: &domain::Commit,
+    open: std::sync::Arc<dyn Fn()>,
     actions: Actions,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     squash_range: Option<(String, String, Vec<(String, String)>)>,
-    can_squash: bool,
 ) -> Vec<MenuItem> {
     let lang = language.get_untracked();
     let lang = lang.as_str();
+    let short = commit.short.as_str();
+    let summary = commit.summary.as_str();
+    // 范围只有在至少两个提交时才给出来，因此「有范围」等价于「可以合并」。
+    let can_squash = squash_range.is_some();
     let sha = short.to_string();
     let checkout = actions.checkout_commit.clone();
     let cherry = actions.cherry_pick.clone();
@@ -732,8 +741,8 @@ fn commit_menu(
 
     let mut items = vec![
         MenuItem::new(i18n::t(lang, "menu.openDiff")).on_select({
-            let select = select.clone();
-            move || select(index)
+            let open = open.clone();
+            move || open()
         }),
         MenuItem::separator(),
         MenuItem::new(i18n::t(lang, "menu.checkout")).on_select({
@@ -820,13 +829,21 @@ fn filter_pop(
     language: Signal<SharedString>,
     branches: Vec<String>,
     authors: Vec<String>,
-    filter_reference: Signal<String>,
-    filter_author: Signal<String>,
-    filter_when: Signal<SharedString>,
-    actions: Actions,
-) -> impl IntoElement {
-    let apply = actions.apply_filter.clone();
-    let clear = actions.clear_filter.clone();
+    state: HistoryState,
+    cmd: HistoryCommands,
+) -> impl IntoElement + use<> {
+    let filter_reference = state.reference;
+    let filter_author = state.author;
+    let filter_when = state.when;
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let apply: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.apply_filter())
+    };
+    let clear: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.clear_filter())
+    };
     let mut branch_rows: Vec<AnyElement> = Vec::new();
     branch_rows.push(choice_row(
         language,

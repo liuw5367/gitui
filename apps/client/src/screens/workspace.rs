@@ -4,11 +4,15 @@
 //! 补丁。打开失败时在正文区显示错误面板。
 
 use crate::design;
+use crate::features::changes::commands::ChangesCommands;
+use crate::features::history::commands::HistoryCommands;
+use crate::features::history::{inspector, view as history_view};
 use crate::i18n;
 use crate::model;
 use crate::model::Tab;
+use crate::shared::diff;
 use crate::shell;
-use crate::workspace::{commit, diff, history, inspector, sidebar};
+use crate::workspace::{commit, sidebar};
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -17,17 +21,11 @@ pub(crate) fn workspace(
     language: Signal<SharedString>,
     tabs: Signal<Vec<Tab>>,
     active: Signal<usize>,
-    history_query: Signal<String>,
-    filter_reference: Signal<String>,
-    filter_author: Signal<String>,
-    filter_when: Signal<SharedString>,
-    filter_open: Signal<bool>,
     inspector_open: Signal<bool>,
-    compare_mode: Signal<bool>,
     mode: Signal<crate::Mode>,
     commit_summary: Signal<String>,
     commit_description: Signal<String>,
-    changelist_open: Signal<bool>,
+    changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
@@ -35,8 +33,7 @@ pub(crate) fn workspace(
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     notice: Signal<Option<String>>,
     reflog_query: Signal<String>,
-    diff_options: Signal<crate::workspace::diff::DiffOptions>,
-    diff_split: Signal<bool>,
+    history: HistoryCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let current = computed(move || tabs.get().get(active.get()).cloned());
@@ -60,7 +57,7 @@ pub(crate) fn workspace(
         ))
         .child(shell::toolbar(
             language,
-            history_query,
+            history.state.query,
             change_count,
             mode,
             actions.set_mode.clone(),
@@ -90,25 +87,18 @@ pub(crate) fn workspace(
                 .child(match_body(
                     language,
                     current,
-                    history_query,
-                    filter_reference,
-                    filter_author,
-                    filter_when,
-                    filter_open,
                     inspector_open,
-                    compare_mode,
                     mode,
                     commit_summary,
                     commit_description,
-                    changelist_open,
+                    changes,
                     settings_state,
                     agent_plan,
                     agent_audit,
                     agent_policies,
                     reset_request,
                     reflog_query,
-                    diff_options,
-                    diff_split,
+                    history,
                     actions_for_body,
                 )),
         )
@@ -120,25 +110,18 @@ pub(crate) fn workspace(
 fn match_body(
     language: Signal<SharedString>,
     current: Memo<Option<Tab>>,
-    history_query: Signal<String>,
-    filter_reference: Signal<String>,
-    filter_author: Signal<String>,
-    filter_when: Signal<SharedString>,
-    filter_open: Signal<bool>,
     inspector_open: Signal<bool>,
-    compare_mode: Signal<bool>,
     mode: Signal<crate::Mode>,
     commit_summary: Signal<String>,
     commit_description: Signal<String>,
-    changelist_open: Signal<bool>,
+    changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     reflog_query: Signal<String>,
-    diff_options: Signal<crate::workspace::diff::DiffOptions>,
-    diff_split: Signal<bool>,
+    history: HistoryCommands,
     actions: Actions,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
@@ -153,7 +136,11 @@ fn match_body(
                     .and_then(|tab| tab.error)
                     .unwrap_or_else(|| i18n::t(language.get().as_str(), "error.title"));
                 let actions = actions.clone();
-                return error_panel(language, detail, actions).into_element();
+                // 「重试」就是历史功能的刷新。
+                let refresh = history.clone();
+                let retry: std::sync::Arc<dyn Fn()> =
+                    std::sync::Arc::new(move || refresh.refresh());
+                return error_panel(language, detail, retry, actions).into_element();
             }
             let Some(tab) = tab else {
                 return view()
@@ -172,25 +159,18 @@ fn match_body(
             return body(
                 language,
                 tab,
-                history_query,
-                filter_reference,
-                filter_author,
-                filter_when,
-                filter_open,
                 inspector_open,
-                compare_mode,
                 mode,
                 commit_summary,
                 commit_description,
-                changelist_open,
+                changes.clone(),
                 settings_state,
                 agent_plan,
                 agent_audit,
                 agent_policies,
                 reset_request,
                 reflog_query,
-                diff_options,
-                diff_split,
+                history.clone(),
                 actions,
             )
             .into_element();
@@ -203,25 +183,18 @@ fn match_body(
 fn body(
     language: Signal<SharedString>,
     tab: Tab,
-    history_query: Signal<String>,
-    filter_reference: Signal<String>,
-    filter_author: Signal<String>,
-    filter_when: Signal<SharedString>,
-    filter_open: Signal<bool>,
     inspector_open: Signal<bool>,
-    compare_mode: Signal<bool>,
     mode: Signal<crate::Mode>,
     commit_summary: Signal<String>,
     commit_description: Signal<String>,
-    changelist_open: Signal<bool>,
+    changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
     agent_plan: Signal<Option<agent::Plan>>,
     agent_audit: Signal<Vec<agent::AuditEntry>>,
     agent_policies: Signal<agent::Policies>,
     reset_request: Signal<Option<(String, git::ResetMode)>>,
     reflog_query: Signal<String>,
-    diff_options: Signal<crate::workspace::diff::DiffOptions>,
-    diff_split: Signal<bool>,
+    history: HistoryCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let tab_for_sidebar = tab.clone();
@@ -261,10 +234,6 @@ fn body(
     let inspector_visible = inspector_open.get_untracked();
     let tab_for_changes = tab.clone();
     let inspector_tab = signal(inspector::InspectorTab::Files);
-    let set_inspector_tab = {
-        let inspector_tab = inspector_tab;
-        std::sync::Arc::new(move |next: inspector::InspectorTab| inspector_tab.set(next))
-    };
     let refs_tab = signal(crate::screens::RefsTab::Refs);
     let set_refs_tab = std::sync::Arc::new(move |next: crate::screens::RefsTab| refs_tab.set(next));
     let group_by_directory = settings_state.get_untracked().file_tree;
@@ -273,6 +242,8 @@ fn body(
     let history_actions = actions.clone();
     let inspector_actions = actions.clone();
     let commit_actions = actions.clone();
+    let history_for_inspector = history.clone();
+    let history_for_refs = history.clone();
     return view()
         .w_full()
         .h_full()
@@ -291,28 +262,21 @@ fn body(
                             .flex_1()
                             .min_h_0()
                             .flex_col()
-                            .child(history::history(
-                                language,
+                            .child(history_view::history(
+                                &history.state,
+                                &history,
                                 tab_for_history.clone(),
-                                history_query,
-                                filter_reference,
-                                filter_author,
-                                filter_when,
-                                filter_open,
-                                compare_mode,
+                                language,
                                 reset_request,
                                 history_actions.clone(),
                             ))
                             .child(diff::diff(
+                                &history.diff.state,
+                                &history.diff,
                                 language,
                                 label.clone(),
                                 patch.clone(),
-                                history_actions.copy_text.clone(),
-                                diff_options.get(),
-                                history_actions.toggle_diff_option.clone(),
-                                history_actions.export_patch.clone(),
-                                diff_split.get(),
-                                history_actions.set_diff_split.clone(),
+                                history_actions.clone(),
                             ))
                             .into_element(),
                         crate::Mode::Agent => view()
@@ -333,27 +297,31 @@ fn body(
                             refs_tab,
                             set_refs_tab.clone(),
                             changes_actions.clone(),
+                            history_for_refs.clone(),
                         )
                         .into_element(),
-                        crate::Mode::Changes => crate::screens::changes_view(
-                            language,
-                            tab_for_changes.clone(),
-                            changelist_open,
-                            group_by_directory,
-                            tree_options,
-                            changes_actions.clone(),
-                        )
-                        .into_element(),
+                        crate::Mode::Changes => {
+                            crate::features::changes::view::changes(
+                                &changes.state,
+                                &changes,
+                                tab_for_changes.clone(),
+                                group_by_directory,
+                                tree_options,
+                                changes_actions.clone(),
+                            )
+                            .into_element()
+                        }
                     }
                 })),
         )
         .child(dynamic(move || -> AnyElement {
             match mode.get() {
                 crate::Mode::History if inspector_visible => inspector::inspector(
-                    language,
+                    &history_for_inspector.state,
+                    &history_for_inspector,
                     tab_for_inspector.clone(),
+                    language,
                     inspector_tab,
-                    set_inspector_tab.clone(),
                     inspector_actions.clone(),
                 )
                 .into_element(),
@@ -382,10 +350,10 @@ fn body(
 fn error_panel(
     language: Signal<SharedString>,
     detail: String,
+    retry: std::sync::Arc<dyn Fn()>,
     actions: Actions,
 ) -> impl IntoElement {
     let detail = std::sync::Arc::new(detail);
-    let retry = actions.refresh.clone();
     let welcome = actions.go_welcome.clone();
     return view()
         .w_full()

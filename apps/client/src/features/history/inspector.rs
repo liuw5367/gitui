@@ -5,8 +5,11 @@
 //!   （当前只有复制 SHA 之外的入口标注未实现）；
 //! - Blame：选中文件的逐行归属，同时列出该文件的历史。
 //!
-//! 宽度 320，与设计稿 `.insp` 一致。
+//! 宽度 320，与设计稿 `.insp` 一致。入口 `inspector` 收本功能的状态与用例；
+//! 跨功能的动作（复制、编辑器打开、拣选/回滚）仍从 `Actions` 取。
 
+use super::commands::HistoryCommands;
+use super::state::HistoryState;
 use crate::design;
 use crate::i18n;
 use crate::model::Tab;
@@ -24,14 +27,22 @@ pub(crate) enum InspectorTab {
     Blame,
 }
 
+/// 检查器不读筛选条件，`state` 只为与 `history` 统一入口签名；`use<>` 同 `history`，
+/// 返回的元素不借用入参。
 pub(crate) fn inspector(
-    language: Signal<SharedString>,
+    state: &HistoryState,
+    cmd: &HistoryCommands,
     tab: Tab,
+    language: Signal<SharedString>,
     selected_tab: Signal<InspectorTab>,
-    set_tab: std::sync::Arc<dyn Fn(InspectorTab)>,
     actions: Actions,
-) -> impl IntoElement {
-    let select_file = actions.select_file.clone();
+) -> impl IntoElement + use<> {
+    let _ = state;
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let select_file: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |index: usize| cmd.select_file(index))
+    };
     let commit = tab.selected_commit().cloned();
     let now = store::now_unix();
     let summary = commit
@@ -150,15 +161,12 @@ pub(crate) fn inspector(
                         InspectorTab::Info => "info",
                         InspectorTab::Blame => "blame",
                     },
-                    {
-                        let set_tab = set_tab.clone();
-                        move |id| {
-                            set_tab(match id {
-                                "info" => InspectorTab::Info,
-                                "blame" => InspectorTab::Blame,
-                                _ => InspectorTab::Files,
-                            })
-                        }
+                    move |id| {
+                        selected_tab.set(match id {
+                            "info" => InspectorTab::Info,
+                            "blame" => InspectorTab::Blame,
+                            _ => InspectorTab::Files,
+                        })
                     },
                 )),
         )

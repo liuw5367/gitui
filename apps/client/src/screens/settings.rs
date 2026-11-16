@@ -8,6 +8,7 @@ use crate::widgets;
 use crate::brand::{self, ThemeMode};
 use crate::design::{self, metrics};
 use crate::i18n;
+use crate::shared::diff::DiffCommands;
 use crate::Actions;
 use nsh_core::prelude::*;
 
@@ -95,6 +96,7 @@ pub(crate) fn settings(
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
     shortcuts: ShortcutUi,
     notice: Signal<Option<String>>,
+    diff: DiffCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let set_section = std::sync::Arc::new(move |next: Section| section.set(next));
@@ -133,6 +135,7 @@ pub(crate) fn settings(
                     toggle_protected,
                     shortcuts,
                     notice,
+                    diff,
                     actions,
                 )),
         )
@@ -334,6 +337,7 @@ fn main(
     toggle_protected: std::sync::Arc<dyn Fn(String)>,
     shortcuts: ShortcutUi,
     notice: Signal<Option<String>>,
+    diff: DiffCommands,
     actions: Actions,
 ) -> impl IntoElement {
     let (name, email) = identity;
@@ -345,7 +349,15 @@ fn main(
     };
     let set_theme = actions.set_theme.clone();
     let set_language = actions.toggle_language.clone();
-    let set_file_tree = actions.set_file_tree.clone();
+    // 文件树属于 diff 的显示偏好，命令在 shared::diff。
+    let set_file_tree: std::sync::Arc<dyn Fn(bool)> = {
+        let diff = diff.clone();
+        std::sync::Arc::new(move |enabled: bool| diff.set_file_tree(enabled))
+    };
+    let set_tree_flag: std::sync::Arc<dyn Fn(&'static str, bool)> = {
+        let diff = diff.clone();
+        std::sync::Arc::new(move |which: &'static str, value: bool| diff.set_tree_flag(which, value))
+    };
     return view()
         .flex_1()
         .min_w_0()
@@ -379,7 +391,7 @@ fn main(
                             set_language.clone(),
                             set_file_tree.clone(),
                             actions.set_update_mode.clone(),
-                            actions.set_tree_flag.clone(),
+                            set_tree_flag.clone(),
                             actions.set_launch_restore.clone(),
                             last_session.clone(),
                             actions.set_date_style.clone(),

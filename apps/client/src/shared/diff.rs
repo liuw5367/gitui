@@ -1,15 +1,15 @@
-//! diff 视图：顶部工具栏（导出、复制、三个显示开关）+ 正文。
+//! diff 视图与它的显示开关：顶部工具栏（导出、复制、三个显示开关）+ 正文。
 //!
 //! 正文自 P2 起交给 `ui::diff_surface`（包装 `nsh_base::DiffView`），等宽 12 / 行高
 //! 18、行号与正负行配色都由它负责。本文件只剩工具栏与开关。
 //!
 //! 补丁在 `git` 边界就解析成 `domain::diff::Patch`，这里只负责展示与开关。
+//! 选项与开关动作放在 `shared`：历史页与变更页共用同一份显示偏好。
 
 use crate::design::{self, metrics};
 use crate::i18n;
 use domain::diff::Patch;
 use nsh_core::prelude::*;
-
 
 /// diff 的三个显示开关（设计板 04 的 fold / wrap / whitespace）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -25,17 +25,70 @@ pub(crate) struct DiffOptions {
 impl DiffOptions {
 }
 
+/// diff 的显示状态：并排/合并、三个显示开关。
+#[derive(Clone, Copy)]
+pub(crate) struct DiffState {
+    /// 并排（split）还是合并（unified）视图。
+    pub(crate) split: Signal<bool>,
+    pub(crate) options: Signal<DiffOptions>,
+}
+
+/// diff 的用例：切换视图与显示开关、文件树的两项开关。
+#[derive(Clone)]
+pub(crate) struct DiffCommands {
+    pub(crate) state: DiffState,
+    /// 文件树两项开关写进设置，因此需要设置与它所在目录。
+    pub(crate) settings: Signal<store::Settings>,
+    pub(crate) store_dir: std::path::PathBuf,
+}
+
+impl DiffCommands {
+    /// 切换并排/合并视图（原 `set_diff_split`）。
+    pub(crate) fn set_diff_split(&self, split: bool) {
+        self.state.split.set(split);
+    }
+
+    /// 切换 diff 显示开关（`fold` / `wrap` / `whitespace`，原 `toggle_diff_option`）。
+    pub(crate) fn toggle_diff_option(&self, which: &'static str) {
+        let mut next = self.state.options.get_untracked();
+        match which {
+            "fold" => next.fold = !next.fold,
+            "wrap" => next.wrap = !next.wrap,
+            "whitespace" => next.whitespace = !next.whitespace,
+            _ => return,
+        }
+        self.state.options.set(next);
+    }
+
+    /// 设置文件树的整体开关（原 `set_file_tree`）。
+    pub(crate) fn set_file_tree(&self, enabled: bool) {
+        let mut next = self.settings.get_untracked();
+        next.file_tree = enabled;
+        self.settings.set(next.clone());
+        store::save_settings(&self.store_dir, &next);
+    }
+
+    /// 设置文件树的两项开关（原 `set_tree_flag`）。
+    pub(crate) fn set_tree_flag(&self, which: &'static str, value: bool) {
+        let mut next = self.settings.get_untracked();
+        match which {
+            "merge_empty_dirs" => next.merge_empty_dirs = value,
+            "compact_single_child" => next.compact_single_child = value,
+            _ => return,
+        }
+        self.settings.set(next.clone());
+        store::save_settings(&self.store_dir, &next);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn diff(
+    state: &DiffState,
+    cmd: &DiffCommands,
     language: Signal<SharedString>,
     label: String,
     patch: Patch,
-    copy_patch: std::sync::Arc<dyn Fn(String)>,
-    options: DiffOptions,
-    toggle_option: std::sync::Arc<dyn Fn(&'static str)>,
-    export_patch: std::sync::Arc<dyn Fn()>,
-    split_view: bool,
-    set_split_mode: std::sync::Arc<dyn Fn(bool)>,
+    actions: crate::Actions,
 ) -> impl IntoElement {
     // 渲染与复制都要字节一致的原文，直接取解析时留下的 raw。
     let patch_for_view = patch.raw.clone();
@@ -46,6 +99,19 @@ pub(crate) fn diff(
         .first()
         .map(|file| file.path.clone())
         .unwrap_or_default();
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let options = state.options.get();
+    let split_view = state.split.get();
+    let toggle_option: std::sync::Arc<dyn Fn(&'static str)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |which: &'static str| cmd.toggle_diff_option(which))
+    };
+    let set_split_mode: std::sync::Arc<dyn Fn(bool)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |split: bool| cmd.set_diff_split(split))
+    };
+    let copy_patch = actions.copy_text.clone();
+    let export_patch = actions.export_patch.clone();
     return view()
         .w_full()
         .flex_1()

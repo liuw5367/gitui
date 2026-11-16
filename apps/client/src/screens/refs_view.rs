@@ -8,6 +8,7 @@
 //! 写操作（新建分支/标签、删除、添加远程、贮藏）需要输入与确认流程，本阶段只读 +
 //! 撤销，其余按「尚未实现」标注。
 use crate::design::{self, metrics};
+use crate::features::history::commands::HistoryCommands;
 use crate::i18n;
 use crate::model::Tab;
 use crate::Actions;
@@ -36,8 +37,21 @@ pub(crate) fn refs_view(
     selected_tab: Signal<RefsTab>,
     set_tab: std::sync::Arc<dyn Fn(RefsTab)>,
     actions: Actions,
+    history: HistoryCommands,
 ) -> impl IntoElement {
     let now = store::now_unix();
+    // 「比较」与「在历史中显示」属于提交历史功能，refs 只是入口：
+    // 这里把它的命令包成回调，沿用原来的参数位。
+    let compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
+        let history = history.clone();
+        std::sync::Arc::new(move |base: Option<String>, target: Option<String>| {
+            history.set_compare_refs(base, target)
+        })
+    };
+    let show_in_history: std::sync::Arc<dyn Fn(String)> = {
+        let history = history.clone();
+        std::sync::Arc::new(move |sha: String| history.show_in_history(sha))
+    };
     return view()
         .w_full()
         .h_full()
@@ -108,7 +122,10 @@ pub(crate) fn refs_view(
         )
         .child(dynamic(move || -> AnyElement {
             match selected_tab.get() {
-                RefsTab::Refs => refs_table(language, tab.clone(), actions.clone()).into_element(),
+                RefsTab::Refs => {
+                    refs_table(language, tab.clone(), actions.clone(), compare_refs.clone())
+                        .into_element()
+                }
                 RefsTab::Reflog => {
                     reflog_list(
                         language,
@@ -116,6 +133,7 @@ pub(crate) fn refs_view(
                         now,
                         reflog_query,
                         actions.clone(),
+                        show_in_history.clone(),
                     )
                     .into_element()
                 }
@@ -142,7 +160,12 @@ fn tab_button(
         move || set_selected(which),
     );
 }
-fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> impl IntoElement {
+fn refs_table(
+    language: Signal<SharedString>,
+    tab: Tab,
+    actions: Actions,
+    compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
+) -> impl IntoElement {
     let mut sections: Vec<AnyElement> = Vec::new();
     // 分支：检出、检出为新本地分支、比较、合并、重命名、删除、复制。
     let mut branch_rows: Vec<AnyElement> = Vec::new();
@@ -162,7 +185,7 @@ fn refs_table(language: Signal<SharedString>, tab: Tab, actions: Actions) -> imp
         let checkout = actions.checkout_branch.clone();
         let checkout_new = actions.checkout_new_branch.clone();
         let merge = actions.merge_reference.clone();
-        let compare = actions.set_compare_refs.clone();
+        let compare = compare_refs.clone();
         let open_form = actions.open_form_from.clone();
         let delete = actions.delete_branch.clone();
         let copy_text = actions.copy_text.clone();
@@ -537,6 +560,7 @@ fn reflog_list(
     now: i64,
     query: Signal<String>,
     actions: Actions,
+    show_in_history: std::sync::Arc<dyn Fn(String)>,
 ) -> impl IntoElement {
     let undo = actions.undo_reflog.clone();
     let needle = query.get_untracked().to_lowercase();
@@ -604,7 +628,7 @@ fn reflog_list(
                 .on_context_menu({
                     let undo = actions.undo_reflog.clone();
                     let open_form = actions.open_form_from.clone();
-                    let show = actions.show_in_history.clone();
+                    let show = show_in_history.clone();
                     let copy_text = actions.copy_text.clone();
                     let sha = entry.sha.clone();
                     let short = entry.short.clone();

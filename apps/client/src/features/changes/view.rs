@@ -2,7 +2,12 @@
 //!
 //! 列表按「暂存 / 未暂存」两段呈现，段内按目录分组；行高 24、状态字母与 +/− 统计
 //! 来自设计稿。changelists 通过列表上方的选择器切换（本地存储，按仓库分组）。
+//!
+//! 入口 `changes` 收本功能的状态与用例；跨功能的动作（外部打开、复制、解冲突等）
+//! 仍从 `Actions` 取，语言取 `cmd.language`，因此参数总数仍是 6 个。
 
+use super::commands::ChangesCommands;
+use super::state::ChangesState;
 use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
@@ -16,14 +21,15 @@ use nsh_core::prelude::*;
 const LIST_H: f32 = 342.0;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn changes_view(
-    language: Signal<SharedString>,
+pub(crate) fn changes(
+    state: &ChangesState,
+    cmd: &ChangesCommands,
     tab: Tab,
-    changelist_open: Signal<bool>,
     group_by_directory: bool,
     tree: crate::model::TreeOptions,
     actions: Actions,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
+    let language = cmd.language;
     let total = tab.changes.len();
     let staged = tab.changes.iter().filter(|entry| entry.staged).count();
     let patch = tab.change_diff.clone();
@@ -40,7 +46,13 @@ pub(crate) fn changes_view(
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.staged)
         .unwrap_or(false);
-    let piece_actions = actions.clone();
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let apply_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |hunk: usize, line: Option<usize>, reverse: bool| {
+            cmd.apply_piece(hunk, line, reverse)
+        })
+    };
     let mut rows: Vec<AnyElement> = Vec::new();
     let mut hunk_index = 0usize;
     let mut line_index = 0usize;
@@ -50,7 +62,7 @@ pub(crate) fn changes_view(
                 if hunk_index > 0 || !rows.is_empty() {
                     // 第一个 hunk 之前可能已有 Meta 行，不算 hunk。
                 }
-                let apply = piece_actions.apply_piece.clone();
+                let apply = apply_piece.clone();
                 let language = language;
                 rows.push(hunk_header_row(
                     language,
@@ -63,7 +75,7 @@ pub(crate) fn changes_view(
                 line_index = 0;
             }
             DiffLineKind::Add | DiffLineKind::Remove => {
-                let apply = piece_actions.apply_piece.clone();
+                let apply = apply_piece.clone();
                 let language = language;
                 rows.push(line_row_with_piece(
                     line,
@@ -85,11 +97,12 @@ pub(crate) fn changes_view(
         .h_full()
         .flex_col()
         .child(changes_list(
+            state,
+            cmd,
             language,
             tab,
             staged,
             total,
-            changelist_open,
             group_by_directory,
             tree,
             actions,
@@ -154,27 +167,52 @@ pub(crate) fn changes_view(
         );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn changes_list(
+    state: &ChangesState,
+    cmd: &ChangesCommands,
     language: Signal<SharedString>,
     tab: Tab,
     staged_count: usize,
     total: usize,
-    changelist_open: Signal<bool>,
     group_by_directory: bool,
     tree: crate::model::TreeOptions,
     actions: Actions,
-) -> impl IntoElement {
-    let select_change = actions.select_change.clone();
-    let toggle_stage = actions.toggle_stage.clone();
-    let discard_change = actions.discard_change.clone();
+) -> impl IntoElement + use<> {
+    let changelist_open = state.changelist_open;
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let select_change: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |index: usize| cmd.select_change(index))
+    };
+    let toggle_stage: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |index: usize| cmd.toggle_stage(index))
+    };
+    let discard_change: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |index: usize| cmd.discard_change(index))
+    };
     let tab_for_pop = tab.clone();
-    let actions_pop = actions.clone();
     let selected_path = tab
         .selected_change
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.path.clone());
-    let stage_all = actions.stage_all.clone();
-    let unstage_all = actions.unstage_all.clone();
+    let stage_all: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.stage_all())
+    };
+    let unstage_all: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.unstage_all())
+    };
+    let move_to_changelist: std::sync::Arc<dyn Fn(String, Option<String>)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |path: String, name: Option<String>| {
+            cmd.move_to_changelist(path, name)
+        })
+    };
+    let cmd_for_pop = cmd.clone();
     let selected = tab.selected_change;
 
     let mut sections: Vec<AnyElement> = Vec::new();
@@ -267,7 +305,7 @@ fn changes_list(
                     let copy_text = actions.copy_text.clone();
                     let open_editor = actions.open_editor.clone();
                     let reveal_path = actions.reveal_path.clone();
-                    let move_to_changelist = actions.move_to_changelist.clone();
+                    let move_to_changelist = move_to_changelist.clone();
                     let repo_root = tab.path.clone();
                     let changelists = tab.changelists.clone();
                     let language_for_menu = language;
@@ -596,7 +634,7 @@ fn changes_list(
                         language,
                         tab_for_pop.clone(),
                         changelist_open,
-                        actions_pop.clone(),
+                        &cmd_for_pop,
                         selected_path.clone(),
                     )
                     .into_element();
@@ -879,12 +917,24 @@ fn changelist_pop(
     language: Signal<SharedString>,
     tab: Tab,
     open: Signal<bool>,
-    actions: Actions,
+    cmd: &ChangesCommands,
     selected_path: Option<String>,
-) -> impl IntoElement {
-    let set_active = actions.set_active_changelist.clone();
-    let move_to = actions.move_to_changelist.clone();
-    let create = actions.create_changelist.clone();
+) -> impl IntoElement + use<> {
+    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
+    let set_active: std::sync::Arc<dyn Fn(Option<String>)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: Option<String>| cmd.set_active_changelist(name))
+    };
+    let move_to: std::sync::Arc<dyn Fn(String, Option<String>)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |path: String, name: Option<String>| {
+            cmd.move_to_changelist(path, name)
+        })
+    };
+    let create: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |name: String| cmd.create_changelist(name))
+    };
     let new_name = signal(String::new());
     let mut rows: Vec<AnyElement> = Vec::new();
 
