@@ -1,30 +1,12 @@
-//! 屏幕：欢迎页、工作区与设置。
+//! 屏幕：剩余尚未切片的页面（blame、表单）与工作区版式。
 //!
-//! `lib.rs` 只负责状态与动作，屏幕函数只负责布局与呈现。欢迎页是**独立窗口**
-//! （`id = "welcome"`），标签页工作区与设置在同一个窗口的 `main` 里。
+//! 欢迎页、设置页与命令面板已迁到 `features/{welcome,settings,search}/view.rs`；
+//! 欢迎页是**独立窗口**（`id = "welcome"`），工作区与设置在同一个窗口的 `main` 里。
 
 mod blame_view;
 mod form_dialog;
-mod palette;
-mod settings;
-mod welcome;
 mod workspace;
 
 pub(crate) use blame_view::blame_view;
-pub(crate) use form_dialog::{form_dialog, FormKind, FormState};
-pub(crate) use palette::{palette, Row as PaletteRow};
-pub(crate) use settings::{settings, Section as SettingsSection, ShortcutUi};
-pub(crate) use welcome::{welcome, CloneOptions, InitFiles};
+pub(crate) use form_dialog::{FormKind, FormState, form_dialog};
 pub(crate) use workspace::workspace;
-
-/// 当前查询命中的结果行（顺序即显示顺序，已被上限截断）。
-///
-/// 根组件的键盘导航与面板渲染用同一份判断，避免「高亮一行、执行另一行」。
-pub(crate) fn palette_rows(
-    query: &str,
-    language: &str,
-    open_repos: &[String],
-    recent: &[String],
-) -> Vec<palette::Row> {
-    return palette::rows(query, language, open_repos, recent);
-}

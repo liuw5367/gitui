@@ -4,6 +4,7 @@
 //! 补丁。打开失败时在正文区显示错误面板。
 
 use crate::design;
+use crate::features::agent::commands::AgentCommands;
 use crate::features::changes::commands::ChangesCommands;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::history::commands::HistoryCommands;
@@ -17,7 +18,7 @@ use crate::model;
 use crate::model::Tab;
 use crate::shared::diff;
 use crate::shell;
-use crate::Actions;
+use crate::features::search::commands::SearchCommands;
 use nsh_core::prelude::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -26,21 +27,21 @@ pub(crate) fn workspace(
     tabs: Signal<Vec<Tab>>,
     active: Signal<usize>,
     inspector_open: Signal<bool>,
-    mode: Signal<crate::Mode>,
     changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
-    agent_plan: Signal<Option<agent::Plan>>,
-    agent_audit: Signal<Vec<agent::AuditEntry>>,
-    agent_policies: Signal<agent::Policies>,
-    reset_request: Signal<Option<(String, git::ResetMode)>>,
+    agent: AgentCommands,
     notice: Signal<Option<String>>,
     refs: RefsCommands,
     sync: SyncCommands,
     history: HistoryCommands,
     merge: MergeCommands,
     commit: CommitCommands,
-    actions: Actions,
+    session: crate::features::SessionHandle,
+    settings: crate::features::settings::commands::SettingsCommands,
+    search: SearchCommands,
 ) -> impl IntoElement {
+    // 主区模式由搜索功能持有（工具栏分段与命令面板的命令都改它）。
+    let mode = search.state.mode;
     let current = computed(move || tabs.get().get(active.get()).cloned());
     let change_count = move || {
         return current
@@ -48,7 +49,7 @@ pub(crate) fn workspace(
             .map(|tab| tab.status.len() as u32)
             .unwrap_or(0);
     };
-    let actions_for_body = actions.clone();
+    let search_for_body = search.clone();
     return view()
         .w_full()
         .h_full()
@@ -58,30 +59,31 @@ pub(crate) fn workspace(
             language,
             tabs,
             active,
-            actions.clone(),
+            session.clone(),
+            settings.clone(),
         ))
         .child(shell::toolbar(
             language,
             history.state.query,
             change_count,
             mode,
-            actions.set_mode.clone(),
+            &search,
             {
                 let sync = sync.clone();
                 std::sync::Arc::new(move |kind: model::Sync| sync.open_sync(kind))
             },
-            actions.set_mode_refs.clone(),
-            actions.set_mode_agent.clone(),
             inspector_open,
         ))
         .child(shell::state_banner(
             language,
             current,
             active,
-            actions.clone(),
+            session.clone(),
+            settings.clone(),
             &refs,
             &sync,
             &commit,
+            &search,
         ))
         .child(shell::op_banner(
             language,
@@ -99,17 +101,14 @@ pub(crate) fn workspace(
                     language,
                     current,
                     inspector_open,
-                    mode,
                     changes,
                     settings_state,
-                    agent_plan,
-                    agent_audit,
-                    agent_policies,
-                    reset_request,
+                    agent,
                     refs,
                     history,
                     commit,
-                    actions_for_body,
+                    session,
+                    search_for_body,
                 )),
         )
         .child(shell::statusbar(language, current, notice));
@@ -121,17 +120,14 @@ fn match_body(
     language: Signal<SharedString>,
     current: Memo<Option<Tab>>,
     inspector_open: Signal<bool>,
-    mode: Signal<crate::Mode>,
     changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
-    agent_plan: Signal<Option<agent::Plan>>,
-    agent_audit: Signal<Vec<agent::AuditEntry>>,
-    agent_policies: Signal<agent::Policies>,
-    reset_request: Signal<Option<(String, git::ResetMode)>>,
+    agent: AgentCommands,
     refs: RefsCommands,
     history: HistoryCommands,
     commit: CommitCommands,
-    actions: Actions,
+    session: crate::features::SessionHandle,
+    search: SearchCommands,
 ) -> impl IntoElement {
     return view().w_full().h_full().flex_row().child(dynamic(
         move || -> AnyElement {
@@ -144,12 +140,12 @@ fn match_body(
                 let detail = tab
                     .and_then(|tab| tab.error)
                     .unwrap_or_else(|| i18n::t(language.get().as_str(), "error.title"));
-                let actions = actions.clone();
+                let session = session.clone();
                 // 「重试」就是历史功能的刷新。
                 let refresh = history.clone();
                 let retry: std::sync::Arc<dyn Fn()> =
                     std::sync::Arc::new(move || refresh.refresh());
-                return error_panel(language, detail, retry, actions).into_element();
+                return error_panel(language, detail, retry, session).into_element();
             }
             let Some(tab) = tab else {
                 return view()
@@ -164,22 +160,17 @@ fn match_body(
                     )
                     .into_element();
             };
-            let actions = actions.clone();
             return body(
                 language,
                 tab,
                 inspector_open,
-                mode,
                 changes.clone(),
                 settings_state,
-                agent_plan,
-                agent_audit,
-                agent_policies,
-                reset_request,
+                agent.clone(),
                 refs.clone(),
                 history.clone(),
                 commit.clone(),
-                actions,
+                search.clone(),
             )
             .into_element();
         },
@@ -192,18 +183,15 @@ fn body(
     language: Signal<SharedString>,
     tab: Tab,
     inspector_open: Signal<bool>,
-    mode: Signal<crate::Mode>,
     changes: ChangesCommands,
     settings_state: Signal<store::Settings>,
-    agent_plan: Signal<Option<agent::Plan>>,
-    agent_audit: Signal<Vec<agent::AuditEntry>>,
-    agent_policies: Signal<agent::Policies>,
-    reset_request: Signal<Option<(String, git::ResetMode)>>,
+    agent: AgentCommands,
     refs: RefsCommands,
     history: HistoryCommands,
     commit: CommitCommands,
-    actions: Actions,
+    search: SearchCommands,
 ) -> impl IntoElement {
+    let mode = search.state.mode;
     let tab_for_sidebar = tab.clone();
     let tab_for_history = tab.clone();
     let tab_for_inspector = tab.clone();
@@ -245,11 +233,10 @@ fn body(
     let refs_tab = signal(refs::state::RefsTab::Refs);
     let group_by_directory = settings_state.get_untracked().file_tree;
     let tree_options = crate::model::TreeOptions::from_settings(&settings_state.get_untracked());
-    let changes_actions = actions.clone();
-    let history_actions = actions.clone();
-    let inspector_actions = actions.clone();
     let commit_for_panel = commit.clone();
     let history_for_inspector = history.clone();
+    let search_for_body = search.clone();
+    let notice = history.notice;
     return view()
         .w_full()
         .h_full()
@@ -277,8 +264,7 @@ fn body(
                                 &history.state,
                                 &history,
                                 tab_for_history.clone(),
-                                reset_request,
-                                history_actions.clone(),
+                                &search_for_body,
                                 &refs,
                             ))
                             .child(diff::diff(
@@ -287,7 +273,6 @@ fn body(
                                 language,
                                 label.clone(),
                                 patch.clone(),
-                                history_actions.clone(),
                             ))
                             .into_element(),
                         crate::Mode::Agent => view()
@@ -295,18 +280,16 @@ fn body(
                             .flex_1()
                             .min_h_0()
                             .into_element(),
-                        crate::Mode::Blame => crate::screens::blame_view(
-                            language,
-                            tab_for_history.clone(),
-                            history_actions.copy_text.clone(),
-                        )
-                        .into_element(),
+                        crate::Mode::Blame => {
+                            crate::screens::blame_view(language, tab_for_history.clone(), notice)
+                                .into_element()
+                        }
                         crate::Mode::Refs => refs::view::refs_view(
                             &refs.state,
                             &refs,
                             language,
                             tab_for_changes.clone(),
-                            changes_actions.clone(),
+                            &search,
                             refs_tab,
                         )
                         .into_element(),
@@ -317,7 +300,6 @@ fn body(
                                 tab_for_changes.clone(),
                                 group_by_directory,
                                 tree_options,
-                                changes_actions.clone(),
                             )
                             .into_element()
                         }
@@ -332,26 +314,31 @@ fn body(
                     tab_for_inspector.clone(),
                     language,
                     inspector_tab,
-                    inspector_actions.clone(),
                 )
                 .into_element(),
-                crate::Mode::Agent => crate::workspace::agent::agent_panel(
-                    language,
-                    agent_plan,
-                    agent_audit,
-                    agent_policies,
-                    actions.clone(),
-                )
-                .into_element(),
+                crate::Mode::Agent => {
+                    crate::features::agent::view::agent_panel(&agent.state, &agent, language)
+                        .into_element()
+                }
                 crate::Mode::Refs => view().w(px(0.0)).h_full().into_element(),
-                crate::Mode::Changes => crate::features::commit::view::commit_panel(
-                    &commit_for_panel.state,
-                    &commit_for_panel,
-                    language,
-                    tab_for_inspector.clone(),
-                    actions.clone(),
-                )
-                .into_element(),
+                crate::Mode::Changes => {
+                    // 「请 Agent 起草」= 切到 Agent 主视图并提议一份计划。
+                    let ask_agent: std::sync::Arc<dyn Fn()> = {
+                        let agent = agent.clone();
+                        std::sync::Arc::new(move || {
+                            mode.set(crate::Mode::Agent);
+                            agent.propose_plan();
+                        })
+                    };
+                    crate::features::commit::view::commit_panel(
+                        &commit_for_panel.state,
+                        &commit_for_panel,
+                        language,
+                        tab_for_inspector.clone(),
+                        ask_agent,
+                    )
+                    .into_element()
+                }
                 _ => view().w(px(0.0)).h_full().into_element(),
             }
         }));
@@ -361,10 +348,10 @@ fn error_panel(
     language: Signal<SharedString>,
     detail: String,
     retry: std::sync::Arc<dyn Fn()>,
-    actions: Actions,
+    session: crate::features::SessionHandle,
 ) -> impl IntoElement {
     let detail = std::sync::Arc::new(detail);
-    let welcome = actions.go_welcome.clone();
+    let welcome = session;
     return view()
         .w_full()
         .h_full()
@@ -410,7 +397,7 @@ fn error_panel(
                                   false,
                                   {
                         let welcome = welcome.clone();
-                        move || welcome()
+                        move || welcome.go_welcome()
                     },
                               )),
         );

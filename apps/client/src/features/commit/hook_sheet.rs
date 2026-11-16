@@ -8,25 +8,23 @@ use super::state::CommitState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
 use nsh_core::prelude::*;
 
 /// 日志弹层：居中、可滚动、Esc 或点背景关闭。
 ///
 /// 入口 `hook_sheet` 收本功能的状态与用例；弹层读取的钩子输出挂在 `Tab` 上，
-/// 复制到剪贴板仍走 `Actions` 的共用动作。
+/// 复制到剪贴板走 `shared::os` 的共用函数。
 pub(crate) fn hook_sheet(
     _state: &CommitState,
     cmd: &CommitCommands,
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
-    actions: Actions,
 ) -> impl IntoElement {
     let close = {
         let cmd = cmd.clone();
         move |open: bool| cmd.toggle_hook_log(open)
     };
-    let copy_text = actions.copy_text.clone();
+    let notice = cmd.notice;
     let dismiss = close.clone();
     return crate::ui::dialog::scrim(
         move || tab.get().map(|tab| tab.hook_open).unwrap_or(false),
@@ -42,7 +40,6 @@ pub(crate) fn hook_sheet(
             let language_value = language;
             let close = close.clone();
             let close_button = close.clone();
-            let copy_text = copy_text.clone();
             let log_for_copy = log.clone();
             return crate::ui::dialog::modality(
                 view()
@@ -81,7 +78,13 @@ pub(crate) fn hook_sheet(
                                    crate::ui::button::ButtonVariant::Secondary,
                                    crate::ui::button::ButtonSize::Small,
                                    false,
-                                   move || copy_text(log_for_copy.clone()),
+                                   move || {
+                                       crate::shared::os::copy_text(
+                                           notice,
+                                           language_value,
+                                           log_for_copy.clone(),
+                                       )
+                                   },
                                ))
                         .child(crate::ui::button::button(
                                    

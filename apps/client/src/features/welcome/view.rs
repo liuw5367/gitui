@@ -10,33 +10,15 @@
 //! 设计稿的协议切换（HTTPS / SSH）没有后端含义（协议由 URL 决定），这里不放置
 //! 无法生效的控件；差异记在 `docs/DESIGN-HANDOFF.md` 的偏离清单。
 
+use super::commands::WelcomeCommands;
+use super::state::WelcomeState;
 use crate::design;
 use crate::i18n;
 use crate::ui;
 use crate::ui::badge::Tone;
-use crate::ui::button::{button, ButtonSize, ButtonVariant};
-use crate::{Actions, RepoForm};
+use crate::ui::button::{ButtonSize, ButtonVariant, button};
 use nsh_core::prelude::*;
 use store::RecentRepo;
-
-/// Init 表单的附带文件（设计板 03）。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct InitFiles {
-    pub gitignore: bool,
-    pub readme: bool,
-}
-
-/// Clone 表单的选项（设计板 03）：分支、深度、子模块、克隆后打开。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CloneOptions {
-    pub branch: String,
-    /// 0 = 完整克隆。
-    pub depth: u32,
-    /// 用户自定义深度输入（空则用 `depth`）。
-    pub depth_custom: String,
-    pub recurse_submodules: bool,
-    pub open_after_clone: bool,
-}
 
 /// 打开时间距今不足这些秒时归入“今天”。
 const TODAY_SECONDS: i64 = 24 * 60 * 60;
@@ -52,28 +34,18 @@ const MAIN_PAD: (f32, f32, f32) = (40.0, 48.0, 28.0);
 /// 英雄区应用标记的边长。
 const APP_MARK: f32 = 64.0;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn welcome(
-    language: Signal<SharedString>,
-    recent: Signal<Vec<RecentRepo>>,
-    query: Signal<String>,
-    clone_url: Signal<String>,
-    clone_destination: Signal<String>,
-    clone_options: Signal<CloneOptions>,
-    init_files: Signal<InitFiles>,
-    init_path: Signal<String>,
-    clone_error: Signal<Option<String>>,
-    cloning: Signal<bool>,
-    clone_progress: Signal<String>,
-    form: Signal<RepoForm>,
-    actions: Actions,
-) -> impl IntoElement {
+pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoElement + use<> {
+    let language = cmd.language;
+    let recent = cmd.session.recent;
+    let query = state.query;
+    let cloning = state.cloning;
+    let clone_progress = state.clone_progress;
     return view()
         .w_full()
         .h_full()
         .flex_row()
         .bg(move || design::content())
-        .child(sidebar(language, recent, query, actions.clone()))
+        .child(sidebar(language, recent, query, cmd.clone()))
         .child(
             view()
                 .flex_1()
@@ -89,18 +61,7 @@ pub(crate) fn welcome(
                             .px(px(MAIN_PAD.1))
                             .flex_col()
                             .child(hero(language))
-                            .child(entry_section(
-                                language,
-                                form,
-                                clone_url,
-                                clone_destination,
-                                clone_options,
-                                init_files,
-                                init_path,
-                                clone_error,
-                                cloning,
-                                actions.clone(),
-                            ))
+                            .child(entry_section(language, state.clone(), cmd.clone()))
                             .child(tip(language)),
                     ),
                 )
@@ -108,7 +69,7 @@ pub(crate) fn welcome(
                     language,
                     cloning,
                     clone_progress,
-                    actions.cancel_clone.clone(),
+                    cmd.clone(),
                 )),
         );
 }
@@ -118,8 +79,9 @@ fn cloning_indicator(
     language: Signal<SharedString>,
     cloning: Signal<bool>,
     progress: Signal<String>,
-    cancel: std::sync::Arc<dyn Fn()>,
+    cmd: WelcomeCommands,
 ) -> impl IntoElement {
+    let cancel = cmd.clone();
     return view()
         .absolute()
         .bottom(px(ui::GAP_XL))
@@ -163,7 +125,7 @@ fn cloning_indicator(
             false,
             {
                 let cancel = cancel.clone();
-                move || cancel()
+                move || cancel.cancel_clone()
             },
         ));
 }
@@ -172,10 +134,10 @@ fn sidebar(
     language: Signal<SharedString>,
     recent: Signal<Vec<RecentRepo>>,
     query: Signal<String>,
-    actions: Actions,
+    cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let open_path = actions.open_path.clone();
-    let choose_folder = actions.choose_folder.clone();
+    let session = cmd.session.clone();
+    let choose_folder = cmd.clone();
     let now = store::now_unix();
     return view()
         .w(px(SIDE_WIDTH))
@@ -201,13 +163,11 @@ fn sidebar(
                         .min_w_0()
                         .flex_col()
                         .child(
-                            text(move || {
-                                i18n::t(language.get().as_str(), "welcome.repositories")
-                            })
-                            .text_size(px(ui::TITLE))
-                            .line_height(px(20.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(move || design::text()),
+                            text(move || i18n::t(language.get().as_str(), "welcome.repositories"))
+                                .text_size(px(ui::TITLE))
+                                .line_height(px(20.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(move || design::text()),
                         )
                         .child(
                             text(move || {
@@ -229,78 +189,62 @@ fn sidebar(
                     false,
                     {
                         let choose_folder = choose_folder.clone();
-                        move || choose_folder()
+                        move || choose_folder.choose_folder()
                     },
                 )),
         )
         // 搜索
+        .child(view().w_full().px(px(ui::GAP_LG)).pb(px(ui::GAP_SM)).child(
+            ui::text_input::search_field(
+                query,
+                move || i18n::t(language.get().as_str(), "welcome.search"),
+                Some("⌘F"),
+                move |_text| {},
+            ),
+        ))
         .child(
-            view()
-                .w_full()
-                .px(px(ui::GAP_LG))
-                .pb(px(ui::GAP_SM))
-                .child(ui::text_input::search_field(
-                    query,
-                    move || i18n::t(language.get().as_str(), "welcome.search"),
-                    Some("⌘F"),
-                    move |_text| {},
-                )),
-        )
-        .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .px(px(ui::GAP_SM))
-                .child(
-                    scroll().w_full().h_full().child(
-                        view()
-                            .w_full()
-                            .py(px(ui::GAP_XS))
-                            .flex_col()
-                            .child(dynamic(move || -> AnyElement {
-                                if recent.get().is_empty() {
-                                    return ui::section::empty(
-                                        move || {
-                                            i18n::t(language.get().as_str(), "welcome.noRecent")
-                                        },
-                                        Some(Box::new(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "welcome.noRecentHint",
-                                            )
-                                        })),
-                                        None,
-                                    )
-                                    .into_element();
-                                }
-                                return view()
-                                    .w_full()
-                                    .flex_col()
-                                    .child(repo_group(
-                                        language,
-                                        recent,
-                                        query,
-                                        now,
-                                        "welcome.groupToday",
-                                        0,
-                                        TODAY_SECONDS,
-                                        open_path.clone(),
-                                    ))
-                                    .child(repo_group(
-                                        language,
-                                        recent,
-                                        query,
-                                        now,
-                                        "welcome.groupWeek",
-                                        TODAY_SECONDS,
-                                        WEEK_SECONDS,
-                                        open_path.clone(),
-                                    ))
-                                    .into_element();
-                            })),
-                    ),
+            view().w_full().flex_1().min_h_0().px(px(ui::GAP_SM)).child(
+                scroll().w_full().h_full().child(
+                    view().w_full().py(px(ui::GAP_XS)).flex_col().child(dynamic(
+                        move || -> AnyElement {
+                            if recent.get().is_empty() {
+                                return ui::section::empty(
+                                    move || i18n::t(language.get().as_str(), "welcome.noRecent"),
+                                    Some(Box::new(move || {
+                                        i18n::t(language.get().as_str(), "welcome.noRecentHint")
+                                    })),
+                                    None,
+                                )
+                                .into_element();
+                            }
+                            return view()
+                                .w_full()
+                                .flex_col()
+                                .child(repo_group(
+                                    language,
+                                    recent,
+                                    query,
+                                    now,
+                                    "welcome.groupToday",
+                                    0,
+                                    TODAY_SECONDS,
+                                    session.clone(),
+                                ))
+                                .child(repo_group(
+                                    language,
+                                    recent,
+                                    query,
+                                    now,
+                                    "welcome.groupWeek",
+                                    TODAY_SECONDS,
+                                    WEEK_SECONDS,
+                                    session.clone(),
+                                ))
+                                .into_element();
+                        },
+                    )),
                 ),
+            ),
         )
         // 底部：版本与更新入口（更新检查尚未实现，只显示版本，不做假按钮）
         .child(
@@ -338,7 +282,7 @@ fn repo_group(
     label_key: &'static str,
     from_seconds: i64,
     to_seconds: i64,
-    open_path: std::sync::Arc<dyn Fn(String)>,
+    session: crate::features::SessionHandle,
 ) -> impl IntoElement {
     return view()
         .w_full()
@@ -355,23 +299,14 @@ fn repo_group(
                 let visible = age >= from_seconds
                     && age < to_seconds
                     && matches_query(&repo.get().path, &query.get());
-                let open_path = open_path.clone();
+                let session = session.clone();
                 return view()
                     .w_full()
-                    .h(move || {
-                        if visible {
-                            px(44.0)
-                        } else {
-                            px(0.0)
-                        }
-                    })
+                    .h(move || if visible { px(44.0) } else { px(0.0) })
                     .overflow_hidden()
                     .child(ui::row::row(
                         move || last_segment(&repo.get().path),
-                        Some((
-                            Box::new(move || home_path(&repo.get().path)),
-                            true,
-                        )),
+                        Some((Box::new(move || home_path(&repo.get().path)), true)),
                         Some(
                             view()
                                 .w(px(26.0))
@@ -402,7 +337,7 @@ fn repo_group(
                         ],
                         false,
                         false,
-                        move || open_path(repo.get().path.clone()),
+                        move || session.open_path(repo.get().path.clone()),
                     ));
             },
         ));
@@ -449,24 +384,17 @@ fn hero(language: Signal<SharedString>) -> impl IntoElement {
 }
 
 /// Open / Clone / Init 三分段与对应表单（合并设计板 03 的入口）。
-#[allow(clippy::too_many_arguments)]
 fn entry_section(
     language: Signal<SharedString>,
-    form: Signal<RepoForm>,
-    clone_url: Signal<String>,
-    clone_destination: Signal<String>,
-    clone_options: Signal<CloneOptions>,
-    init_files: Signal<InitFiles>,
-    init_path: Signal<String>,
-    error: Signal<Option<String>>,
-    cloning: Signal<bool>,
-    actions: Actions,
+    state: WelcomeState,
+    cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let set_form = actions.set_repo_form.clone();
+    let form = state.form;
+    let set_form = cmd.clone();
     let selected = match form.get_untracked() {
-        RepoForm::Open => "open",
-        RepoForm::Clone => "clone",
-        RepoForm::Init => "init",
+        super::state::RepoForm::Open => "open",
+        super::state::RepoForm::Clone => "clone",
+        super::state::RepoForm::Init => "init",
     };
     return view()
         .w_full()
@@ -507,21 +435,19 @@ fn entry_section(
                     {
                         let set_form = set_form.clone();
                         move |id| {
-                            set_form(match id {
-                                "clone" => RepoForm::Clone,
-                                "init" => RepoForm::Init,
-                                _ => RepoForm::Open,
+                            set_form.set_repo_form(match id {
+                                "clone" => super::state::RepoForm::Clone,
+                                "init" => super::state::RepoForm::Init,
+                                _ => super::state::RepoForm::Open,
                             })
                         }
                     },
                 ))
                 .child(view().flex_1())
-                .child(ui::meta(move || {
-                    match form.get() {
-                        RepoForm::Open => "git open".to_string(),
-                        RepoForm::Clone => "git clone".to_string(),
-                        RepoForm::Init => "git init".to_string(),
-                    }
+                .child(ui::meta(move || match form.get() {
+                    super::state::RepoForm::Open => "git open".to_string(),
+                    super::state::RepoForm::Clone => "git clone".to_string(),
+                    super::state::RepoForm::Init => "git init".to_string(),
                 })),
         )
         .child(
@@ -535,9 +461,9 @@ fn entry_section(
                         i18n::t(
                             language.get().as_str(),
                             match form.get() {
-                                RepoForm::Open => "repoManager.openTitle",
-                                RepoForm::Clone => "welcome.cloneTitle",
-                                RepoForm::Init => "repoManager.initTitle",
+                                super::state::RepoForm::Open => "repoManager.openTitle",
+                                super::state::RepoForm::Clone => "welcome.cloneTitle",
+                                super::state::RepoForm::Init => "repoManager.initTitle",
                             },
                         )
                     })
@@ -551,9 +477,9 @@ fn entry_section(
                         i18n::t(
                             language.get().as_str(),
                             match form.get() {
-                                RepoForm::Open => "repoManager.openHint",
-                                RepoForm::Clone => "welcome.cloneSub",
-                                RepoForm::Init => "repoManager.initHint",
+                                super::state::RepoForm::Open => "repoManager.openHint",
+                                super::state::RepoForm::Clone => "welcome.cloneSub",
+                                super::state::RepoForm::Init => "repoManager.initHint",
                             },
                         )
                     })
@@ -563,28 +489,22 @@ fn entry_section(
                 )
                 .child(dynamic(move || -> AnyElement {
                     match form.get() {
-                        RepoForm::Open => open_form(language, actions.clone()).into_element(),
-                        RepoForm::Clone => clone_form(
-                            language,
-                            clone_url,
-                            clone_destination,
-                            clone_options,
-                            error,
-                            cloning,
-                            actions.clone(),
-                        )
-                        .into_element(),
-                        RepoForm::Init => {
-                            init_form(language, init_path, init_files, error, actions.clone())
-                                .into_element()
+                        super::state::RepoForm::Open => {
+                            open_form(language, cmd.clone()).into_element()
+                        }
+                        super::state::RepoForm::Clone => {
+                            clone_form(language, state.clone(), cmd.clone()).into_element()
+                        }
+                        super::state::RepoForm::Init => {
+                            init_form(language, state.clone(), cmd.clone()).into_element()
                         }
                     }
                 })),
         );
 }
 
-fn open_form(language: Signal<SharedString>, actions: Actions) -> impl IntoElement {
-    let choose_folder = actions.choose_folder.clone();
+fn open_form(language: Signal<SharedString>, cmd: WelcomeCommands) -> impl IntoElement {
+    let choose_folder = cmd.clone();
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
@@ -598,25 +518,23 @@ fn open_form(language: Signal<SharedString>, actions: Actions) -> impl IntoEleme
             false,
             {
                 let choose_folder = choose_folder.clone();
-                move || choose_folder()
+                move || choose_folder.choose_folder()
             },
         ));
 }
 
-#[allow(clippy::too_many_arguments)]
 fn clone_form(
     language: Signal<SharedString>,
-    clone_url: Signal<String>,
-    clone_destination: Signal<String>,
-    options: Signal<CloneOptions>,
-    error: Signal<Option<String>>,
-    cloning: Signal<bool>,
-    actions: Actions,
+    state: WelcomeState,
+    cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let choose_folder = actions.choose_folder.clone();
-    let clone_repository = actions.clone_repository.clone();
-    let set_url = clone_url;
-    let set_destination = clone_destination;
+    let choose_folder = cmd.clone();
+    let clone_repository = cmd.clone();
+    let set_url = state.clone_url;
+    let set_destination = state.clone_destination;
+    let options = state.clone_options;
+    let error = state.clone_error;
+    let cloning = state.cloning;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
@@ -639,22 +557,17 @@ fn clone_form(
                 .flex_row()
                 .items_end()
                 .gap(px(ui::GAP))
-                .child(
-                    view()
-                        .flex_1()
-                        .min_w_0()
-                        .child(ui::field::field(
-                            move || i18n::t(language.get().as_str(), "welcome.destination"),
-                            ui::text_input::text_input(
-                                set_destination,
-                                move || "~/Developer/repo".to_string(),
-                                false,
-                                move |text| set_destination.set(text.to_string()),
-                            ),
-                            None,
-                            None,
-                        )),
-                )
+                .child(view().flex_1().min_w_0().child(ui::field::field(
+                    move || i18n::t(language.get().as_str(), "welcome.destination"),
+                    ui::text_input::text_input(
+                        set_destination,
+                        move || "~/Developer/repo".to_string(),
+                        false,
+                        move |text| set_destination.set(text.to_string()),
+                    ),
+                    None,
+                    None,
+                )))
                 .child(button(
                     move || i18n::t(language.get().as_str(), "welcome.choose"),
                     ButtonVariant::Secondary,
@@ -662,7 +575,7 @@ fn clone_form(
                     false,
                     {
                         let choose_folder = choose_folder.clone();
-                        move || choose_folder()
+                        move || choose_folder.choose_folder()
                     },
                 )),
         )
@@ -672,31 +585,24 @@ fn clone_form(
                 .flex_row()
                 .items_end()
                 .gap(px(ui::GAP))
-                .child(
-                    view()
-                        .flex_1()
-                        .min_w_0()
-                        .child(ui::field::field(
-                            move || i18n::t(language.get().as_str(), "welcome.branch"),
-                            ui::text_input::text_input_bound(
-                                {
-                                    let options = options;
-                                    move || options.get().branch
-                                },
-                                move || {
-                                    i18n::t(language.get().as_str(), "welcome.branchHint")
-                                },
-                                false,
-                                move |text| {
-                                    let mut next = options.get_untracked();
-                                    next.branch = text;
-                                    options.set(next);
-                                },
-                            ),
-                            None,
-                            None,
-                        )),
-                )
+                .child(view().flex_1().min_w_0().child(ui::field::field(
+                    move || i18n::t(language.get().as_str(), "welcome.branch"),
+                    ui::text_input::text_input_bound(
+                        {
+                            let options = options;
+                            move || options.get().branch
+                        },
+                        move || i18n::t(language.get().as_str(), "welcome.branchHint"),
+                        false,
+                        move |text| {
+                            let mut next = options.get_untracked();
+                            next.branch = text;
+                            options.set(next);
+                        },
+                    ),
+                    None,
+                    None,
+                )))
                 .child(
                     view()
                         .w(px(220.0))
@@ -790,7 +696,7 @@ fn clone_form(
                     cloning.get_untracked(),
                     {
                         let clone_repository = clone_repository.clone();
-                        move || clone_repository()
+                        move || clone_repository.clone_repository()
                     },
                 ))
                 .child(ui::secondary(move || {
@@ -817,13 +723,13 @@ fn clone_form(
 
 fn init_form(
     language: Signal<SharedString>,
-    init_path: Signal<String>,
-    files: Signal<InitFiles>,
-    error: Signal<Option<String>>,
-    actions: Actions,
+    state: WelcomeState,
+    cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let init_repository = actions.init_repository.clone();
-    let path = init_path;
+    let init_repository = cmd.clone();
+    let path = state.init_path;
+    let files = state.init_files;
+    let error = state.clone_error;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
@@ -874,7 +780,7 @@ fn init_form(
             false,
             {
                 let init_repository = init_repository.clone();
-                move || init_repository()
+                move || init_repository.init_repository()
             },
         ))
         .child(dynamic(move || -> AnyElement {

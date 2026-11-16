@@ -7,7 +7,7 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
+use crate::features::search::commands::SearchCommands;
 use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -17,12 +17,13 @@ pub(crate) fn titlebar(
     language: Signal<SharedString>,
     tabs: Signal<Vec<Tab>>,
     active: Signal<usize>,
-    actions: Actions,
+    session: crate::features::SessionHandle,
+    settings: crate::features::settings::commands::SettingsCommands,
 ) -> impl IntoElement {
     let (left, right) = crate::window_insets();
-    let activate = actions.activate_tab.clone();
-    let close = actions.close_tab.clone();
-    let open = actions.go_repo_manager.clone();
+    let activate = session.clone();
+    let close = session.clone();
+    let open = session;
     return view()
         .w_full()
         .h(px(metrics::TITLEBAR_H))
@@ -73,7 +74,7 @@ pub(crate) fn titlebar(
                                 }
                             })
                             .hover(|style| style.bg(move || design::hover()))
-                            .on_press(move || activate(index.get()))
+                            .on_press(move || activate.activate_tab(index.get()))
                             .child(
                                 text(move || tab.get().label())
                                     .text_size(px(crate::ui::BODY))
@@ -95,7 +96,7 @@ pub(crate) fn titlebar(
                                     .justify_center()
                                     .rounded(px(4.0))
                                     .hover(|style| style.bg(move || design::line_soft()))
-                                    .on_press(move || close(index.get()))
+                                    .on_press(move || close.close_tab(index.get()))
                                     .child(
                                         text("×")
                                             .text_size(px(crate::ui::SECONDARY))
@@ -115,7 +116,7 @@ pub(crate) fn titlebar(
                         .hover(|style| style.bg(move || design::hover()))
                         .on_press({
                             let open = open.clone();
-                            move || open()
+                            move || open.go_repo_manager()
                         })
                         .child(crate::ui::icon::icon_view("plus", crate::ui::icon::IconSize::Button, design::text2)),
                 ),
@@ -163,8 +164,8 @@ pub(crate) fn titlebar(
                         .rounded(px(metrics::RADIUS_CONTROL))
                         .hover(|style| style.bg(move || design::hover()))
                         .on_press({
-                            let toggle = actions.toggle_language.clone();
-                            move || toggle()
+                            let toggle = settings.clone();
+                            move || toggle.toggle_language()
                         })
                         .child(
                             text(move || {
@@ -184,8 +185,8 @@ pub(crate) fn titlebar(
                     crate::ui::button::ButtonSize::Toolbar,
                     false,
                     {
-                        let go_settings = actions.go_settings.clone();
-                        move || go_settings()
+                        let go_settings = settings.clone();
+                        move || go_settings.go_settings()
                     },
                 )),
         );
@@ -197,19 +198,30 @@ pub(crate) fn toolbar(
     history_query: Signal<String>,
     change_count: impl Fn() -> u32 + 'static,
     mode: Signal<crate::Mode>,
-    set_mode: std::sync::Arc<dyn Fn(crate::Mode)>,
+    search: &SearchCommands,
     sync: std::sync::Arc<dyn Fn(crate::model::Sync) -> ()>,
-    refs: std::sync::Arc<dyn Fn() -> ()>,
-    agent_mode: std::sync::Arc<dyn Fn() -> ()>,
     panel_open: Signal<bool>,
 ) -> impl IntoElement {
-    let do_agent = agent_mode.clone();
-    let do_refs = refs.clone();
+    // 工具栏的分段与两个入口都改主区模式，因此直接调搜索功能的用例。
+    let do_agent = {
+        let search = search.clone();
+        move || search.set_mode_agent()
+    };
+    let do_refs = {
+        let search = search.clone();
+        move || search.set_mode_refs()
+    };
+    let set_history = {
+        let search = search.clone();
+        std::sync::Arc::new(move || search.set_mode(crate::Mode::History))
+    };
+    let set_changes = {
+        let search = search.clone();
+        std::sync::Arc::new(move || search.set_mode(crate::Mode::Changes))
+    };
     let do_fetch = sync.clone();
     let do_pull = sync.clone();
     let do_push = sync.clone();
-    let set_history = set_mode.clone();
-    let set_changes = set_mode.clone();
     return view()
         .w_full()
         .h(px(metrics::TOOLBAR_H))
@@ -283,14 +295,14 @@ pub(crate) fn toolbar(
                     language,
                     "shell.history",
                     Arc::new(move || mode.get() == crate::Mode::History),
-                    move || set_history(crate::Mode::History),
+                    move || set_history(),
                     None,
                 ))
                 .child(mode_tab(
                     language,
                     "shell.changes",
                     Arc::new(move || mode.get() == crate::Mode::Changes),
-                    move || set_changes(crate::Mode::Changes),
+                    move || set_changes(),
                     Some(Arc::new(move || change_count())),
                 )),
         )
@@ -320,14 +332,17 @@ pub(crate) fn toolbar(
 ///
 /// 只显示**真实检测到**的状态：`head` 来自 `git symbolic-ref` / `rev-parse`，
 /// 网络状态来自同步失败的输出归类；猜不出来就不显示，不制造假状态。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn state_banner(
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
     active: Signal<usize>,
-    actions: Actions,
+    session: crate::features::SessionHandle,
+    settings: crate::features::settings::commands::SettingsCommands,
     refs: &crate::features::refs::commands::RefsCommands,
     sync: &crate::features::sync::commands::SyncCommands,
     commit: &crate::features::commit::commands::CommitCommands,
+    search: &SearchCommands,
 ) -> impl IntoElement {
     let visible = move || {
         return tab.get().is_some_and(|tab| {
@@ -338,7 +353,12 @@ pub(crate) fn state_banner(
                 || tab.sync_fault.is_some()
         });
     };
-    let create_branch = actions.open_form_from.clone();
+    let create_branch: std::sync::Arc<dyn Fn(crate::screens::FormKind, String)> = {
+        let search = search.clone();
+        std::sync::Arc::new(
+            move |kind: crate::screens::FormKind, from: String| search.open_form_from(kind, from),
+        )
+    };
     // 「回到 main」「关闭同步失败横幅」已归引用管理与同步功能的用例。
     let checkout_main: std::sync::Arc<dyn Fn()> = {
         let refs = refs.clone();
@@ -348,7 +368,7 @@ pub(crate) fn state_banner(
         let commit = commit.clone();
         std::sync::Arc::new(move || commit.create_initial_commit())
     };
-    let open_settings = actions.go_settings.clone();
+    let open_settings = settings.clone();
     let dismiss: std::sync::Arc<dyn Fn()> = {
         let sync = sync.clone();
         std::sync::Arc::new(move || sync.clear_sync_fault())
@@ -370,10 +390,10 @@ pub(crate) fn state_banner(
             if current.problem != crate::model::RepoProblem::None {
                 let path = current.path.clone();
                 let not_found = current.problem == crate::model::RepoProblem::NotFound;
-                let locate = actions.locate_repo.clone();
-                let init_here = actions.init_here.clone();
-                let open_parent = actions.open_parent.clone();
-                let close = actions.close_tab.clone();
+                let locate = session.clone();
+                let init_here = session.clone();
+                let open_parent = session.clone();
+                let close = session.clone();
                 let language_for_text = language_now.clone();
                 // 打不开的仓库：图标 + 说明 + 三个补救动作。「打开上级目录」只在路径
                 // 找不到时才有意义，所以单独判一次 not_found。
@@ -397,9 +417,9 @@ pub(crate) fn state_banner(
                         false,
                         move || {
                             if not_found {
-                                locate()
+                                locate.locate_repo()
                             } else {
-                                init_here()
+                                init_here.init_here()
                             }
                         },
                     )
@@ -415,7 +435,7 @@ pub(crate) fn state_banner(
                             crate::ui::button::ButtonVariant::Secondary,
                             crate::ui::button::ButtonSize::Small,
                             false,
-                            move || open_parent(),
+                            move || open_parent.open_parent(),
                         )
                         .into_element(),
                     );
@@ -429,7 +449,7 @@ pub(crate) fn state_banner(
                         crate::ui::button::ButtonVariant::Secondary,
                         crate::ui::button::ButtonSize::Small,
                         false,
-                        move || close(active.get_untracked()),
+                        move || close.close_tab(active.get_untracked()),
                     )
                     .into_element(),
                 );
@@ -478,7 +498,7 @@ pub(crate) fn state_banner(
                             false,
                             {
                                 let open_settings = open_settings.clone();
-                                move || open_settings()
+                                move || open_settings.go_settings()
                             },
                         )
                         .into_element(),

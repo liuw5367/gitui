@@ -5,7 +5,8 @@
 //! 加入/移出对比集合（设计板 06）。
 //!
 //! 入口 `history` 收本功能的状态与用例；改写与创建初始提交走 `cmd.commit`，
-//! 跨功能的动作（检出、复制等）仍从 `Actions` 取。
+//! 拣选/回滚/重置走 `cmd.recovery`，新建分支/标签的表单与复制走 `features::search`
+//! 与 `shared::os`。
 
 use super::commands::HistoryCommands;
 use super::state::HistoryState;
@@ -16,7 +17,7 @@ use crate::filters::When;
 use crate::i18n;
 use crate::model::Tab;
 use crate::ui::badge::kbd;
-use crate::Actions;
+use crate::features::search::commands::SearchCommands;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
@@ -33,8 +34,7 @@ pub(crate) fn history(
     state: &HistoryState,
     cmd: &HistoryCommands,
     tab: Tab,
-    reset_request: Signal<Option<(String, git::ResetMode)>>,
-    actions: Actions,
+    search: &SearchCommands,
     refs: &RefsCommands,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
@@ -50,12 +50,14 @@ pub(crate) fn history(
         let cmd = cmd.clone();
         std::sync::Arc::new(move |index: usize| cmd.toggle_compare(index))
     };
-    let row_actions = actions.clone();
+    let row_search = search.clone();
     // 提交功能的用例：右键菜单里的「改写说明 / 合并提交」与多选操作栏的「合并」。
     let commit_for_rows = cmd.commit.clone();
     let commit_for_bar = cmd.commit.clone();
     // 右键菜单里的「检出 / 合并」来自引用管理，克隆一份进 `'static` 回调。
     let refs_for_menu = refs.clone();
+    // 拣选/回滚/重置归恢复功能，同样克隆一份进 `'static` 回调。
+    let recovery_for_menu = cmd.recovery.clone();
     // 空仓库与「筛选后无结果」要区分：前者要给创建初始提交的入口。
     let loading = tab.loading;
     let unborn = matches!(tab.head, git::HeadState::Unborn { .. });
@@ -234,7 +236,7 @@ pub(crate) fn history(
                             }
                             let select = select.clone();
                             let toggle_compare = toggle_compare.clone();
-                            let row_actions = row_actions.clone();
+                            let row_search = row_search.clone();
                             let squash_range = squash_range.clone();
                             let compare_for_rows = compare.clone();
                             // 表格：单列，整行交给 render 自绘——图线、引用徽章、对比
@@ -251,10 +253,11 @@ pub(crate) fn history(
                             let toggle_for_press = toggle_compare.clone();
                             let compare_mode_for_press = compare_mode;
                             let menu_select = select.clone();
-                            let menu_actions = row_actions.clone();
+                            let menu_search = row_search.clone();
                             let menu_commit = commit_for_rows.clone();
                             let menu_squash = squash_range.clone();
                             let menu_refs = refs_for_menu.clone();
+                            let menu_recovery = recovery_for_menu.clone();
                             let commits_for_press = rows_snapshot.clone();
                             let commits_for_menu = rows_snapshot.clone();
                             return crate::ui::table::table(crate::ui::table::TableSpec {
@@ -370,8 +373,8 @@ pub(crate) fn history(
                                             let select = menu_select.clone();
                                             std::sync::Arc::new(move || select(index))
                                         },
-                                        menu_actions.clone(),
-                                        reset_request,
+                                        &menu_search,
+                                        &menu_recovery,
                                         menu_squash.clone(),
                                         &menu_refs,
                                         &menu_commit,
@@ -740,8 +743,8 @@ fn commit_menu(
     language: Signal<SharedString>,
     commit: &domain::Commit,
     open: std::sync::Arc<dyn Fn()>,
-    actions: Actions,
-    reset_request: Signal<Option<(String, git::ResetMode)>>,
+    search: &SearchCommands,
+    recovery: &crate::features::recovery::commands::RecoveryCommands,
     squash_range: Option<(String, String, Vec<(String, String)>)>,
     refs: &RefsCommands,
     commit_cmd: &CommitCommands,
@@ -757,14 +760,21 @@ fn commit_menu(
         let refs = refs.clone();
         std::sync::Arc::new(move |sha: String| refs.checkout_commit(sha))
     };
-    let cherry = actions.cherry_pick.clone();
-    let revert = actions.revert_commit.clone();
+    let cherry: std::sync::Arc<dyn Fn(String)> = {
+        let recovery = recovery.clone();
+        std::sync::Arc::new(move |sha: String| recovery.cherry_pick(sha))
+    };
+    let revert: std::sync::Arc<dyn Fn(String)> = {
+        let recovery = recovery.clone();
+        std::sync::Arc::new(move |sha: String| recovery.revert_commit(sha))
+    };
     let merge: std::sync::Arc<dyn Fn(String)> = {
         let refs = refs.clone();
         std::sync::Arc::new(move |sha: String| refs.merge_reference(sha))
     };
-    let open_form = actions.open_form_from.clone();
-    let copy_text = actions.copy_text.clone();
+    // 表单与复制都要进 `'static` 回调，克隆一份本功能的句柄。
+    let search_for_form = search.clone();
+    let search_for_copy = search.clone();
     let open_reword = {
         let commit_cmd = commit_cmd.clone();
         std::sync::Arc::new(move |sha: String, short: String, summary: String| {
@@ -792,14 +802,14 @@ fn commit_menu(
             move || checkout(sha.clone())
         }),
         MenuItem::new(i18n::t(lang, "form.newBranch")).on_select({
-            let open_form = open_form.clone();
+            let search = search_for_form.clone();
             let sha = sha.clone();
-            move || open_form(crate::screens::FormKind::NewBranch, sha.clone())
+            move || search.open_form_from(crate::screens::FormKind::NewBranch, sha.clone())
         }),
         MenuItem::new(i18n::t(lang, "form.newTag")).on_select({
-            let open_form = open_form.clone();
+            let search = search_for_form.clone();
             let sha = sha.clone();
-            move || open_form(crate::screens::FormKind::NewTag, sha.clone())
+            move || search.open_form_from(crate::screens::FormKind::NewTag, sha.clone())
         }),
         MenuItem::separator(),
         MenuItem::new(i18n::t(lang, "menu.cherryPick")).on_select({
@@ -839,27 +849,42 @@ fn commit_menu(
             }),
         MenuItem::separator(),
         MenuItem::new(i18n::t(lang, "branch.resetSoft")).on_select({
+            let recovery = recovery.clone();
             let sha = sha.clone();
-            move || reset_request.set(Some((sha.clone(), git::ResetMode::Soft)))
+            move || recovery.reset_to(sha.clone(), git::ResetMode::Soft)
         }),
         MenuItem::new(i18n::t(lang, "branch.resetMixed")).on_select({
+            let recovery = recovery.clone();
             let sha = sha.clone();
-            move || reset_request.set(Some((sha.clone(), git::ResetMode::Mixed)))
+            move || recovery.reset_to(sha.clone(), git::ResetMode::Mixed)
         }),
         MenuItem::new(i18n::t(lang, "branch.resetHard")).on_select({
+            let recovery = recovery.clone();
             let sha = sha.clone();
-            move || reset_request.set(Some((sha.clone(), git::ResetMode::Hard)))
+            move || recovery.reset_to(sha.clone(), git::ResetMode::Hard)
         }),
         MenuItem::separator(),
         MenuItem::new(i18n::t(lang, "menu.copySha")).on_select({
-            let copy_text = copy_text.clone();
+            let search = search_for_copy.clone();
             let sha = sha.clone();
-            move || copy_text(sha.clone())
+            move || {
+                crate::shared::os::copy_text(
+                    search.session.notice,
+                    search.language,
+                    sha.clone(),
+                )
+            }
         }),
         MenuItem::new(i18n::t(lang, "menu.copyMessage")).on_select({
-            let copy_text = copy_text.clone();
+            let search = search_for_copy.clone();
             let summary = summary.to_string();
-            move || copy_text(summary.clone())
+            move || {
+                crate::shared::os::copy_text(
+                    search.session.notice,
+                    search.language,
+                    summary.clone(),
+                )
+            }
         }),
     ];
     items.shrink_to_fit();

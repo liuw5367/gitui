@@ -6,6 +6,7 @@
 use super::state::HistoryState;
 use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
+use crate::features::recovery::commands::RecoveryCommands;
 use crate::filters::When;
 use crate::model;
 use crate::shared::diff::DiffCommands;
@@ -19,6 +20,8 @@ pub(crate) struct HistoryCommands {
     /// 提交功能的用例：提交表右键菜单里的「改写说明」「合并提交」是提交功能的
     /// 入口，创建初始提交也复用它的流程。
     pub(crate) commit: CommitCommands,
+    /// 恢复功能的用例（批 B 搬入）：右键菜单的拣选/回滚/重置都经它走。
+    pub(crate) recovery: RecoveryCommands,
     /// 历史视图的入口（reflog 的「在历史中显示」要切回 History）。
     pub(crate) mode: Signal<crate::Mode>,
     /// 状态栏短提示（找不到提交时提示，而不是悄悄失败）。

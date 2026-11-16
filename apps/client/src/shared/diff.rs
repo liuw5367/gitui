@@ -7,6 +7,7 @@
 //! 选项与开关动作放在 `shared`：历史页与变更页共用同一份显示偏好。
 
 use crate::design::{self, metrics};
+use crate::features::SessionHandle;
 use crate::i18n;
 use domain::diff::Patch;
 use nsh_core::prelude::*;
@@ -33,13 +34,15 @@ pub(crate) struct DiffState {
     pub(crate) options: Signal<DiffOptions>,
 }
 
-/// diff 的用例：切换视图与显示开关、文件树的两项开关。
+/// diff 的用例：切换视图与显示开关、文件树的两项开关、导出当前补丁。
 #[derive(Clone)]
 pub(crate) struct DiffCommands {
     pub(crate) state: DiffState,
     /// 文件树两项开关写进设置，因此需要设置与它所在目录。
     pub(crate) settings: Signal<store::Settings>,
     pub(crate) store_dir: std::path::PathBuf,
+    /// 导出补丁要读当前标签页、写状态栏提示；这三样都在会话句柄里。
+    pub(crate) session: SessionHandle,
 }
 
 impl DiffCommands {
@@ -58,6 +61,42 @@ impl DiffCommands {
             _ => return,
         }
         self.state.options.set(next);
+    }
+
+    /// 导出当前补丁到用户选择的路径（原 `Actions::export_patch`）。
+    ///
+    /// 没有选择路径就不写，不落默认文件名；补丁为空时只提示，不弹保存框。
+    pub(crate) fn export_patch(&self) {
+        let tabs = self.session.tabs;
+        let active = self.session.active;
+        let notice = self.session.notice;
+        let language = self.session.language;
+        let list = tabs.get_untracked();
+        let Some(tab) = list.get(active.get_untracked()) else {
+            return;
+        };
+        let patch = tab.patch.raw.clone();
+        if patch.trim().is_empty() {
+            let lang = language.get_untracked();
+            crate::interactions::notify(notice, i18n::t(lang.as_str(), "diff.nothingToExport"));
+            return;
+        }
+        let lang = language.get_untracked();
+        let suggested = i18n::t(lang.as_str(), "diff.exportName");
+        let pending = pick_save_path(nsh_core::file_dialog::SaveDialog::new().file_name(suggested));
+        spawn(async move {
+            let Ok(Some(path)) = pending.await else {
+                return;
+            };
+            match std::fs::write(&path, patch.as_bytes()) {
+                Ok(()) => {
+                    crate::interactions::notify(notice, i18n::t(lang.as_str(), "diff.exported"));
+                }
+                Err(error) => {
+                    crate::interactions::notify(notice, error.to_string());
+                }
+            }
+        });
     }
 
     /// 设置文件树的整体开关（原 `set_file_tree`）。
@@ -88,7 +127,6 @@ pub(crate) fn diff(
     language: Signal<SharedString>,
     label: String,
     patch: Patch,
-    actions: crate::Actions,
 ) -> impl IntoElement {
     // 渲染与复制都要字节一致的原文，直接取解析时留下的 raw。
     let patch_for_view = patch.raw.clone();
@@ -110,8 +148,15 @@ pub(crate) fn diff(
         let cmd = cmd.clone();
         std::sync::Arc::new(move |split: bool| cmd.set_diff_split(split))
     };
-    let copy_patch = actions.copy_text.clone();
-    let export_patch = actions.export_patch.clone();
+    let copy_patch = {
+        let cmd = cmd.clone();
+        let notice = cmd.session.notice;
+        move |text: String| crate::shared::os::copy_text(notice, language, text)
+    };
+    let export_patch = {
+        let cmd = cmd.clone();
+        move || cmd.export_patch()
+    };
     return view()
         .w_full()
         .flex_1()

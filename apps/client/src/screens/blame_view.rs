@@ -20,7 +20,7 @@ const ROW_H: f32 = 18.0;
 pub(crate) fn blame_view(
     language: Signal<SharedString>,
     tab: Tab,
-    on_copy: std::sync::Arc<dyn Fn(String)>,
+    notice: Signal<Option<String>>,
 ) -> impl IntoElement {
     return view()
         .w_full()
@@ -28,7 +28,7 @@ pub(crate) fn blame_view(
         .min_h_0()
         .flex_row()
         .child(history_side(language, tab.clone()))
-        .child(pane(language, tab, on_copy));
+        .child(pane(language, tab, notice));
 }
 
 /// 左栏：文件历史列表。
@@ -99,11 +99,7 @@ fn history_side(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
 }
 
 /// 右栏：`.blamebar` + `.blamecode`。
-fn pane(
-    language: Signal<SharedString>,
-    tab: Tab,
-    on_copy: std::sync::Arc<dyn Fn(String)>,
-) -> impl IntoElement {
+fn pane(language: Signal<SharedString>, tab: Tab, notice: Signal<Option<String>>) -> impl IntoElement {
     let path = tab.blame_path.clone();
     let count = tab.blame.len();
     let copy_source = tab.blame_text();
@@ -195,7 +191,9 @@ fn pane(
                     ui::button::ButtonVariant::Secondary,
                     ui::button::ButtonSize::Small,
                     false,
-                    move || on_copy(copy_source.clone()),
+                    move || {
+                        crate::shared::os::copy_text(notice, language, copy_source.clone())
+                    },
                 )),
         )
         .child(

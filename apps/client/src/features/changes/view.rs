@@ -3,9 +3,8 @@
 //! 列表按「暂存 / 未暂存」两段呈现，段内按目录分组；行高 24、状态字母与 +/− 统计
 //! 来自设计稿。changelists 通过列表上方的选择器切换（本地存储，按仓库分组）。
 //!
-//! 入口 `changes` 收本功能的状态与用例；跨功能的动作（外部打开、复制等）仍从
-//! `Actions` 取，冲突文件的解决走 `cmd.merge`，语言取 `cmd.language`，因此参数
-//! 总数仍是 6 个。
+//! 入口 `changes` 收本功能的状态与用例；外部打开与复制走 `shared::os` 的自由函数
+//! （提示与文案取自 `cmd`），冲突文件的解决走 `cmd.merge`。
 
 use super::commands::ChangesCommands;
 use super::state::ChangesState;
@@ -13,7 +12,6 @@ use crate::widgets;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
 use domain::diff::DiffLineKind;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
@@ -28,7 +26,6 @@ pub(crate) fn changes(
     tab: Tab,
     group_by_directory: bool,
     tree: crate::model::TreeOptions,
-    actions: Actions,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let total = tab.changes.len();
@@ -106,7 +103,6 @@ pub(crate) fn changes(
             total,
             group_by_directory,
             tree,
-            actions,
         ))
         .child(
             view()
@@ -178,9 +174,28 @@ fn changes_list(
     total: usize,
     group_by_directory: bool,
     tree: crate::model::TreeOptions,
-    actions: Actions,
 ) -> impl IntoElement + use<> {
     let changelist_open = state.changelist_open;
+    // 外部打开与复制的提示文案取自本功能的用例，视图不再经 `Actions` 中转。
+    let notice = cmd.notice;
+    let copy_text: std::sync::Arc<dyn Fn(String)> = {
+        let language = language;
+        std::sync::Arc::new(move |text: String| {
+            crate::shared::os::copy_text(notice, language, text)
+        })
+    };
+    let open_editor: std::sync::Arc<dyn Fn(String)> = {
+        let language = language;
+        std::sync::Arc::new(move |path: String| {
+            crate::shared::os::open_editor(notice, language, path)
+        })
+    };
+    let reveal_path: std::sync::Arc<dyn Fn(String)> = {
+        let language = language;
+        std::sync::Arc::new(move |path: String| {
+            crate::shared::os::reveal_path(notice, language, path)
+        })
+    };
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let select_change: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
@@ -303,9 +318,9 @@ fn changes_list(
                     let rows_for_menu = rows.clone();
                     let toggle_for_menu = toggle_stage.clone();
                     let discard_for_menu = discard_change.clone();
-                    let copy_text = actions.copy_text.clone();
-                    let open_editor = actions.open_editor.clone();
-                    let reveal_path = actions.reveal_path.clone();
+                    let copy_text = copy_text.clone();
+                    let open_editor = open_editor.clone();
+                    let reveal_path = reveal_path.clone();
                     let move_to_changelist = move_to_changelist.clone();
                     let repo_root = tab.path.clone();
                     let changelists = tab.changelists.clone();

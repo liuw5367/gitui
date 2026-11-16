@@ -4,26 +4,30 @@
 //! Agent 只提议，执行走应用已有的 Git 动作（同步、提交、暂存），因此权限边界与
 //! 手动操作完全一致（见 `docs/AGENT-THREAT-MODEL.md`）。
 
+use super::commands::{action_key, AgentCommands};
+use super::state::AgentState;
 use crate::design;
 use crate::i18n;
-use crate::Actions;
-use agent::{Action as AgentAction, AuditEntry, Permission, Plan};
+use agent::{Action as AgentAction, AuditEntry, Permission};
 use nsh_core::prelude::*;
 
 /// 面板宽度（设计板 `.insp` 同宽）。
 pub(crate) const WIDTH: f32 = 320.0;
 
+/// 入口 `agent_panel`：计划、权限与审计都读 `AgentState`，动作走 `AgentCommands`。
 pub(crate) fn agent_panel(
+    state: &AgentState,
+    cmd: &AgentCommands,
     language: Signal<SharedString>,
-    plan: Signal<Option<Plan>>,
-    audit: Signal<Vec<AuditEntry>>,
-    policies: Signal<agent::Policies>,
-    actions: Actions,
-) -> impl IntoElement {
-    let make_plan = actions.propose_plan.clone();
-    let run_step = actions.run_agent_step.clone();
-    let remove_step = actions.remove_agent_step.clone();
-    let set_permission = actions.set_agent_permission.clone();
+) -> impl IntoElement + use<> {
+    let plan = state.plan;
+    let audit = state.audit;
+    let policies = state.policies;
+    // `dynamic` 是 `'static` 闭包，用例先克隆一份再进去。
+    let panel_cmd = cmd.clone();
+    let make_plan = cmd.clone();
+    // 权限区在 `dynamic` 之外，单独留一份，避免和动态块抢同一个克隆。
+    let permissions_cmd = cmd.clone();
     let now = store::now_unix();
     return view()
         .w(px(WIDTH))
@@ -43,7 +47,11 @@ pub(crate) fn agent_panel(
                 .gap(px(8.0))
                 .border_b_1()
                 .border_color(move || design::line())
-                .child(crate::ui::icon::icon_view("sparkle", crate::ui::icon::IconSize::Inline, design::accent))
+                .child(crate::ui::icon::icon_view(
+                    "sparkle",
+                    crate::ui::icon::IconSize::Inline,
+                    design::accent,
+                ))
                 .child(
                     text(move || i18n::t(language.get().as_str(), "agent.name"))
                         .text_size(px(crate::ui::BODY))
@@ -76,7 +84,6 @@ pub(crate) fn agent_panel(
                                 .text_color(move || design::text2()),
                         )
                         .child(crate::ui::button::button(
-                                   
                             move || {
                                 if plan.get().is_some() {
                                     i18n::t(language.get().as_str(), "agent.replan")
@@ -84,22 +91,26 @@ pub(crate) fn agent_panel(
                                     i18n::t(language.get().as_str(), "agent.plan")
                                 }
                             },
-                                   crate::ui::button::ButtonVariant::Primary,
-                                   crate::ui::button::ButtonSize::Regular,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Primary,
+                            crate::ui::button::ButtonSize::Regular,
+                            false,
+                            {
                                 let make_plan = make_plan.clone();
-                                move || make_plan()
+                                move || make_plan.propose_plan()
                             },
-                               ))
+                        ))
                         .child(dynamic(move || -> AnyElement {
                             match plan.get() {
                                 None => view().w_full().h(px(0.0)).into_element(),
                                 Some(plan) => {
+                                    let run_step = panel_cmd.clone();
+                                    let remove_step = panel_cmd.clone();
                                     let mut steps: Vec<AnyElement> = Vec::new();
                                     for (index, step) in plan.steps.iter().enumerate() {
                                         let run_step = run_step.clone();
-                                        let permission = policies.get_untracked().permission(step.action);
+                                        let remove_step = remove_step.clone();
+                                        let permission =
+                                            policies.get_untracked().permission(step.action);
                                         let denied = permission == Permission::Deny;
                                         let label = step.label.clone();
                                         steps.push(
@@ -147,7 +158,7 @@ pub(crate) fn agent_panel(
                                                         false,
                                                         {
                                                             let remove = remove_step.clone();
-                                                            move || remove(index)
+                                                            move || remove.remove_agent_step(index)
                                                         },
                                                     ),
                                                 )
@@ -169,14 +180,14 @@ pub(crate) fn agent_panel(
                                                         crate::ui::button::ButtonVariant::Secondary,
                                                         crate::ui::button::ButtonSize::Small,
                                                         denied,
-                                                        move || run_step(index),
-                                                    )
+                                                        move || run_step.run_agent_step(index),
+                                                    ),
                                                 )
                                                 .into_element(),
                                         );
                                     }
-                                    let approve = actions.run_plan.clone();
-                                    let add_step = actions.add_agent_step.clone();
+                                    let approve = panel_cmd.clone();
+                                    let add_step = panel_cmd.clone();
                                     return view()
                                         .w_full()
                                         .flex_col()
@@ -211,24 +222,23 @@ pub(crate) fn agent_panel(
                                                     },
                                                 ))
                                                 .child(crate::ui::button::button(
-                                                           
                                                     move || {
                                                         i18n::t(
                                                             language.get().as_str(),
                                                             "agent.approveRun",
                                                         )
                                                     },
-                                                           crate::ui::button::ButtonVariant::Primary,
-                                                           crate::ui::button::ButtonSize::Regular,
-                                                           false,
-                                                           move || approve(),
-                                                       )),
+                                                    crate::ui::button::ButtonVariant::Primary,
+                                                    crate::ui::button::ButtonSize::Regular,
+                                                    false,
+                                                    move || approve.run_plan(),
+                                                )),
                                         )
                                         .into_element();
                                 }
                             }
                         }))
-                        .child(permissions_block(language, policies, set_permission))
+                        .child(permissions_block(language, policies, permissions_cmd))
                         .child(audit_block(language, audit, now)),
                 )),
         );
@@ -237,7 +247,7 @@ pub(crate) fn agent_panel(
 fn permissions_block(
     language: Signal<SharedString>,
     policies: Signal<agent::Policies>,
-    set_permission: std::sync::Arc<dyn Fn(AgentAction, Permission)>,
+    cmd: AgentCommands,
 ) -> impl IntoElement {
     let mut rows: Vec<AnyElement> = Vec::new();
     for action in [
@@ -251,7 +261,7 @@ fn permissions_block(
         AgentAction::ReadFiles,
         AgentAction::ForcePush,
     ] {
-        let set_permission = set_permission.clone();
+        let cmd = cmd.clone();
         rows.push(
             view()
                 .w_full()
@@ -283,17 +293,14 @@ fn permissions_block(
                     crate::ui::button::ButtonVariant::Secondary,
                     crate::ui::button::ButtonSize::Small,
                     false,
-                    {
-                        let set_permission = set_permission.clone();
-                        move || {
-                            // 点一下循环：Ask → Allow → Deny → Ask。
-                            let next = match policies.get_untracked().permission(action) {
-                                Permission::Ask => Permission::Allow,
-                                Permission::Allow => Permission::Deny,
-                                Permission::Deny => Permission::Ask,
-                            };
-                            set_permission(action, next);
-                        }
+                    move || {
+                        // 点一下循环：Ask → Allow → Deny → Ask。
+                        let next = match policies.get_untracked().permission(action) {
+                            Permission::Ask => Permission::Allow,
+                            Permission::Allow => Permission::Deny,
+                            Permission::Deny => Permission::Ask,
+                        };
+                        cmd.set_agent_permission(action, next);
                     },
                 ))
                 .into_element(),
@@ -372,7 +379,6 @@ fn audit_block(
                         .child(
                             text(action)
                                 .text_size(px(crate::ui::CODE))
-                                
                                 .line_height(px(12.0))
                                 .text_color(move || design::text2()),
                         )
@@ -386,11 +392,7 @@ fn audit_block(
                         )
                         .child(
                             text(move || {
-                                crate::dates::format(
-                                    language.get().as_str(),
-                                    timestamp,
-                                    now,
-                                )
+                                crate::dates::format(language.get().as_str(), timestamp, now)
                             })
                             .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text3()),
@@ -405,30 +407,16 @@ fn audit_block(
 /// 「补一步」菜单：每个可执行动作一项，选中即往计划末尾追加。
 fn step_menu(
     language: Signal<SharedString>,
-    add_step: std::sync::Arc<dyn Fn(&'static str)>,
+    cmd: AgentCommands,
 ) -> Vec<nsh_core::element::desktop::MenuItem> {
     let lang = language.get_untracked();
     return AgentAction::ALL
         .into_iter()
         .map(|action| {
-            let add_step = add_step.clone();
+            let add_step = cmd.clone();
             let id = action.id();
             nsh_core::element::desktop::MenuItem::new(i18n::t(lang.as_str(), action_key(action)))
-                .on_select(move || add_step(id))
+                .on_select(move || add_step.add_agent_step(id))
         })
         .collect();
-}
-
-pub(crate) fn action_key(action: AgentAction) -> &'static str {
-    return match action {
-        AgentAction::StageAll => "agent.action.stageAll",
-        AgentAction::Commit => "agent.action.commit",
-        AgentAction::UnstageAll => "agent.action.unstageAll",
-        AgentAction::Fetch => "agent.action.fetch",
-        AgentAction::Pull => "agent.action.pull",
-        AgentAction::Push => "agent.action.push",
-        AgentAction::Discard => "agent.action.discard",
-        AgentAction::ReadFiles => "agent.action.readFiles",
-        AgentAction::ForcePush => "agent.action.forcePush",
-    };
 }

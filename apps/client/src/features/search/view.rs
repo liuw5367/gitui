@@ -3,6 +3,8 @@
 //! 搜索同时匹配命令文案与仓库路径；↑↓ 在整张结果表里移动，↵ 执行命中的那一行。
 //! 渲染与键盘导航共用 [`rows`]，避免「高亮一行、执行另一行」。
 
+use super::commands::SearchCommands;
+use super::state::SearchState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use nsh_core::prelude::*;
@@ -11,7 +13,7 @@ use nsh_core::prelude::*;
 const WIDTH: f32 = 520.0;
 pub(crate) const MAX_ROWS: usize = 9;
 
-/// 面板里的命令（顺序即显示顺序）。每条的 `id` 由 `Actions::run_command` 处理；
+/// 面板里的命令（顺序即显示顺序）。每条的 `id` 由 `SearchCommands::run_command` 处理；
 /// 未接入的动作不列在这里。
 pub(crate) const COMMANDS: [(&str, &str, &str); 15] = [
     ("open", "command.openRepo", "⌘O"),
@@ -109,18 +111,19 @@ pub(crate) fn rows(
     return rows;
 }
 
-/// 面板宽度内的结果表。`open_repo` 打开一个仓库行（已打开的切过去）。
-#[allow(clippy::too_many_arguments)]
+/// 面板宽度内的结果表。面板按窗口居中，点遮罩关闭。
+///
+/// `open_repos` / `recent` 由调用方从会话里取，保持本函数不直接读取标签页之外的
+/// 状态（渲染与键盘导航因此能用同一份结果）。
 pub(crate) fn palette(
-    language: Signal<SharedString>,
-    query: Signal<String>,
+    state: &SearchState,
+    cmd: &SearchCommands,
     open_repos: Vec<String>,
     recent: Vec<String>,
-    on_run: std::sync::Arc<dyn Fn(&'static str)>,
-    on_open_repo: std::sync::Arc<dyn Fn(String)>,
-    open_signal: Signal<bool>,
-    selected: Signal<usize>,
 ) -> impl IntoElement {
+    let language = cmd.language;
+    let query = state.palette_query;
+    let selected = state.palette_selected;
     let language_now = language.get_untracked();
     let language_for_empty = language_now.clone();
     let result = rows(
@@ -130,6 +133,15 @@ pub(crate) fn palette(
         &recent,
     );
     let highlighted = selected.get().min(result.len().saturating_sub(1));
+    let run: std::sync::Arc<dyn Fn(&'static str)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |id: &'static str| cmd.run_command(id))
+    };
+    let open_repo: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |path: String| cmd.session.open_path(path))
+    };
+    let open_signal = state.palette_open;
     let mut children: Vec<AnyElement> = Vec::new();
     let mut last_group = "";
     for (index, row) in result.iter().enumerate() {
@@ -150,10 +162,10 @@ pub(crate) fn palette(
                             let language_now = language_now.clone();
                             move || i18n::t(language_now.as_str(), group)
                         })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .font_weight(FontWeight(600))
-                            .text_color(move || design::text3()),
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
+                        .font_weight(FontWeight(600))
+                        .text_color(move || design::text3()),
                     )
                     .into_element(),
             );
@@ -170,7 +182,7 @@ pub(crate) fn palette(
                 } else {
                     path.clone()
                 };
-                let run = on_open_repo.clone();
+                let run = open_repo.clone();
                 let open_signal = open_signal;
                 crate::ui::row::row(
                     move || label.clone(),
@@ -204,7 +216,7 @@ pub(crate) fn palette(
                     .into_iter()
                     .find(|command| command.id == *id)
                     .expect("命中结果里的命令一定存在");
-                let run = on_run.clone();
+                let run = run.clone();
                 let id = command.id;
                 let label = i18n::t(language_now.as_str(), command.key);
                 let shortcut = command.shortcut;
@@ -212,7 +224,14 @@ pub(crate) fn palette(
                 crate::ui::row::row(
                     move || label.clone(),
                     None,
-                    Some(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3).into_element()),
+                    Some(
+                        crate::ui::icon::icon_view(
+                            "search",
+                            crate::ui::icon::IconSize::Button,
+                            design::text3,
+                        )
+                        .into_element(),
+                    ),
                     vec![
                         text(shortcut)
                             .text_size(px(crate::ui::SECONDARY))
@@ -247,44 +266,54 @@ pub(crate) fn palette(
         );
     }
 
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(100)
-        .items_center()
-        .bg(move || design::token("overlay"))
-        .on_press(move || open_signal.set(false))
-        .child(
-            view()
-                .w(px(WIDTH))
-                .mt(px(-120.0))
-                .p(px(6.0))
-                .flex_col()
-                .gap(px(3.0))
-                .rounded(px(metrics::RADIUS_PANEL))
-                .border_1()
-                .border_color(move || design::line())
-                .bg(move || design::token("popover"))
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(30.0))
-                        .px(px(8.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.0))
-                        .child(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3))
-                        .child(
-                            crate::ui::text_input::text_input(
+    // 遮罩与「点外面关闭」交给 ui 层（已迁移页面不直接写按压回调）。内层仍按
+    // 原版排布：铺满、居中、面板上移 120。
+    let dismiss = {
+        let cmd = cmd.clone();
+        move || cmd.state.palette_open.set(false)
+    };
+    return crate::ui::dialog::scrim(
+        move || true,
+        100,
+        view()
+            .w_full()
+            .h_full()
+            .items_center()
+            .child(
+                view()
+                    .w(px(WIDTH))
+                    .mt(px(-120.0))
+                    .p(px(6.0))
+                    .flex_col()
+                    .gap(px(3.0))
+                    .rounded(px(metrics::RADIUS_PANEL))
+                    .border_1()
+                    .border_color(move || design::line())
+                    .bg(move || design::token("popover"))
+                    .child(
+                        view()
+                            .w_full()
+                            .h(px(30.0))
+                            .px(px(8.0))
+                            .flex_row()
+                            .items_center()
+                            .gap(px(6.0))
+                            .child(crate::ui::icon::icon_view(
+                                "search",
+                                crate::ui::icon::IconSize::Button,
+                                design::text3,
+                            ))
+                            .child(crate::ui::text_input::text_input(
                                 query,
                                 move || i18n::t(language.get().as_str(), "palette.placeholder"),
                                 false,
                                 move |text: &str| query.set(text.to_string()),
-                            ),
-                        ),
-                )
-                .child(children),
-        );
+                            )),
+                    )
+                    .child(children),
+            ),
+        dismiss,
+    );
 }
 
 #[cfg(test)]

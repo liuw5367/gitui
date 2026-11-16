@@ -156,11 +156,16 @@ mod guard_tests {
 
     /// 已迁移的页面文件（相对 `src/`）。P0 只有 ui 层自己。
     const MIGRATED: &[&str] = &[
-        "screens/welcome.rs",
-        "screens/settings.rs",
+        "features/welcome/view.rs",
+        "features/settings/view.rs",
+        "features/settings/general.rs",
+        "features/settings/git.rs",
+        "features/settings/shortcuts.rs",
+        "features/settings/about.rs",
+        "features/settings/agent.rs",
         "features/refs/view.rs",
         "features/commit/view.rs",
-        "workspace/agent.rs",
+        "features/agent/view.rs",
         "features/merge/view.rs",
         "features/sync/view.rs",
         "screens/form_dialog.rs",
@@ -169,6 +174,7 @@ mod guard_tests {
         "features/history/inspector.rs",
         "features/changes/view.rs",
         "features/history/view.rs",
+        "features/search/view.rs",
         "screens/blame_view.rs",
         "screens/workspace.rs",
     ];

@@ -6,11 +6,12 @@
 use super::state::RefsState;
 use crate::features::SessionHandle;
 use crate::features::history::commands::HistoryCommands;
+use crate::features::recovery::commands::RecoveryCommands;
+use crate::features::search::commands::SearchCommands;
 use crate::features::sync::commands::SyncCommands;
 use crate::model;
 use crate::screens;
 use nsh_core::prelude::*;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct RefsCommands {
@@ -22,11 +23,11 @@ pub(crate) struct RefsCommands {
     pub(crate) notice: Signal<Option<String>>,
     /// 提交历史的用例：Refs 表里的「比较」与「在历史中显示」是历史功能的入口。
     pub(crate) history: HistoryCommands,
-    /// 历史操作入口（`checkout` / `cherry` / `revert`）：检出提交要复用它的确认流程。
-    /// `cherry` 与 `revert` 仍归 recovery（批 B），届时整段随它们一起搬走。
-    pub(crate) history_action: Arc<dyn Fn(&'static str, String)>,
-    /// 表单弹层的状态：身份编辑要预填当前仓库级 user.name / user.email。
-    pub(crate) form_state: Signal<Option<screens::FormState>>,
+    /// 恢复功能的用例（批 B 搬入）：refs 只保留「切到某个提交」这个入口，确认
+    /// 流程与拣选/回滚共用 recovery 的那一份，refs 不再自带闭包。
+    pub(crate) recovery: RecoveryCommands,
+    /// 表单浮层归搜索功能：身份编辑要预填当前仓库级 user.name / user.email。
+    pub(crate) search: SearchCommands,
     /// 同步功能的用例：Refs 表里远程行的「取回」打开同步面板。
     pub(crate) sync: SyncCommands,
 }
@@ -314,7 +315,7 @@ impl RefsCommands {
 
     /// 切到某个提交（原 `checkout_commit`，detached，先确认）。
     pub(crate) fn checkout_commit(&self, sha: String) {
-        (self.history_action)("checkout", sha);
+        self.recovery.checkout_commit(sha);
     }
 
     /// 游离头时回到 main/master（原 `checkout_default_branch`）。
@@ -344,16 +345,13 @@ impl RefsCommands {
     pub(crate) fn open_identity(&self) {
         let tabs = self.session.tabs;
         let active = self.session.active;
-        let form_state = self.form_state;
         let list = tabs.get_untracked();
         let Some(tab) = list.get(active.get_untracked()) else {
             return;
         };
         let (name, email) = model::identity(tab);
-        let mut state = screens::FormState::new(screens::FormKind::Identity);
-        state.first = name;
-        state.second = email;
-        form_state.set(Some(state));
+        self.search
+            .open_form_prefilled(screens::FormKind::Identity, name, email);
     }
 
     /// 清掉仓库级身份，回到全局配置（原 `clear_identity`）。

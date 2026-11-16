@@ -6,14 +6,14 @@
 //! - Blame：选中文件的逐行归属，同时列出该文件的历史。
 //!
 //! 宽度 320，与设计稿 `.insp` 一致。入口 `inspector` 收本功能的状态与用例；
-//! 跨功能的动作（复制、编辑器打开、拣选/回滚）仍从 `Actions` 取。
+//! 拣选/回滚走 `cmd.recovery`，复制与编辑器打开走 `shared::os` 的自由函数。
 
 use super::commands::HistoryCommands;
 use super::state::HistoryState;
 use crate::design;
+use crate::features::recovery::commands::RecoveryCommands;
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
 use nsh_core::prelude::*;
 
 /// 面板宽度（设计板 `.insp`）。
@@ -35,7 +35,6 @@ pub(crate) fn inspector(
     tab: Tab,
     language: Signal<SharedString>,
     selected_tab: Signal<InspectorTab>,
-    actions: Actions,
 ) -> impl IntoElement + use<> {
     let _ = state;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
@@ -62,7 +61,10 @@ pub(crate) fn inspector(
         .and_then(|commit| commit.date.parse::<i64>().ok())
         .unwrap_or(0);
     let tab_for_body = tab.clone();
-    let actions_for_tab = actions.clone();
+    // 复制与外部打开的提示走本功能的用例（`shared::os` 的自由函数）。
+    let notice = cmd.notice;
+    // 拣选/回滚的用例先克隆一份：`dynamic` 的闭包不能借用 `cmd`。
+    let recovery_for_body = cmd.recovery.clone();
     // 页脚两个按钮作用于当前选中的文件（相对仓库根）。
     let selected_path = tab
         .selected_file
@@ -176,7 +178,13 @@ pub(crate) fn inspector(
                     files_body(language, tab_for_body.clone(), select_file.clone()).into_element()
                 }
                 InspectorTab::Info => {
-                    info_body(language, tab_for_body.clone(), actions_for_tab.clone()).into_element()
+                    info_body(
+                        language,
+                        tab_for_body.clone(),
+                        notice,
+                        recovery_for_body.clone(),
+                    )
+                    .into_element()
                 }
                 InspectorTab::Blame => blame_body(language, tab_for_body.clone()).into_element(),
             }
@@ -201,12 +209,15 @@ pub(crate) fn inspector(
                            crate::ui::button::ButtonSize::Small,
                            false,
                            {
-                        let copy_text = actions.copy_text.clone();
                         let root = tab.path.clone();
                         let relative = selected_path.clone();
                         move || {
                             if let Some(relative) = relative.clone() {
-                                copy_text(format!("{}/{}", root.trim_end_matches('/'), relative));
+                                crate::shared::os::copy_text(
+                                    notice,
+                                    language,
+                                    format!("{}/{}", root.trim_end_matches('/'), relative),
+                                );
                             }
                         }
                     },
@@ -222,12 +233,15 @@ pub(crate) fn inspector(
                            crate::ui::button::ButtonSize::Small,
                            false,
                            {
-                        let open_editor = actions.open_editor.clone();
                         let root = tab.path.clone();
                         let relative = selected_path.clone();
                         move || {
                             if let Some(relative) = relative.clone() {
-                                open_editor(format!("{}/{}", root.trim_end_matches('/'), relative));
+                                crate::shared::os::open_editor(
+                                    notice,
+                                    language,
+                                    format!("{}/{}", root.trim_end_matches('/'), relative),
+                                );
                             }
                         }
                     },
@@ -307,7 +321,12 @@ fn files_body(
     .into_element();
 }
 
-fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyElement {
+fn info_body(
+    language: Signal<SharedString>,
+    tab: Tab,
+    notice: Signal<Option<String>>,
+    recovery: RecoveryCommands,
+) -> AnyElement {
     let sha_for_actions = tab
         .selected_commit()
         .map(|commit| commit.sha.clone())
@@ -416,9 +435,14 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
                                    crate::ui::button::ButtonSize::Small,
                                    false,
                                    {
-                                let copy_text = actions.copy_text.clone();
                                 let sha = sha_for_actions.clone();
-                                move || copy_text(sha.clone())
+                                move || {
+                                    crate::shared::os::copy_text(
+                                        notice,
+                                        language,
+                                        sha.clone(),
+                                    )
+                                }
                             },
                                ))
                         .child(crate::ui::button::button(
@@ -431,9 +455,9 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
                                    crate::ui::button::ButtonSize::Small,
                                    false,
                                    {
-                                let cherry_pick = actions.cherry_pick.clone();
+                                let cherry_pick = recovery.clone();
                                 let sha = sha_for_actions.clone();
-                                move || cherry_pick(sha.clone())
+                                move || cherry_pick.cherry_pick(sha.clone())
                             },
                                ))
                         .child(crate::ui::button::button(
@@ -446,9 +470,9 @@ fn info_body(language: Signal<SharedString>, tab: Tab, actions: Actions) -> AnyE
                                    crate::ui::button::ButtonSize::Small,
                                    false,
                                    {
-                                let revert_commit = actions.revert_commit.clone();
+                                let revert_commit = recovery.clone();
                                 let sha = sha_for_actions.clone();
-                                move || revert_commit(sha.clone())
+                                move || revert_commit.revert_commit(sha.clone())
                             },
                                )),
                 ),

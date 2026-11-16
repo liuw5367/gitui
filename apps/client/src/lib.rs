@@ -22,14 +22,13 @@ mod shortcuts;
 #[allow(dead_code)]
 mod ui;
 mod widgets;
-mod workspace;
 
 use nsh_base::theme_overrides;
 use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
 
-use nsh_core::element::desktop::{main_window, title_bar};
 use nsh_core::desktop::MenuRole;
 use nsh_core::element::desktop::MenuItem;
+use nsh_core::element::desktop::{main_window, title_bar};
 use nsh_core::element::set_tokens;
 use nsh_core::prelude::*;
 use std::sync::Arc;
@@ -61,94 +60,6 @@ pub(crate) enum Mode {
     Blame,
 }
 
-/// 仓库管理页的三种入口（设计板 03 的分段控件）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RepoForm {
-    Open,
-    Clone,
-    Init,
-}
-
-/// 组件间共享的动作集合。统一用 `Arc<dyn Fn>` 传递，避免把十几个信号逐个
-/// 穿到子视图里。
-#[derive(Clone)]
-pub(crate) struct Actions {
-    pub(crate) open_path: Arc<dyn Fn(String)>,
-    pub(crate) choose_folder: Arc<dyn Fn()>,
-    pub(crate) close_tab: Arc<dyn Fn(usize)>,
-    pub(crate) activate_tab: Arc<dyn Fn(usize)>,
-    pub(crate) set_mode: Arc<dyn Fn(Mode)>,
-    /// 把当前 diff 导出成 patch 文件。
-    pub(crate) export_patch: Arc<dyn Fn()>,
-    /// 在当前标签页目录里初始化仓库。
-    pub(crate) init_here: Arc<dyn Fn()>,
-    /// 重新定位仓库（缺失仓库的 Locate…）。
-    pub(crate) locate_repo: Arc<dyn Fn()>,
-    /// 打开当前路径的上一级（不是仓库时的 Open parent）。
-    pub(crate) open_parent: Arc<dyn Fn()>,
-    pub(crate) run_command: Arc<dyn Fn(&'static str)>,
-    pub(crate) set_theme: Arc<dyn Fn(ThemeMode)>,
-    pub(crate) go_settings: Arc<dyn Fn()>,
-    pub(crate) undo_reflog: Arc<dyn Fn(usize)>,
-    pub(crate) set_mode_refs: Arc<dyn Fn()>,
-    pub(crate) set_mode_agent: Arc<dyn Fn()>,
-    pub(crate) propose_plan: Arc<dyn Fn()>,
-    pub(crate) run_agent_step: Arc<dyn Fn(usize)>,
-    /// 删掉计划里的一步（计划编辑）。
-    pub(crate) remove_agent_step: Arc<dyn Fn(usize)>,
-    /// 往计划末尾补一步（参数是动作 id）。
-    pub(crate) add_agent_step: Arc<dyn Fn(&'static str)>,
-    /// 批准确认后按顺序执行计划里可执行的步骤。
-    pub(crate) run_plan: Arc<dyn Fn()>,
-    pub(crate) set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)>,
-    /// 设置 Agent 的自动化程度。
-    pub(crate) set_automation: Arc<dyn Fn(agent::Automation)>,
-    /// 设置自动执行前的预览时长。
-    pub(crate) set_review_millis: Arc<dyn Fn(u32)>,
-    /// 切换某个分支的受保护状态。
-    pub(crate) toggle_protected_branch: Arc<dyn Fn(String)>,
-    pub(crate) open_form: Arc<dyn Fn(screens::FormKind)>,
-    /// 拣选提交（先确认）。
-    pub(crate) cherry_pick: Arc<dyn Fn(String)>,
-    /// 反向提交（先确认）。
-    pub(crate) revert_commit: Arc<dyn Fn(String)>,
-    /// 打开表单并把第二个字段预填（从某个提交新建分支/标签）。
-    pub(crate) open_form_from: Arc<dyn Fn(screens::FormKind, String)>,
-    pub(crate) reset_to: Arc<dyn Fn(String, git::ResetMode)>,
-    pub(crate) clone_repository: Arc<dyn Fn()>,
-    /// 取消正在进行的克隆。
-    pub(crate) cancel_clone: Arc<dyn Fn()>,
-    pub(crate) init_repository: Arc<dyn Fn()>,
-    pub(crate) toggle_language: Arc<dyn Fn()>,
-    pub(crate) go_welcome: Arc<dyn Fn()>,
-    pub(crate) go_repo_manager: Arc<dyn Fn()>,
-    pub(crate) set_repo_form: Arc<dyn Fn(RepoForm)>,
-    /// 复制文本到剪贴板（成功后状态栏提示）。
-    pub(crate) copy_text: Arc<dyn Fn(String)>,
-    /// 用系统默认程序打开路径。
-    pub(crate) open_editor: Arc<dyn Fn(String)>,
-    /// 在 Finder 中显示路径。
-    pub(crate) reveal_path: Arc<dyn Fn(String)>,
-    /// 用浏览器打开链接。
-    pub(crate) open_browser: Arc<dyn Fn(String)>,
-    /// 扫描已配置目录里的仓库并加入最近列表。
-    pub(crate) add_found_repos: Arc<dyn Fn()>,
-    /// 选择 Git 可执行文件。
-    pub(crate) choose_git: Arc<dyn Fn()>,
-    /// 自动探测 Git。
-    pub(crate) detect_git: Arc<dyn Fn()>,
-    /// 切换「使用 PATH 里的 git」。
-    pub(crate) toggle_git_path: Arc<dyn Fn()>,
-    /// 设置启动方式：true = 恢复上次会话，false = 显示欢迎页。
-    pub(crate) set_launch_restore: Arc<dyn Fn(bool)>,
-    /// 切换日期显示方式。
-    pub(crate) set_date_style: Arc<dyn Fn(crate::i18n::DateStyle)>,
-    /// 设置自定义日期 pattern。
-    pub(crate) set_date_pattern: Arc<dyn Fn(String)>,
-    /// 设置更新检查方式（`auto` / `manual` / `never`）。
-    pub(crate) set_update_mode: Arc<dyn Fn(String)>,
-}
-
 /// 应用根组件。
 #[component]
 pub fn App() -> impl IntoElement {
@@ -166,8 +77,7 @@ pub fn App() -> impl IntoElement {
 
     let store_dir = store::default_dir(brand::STORAGE_DIR);
     let language = signal(SharedString::from(
-        store::load_language(&store_dir)
-            .unwrap_or_else(|| i18n::DEFAULT_LANGUAGE.to_string()),
+        store::load_language(&store_dir).unwrap_or_else(|| i18n::DEFAULT_LANGUAGE.to_string()),
     ));
 
     // 历史筛选：关键字在工具栏搜索框，其余条件在 History 的筛选浮层。
@@ -209,7 +119,6 @@ pub fn App() -> impl IntoElement {
     } else {
         None
     });
-    let reset_request = signal(Option::<(String, git::ResetMode)>::None);
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
     // diff 的并排/合并切换（设计板 04）。
@@ -235,7 +144,9 @@ pub fn App() -> impl IntoElement {
     // 验收开关：`GITUI_SYNC=1` 启动即打开同步面板，用于截图核对弹层外观
     // （遮罩深浅、圆角、阴影、关闭行为）。与 GITUI_GALLERY 同思路。
     let sync_state = signal(if acceptance::flag("GITUI_SYNC") {
-        Some(features::sync::state::SyncDialogState::new(crate::model::Sync::Fetch))
+        Some(features::sync::state::SyncDialogState::new(
+            crate::model::Sync::Fetch,
+        ))
     } else {
         None
     });
@@ -277,7 +188,7 @@ pub fn App() -> impl IntoElement {
             })
             .collect::<Vec<_>>(),
     );
-    let settings_section = signal(screens::SettingsSection::General);
+    let settings_section = signal(features::settings::state::Section::General);
     let palette_query = signal(String::new());
     let theme_mode = signal(ThemeMode::from_id(
         store::load_appearance(&store_dir)
@@ -331,9 +242,9 @@ pub fn App() -> impl IntoElement {
     let clone_url = signal(String::new());
     let clone_destination = signal(String::new());
     // Clone 的额外选项（设计板 03）合成一个结构，避免把四个信号串到窗口里。
-    let clone_options = signal(screens::CloneOptions::default());
+    let clone_options = signal(features::welcome::state::CloneOptions::default());
     // Init 的附带文件（设计板 03）。
-    let init_files = signal(screens::InitFiles::default());
+    let init_files = signal(features::welcome::state::InitFiles::default());
     let clone_error = signal(Option::<String>::None);
     let cloning = signal(false);
     // 克隆进度（git 的 stderr 最后一行）与取消标志。
@@ -341,7 +252,7 @@ pub fn App() -> impl IntoElement {
     let clone_cancel: std::sync::Arc<std::sync::atomic::AtomicBool> =
         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let init_path = signal(String::new());
-    let repo_form = signal(RepoForm::Open);
+    let repo_form = signal(features::welcome::state::RepoForm::Open);
 
     let current_filter: Arc<dyn Fn() -> LogFilter> = {
         let history_query = history_query;
@@ -357,6 +268,27 @@ pub fn App() -> impl IntoElement {
                 now,
             );
         })
+    };
+
+    // 会话动作（打开仓库、返回欢迎页、重新定位、关页签等）收进 SessionHandle。
+    let session = features::SessionHandle {
+        tabs,
+        active,
+        screen,
+        welcome_open,
+        recent,
+        store_dir: store_dir.clone(),
+        filter: current_filter.clone(),
+        notice,
+        language,
+    };
+
+    // 恢复操作（P3 批 B）：撤销 reflog、重置、拣选与回滚收进 RecoveryCommands。
+    // 没有独立视图，入口在 refs 的 reflog 表与 history 的提交右键菜单。
+    let recovery_commands = features::recovery::commands::RecoveryCommands {
+        session: session.clone(),
+        language,
+        notice,
     };
 
     // 提交历史（P2 竖切的第一片）：信号收进 HistoryState，用例收进 HistoryCommands。
@@ -377,6 +309,7 @@ pub fn App() -> impl IntoElement {
         },
         settings: settings_state,
         store_dir: store_dir.clone(),
+        session: session.clone(),
     };
     // 冲突解决（P3 批 A）：结果区与 base 显隐收进 MergeState，用例收进
     // MergeCommands；变更列表的冲突行要用它，所以先于 ChangesCommands 建。
@@ -385,7 +318,7 @@ pub fn App() -> impl IntoElement {
             result: conflict_result,
             base_open: conflict_base_open,
         },
-        session: features::SessionHandle { tabs, active },
+        session: session.clone(),
         language,
         notice,
     };
@@ -397,15 +330,31 @@ pub fn App() -> impl IntoElement {
             description: commit_description,
             rewrite: rewrite_state,
         },
-        session: features::SessionHandle { tabs, active },
+        session: session.clone(),
         language,
         notice,
     };
+    // Agent（P3 批 B）：计划、权限、运行设置与审计收进 AgentState，用例收进
+    // AgentCommands；设置页的 Agent 分区与提交面板的「请 Agent 起草」都用它。
+    let agent_commands = features::agent::commands::AgentCommands {
+        state: features::agent::state::AgentState {
+            plan: agent_plan,
+            policies: agent_policies,
+            settings: agent_settings,
+            audit: agent_audit,
+        },
+        session: session.clone(),
+        language,
+        notice,
+        store_dir: store_dir.clone(),
+        commit_summary: commit_commands.state.summary,
+    };
     let history_commands = features::history::commands::HistoryCommands {
         state: history_state,
-        session: features::SessionHandle { tabs, active },
-        diff: diff_commands,
+        session: session.clone(),
+        diff: diff_commands.clone(),
         commit: commit_commands.clone(),
+        recovery: recovery_commands.clone(),
         mode,
         notice,
         language,
@@ -416,1462 +365,111 @@ pub fn App() -> impl IntoElement {
     let changes_state = features::changes::state::ChangesState { changelist_open };
     let changes_commands = features::changes::commands::ChangesCommands {
         state: changes_state,
-        session: features::SessionHandle { tabs, active },
+        session: session.clone(),
         language,
         notice,
         merge: merge_commands.clone(),
     };
 
-    let open_path: Arc<dyn Fn(String)> = {
-        let welcome_open = welcome_open;
-        let tabs = tabs;
-        let active = active;
-        let recent = recent;
-        let screen = screen;
-        let store_dir = store_dir.clone();
-        let current_filter = current_filter.clone();
-        Arc::new(move |path: String| {
-            // 先插入一个「加载中」的占位标签页，再在后台读仓库：
-            // 大仓库的 `git log`/`status` 不再卡住界面，用户也能看到骨架。
-            let filter = current_filter();
-            let mut list = tabs.get_untracked();
-            let existing = list
-                .iter()
-                .position(|candidate| candidate.path == path.as_str());
-            match existing {
-                Some(index) => {
-                    list[index].loading = true;
-                    active.set(index);
-                }
-                None => {
-                    list.push(model::placeholder_tab(path.as_str(), &filter));
-                    active.set(list.len() - 1);
-                }
-            }
-            tabs.set(list);
-            store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
-            recent.set(store::load_recent(&store_dir));
-            screen.set(Screen::Workspace);
-            // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
-            welcome_open.set(false);
-            main_window().focus();
-            persist(&store_dir, active, tabs);
-
-            let path_for_load = path.clone();
-            spawn(async move {
-                let loaded = model::load_tab(path_for_load.as_str(), &filter);
-                let mut list = tabs.get_untracked();
-                // 加载期间用户可能关掉了这个标签页，找不到就丢弃结果。
-                let Some(index) = list
-                    .iter()
-                    .position(|candidate| candidate.path == loaded.path)
-                else {
-                    return;
-                };
-                list[index] = loaded;
-                tabs.set(list);
-            });
-        })
-    };
-
-    let choose_folder: Arc<dyn Fn()> = {
-        let open_path = open_path.clone();
-        Arc::new(move || {
-            let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
-            let open_path = open_path.clone();
-            spawn(async move {
-                if let Ok(Some(paths)) = answer.await {
-                    if let Some(path) = paths.first() {
-                        open_path(path.display().to_string());
-                    }
-                }
-            });
-        })
-    };
-
-    let close_tab: Arc<dyn Fn(usize)> = {
-        let welcome_open = welcome_open;
-        let tabs = tabs;
-        let active = active;
-        let screen = screen;
-        let store_dir = store_dir.clone();
-        let language = language;
-        // 关闭动作本身；有未提交改动时先确认再走这里。
-        let perform: Arc<dyn Fn(usize)> = {
-            let welcome_open = welcome_open;
-            let tabs = tabs;
-            let active = active;
-            let store_dir = store_dir.clone();
-            Arc::new(move |index: usize| {
-                let mut list = tabs.get_untracked();
-                if index >= list.len() {
-                    return;
-                }
-                list.remove(index);
-                let next_active = if list.is_empty() {
-                    0
-                } else {
-                    active.get_untracked().min(list.len() - 1)
-                };
-                tabs.set(list.clone());
-                active.set(next_active);
-                if list.is_empty() {
-                    welcome_open.set(true);
-                }
-                persist(&store_dir, active, tabs);
-            })
-        };
-        let perform = perform;
-        Arc::new(move |index: usize| {
-            let list = tabs.get_untracked();
-            let Some(tab) = list.get(index) else {
-                return;
-            };
-            let changes = tab.status.len();
-            let name = tab.label();
-            if changes == 0 {
-                perform(index);
-                return;
-            }
-            let language_now = language.get_untracked();
-            let pending = interactions::confirm(
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "confirm.closeTitle",
-                    &[("name", name)],
-                ),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "confirm.closeMessage",
-                    &[("count", changes.to_string())],
-                ),
-                "close",
-                i18n::t(language_now.as_str(), "confirm.closeAction"),
-                false,
-            );
-            let perform = perform.clone();
-            spawn(async move {
-                if pending.await {
-                    perform(index);
-                }
-            });
-        })
-    };
-
-    let activate_tab: Arc<dyn Fn(usize)> = {
-        let active = active;
-        let tabs = tabs;
-        let store_dir = store_dir.clone();
-        Arc::new(move |index: usize| {
-            if index < tabs.get_untracked().len() {
-                active.set(index);
-                persist(&store_dir, active, tabs);
-            }
-        })
-    };
-
-    let clone_repository: Arc<dyn Fn()> = {
-        let clone_url = clone_url;
-        let clone_destination = clone_destination;
-        let clone_options = clone_options;
-        let store_dir = store_dir.clone();
-        let clone_error = clone_error;
-        let cloning = cloning;
-        let clone_progress = clone_progress;
-        let clone_cancel = clone_cancel.clone();
-        let language = language;
-        let open_path = open_path.clone();
-        Arc::new(move || {
-            let url = clone_url.get_untracked();
-            let destination = clone_destination.get_untracked();
-            let chosen = clone_options.get_untracked();
-            let options = git::CloneOptions {
-                branch: Some(chosen.branch.clone()).filter(|b| !b.trim().is_empty()),
-                depth: chosen.depth,
-                recurse_submodules: chosen.recurse_submodules,
-            };
-            if url.trim().is_empty() {
-                clone_error.set(Some(i18n::t(language.get_untracked().as_str(), "welcome.missingUrl")));
-                return;
-            }
-            if destination.trim().is_empty() {
-                clone_error.set(Some(i18n::t(language.get_untracked().as_str(), "welcome.missingDestination")));
-                return;
-            }
-            // 「克隆后打开」关闭时只记入最近仓库，不切走当前工作区。
-            let open_after = chosen.open_after_clone;
-            cloning.set(true);
-            clone_progress.set(String::new());
-            clone_cancel.store(false, std::sync::atomic::Ordering::Relaxed);
-            clone_error.set(None);
-            let open_path = open_path.clone();
-            let recent = recent;
-            let store_dir = store_dir.clone();
-            let clone_error = clone_error;
-            let cloning = cloning;
-            let clone_progress = clone_progress;
-            let cancel = clone_cancel.clone();
-            spawn(async move {
-                // 启动后按 100ms 轮询：界面一直可响应，取消也能立刻生效。
-                let mut run = match git::start_clone(
-                    url.trim(),
-                    destination.trim(),
-                    &options,
-                ) {
-                    Ok(run) => run,
-                    Err(error) => {
-                        cloning.set(false);
-                        clone_error.set(Some(error.detail()));
-                        return;
-                    }
-                };
-                let result = loop {
-                    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                        let _ = run.cancel();
-                        let lang = language.get_untracked();
-                        break Err(i18n::t(lang.as_str(), "welcome.cloneCancelled"));
-                    }
-                    if let Some(outcome) = run.try_finish() {
-                        break outcome.map_err(|error| error.detail());
-                    }
-                    let progress = run.progress();
-                    if !progress.is_empty() {
-                        clone_progress.set(progress);
-                    }
-                    timer(std::time::Duration::from_millis(100)).await;
-                };
-                cloning.set(false);
-                clone_progress.set(String::new());
-                match result {
-                    Ok(()) => {
-                        if open_after {
-                            open_path(destination.trim().to_string());
-                        } else {
-                            let path = destination.trim().to_string();
-                            let list = recent.get_untracked();
-                            // 复用既有的「记住最近仓库」入口，顺序与去重规则一致。
-                            store::remember_recent(&store_dir, &list, path.as_str());
-                            recent.set(store::load_recent(&store_dir));
-                        }
-                    }
-                    Err(detail) => clone_error.set(Some(detail)),
-                }
-            });
-        })
-    };
-
-    let cancel_clone: Arc<dyn Fn()> = {
-        let cancel = clone_cancel.clone();
-        Arc::new(move || cancel.store(true, std::sync::atomic::Ordering::Relaxed))
-    };
-
-    let init_repository: Arc<dyn Fn()> = {
-        let init_path = init_path;
-        let clone_error = clone_error;
-        let init_files = init_files;
-        let open_path = open_path.clone();
-        Arc::new(move || {
-            let path = init_path.get_untracked();
-            if path.trim().is_empty() {
-                clone_error.set(Some(i18n::t(language.get_untracked().as_str(), "welcome.missingDirectory")));
-                return;
-            }
-            let files = init_files.get_untracked();
-            let options = git::InitOptions {
-                gitignore: files.gitignore,
-                readme: files.readme,
-            };
-            match git::init_with(path.trim(), &options) {
-                Ok(()) => open_path(path.trim().to_string()),
-                Err(error) => clone_error.set(Some(error.detail())),
-            }
-        })
-    };
-
-    let toggle_language: Arc<dyn Fn()> = {
-        let language = language;
-        let store_dir = store_dir.clone();
-        Arc::new(move || {
-            let next = i18n::toggle(language.get_untracked().as_str());
-            language.set(SharedString::from(next));
-            store::save_language(&store_dir, next);
-        })
-    };
-
-    let go_welcome: Arc<dyn Fn()> = {
-        let welcome_open = welcome_open;
-        let screen = screen;
-        Arc::new(move || {
-            screen.set(Screen::Workspace);
-            welcome_open.set(true);
-        })
-    };
-
-    let go_repo_manager: Arc<dyn Fn()> = {
-        let go_welcome = go_welcome.clone();
-        Arc::new(move || go_welcome())
-    };
-
-    let go_settings: Arc<dyn Fn()> = {
-        let screen = screen;
-        Arc::new(move || screen.set(Screen::Settings))
-    };
-
-    let set_repo_form: Arc<dyn Fn(RepoForm)> = {
-        let repo_form = repo_form;
-        Arc::new(move |form: RepoForm| repo_form.set(form))
-    };
-
-    let set_mode: Arc<dyn Fn(Mode)> = {
-        let mode = mode;
-        Arc::new(move |next: Mode| mode.set(next))
+    // 欢迎页（P3 批 B）：表单输入收进 WelcomeState，用例收进 WelcomeCommands。
+    let welcome_commands = features::welcome::commands::WelcomeCommands {
+        state: features::welcome::state::WelcomeState {
+            query: welcome_query,
+            clone_url,
+            clone_destination,
+            clone_options,
+            init_files,
+            init_path,
+            clone_error,
+            cloning,
+            clone_progress,
+            form: repo_form,
+        },
+        session: session.clone(),
+        language,
+        cancel: clone_cancel,
     };
 
     // 同步（P3 批 A）：面板状态收进 SyncState，用例收进 SyncCommands。
     let sync_commands = features::sync::commands::SyncCommands {
-        state: features::sync::state::SyncState {
-            dialog: sync_state,
-        },
-        session: features::SessionHandle { tabs, active },
+        state: features::sync::state::SyncState { dialog: sync_state },
+        session: session.clone(),
         language,
         notice,
     };
-    // 工具条、命令面板与引用行共用的「打开同步面板」入口。
-    let open_sync: Arc<dyn Fn(model::Sync)> = {
-        let sync_commands = sync_commands.clone();
-        Arc::new(move |kind: model::Sync| sync_commands.open_sync(kind))
+    // 设置页（P3 批 B）：设置值、分区与快捷键编辑状态收进 SettingsState，用例收进
+    // SettingsCommands。本机 Git 的版本、执行路径与凭据助手在启动时探测一次。
+    let git_info = match git::info() {
+        Ok(info) => (
+            info.version,
+            info.exec_path,
+            git::credential_helper(std::path::Path::new(".")).unwrap_or_default(),
+        ),
+        Err(error) => (error.detail(), String::new(), String::new()),
+    };
+    let settings_commands = features::settings::commands::SettingsCommands {
+        state: features::settings::state::SettingsState {
+            settings_state,
+            settings_section,
+            shortcut_registry,
+            shortcut_query,
+            recording_shortcut,
+            shortcut_error,
+        },
+        session: session.clone(),
+        language,
+        notice,
+        store_dir: store_dir.clone(),
+        theme_mode,
+        diff: diff_commands.clone(),
+        git_info,
     };
 
-    let sync: Arc<dyn Fn(model::Sync)> = {
-        let tabs = tabs;
-        let active = active;
-        Arc::new(move |kind: model::Sync| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                model::sync(tab, kind);
-                tabs.set(list);
-            }
-        })
+    // 搜索（P3 最后一片）：命令面板、视图模式与表单浮层收进 SearchState，命令分发
+    // 收进 SearchCommands。原生菜单、快捷键与面板本身都经它分发。
+    let search_commands = features::search::commands::SearchCommands {
+        state: features::search::state::SearchState {
+            palette_open,
+            palette_selected,
+            palette_query,
+            mode,
+            form: form_state,
+        },
+        session: session.clone(),
+        language,
+        welcome: welcome_commands.clone(),
+        history: history_commands.clone(),
+        commit: commit_commands.clone(),
+        settings: settings_commands.clone(),
+        sync: sync_commands.clone(),
+        inspector_open,
     };
-
-    // 命令面板与快捷键共用同一个分发器：命令 id 就是快捷键注册表里的动作 id。
-    let run_command: Arc<dyn Fn(&'static str)> = {
-        let open_repo = choose_folder.clone();
-        let close_tab = close_tab.clone();
-        // 刷新、对比模式与筛选浮层都归提交历史功能，命令分发经它的用例走。
-        let history_cmd = history_commands.clone();
-        let set_mode_cmd = set_mode.clone();
-        let commit_cmd = commit_commands.clone();
-        let inspector_open = inspector_open;
-        let open_sync = open_sync.clone();
-        let go_welcome = go_welcome.clone();
-        let go_repo_manager = go_repo_manager.clone();
-        let go_settings = go_settings.clone();
-        let toggle_language = toggle_language.clone();
-        let palette_open = palette_open;
-        let palette_selected = palette_selected;
-        let theme_mode = theme_mode;
-        let store_dir = store_dir.clone();
-        let mode_signal = mode;
-        let tabs_cmd = tabs;
-        let active_cmd = active;
-        let screen_cmd = screen;
-        Arc::new(move |id: &'static str| {
-            match id {
-                "open" => open_repo(),
-                "openPalette" => {
-                    // 打开时把高亮拉回第一行。
-                    palette_selected.set(0);
-                    palette_open.set(true);
-                }
-                "closeTab" => close_tab(active_cmd.get_untracked()),
-                "refresh" => history_cmd.refresh(),
-                "history" => set_mode_cmd(Mode::History),
-                "changes" => set_mode_cmd(Mode::Changes),
-                "inspector" => inspector_open.set(!inspector_open.get_untracked()),
-                "compare" => {
-                    let compare_mode = history_cmd.state.compare_mode;
-                    compare_mode.set(!compare_mode.get_untracked())
-                }
-                "fetch" => open_sync(model::Sync::Fetch),
-                "pull" => open_sync(model::Sync::Pull),
-                "push" => open_sync(model::Sync::Push),
-                // ⌘F 搜索与 ⇧⌘F 过滤共用历史视图的过滤浮层（手册 1.3）。
-                "filter" | "filterHistory" => {
-                    set_mode_cmd(Mode::History);
-                    history_cmd.state.filter_open.set(true);
-                }
-                // ⌘↵：只在 Changes 里提交，避免在历史视图误提交。
-                "primary" => {
-                    if mode_signal.get_untracked() == Mode::Changes {
-                        commit_cmd.commit();
-                    }
-                }
-                "prevTab" => cycle_tab(tabs_cmd, active_cmd, screen_cmd, false),
-                "nextTab" => cycle_tab(tabs_cmd, active_cmd, screen_cmd, true),
-                "tab1" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 0),
-                "tab2" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 1),
-                "tab3" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 2),
-                "tab4" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 3),
-                "tab5" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 4),
-                "tab6" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 5),
-                "tab7" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 6),
-                "tab8" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 7),
-                "tab9" => activate_slot(tabs_cmd, active_cmd, screen_cmd, 8),
-                "welcome" => go_welcome(),
-                "repoManager" => go_repo_manager(),
-                "settings" => go_settings(),
-                "toggleLanguage" => toggle_language(),
-                "toggleTheme" => {
-                    let next = theme_mode.get_untracked().next();
-                    theme_mode.set(next);
-                    nsh_core::element::set_color_scheme(next.appearance());
-                    store::save_appearance(&store_dir, next.id());
-                }
-                _ => {}
-            }
-        })
-    };
-
-    // 快捷键改键：写入注册表并持久化；冲突/不可绑定时把原因交给设置页显示。
-    let rebind_shortcut: Arc<dyn Fn(&'static str, String)> = {
-        let registry = shortcut_registry;
-        let recording = recording_shortcut;
-        let error = shortcut_error;
-        let store_dir = store_dir.clone();
-        let language = language;
-        Arc::new(move |id: &'static str, combo: String| {
-            let mut next = registry.get_untracked();
-            let outcome = next.rebind(id, combo.as_str());
-            let lang = language.get_untracked();
-            match outcome {
-                Ok(()) => {
-                    registry.set(next.clone());
-                    store::save_shortcuts(&store_dir, &next.overrides());
-                    error.set(None);
-                    recording.set(None);
-                }
-                // 失败时保持录制状态，用户可以直接改按另一个组合。
-                Err(shortcuts::BindError::NotBindable) => {
-                    error.set(Some(i18n::t(lang.as_str(), "shortcut.notBindable")));
-                }
-                Err(shortcuts::BindError::Conflict(other)) => {
-                    let action = shortcuts::ACTIONS
-                        .iter()
-                        .find(|candidate| candidate.id == other);
-                    let name = action
-                        .map(|action| shortcuts::label(action, lang.as_str()))
-                        .unwrap_or_else(|| other.to_string());
-                    error.set(Some(i18n::with_arguments(
-                        lang.as_str(),
-                        "shortcut.conflict",
-                        &[("action", name)],
-                    )));
-                }
-            }
-        })
-    };
-
-    let record_shortcut: Arc<dyn Fn(&'static str)> = {
-        let recording = recording_shortcut;
-        let error = shortcut_error;
-        Arc::new(move |id: &'static str| {
-            error.set(None);
-            recording.set(Some(id));
-        })
-    };
-
-    // 恢复默认：先确认（会覆盖用户的自定义），再重置并清空持久化。
-    let restore_shortcuts: Arc<dyn Fn()> = {
-        let registry = shortcut_registry;
-        let recording = recording_shortcut;
-        let error = shortcut_error;
-        let store_dir = store_dir.clone();
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let lang = language.get_untracked();
-            let title = i18n::t(lang.as_str(), "confirm.restoreShortcutsTitle");
-            let message = i18n::t(lang.as_str(), "confirm.restoreShortcutsMessage");
-            let action_label = i18n::t(lang.as_str(), "confirm.restoreShortcutsAction");
-            let done = i18n::t(lang.as_str(), "shortcut.restored");
-            let registry = registry;
-            let recording = recording;
-            let error = error;
-            let store_dir = store_dir.clone();
-            let notice = notice;
-            spawn(async move {
-                let ok = interactions::confirm(
-                    title,
-                    message,
-                    "restoreShortcuts",
-                    action_label,
-                    false,
-                )
-                .await;
-                if !ok {
-                    return;
-                }
-                let mut next = registry.get_untracked();
-                next.restore_defaults();
-                registry.set(next.clone());
-                store::save_shortcuts(&store_dir, &next.overrides());
-                recording.set(None);
-                error.set(None);
-                interactions::notify(notice, done);
-            });
-        })
-    };
-
-    let set_theme: Arc<dyn Fn(ThemeMode)> = {        let theme_mode = theme_mode;
-        let store_dir = store_dir.clone();
-        Arc::new(move |mode: ThemeMode| {
-            theme_mode.set(mode);
-            nsh_core::element::set_color_scheme(mode.appearance());
-            store::save_appearance(&store_dir, mode.id());
-        })
-    };
-
-    let undo_reflog: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |index: usize| {
-            let list = tabs.get_untracked();
-            let current = active.get_untracked();
-            let Some(tab) = list.get(current).cloned() else {
-                return;
-            };
-            let Some(entry) = tab.reflog.get(index).cloned() else {
-                return;
-            };
-            let language_now = language.get_untracked();
-            let pending = crate::ui::dialog::confirm_destructive(
-                i18n::t(language_now.as_str(), "reflog.undoTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "reflog.undoMessage",
-                    &[("short", entry.short.clone())],
-                ),
-                i18n::t(language_now.as_str(), "reflog.undoAction"),
-                i18n::t(language_now.as_str(), "common.cancel"),
-            );
-            let tabs = tabs;
-            spawn(async move {
-                if let Ok(result) = pending.await {
-                    if result.action.as_deref() != Some("undo") {
-                        return;
-                    }
-                    let current = active.get_untracked();
-                    let mut list = tabs.get_untracked();
-                    if let Some(tab) = list.get_mut(current) {
-                        model::undo_to_reflog(tab, index);
-                        tabs.set(list);
-                    }
-                }
-            });
-        })
-    };
-
-    let persist_audit: Arc<dyn Fn()> = {
-        let store_dir = store_dir.clone();
-        let agent_audit = agent_audit;
-        Arc::new(move || {
-            let lines: Vec<String> = agent_audit
-                .get_untracked()
-                .iter()
-                .map(|entry| {
-                    format!(
-                        "{}\t{}\t{}\t{}",
-                        entry.timestamp,
-                        entry.action,
-                        if entry.ok { "ok" } else { "fail" },
-                        entry.detail
-                    )
-                })
-                .collect();
-            store::save_agent_audit(&store_dir, &lines);
-        })
-    };
-
-    let propose_plan: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let agent_plan = agent_plan;
-        let commit_summary = commit_commands.state.summary;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let list = tabs.get_untracked();
-            let Some(tab) = list.get(current) else {
-                return;
-            };
-            let staged = tab.changes.iter().filter(|entry| entry.staged).count();
-            let unstaged = tab.changes.len() - staged;
-            let message = commit_summary.get_untracked();
-            let plan = agent::propose(
-                "本地计划：整理当前仓库",
-                staged,
-                unstaged,
-                tab.ahead,
-                tab.behind,
-                message.as_str(),
-            );
-            agent_plan.set(Some(plan));
-        })
-    };
-
-    let run_agent_step: Arc<dyn Fn(usize)> = {
-        let tabs = tabs;
-        let active = active;
-        let agent_plan = agent_plan;
-        let agent_audit = agent_audit;
-        let agent_policies = agent_policies;
-        let agent_settings = agent_settings;
-        let commit_summary = commit_commands.state.summary;
-        let persist_audit = persist_audit.clone();
-        Arc::new(move |index: usize| {
-            let Some(plan) = agent_plan.get_untracked() else {
-                return;
-            };
-            let Some(step) = plan.steps.get(index).cloned() else {
-                return;
-            };
-            let now = store::now_unix();
-            // 受保护分支：写动作一律不执行，记审计并说明原因。
-            let branch_now = {
-                let list = tabs.get_untracked();
-                list.get(active.get_untracked())
-                    .map(|tab| tab.branch.clone())
-                    .unwrap_or_default()
-            };
-            if let Some(reason) =
-                agent_settings
-                    .get_untracked()
-                    .blocks(step.action, branch_now.as_str())
-            {
-                let mut audit = agent_audit.get_untracked();
-                audit.insert(
-                    0,
-                    agent::AuditEntry::new(now, step.action, false, reason.as_str()),
-                );
-                audit.truncate(agent::Audit::LIMIT);
-                agent_audit.set(audit);
-                persist_audit();
-                return;
-            }
-            // 权限：Deny 直接记审计并跳过；Ask 在界面上就是用户按了这一行。
-            if agent_policies.get_untracked().is_denied(step.action) {
-                let mut audit = agent_audit.get_untracked();
-                audit.insert(
-                    0,
-                    agent::AuditEntry::new(now, step.action, false, "denied by policy"),
-                );
-                audit.truncate(agent::Audit::LIMIT);
-                agent_audit.set(audit);
-                persist_audit();
-                return;
-            }
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            let Some(tab) = list.get_mut(current) else {
-                return;
-            };
-            let detail = match step.action {
-                agent::Action::StageAll => {
-                    model::stage_all_or_none(tab, true);
-                    "staged all".to_string()
-                }
-                agent::Action::UnstageAll => {
-                    model::stage_all_or_none(tab, false);
-                    "unstaged all".to_string()
-                }
-                // 只读动作与强推不是 plan 的步骤：前者不产生副作用，后者必须由人
-                // 在同步面板里勾选确认，不交给 Agent 自动执行。
-                agent::Action::ReadFiles | agent::Action::ForcePush => {
-                    "skipped".to_string()
-                }
-                agent::Action::Commit => {
-                    tab.summary = step
-                        .argument
-                        .clone()
-                        .unwrap_or_else(|| commit_summary.get_untracked());
-                    model::commit_staged(tab);
-                    tab.hook_log.clone().unwrap_or_default()
-                }
-                agent::Action::Fetch => {
-                    model::sync(tab, model::Sync::Fetch);
-                    tab.sync_message.clone().unwrap_or_default()
-                }
-                agent::Action::Pull => {
-                    model::sync(tab, model::Sync::Pull);
-                    tab.sync_message.clone().unwrap_or_default()
-                }
-                agent::Action::Push => {
-                    model::sync(tab, model::Sync::Push);
-                    tab.sync_message.clone().unwrap_or_default()
-                }
-                agent::Action::Discard => "skipped: destructive".to_string(),
-            };
-            let ok = match step.action {
-                agent::Action::Commit => tab.hook_ok,
-                agent::Action::Fetch | agent::Action::Pull | agent::Action::Push => {
-                    !tab.sync_failed
-                }
-                agent::Action::Discard => false,
-                _ => true,
-            };
-            let mut audit = agent_audit.get_untracked();
-            audit.insert(0, agent::AuditEntry::new(now, step.action, ok, detail));
-            audit.truncate(agent::Audit::LIMIT);
-            agent_audit.set(audit);
-            tabs.set(list);
-            persist_audit();
-        })
-    };
-
-    let remove_agent_step: Arc<dyn Fn(usize)> = {
-        let agent_plan = agent_plan;
-        Arc::new(move |index: usize| {
-            let Some(mut plan) = agent_plan.get_untracked() else {
-                return;
-            };
-            if plan.remove_step(index) {
-                agent_plan.set(Some(plan));
-            }
-        })
-    };
-
-    let add_agent_step: Arc<dyn Fn(&'static str)> = {
-        let agent_plan = agent_plan;
-        let language = language;
-        Arc::new(move |id: &'static str| {
-            let Some(action) = agent::Action::ALL
-                .into_iter()
-                .find(|candidate| candidate.id() == id)
-            else {
-                return;
-            };
-            let lang = language.get_untracked();
-            let label = i18n::t(lang.as_str(), workspace::agent::action_key(action));
-            let mut plan = agent_plan.get_untracked().unwrap_or_default();
-            if plan.summary.trim().is_empty() {
-                plan.summary = i18n::t(lang.as_str(), "agent.manualSummary");
-            }
-            plan.push_step(agent::Step::new(action, label));
-            agent_plan.set(Some(plan));
-        })
-    };
-
-    // Approve & Run：先按策略算出可执行范围，列出来让用户确认，再按顺序执行。
-    let run_plan: Arc<dyn Fn()> = {
-        let agent_plan = agent_plan;
-        let agent_policies = agent_policies;
-        let agent_settings = agent_settings;
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        let notice = notice;
-        let run_step = run_agent_step.clone();
-        Arc::new(move || {
-            let Some(plan) = agent_plan.get_untracked() else {
-                return;
-            };
-            let branch = tabs
-                .get_untracked()
-                .get(active.get_untracked())
-                .map(|tab| tab.branch.clone())
-                .unwrap_or_default();
-            let runnable = plan.runnable(
-                &agent_policies.get_untracked(),
-                &agent_settings.get_untracked(),
-                branch.as_str(),
-            );
-            let lang = language.get_untracked();
-            if runnable.is_empty() {
-                interactions::notify(notice, i18n::t(lang.as_str(), "agent.nothingRunnable"));
-                return;
-            }
-            let listed: Vec<String> = runnable
-                .iter()
-                .filter_map(|index| plan.steps.get(*index))
-                .map(|step| format!("• {}", step.label))
-                .collect();
-            let message = format!(
-                "{}\n\n{}",
-                i18n::t(lang.as_str(), "agent.approveMessage"),
-                listed.join("\n")
-            );
-            let action_label = i18n::t(lang.as_str(), "agent.approveRun");
-            let title = i18n::t(lang.as_str(), "agent.approveTitle");
-            let run_step = run_step.clone();
-            spawn(async move {
-                let ok = interactions::confirm(
-                    title,
-                    message,
-                    "runPlan",
-                    action_label,
-                    false,
-                )
-                .await;
-                if !ok {
-                    return;
-                }
-                for index in runnable {
-                    run_step(index);
-                }
-            });
-        })
-    };
-
-    let set_agent_permission: Arc<dyn Fn(agent::Action, agent::Permission)> = {
-        let agent_policies = agent_policies;
-        let store_dir = store_dir.clone();
-        Arc::new(move |action: agent::Action, permission: agent::Permission| {
-            let mut policies = agent_policies.get_untracked();
-            policies.set(action, permission);
-            agent_policies.set(policies.clone());
-            let entries: Vec<(String, String)> = agent::Action::ALL
-                .into_iter()
-                .map(|candidate| {
-                (
-                    candidate.id().to_string(),
-                    policies.permission(candidate).id().to_string(),
-                )
-            })
-            .collect();
-            store::save_agent_policies(&store_dir, &entries);
-        })
-    };
-
-    let open_form: Arc<dyn Fn(screens::FormKind)> = {
-        let form_state = form_state;
-        Arc::new(move |kind: screens::FormKind| {
-            form_state.set(Some(screens::FormState::new(kind)));
-        })
-    };
-
-    // 表单提交：按种类执行对应的 Git 写操作，失败时把原因留在对话框里。
-    let submit_form: Arc<dyn Fn(screens::FormState)> = {
-        let tabs = tabs;
-        let active = active;
-        let form_state = form_state;
-        Arc::new(move |form: screens::FormState| {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            let Some(tab) = list.get_mut(current) else {
-                return;
-            };
-            let first = form.first.trim().to_string();
-            let second = form.second.trim().to_string();
-            if first.is_empty() {
-                let mut next = form.clone();
-                next.error = Some("名称不能为空".to_string());
-                form_state.set(Some(next));
-                return;
-            }
-            let result = match form.kind {
-                screens::FormKind::NewBranch => model::create_branch(
-                    tab,
-                    first.as_str(),
-                    second.as_str(),
-                    form.flag,
-                ),
-                screens::FormKind::NewTag => model::create_tag(
-                    tab,
-                    first.as_str(),
-                    second.as_str(),
-                    form.third.as_str(),
-                    form.flag,
-                ),
-                screens::FormKind::AddRemote => model::add_remote(tab, first.as_str(), second.as_str()),
-                screens::FormKind::NewStash => {
-                    model::stash_changes(tab, first.as_str(), form.flag)
-                }
-                // 重命名与改 URL：`second` 是被改对象的原名，`first` 是新值。
-                screens::FormKind::RenameBranch => {
-                    model::rename_branch(tab, second.as_str(), first.as_str())
-                }
-                screens::FormKind::EditRemote => {
-                    model::edit_remote(tab, second.as_str(), first.as_str())
-                }
-                // 身份：`first` 是姓名，`second` 是邮箱。
-                screens::FormKind::Identity => {
-                    model::set_identity(tab, first.as_str(), second.as_str())
-                }
-            };
-            tabs.set(list);
-            match result {
-                Ok(()) => form_state.set(None),
-                Err(detail) => {
-                    let mut next = form;
-                    next.error = Some(detail);
-                    form_state.set(Some(next));
-                }
-            }
-        })
-    };
-
-    let cancel_form: Arc<dyn Fn()> = {
-        let form_state = form_state;
-        Arc::new(move || form_state.set(None))
-    };
-
-    // 重置不可撤销（--hard 会丢改动）：先确认。
-    let reset_to: Arc<dyn Fn(String, git::ResetMode)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        Arc::new(move |sha: String, mode: git::ResetMode| {
-            let language_now = language.get_untracked();
-            let pending = crate::ui::dialog::confirm_destructive(
-                i18n::t(language_now.as_str(), "branch.resetTitle"),
-                i18n::with_arguments(
-                    language_now.as_str(),
-                    "branch.resetMessage",
-                    &[("short", sha.chars().take(7).collect::<String>())],
-                ),
-                i18n::t(language_now.as_str(), "branch.resetAction"),
-                i18n::t(language_now.as_str(), "common.cancel"),
-            );
-            let tabs = tabs;
-            let active = active;
-            spawn(async move {
-                if let Ok(result) = pending.await {
-                    if result.action.as_deref() != Some("reset") {
-                        return;
-                    }
-                    let current = active.get_untracked();
-                    let mut list = tabs.get_untracked();
-                    if let Some(tab) = list.get_mut(current) {
-                        if let Err(detail) = model::reset_to(tab, sha.as_str(), mode) {
-                            tab.error = Some(detail);
-                        }
-                        tabs.set(list);
-                    }
-                }
-            });
-        })
-    };
-
-    let set_mode_agent: Arc<dyn Fn()> = {
-        let mode = mode;
-        Arc::new(move || mode.set(Mode::Agent))
-    };
-
-    let set_mode_refs: Arc<dyn Fn()> = {
-        let mode = mode;
-        Arc::new(move || mode.set(Mode::Refs))
-    };
-
-    let copy_text: Arc<dyn Fn(String)> = {
-        let notice = notice;
-        let language = language;
-        Arc::new(move |text: String| {
-            let language_now = language.get_untracked();
-            interactions::copy(
-                notice,
-                text,
-                i18n::t(language_now.as_str(), "toast.copied"),
-                i18n::t(language_now.as_str(), "toast.copyFailed"),
-            );
-        })
-    };
-
-    let open_editor: Arc<dyn Fn(String)> = {
-        let notice = notice;
-        let language = language;
-        Arc::new(move |path: String| {
-            let language_now = language.get_untracked();
-            interactions::open_in_editor(
-                notice,
-                path,
-                i18n::t(language_now.as_str(), "toast.openFailed"),
-            );
-        })
-    };
-
-    let open_browser: Arc<dyn Fn(String)> = {
-        let notice = notice;
-        let language = language;
-        Arc::new(move |url: String| {
-            let language_now = language.get_untracked();
-            interactions::open_browser(
-                notice,
-                url,
-                i18n::t(language_now.as_str(), "toast.browserFailed"),
-            );
-        })
-    };
-
-    let reveal_path: Arc<dyn Fn(String)> = {
-        let notice = notice;
-        let language = language;
-        Arc::new(move |path: String| {
-            let language_now = language.get_untracked();
-            interactions::reveal(
-                notice,
-                path,
-                i18n::t(language_now.as_str(), "toast.revealFailed"),
-            );
-        })
-    };
-
-    // 历史操作：都先确认，再落到 model → git。
-    let history_action: Arc<dyn Fn(&'static str, String)> = {
-        let tabs = tabs;
-        let active = active;
-        let language = language;
-        let notice = notice;
-        Arc::new(move |kind: &'static str, sha: String| {
-            let language_now = language.get_untracked();
-            let lang = language_now.as_str();
-            let (title_key, message_key, action_key) = match kind {
-                "checkout" => (
-                    "confirm.checkoutTitle",
-                    "confirm.checkoutMessage",
-                    "confirm.checkoutAction",
-                ),
-                "cherry" => (
-                    "confirm.cherryPickTitle",
-                    "confirm.cherryPickMessage",
-                    "confirm.cherryPickAction",
-                ),
-                _ => (
-                    "confirm.revertTitle",
-                    "confirm.revertMessage",
-                    "confirm.revertAction",
-                ),
-            };
-            let short = sha.chars().take(7).collect::<String>();
-            let pending = interactions::confirm(
-                i18n::with_arguments(lang, title_key, &[("short", short.clone())]),
-                i18n::t(lang, message_key),
-                "history",
-                i18n::t(lang, action_key),
-                kind == "checkout",
-            );
-            spawn(async move {
-                if !pending.await {
-                    return;
-                }
-                let current = active.get_untracked();
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    let result = match kind {
-                        "checkout" => model::checkout_commit(tab, sha.as_str()),
-                        "cherry" => model::cherry_pick(tab, sha.as_str()),
-                        _ => model::revert_commit(tab, sha.as_str()),
-                    };
-                    match result {
-                        Ok(_) => {
-                            let lang = language.get_untracked();
-                            interactions::notify(
-                                notice,
-                                i18n::t(lang.as_str(), "toast.historyDone"),
-                            );
-                        }
-                        Err(detail) => tab.error = Some(detail),
-                    }
-                    tabs.set(list);
-                }
-            });
-        })
-    };
-
 
     // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。
-    // 放在 `history_action` 之后，因为「切到某个提交」要复用它（同一个确认框）。
-    let refs_state = features::refs::state::RefsState {
-        reflog_query,
-    };
+    // 「切到某个提交」的确认流程归恢复功能，这里只是持有它的用例。
+    let refs_state = features::refs::state::RefsState { reflog_query };
     let refs_commands = features::refs::commands::RefsCommands {
         state: refs_state,
-        session: features::SessionHandle { tabs, active },
+        session: session.clone(),
         language,
         notice,
         history: history_commands.clone(),
-        history_action: history_action.clone(),
-        form_state,
+        recovery: recovery_commands.clone(),
+        search: search_commands.clone(),
         sync: sync_commands.clone(),
-    };
-
-    let cherry_pick: Arc<dyn Fn(String)> = {
-        let history_action = history_action.clone();
-        Arc::new(move |sha: String| history_action("cherry", sha))
-    };
-
-    let revert_commit: Arc<dyn Fn(String)> = {
-        let history_action = history_action.clone();
-        Arc::new(move |sha: String| history_action("revert", sha))
-    };
-
-    // 从某个提交新建分支/标签：表单第二个字段预填该提交。
-    let open_form_from: Arc<dyn Fn(screens::FormKind, String)> = {
-        let form_state = form_state;
-        Arc::new(move |kind: screens::FormKind, from: String| {
-            let mut state = screens::FormState::new(kind);
-            state.second = from;
-            form_state.set(Some(state));
-        })
-    };
-
-    // 键盘与命令面板共用同一个派发入口（Actions 会把它移走，因此先留一份）。
-    let run_command_for_key = run_command.clone();
-
-    let set_update_mode: Arc<dyn Fn(String)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |mode: String| {
-            let mut next = settings_state.get_untracked();
-            next.update_mode = mode;
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
-    // 状态横幅上的三个动作（设计板 16）。
-
-    let init_here: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                match model::init_here(tab) {
-                    Ok(()) => {
-                        let lang = language.get_untracked();
-                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.initDone"));
-                    }
-                    Err(detail) => interactions::notify(notice, detail),
-                }
-                tabs.set(list);
-            }
-        })
-    };
-
-    let open_parent: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let open_path = open_path.clone();
-        Arc::new(move || {
-            let current = active.get_untracked();
-            let list = tabs.get_untracked();
-            let Some(tab) = list.get(current) else {
-                return;
-            };
-            let parent = model::parent_path(tab.path.as_str());
-            if !parent.is_empty() {
-                open_path(parent);
-            }
-        })
-    };
-
-    // 缺失仓库的 Locate…：选一个新目录打开，然后关掉这个打不开的标签页。
-    let locate_repo: Arc<dyn Fn()> = {
-        let open_path = open_path.clone();
-        let close_tab = close_tab.clone();
-        let active = active;
-        Arc::new(move || {
-            let index = active.get_untracked();
-            let open_path = open_path.clone();
-            let close_tab = close_tab.clone();
-            let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
-            spawn(async move {
-                let Ok(Some(paths)) = answer.await else {
-                    return;
-                };
-                let Some(path) = paths.first() else {
-                    return;
-                };
-                open_path(path.display().to_string());
-                // 先打开再关旧的：关掉会让下标前移。
-                close_tab(index);
-            });
-        })
-    };
-
-    // 导出 patch：写到用户选择的路径。没有选择就不写，不落默认文件名。
-    let export_patch: Arc<dyn Fn()> = {
-        let tabs = tabs;
-        let active = active;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let list = tabs.get_untracked();
-            let Some(tab) = list.get(active.get_untracked()) else {
-                return;
-            };
-            let patch = tab.patch.raw.clone();
-            if patch.trim().is_empty() {
-                let lang = language.get_untracked();
-                interactions::notify(notice, i18n::t(lang.as_str(), "diff.nothingToExport"));
-                return;
-            }
-            let lang = language.get_untracked();
-            let suggested = i18n::t(lang.as_str(), "diff.exportName");
-            let pending =
-                pick_save_path(nsh_core::file_dialog::SaveDialog::new().file_name(suggested));
-            spawn(async move {
-                let Ok(Some(path)) = pending.await else {
-                    return;
-                };
-                match std::fs::write(&path, patch.as_bytes()) {
-                    Ok(()) => {
-                        interactions::notify(notice, i18n::t(lang.as_str(), "diff.exported"));
-                    }
-                    Err(error) => {
-                        interactions::notify(notice, error.to_string());
-                    }
-                }
-            });
-        })
-    };
-
-    // Agent 的三项运行设置：自动化、预览时长、受保护分支。改动即持久化。
-    let persist_agent = {
-        let store_dir = store_dir.clone();
-        let agent_policies = agent_policies;
-        Arc::new(move |settings: &agent::Settings| {
-            let pairs = settings.write_pairs();
-            let mut lines: Vec<(String, String)> = store::load_agent_policies(&store_dir);
-            for (key, value) in pairs {
-                lines.retain(|(existing, _)| existing != &key);
-                lines.push((key, value));
-            }
-            let _ = agent_policies;
-            store::save_agent_policies(&store_dir, &lines);
-        })
-    };
-
-    let set_automation: Arc<dyn Fn(agent::Automation)> = {
-        let agent_settings = agent_settings;
-        let persist = persist_agent.clone();
-        Arc::new(move |mode: agent::Automation| {
-            let mut next = agent_settings.get_untracked();
-            next.automation = mode;
-            agent_settings.set(next.clone());
-            persist(&next);
-        })
-    };
-
-    let set_review_millis: Arc<dyn Fn(u32)> = {
-        let agent_settings = agent_settings;
-        let persist = persist_agent.clone();
-        Arc::new(move |millis: u32| {
-            let mut next = agent_settings.get_untracked();
-            next.review_millis = millis;
-            agent_settings.set(next.clone());
-            persist(&next);
-        })
-    };
-
-    let toggle_protected_branch: Arc<dyn Fn(String)> = {
-        let agent_settings = agent_settings;
-        let persist = persist_agent.clone();
-        Arc::new(move |branch: String| {
-            let mut next = agent_settings.get_untracked();
-            if next.is_protected(branch.as_str()) {
-                next.protected.retain(|name| name != &branch);
-            } else {
-                next.protected.push(branch);
-            }
-            agent_settings.set(next.clone());
-            persist(&next);
-        })
-    };
-
-    // 日期显示：改设置立刻生效并持久化（设置页有实时预览）。
-    let set_date_style: Arc<dyn Fn(crate::i18n::DateStyle)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |style: crate::i18n::DateStyle| {
-            crate::dates::set_style(style);
-            let mut next = settings_state.get_untracked();
-            next.date_format = style.id().to_string();
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
-    let set_date_pattern: Arc<dyn Fn(String)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |pattern: String| {
-            crate::dates::set_pattern(pattern.as_str());
-            let mut next = settings_state.get_untracked();
-            next.date_pattern = pattern;
-            // 输入 pattern 时自动切到 Custom，否则用户改了看不到效果。
-            next.date_format = crate::i18n::DateStyle::Custom.id().to_string();
-            crate::dates::set_style(crate::i18n::DateStyle::Custom);
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
-    // Git 可执行文件：探测用 `git --version`，选择用系统打开对话框。
-    let detect_git: Arc<dyn Fn()> = {
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let lang = language.get_untracked();
-            match git::info() {
-                Ok(info) => interactions::notify(
-                    notice,
-                    format!("{} · {}", info.version, info.exec_path),
-                ),
-                Err(error) => {
-                    interactions::notify(notice, i18n::t(lang.as_str(), "settings.detectFailed"))
-                }
-            }
-        })
-    };
-
-    let choose_git: Arc<dyn Fn()> = {
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            // 只让选可执行文件；选完把路径记进设置并立刻用它探测一次。
-            let pending = pick_paths(nsh_core::file_dialog::OpenDialog::files());
-            let language = language;
-            spawn(async move {
-                let Ok(Some(paths)) = pending.await else {
-                    return;
-                };
-                let Some(path) = paths.into_iter().next() else {
-                    return;
-                };
-                let lang = language.get_untracked();
-                match std::process::Command::new(&path).arg("--version").output() {
-                    Ok(output) if output.status.success() => {
-                        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                        interactions::notify(notice, format!("{version} · {}", path.display()));
-                    }
-                    _ => {
-                        interactions::notify(
-                            notice,
-                            i18n::t(lang.as_str(), "settings.detectFailed"),
-                        );
-                    }
-                }
-            });
-        })
-    };
-
-    let toggle_git_path: Arc<dyn Fn()> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move || {
-            let mut next = settings_state.get_untracked();
-            let enabled = !next.use_system_git;
-            next.use_system_git = enabled;
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
-    // 扫描目录里的仓库（设计板 24 的 Add N Repositories）。
-    let add_found_repos: Arc<dyn Fn()> = {
-        let store_dir = store_dir.clone();
-        let recent = recent;
-        let notice = notice;
-        let language = language;
-        Arc::new(move || {
-            let lang = language.get_untracked();
-            let folders = store::load_git_scan_folders(&store_dir);
-            let found = store::scan_git_repositories(&folders);
-            if found.is_empty() {
-                interactions::notify(notice, i18n::t(lang.as_str(), "settings.scanEmpty"));
-                return;
-            }
-            let mut list = recent.get_untracked();
-            for path in &found {
-                store::remember_recent(&store_dir, &list, path.as_str());
-                list = store::load_recent(&store_dir);
-            }
-            recent.set(list);
-            interactions::notify(
-                notice,
-                i18n::with_arguments(
-                    lang.as_str(),
-                    "settings.scanAdded",
-                    &[("count", found.len().to_string())],
-                ),
-            );
-        })
-    };
-
-    // 启动方式：改了就持久化。
-    let set_launch_restore: Arc<dyn Fn(bool)> = {
-        let settings_state = settings_state;
-        let store_dir = store_dir.clone();
-        Arc::new(move |restore: bool| {
-            let mut next = settings_state.get_untracked();
-            next.restore_session = restore;
-            settings_state.set(next.clone());
-            store::save_settings(&store_dir, &next);
-        })
-    };
-
-    let actions = Actions {
-        open_path: open_path.clone(),
-        choose_folder: choose_folder.clone(),
-        close_tab,
-        activate_tab,
-        set_mode,
-        init_here,
-        locate_repo,
-        open_parent,
-        export_patch,
-        set_automation,
-        set_review_millis,
-        toggle_protected_branch,
-        run_command,
-        set_theme,
-        go_settings,
-        undo_reflog,
-        set_mode_refs,
-        set_mode_agent,
-        propose_plan,
-        run_agent_step,
-        remove_agent_step,
-        add_agent_step,
-        run_plan,
-        set_agent_permission,
-        open_form,
-        cherry_pick,
-        revert_commit,
-        open_form_from,
-        reset_to,
-        clone_repository,
-        cancel_clone,
-        init_repository,
-        toggle_language,
-        go_welcome,
-        go_repo_manager,
-        set_repo_form,
-        copy_text,
-        open_editor,
-        reveal_path,
-        open_browser,
-        set_update_mode,
-        add_found_repos,
-        choose_git,
-        detect_git,
-        toggle_git_path,
-        set_launch_restore,
-        set_date_style,
-        set_date_pattern,
     };
 
     // 原生菜单（设计板 22）：文案随语言重建。菜单项与命令面板共用同一批动作，
     // 因此不会指向空实现；系统角色项（关闭/撤销/最小化等）由系统给文案。
     {
-        let run = actions.run_command.clone();
-        let choose_folder = actions.choose_folder.clone();
+        let run: Arc<dyn Fn(&'static str)> = {
+            let search = search_commands.clone();
+            Arc::new(move |id: &'static str| search.run_command(id))
+        };
+        let choose_folder: Arc<dyn Fn()> = {
+            let welcome = welcome_commands.clone();
+            Arc::new(move || welcome.choose_folder())
+        };
         effect({
             let language = language;
             let shortcuts = shortcut_registry;
@@ -1886,31 +484,22 @@ pub fn App() -> impl IntoElement {
         });
     }
 
-    // 重置请求由历史行的右键菜单写入，这里统一执行（--mixed 保留改动、--hard 丢弃）。
-    {
-        let reset_request = reset_request;
-        let reset_to = actions.reset_to.clone();
-        effect(move || {
-            if let Some((sha, mode)) = reset_request.get() {
-                reset_request.set(None);
-                reset_to(sha, mode);
-            }
-        });
-    }
-
     // 快捷键：把清单里的每个组合各绑一次，按下时查注册表决定跑哪个命令。
     // 注册表是可改的（设置页 25 的 Record / Restore Defaults），而 nsh 0.5.0 的
     // on_key 只能在挂载时绑定一次，所以绑定的是「组合」而不是「动作」。
     for combo in shortcuts::catalog() {
         let pressed = combo.clone();
-        let registry = shortcut_registry;
-        let recording = recording_shortcut;
-        let run = actions.run_command.clone();
-        let rebind = rebind_shortcut.clone();
+        let settings_cmd = settings_commands.clone();
+        let registry = settings_cmd.state.shortcut_registry;
+        let recording = settings_cmd.state.recording_shortcut;
+        let run: Arc<dyn Fn(&'static str)> = {
+            let search = search_commands.clone();
+            Arc::new(move |id: &'static str| search.run_command(id))
+        };
         on_key(combo.as_str(), move |_| {
             // 录制期间按键只用于改键，不执行命令。
             if let Some(id) = recording.get_untracked() {
-                rebind(id, pressed.clone());
+                settings_cmd.rebind_shortcut(id, pressed.clone());
                 return;
             }
             if let Some(id) = registry.get_untracked().action_for(pressed.as_str()) {
@@ -1924,100 +513,29 @@ pub fn App() -> impl IntoElement {
     });
 
     // 命令面板的键盘导航：↑↓ 移动高亮，↵ 执行，打开面板时高亮回到第一行。
+    // 结果表由 `SearchCommands` 自己算，和高亮用的是同一份。
     on_key("down", {
-        let palette_open = palette_open;
-        let palette_selected = palette_selected;
-        let palette_query = palette_query;
-        let language = language;
-        move |_| {
-            if !palette_open.get_untracked() {
-                return;
-            }
-            let open_paths: Vec<String> = tabs
-                .get_untracked()
-                .iter()
-                .map(|tab| tab.path.clone())
-                .collect();
-            let recent_paths: Vec<String> = recent
-                .get_untracked()
-                .iter()
-                .map(|entry| entry.path.clone())
-                .collect();
-            let count = screens::palette_rows(
-                palette_query.get_untracked().as_str(),
-                language.get_untracked().as_str(),
-                &open_paths,
-                &recent_paths,
-            )
-            .len();
-            if count == 0 {
-                return;
-            }
-            let next = (palette_selected.get_untracked() + 1).min(count - 1);
-            palette_selected.set(next);
-        }
+        let search = search_commands.clone();
+        move |_| search.move_selection(true)
     });
-
     on_key("up", {
-        let palette_open = palette_open;
-        let palette_selected = palette_selected;
-        move |_| {
-            if !palette_open.get_untracked() {
-                return;
-            }
-            let next = palette_selected.get_untracked().saturating_sub(1);
-            palette_selected.set(next);
-        }
+        let search = search_commands.clone();
+        move |_| search.move_selection(false)
     });
-
     on_key("enter", {
-        let palette_open = palette_open;
-        let palette_selected = palette_selected;
-        let palette_query = palette_query;
-        let language = language;
-        let run = run_command_for_key.clone();
-        move |_| {
-            if !palette_open.get_untracked() {
-                return;
-            }
-            let open_paths: Vec<String> = tabs
-                .get_untracked()
-                .iter()
-                .map(|tab| tab.path.clone())
-                .collect();
-            let recent_paths: Vec<String> = recent
-                .get_untracked()
-                .iter()
-                .map(|entry| entry.path.clone())
-                .collect();
-            let rows = screens::palette_rows(
-                palette_query.get_untracked().as_str(),
-                language.get_untracked().as_str(),
-                &open_paths,
-                &recent_paths,
-            );
-            let index = palette_selected
-                .get_untracked()
-                .min(rows.len().saturating_sub(1));
-            let Some(row) = rows.get(index).cloned() else {
-                return;
-            };
-            match row {
-                screens::PaletteRow::Command(id) => run(id),
-                screens::PaletteRow::Repo { path, .. } => open_path(path),
-            }
-            palette_open.set(false);
-        }
+        let search = search_commands.clone();
+        move |_| search.activate_selected()
     });
 
     // Esc 层层退出：先关最上面的浮层，再退到过滤器；都不开时什么也不做。
     on_key("escape", {
         let sync_commands_for_esc = sync_commands.clone();
         let filter_open = history_commands.state.filter_open;
-        let palette_open = palette_open;
+        let search_state = search_commands.state;
+        let palette_open = search_state.palette_open;
         let changelist_open = changes_commands.state.changelist_open;
         let sync_state = sync_commands_for_esc.state.dialog;
-        let form_state = form_state;
+        let form_state = search_state.form;
         let rewrite_state = commit_commands.state.rewrite;
         let tabs = tabs;
         let active = active;
@@ -2066,87 +584,32 @@ pub fn App() -> impl IntoElement {
         }
     });
 
-    // 身份按当前仓库读（仓库级 config），没有打开仓库时回落到全局配置。
-    // 用计算值而不是一次性读取：编辑身份或切换标签后设置页会跟着变。
-    // 设置页的受保护分支列表：取当前仓库的本地分支名。
-    let branches_for_settings = {
-        let tabs = tabs;
-        let active = active;
-        tabs.get_untracked()
-            .get(active.get_untracked())
-            .map(|tab| {
-                tab.refs
-                    .branches
-                    .iter()
-                    .map(|branch| branch.name.clone())
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or_default()
-    };
-    let identity_for_view = {
-        let tabs = tabs;
-        let active = active;
-        computed(move || {
-            let list = tabs.get();
-            if let Some(tab) = list.get(active.get()) {
-                return model::identity(tab);
-            }
-            let read = |key: &str| {
-                return std::process::Command::new("git")
-                    .args(["config", "--get", key])
-                    .output()
-                    .ok()
-                    .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or_default();
-            };
-            return (read("user.name"), read("user.email"));
-        })
-    };
-    // 设置页 Git 分区展示本机 Git 的版本、执行路径与凭据助手。
-    let git_info_for_view = match git::info() {
-        Ok(info) => (
-            info.version,
-            info.exec_path,
-            git::credential_helper(std::path::Path::new(".")).unwrap_or_default(),
-        ),
-        Err(error) => (error.detail(), String::new(), String::new()),
-    };
-
     // 欢迎页放在独立窗口里：它是入口页，不与多标签主窗口混在一起。
     // `open_window` 同一 id 只建一次；在组件主体里建一次即可。
-    open_welcome_window(
-        welcome_open,
-        language,
-        recent,
-        welcome_query,
-        clone_url,
-        clone_destination,
-        clone_options,
-        init_files,
-        init_path,
-        clone_error,
-        cloning,
-        clone_progress,
-        repo_form,
-        actions.clone(),
-    );
+    open_welcome_window(welcome_commands.clone());
 
     let current_tab = computed(move || tabs.get().get(active.get()).cloned());
     let language_value = language;
     let screen_value = screen;
-    let actions_for_view = actions.clone();
     let history_for_view = history_commands.clone();
     let changes_for_view = changes_commands.clone();
     let refs_for_view = refs_commands.clone();
+    // 设置页与工作区各用一份 Agent 用例：`dynamic` 里两屏共用同一个变量。
+    let agent_for_view = agent_commands.clone();
     // 同步面板在 `dynamic` 之外渲染，工作区在它里面：两份克隆，避免被提前移走。
     let sync_for_view = sync_commands.clone();
     let sync_for_body = sync_commands.clone();
+    // 屏幕分支的 `dynamic` 会拿走一份 `session`，后面命令面板还要用。
+    let session_for_screen = session.clone();
     // 工作区与三个浮层各取一份，避免被提前移走。
     let commit_for_workspace = commit_commands.clone();
     let merge_for_workspace = merge_commands.clone();
     let commit_for_dialogs = commit_commands.clone();
     let merge_for_dialogs = merge_commands.clone();
+    // 搜索功能：屏幕分支、表单浮层与命令面板各取一份（状态是同一组信号）。
+    let search_for_screen = search_commands.clone();
+    let search_for_form = search_commands.clone();
+    let search_for_palette = search_commands.clone();
 
     return view()
         .w_full()
@@ -2162,45 +625,12 @@ pub fn App() -> impl IntoElement {
                 .flex_col()
                 .child(dynamic(move || -> AnyElement {
                     match screen_value.get() {
-                        Screen::Settings => screens::settings(
-                            language_value,
-                            theme_mode,
-                            settings_state,
-                            settings_section,
-                            identity_for_view.get(),
-                            git_info_for_view.clone(),
-                            agent_policies,
-                            actions_for_view.set_agent_permission.clone(),
-                            agent_settings,
-                            branches_for_settings.clone(),
-                            recent
-                                .get()
-                                .into_iter()
-                                .map(|entry| entry.path)
-                                .collect::<Vec<String>>(),
-                            settings_state.get().use_system_git,
-                            store::load_git_scan_folders(&store_dir)
-                                .iter()
-                                .map(|folder| folder.display().to_string())
-                                .collect::<Vec<String>>(),
-                            store::scan_git_repositories(&store::load_git_scan_folders(&store_dir))
-                                .len(),
-                            actions_for_view.add_found_repos.clone(),
-                            actions_for_view.set_automation.clone(),
-                            actions_for_view.set_review_millis.clone(),
-                            actions_for_view.toggle_protected_branch.clone(),
-                            screens::ShortcutUi {
-                                registry: shortcut_registry,
-                                query: shortcut_query,
-                                recording: recording_shortcut,
-                                error: shortcut_error,
-                                record: record_shortcut.clone(),
-                                restore: restore_shortcuts.clone(),
-                            },
-                            notice,
-                            history_for_view.diff.clone(),
+                        Screen::Settings => features::settings::view::settings(
+                            &settings_commands.state,
+                            &settings_commands,
+                            current_tab.get(),
                             &refs_for_view,
-                            actions_for_view.clone(),
+                            &agent_for_view,
                         )
                         .into_element(),
                         Screen::Workspace => screens::workspace(
@@ -2208,20 +638,18 @@ pub fn App() -> impl IntoElement {
                             tabs,
                             active,
                             inspector_open,
-                            mode,
                             changes_for_view.clone(),
                             settings_state,
-                            agent_plan,
-                            agent_audit,
-                            agent_policies,
-                            reset_request,
+                            agent_for_view.clone(),
                             notice,
                             refs_for_view.clone(),
                             sync_for_body.clone(),
                             history_for_view.clone(),
                             merge_for_workspace.clone(),
                             commit_for_workspace.clone(),
-                            actions_for_view.clone(),
+                            session_for_screen.clone(),
+                            settings_commands.clone(),
+                            search_for_screen.clone(),
                         )
                         .into_element(),
                     }
@@ -2243,7 +671,6 @@ pub fn App() -> impl IntoElement {
             &commit_for_dialogs,
             language,
             current_tab,
-            actions.clone(),
         ))
         .child(features::sync::view::sync_dialog(
             &sync_for_view.state,
@@ -2253,35 +680,31 @@ pub fn App() -> impl IntoElement {
         ))
         .child(screens::form_dialog(
             language,
-            form_state,
-            submit_form.clone(),
-            cancel_form.clone(),
+            search_for_form.state.form,
+            {
+                let search = search_for_form.clone();
+                Arc::new(move |form: screens::FormState| search.submit_form(form))
+            },
+            {
+                let search = search_for_form.clone();
+                Arc::new(move || search.cancel_form())
+            },
         ))
         .child(dynamic(move || -> AnyElement {
-            if !palette_open.get() {
+            if !search_for_palette.state.palette_open.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            let open_paths: Vec<String> = tabs
-                .get()
-                .iter()
-                .map(|tab| tab.path.clone())
-                .collect();
+            let open_paths: Vec<String> = tabs.get().iter().map(|tab| tab.path.clone()).collect();
             let recent_paths: Vec<String> = recent
                 .get()
                 .iter()
                 .map(|entry| entry.path.clone())
                 .collect();
-            let run_command = actions.run_command.clone();
-            let open_repo = actions.open_path.clone();
-            return screens::palette(
-                language,
-                palette_query,
+            return features::search::view::palette(
+                &search_for_palette.state,
+                &search_for_palette,
                 open_paths,
                 recent_paths,
-                run_command,
-                open_repo,
-                palette_open,
-                palette_selected,
             )
             .into_element();
         }))
@@ -2430,28 +853,13 @@ mod menu_tests {
 /// 打开欢迎页窗口（独立窗口，主窗口不受影响）。
 ///
 /// 同一 id 只建一次；`open` 绑定到信号，从欢迎页打开仓库后窗口自动关闭。
-#[allow(clippy::too_many_arguments)]
-fn open_welcome_window(
-    open: Signal<bool>,
-    language: Signal<SharedString>,
-    recent: Signal<Vec<store::RecentRepo>>,
-    query: Signal<String>,
-    clone_url: Signal<String>,
-    clone_destination: Signal<String>,
-    clone_options: Signal<screens::CloneOptions>,
-    init_files: Signal<screens::InitFiles>,
-    init_path: Signal<String>,
-    clone_error: Signal<Option<String>>,
-    cloning: Signal<bool>,
-    clone_progress: Signal<String>,
-    form: Signal<RepoForm>,
-    actions: Actions,
-) {
+fn open_welcome_window(cmd: features::welcome::commands::WelcomeCommands) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static OPENED: AtomicBool = AtomicBool::new(false);
     if OPENED.swap(true, Ordering::SeqCst) {
         return;
     }
+    let open = cmd.session.welcome_open;
     let welcome = nsh_core::element::desktop::window()
         .id("welcome")
         .title(brand::PRODUCT_NAME)
@@ -2463,21 +871,7 @@ fn open_welcome_window(
             }
         })
         .content(move || {
-            return screens::welcome(
-                language,
-                recent,
-                query,
-                clone_url,
-                clone_destination,
-                clone_options,
-                init_files,
-                init_path,
-                clone_error,
-                cloning,
-                clone_progress,
-                form,
-                actions.clone(),
-            );
+            return features::welcome::view::welcome(&cmd.state, &cmd);
         });
     let _ = nsh_core::element::desktop::open_window(welcome);
 }
@@ -2497,40 +891,6 @@ pub(crate) fn persist(dir: &std::path::Path, active: Signal<usize>, tabs: Signal
 pub(crate) fn window_insets() -> (f32, f32) {
     let edges = title_bar();
     return (edges.left.0, edges.right.0);
-}
-
-/// 切到第 `slot` 个标签页；越界不动（不把用户送到空标签）。
-fn activate_slot(
-    tabs: Signal<Vec<Tab>>,
-    active: Signal<usize>,
-    screen: Signal<Screen>,
-    slot: usize,
-) {
-    if slot < tabs.get_untracked().len() {
-        active.set(slot);
-        screen.set(Screen::Workspace);
-    }
-}
-
-/// 前/后切标签页，到头回绕（符合 macOS 习惯）；不足两个标签时不动。
-fn cycle_tab(
-    tabs: Signal<Vec<Tab>>,
-    active: Signal<usize>,
-    screen: Signal<Screen>,
-    forward: bool,
-) {
-    let count = tabs.get_untracked().len();
-    if count < 2 {
-        return;
-    }
-    let current = active.get_untracked();
-    let next = if forward {
-        (current + 1) % count
-    } else {
-        (current + count - 1) % count
-    };
-    active.set(next);
-    screen.set(Screen::Workspace);
 }
 
 /// 供子模块使用的设计常量。

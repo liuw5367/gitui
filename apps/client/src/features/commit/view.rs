@@ -9,20 +9,19 @@ use super::state::CommitState;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
-use crate::Actions;
 use nsh_core::prelude::*;
 
 /// 面板宽度（与提交文件面板一致）。
 pub(crate) const WIDTH: f32 = 320.0;
 
-/// 入口 `commit_panel` 收本功能的状态与用例；跨功能的动作（切到 Agent、请
-/// Agent 起草说明）仍从 `Actions` 取。
+/// 入口 `commit_panel` 收本功能的状态与用例；跨功能的「请 Agent 起草」由宿主
+/// 组装成一个回调传进来（切到 Agent 主视图并提议计划）。
 pub(crate) fn commit_panel(
     state: &CommitState,
     cmd: &CommitCommands,
     language: Signal<SharedString>,
     tab: Tab,
-    actions: Actions,
+    ask_agent: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     let summary = state.summary;
     let description = state.description;
@@ -204,12 +203,8 @@ pub(crate) fn commit_panel(
                             crate::ui::button::ButtonSize::Small,
                             false,
                             {
-                                let set_mode = actions.set_mode.clone();
-                                let propose = actions.propose_plan.clone();
-                                move || {
-                                    set_mode(crate::Mode::Agent);
-                                    propose();
-                                }
+                                let ask_agent = ask_agent.clone();
+                                move || ask_agent()
                             },
                         ))
                         .child(

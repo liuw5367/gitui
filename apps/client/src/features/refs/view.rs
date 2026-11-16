@@ -6,7 +6,7 @@
 //! （`reset --hard`，需确认）。
 //!
 //! 入口 `refs_sidebar` 画侧栏、`refs_view` 画主区，两者都收本功能的状态与用例；
-//! 跨功能的动作（新建分支/标签、复制、在 Finder 中显示）仍从 `Actions` 取。
+//! 新建分支/标签的表单归 `features::search`，复制与在 Finder 中显示走 `shared::os`。
 
 use super::commands::RefsCommands;
 use super::state::{RefsState, RefsTab};
@@ -14,7 +14,7 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use crate::model::Tab;
 use crate::ui;
-use crate::Actions;
+use crate::features::search::commands::SearchCommands;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
@@ -313,18 +313,19 @@ pub(crate) fn refs_view(
     cmd: &RefsCommands,
     language: Signal<SharedString>,
     tab: Tab,
-    actions: Actions,
+    search: &SearchCommands,
     selected_tab: Signal<RefsTab>,
 ) -> impl IntoElement + use<> {
     let now = store::now_unix();
     let reflog_query = state.reflog_query;
-    // 「在历史中显示」属于提交历史功能，refs 只是入口：把它的用例包成回调。
-    let show_in_history: std::sync::Arc<dyn Fn(String)> = {
-        let history = cmd.history.clone();
-        std::sync::Arc::new(move |sha: String| history.show_in_history(sha))
-    };
     // 表格在 `dynamic` 里重建，先克隆一份用例，闭包才拿得到 `'static` 数据。
     let table_cmd = cmd.clone();
+    let table_search = search.clone();
+    // 新建表单归搜索功能：这里只把入口包成按钮要的回调。
+    let open_form: std::sync::Arc<dyn Fn(crate::screens::FormKind)> = {
+        let search = search.clone();
+        std::sync::Arc::new(move |kind: crate::screens::FormKind| search.open_form(kind))
+    };
     return view()
         .w_full()
         .h_full()
@@ -352,7 +353,7 @@ pub(crate) fn refs_view(
                     language,
                     "form.newBranch",
                     {
-                        let open_form = actions.open_form.clone();
+                        let open_form = open_form.clone();
                         move || open_form(crate::screens::FormKind::NewBranch)
                     },
                 ))
@@ -360,7 +361,7 @@ pub(crate) fn refs_view(
                     language,
                     "form.newTag",
                     {
-                        let open_form = actions.open_form.clone();
+                        let open_form = open_form.clone();
                         move || open_form(crate::screens::FormKind::NewTag)
                     },
                 ))
@@ -368,7 +369,7 @@ pub(crate) fn refs_view(
                     language,
                     "form.addRemote",
                     {
-                        let open_form = actions.open_form.clone();
+                        let open_form = open_form.clone();
                         move || open_form(crate::screens::FormKind::AddRemote)
                     },
                 ))
@@ -376,7 +377,7 @@ pub(crate) fn refs_view(
                     language,
                     "form.newStash",
                     {
-                        let open_form = actions.open_form.clone();
+                        let open_form = open_form.clone();
                         move || open_form(crate::screens::FormKind::NewStash)
                     },
                 ))
@@ -386,17 +387,18 @@ pub(crate) fn refs_view(
         .child(dynamic(move || -> AnyElement {
             match selected_tab.get() {
                 RefsTab::Refs => {
-                    refs_table(language, tab.clone(), actions.clone(), &table_cmd)
-                        .into_element()
+                    refs_table(language, tab.clone(), &table_search, &table_cmd).into_element()
                 }
                 RefsTab::Reflog => {
+                    // 「撤销」归恢复功能（`cmd.recovery`），「在历史中显示」归提交
+                    // 历史（`cmd.history`）：refs 只是这两个入口的宿主。
                     reflog_list(
                         language,
                         tab.clone(),
                         now,
                         reflog_query,
-                        actions.clone(),
-                        show_in_history.clone(),
+                        &table_cmd,
+                        &table_search,
                     )
                     .into_element()
                 }
@@ -425,9 +427,30 @@ fn tab_button(
 fn refs_table(
     language: Signal<SharedString>,
     tab: Tab,
-    actions: Actions,
+    search: &SearchCommands,
     cmd: &RefsCommands,
 ) -> impl IntoElement {
+    // 复制与在 Finder 中显示走 `shared::os`，表单入口走搜索功能；都包成回调供
+    // 右键菜单使用。
+    let notice = cmd.notice;
+    let copy_text: std::sync::Arc<dyn Fn(String)> = {
+        let language = language;
+        std::sync::Arc::new(move |text: String| {
+            crate::shared::os::copy_text(notice, language, text)
+        })
+    };
+    let reveal_path: std::sync::Arc<dyn Fn(String)> = {
+        let language = language;
+        std::sync::Arc::new(move |path: String| {
+            crate::shared::os::reveal_path(notice, language, path)
+        })
+    };
+    let open_form_from: std::sync::Arc<dyn Fn(crate::screens::FormKind, String)> = {
+        let search = search.clone();
+        std::sync::Arc::new(move |kind: crate::screens::FormKind, from: String| {
+            search.open_form_from(kind, from)
+        })
+    };
     // 「比较」与各段引用行的写动作要 `Arc<dyn Fn>`，这里把用例包成回调。
     let compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
         let history = cmd.history.clone();
@@ -500,9 +523,9 @@ fn refs_table(
         let checkout_new = checkout_new.clone();
         let merge = merge.clone();
         let compare = compare_refs.clone();
-        let open_form = actions.open_form_from.clone();
+        let open_form = open_form_from.clone();
         let delete = delete.clone();
-        let copy_text = actions.copy_text.clone();
+        let copy_text = copy_text.clone();
         let name_for_menu = name.clone();
         let items = vec![
             ui::menu::action(
@@ -590,8 +613,8 @@ fn refs_table(
         let name = remote.clone();
         let drop_remote = drop_remote.clone();
         let fetch = fetch.clone();
-        let copy_text = actions.copy_text.clone();
-        let edit_form = actions.open_form_from.clone();
+        let copy_text = copy_text.clone();
+        let edit_form = open_form_from.clone();
         let url = tab
             .remote_urls
             .iter()
@@ -654,7 +677,7 @@ fn refs_table(
         let name = tag.clone();
         let push = push_tag.clone();
         let drop_tag = drop_tag.clone();
-        let copy_text = actions.copy_text.clone();
+        let copy_text = copy_text.clone();
         let items = vec![
             ui::menu::action(
                 i18n::t(language.get_untracked().as_str(), "menu.pushTag"),
@@ -703,7 +726,7 @@ fn refs_table(
         let apply = apply_stash.clone();
         let pop = pop_stash.clone();
         let drop_stash = drop_stash.clone();
-        let copy_text = actions.copy_text.clone();
+        let copy_text = copy_text.clone();
         let items = vec![
             ui::menu::action(
                 i18n::t(language.get_untracked().as_str(), "menu.stashApply"),
@@ -756,8 +779,8 @@ fn refs_table(
     // 工作树：在 Finder 中显示、复制路径。
     let mut worktree_rows: Vec<AnyElement> = Vec::new();
     for (index, path) in tab.refs.worktrees.iter().enumerate() {
-        let reveal = actions.reveal_path.clone();
-        let copy_text = actions.copy_text.clone();
+        let reveal = reveal_path.clone();
+        let copy_text = copy_text.clone();
         let path_for_menu = path.clone();
         let items = vec![
             ui::menu::action(
@@ -873,10 +896,24 @@ fn reflog_list(
     tab: Tab,
     now: i64,
     query: Signal<String>,
-    actions: Actions,
-    show_in_history: std::sync::Arc<dyn Fn(String)>,
+    cmd: &RefsCommands,
+    search: &SearchCommands,
 ) -> impl IntoElement {
-    let undo = actions.undo_reflog.clone();
+    let recovery = cmd.recovery.clone();
+    let show_in_history = cmd.history.clone();
+    let notice = cmd.notice;
+    let open_form_from: std::sync::Arc<dyn Fn(crate::screens::FormKind, String)> = {
+        let search = search.clone();
+        std::sync::Arc::new(move |kind: crate::screens::FormKind, from: String| {
+            search.open_form_from(kind, from)
+        })
+    };
+    let copy_text_fn: std::sync::Arc<dyn Fn(String)> = {
+        let language = language;
+        std::sync::Arc::new(move |text: String| {
+            crate::shared::os::copy_text(notice, language, text)
+        })
+    };
     let needle = query.get_untracked().to_lowercase();
     let mut rows: Vec<AnyElement> = Vec::new();
     for (index, entry) in tab.reflog.iter().enumerate() {
@@ -888,7 +925,7 @@ fn reflog_list(
         {
             continue;
         }
-        let undo = undo.clone();
+        let undo = recovery.clone();
         let short = entry.short.clone();
         let action = entry.action.clone();
         let summary = entry.summary.clone();
@@ -937,13 +974,13 @@ fn reflog_list(
                     crate::ui::button::ButtonVariant::Ghost,
                     crate::ui::button::ButtonSize::Small,
                     false,
-                    move || undo(index),
+                    move || undo.undo_reflog(index),
                 ))
                 .on_context_menu({
-                    let undo = actions.undo_reflog.clone();
-                    let open_form = actions.open_form_from.clone();
+                    let undo = recovery.clone();
+                    let open_form = open_form_from.clone();
                     let show = show_in_history.clone();
-                    let copy_text = actions.copy_text.clone();
+                    let copy_text = copy_text_fn.clone();
                     let sha = entry.sha.clone();
                     let short = entry.short.clone();
                     move |event: &nsh_core::ContextMenuEvent| {
@@ -955,7 +992,7 @@ fn reflog_list(
                                 true,
                                 {
                                     let undo = undo.clone();
-                                    move || undo(index)
+                                    move || undo.undo_reflog(index)
                                 },
                             ),
                             ui::menu::action(
@@ -977,7 +1014,7 @@ fn reflog_list(
                                 {
                                 let show = show.clone();
                                 let sha = sha.clone();
-                                move || show(sha.clone())
+                                move || show.show_in_history(sha.clone())
                             }),
                             ui::menu::divider(),
                             ui::menu::action(
