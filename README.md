@@ -34,7 +34,7 @@
 | [tools/](tools/) | 设计几何提取、UI 约束检查与截图脚本 |
 | [fixtures/](fixtures/) | 确定性测试仓库与 bare 远程的生成脚本；默认产物写入 `.tmp/` |
 | [archive/](archive/) | 2026-11-15 归档的旧文档，冻结 |
-| [docs/](docs/) | 按主题分目录的文档；当前只有设计系统（`docs/design/`） |
+| [docs/](docs/) | 按主题分目录的文档：`docs/design/`（设计系统）、`docs/pages/`（逐页说明） |
 
 ## 环境
 
