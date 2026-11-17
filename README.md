@@ -88,11 +88,13 @@ python3 tools/design/tokens.py
 
 ## 已知限制
 
-- 凭据与登录流程未实现。设置页的 Sign in 只给出提示，应用不保存 token；同步失败会归类为 auth、offline 或 rejected。欢迎页的账号行显示未登录状态，Credentials 只做设置页导航。
-- 更新检查与帮助内容未实现。欢迎页的 Check for Updates 只给出说明，Help 保留在应用菜单。
-- 设置里的 Git 路径（`use_system_git`、`git_path`）会保存，`crates/git` 仍固定调用 PATH 中的 `git`。
+- 设置窗口的六个分区已按 `docs/pages/settings*.md` 重做。General、Shortcuts、Git 真实读写；Updates、Credentials、Agent 只做界面与本地偏好，跨系统动作只给事实性提示。
+- 账号连接与登录流程没有接入。Credentials 页的 GitHub / GitLab 显示真实空态，Connect / Sign out 只给提示；不保存 token，同步失败仍归类为 auth、offline 或 rejected。
+- 更新检查没有发布源。General 与 About 的更新状态显示 `Not checked`，Check Now 只给说明。
+- Credentials 的凭据助手来自本机 `git config`，SSH 密钥只读取 `~/.ssh` 的文件名与公钥指纹；不生成、不删除、不上传，也不读取私钥内容。
+- 设置里的 Git 路径（`use_system_git`、`git_path`）会保存并用于探测，`crates/git` 仍固定调用 PATH 中的 `git`。
 - 历史改写只有固定形态的 reword（单条提交）与 squash（连续区间），交互式 rebase 的 todo 编辑未实现。
-- Agent 的自动化档位与预览时长会保存，暂不改变执行流程；权限与受保护分支仍然生效。
+- Agent 的协议、端点、模型、温度与隐私偏好会保存，App key 只保存在会话内存；没有 provider 与网络运行时，因此不会发起请求。旧的动作权限与受保护分支仍然生效。
 - 同步用本机 bare 远程测试；第三方远程与真实凭据流程未验收，OAuth 与 SSH 密钥管理未实现。
 - diff 工具栏的折叠（fold）与空白（whitespace）开关会切换图标状态，但没有传入渲染层；当前只有软换行（wrap）生效。
 - 其他平台尚未适配，构建与验证只在 macOS 上完成。

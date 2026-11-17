@@ -22,6 +22,8 @@
 #   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
 #   GITUI_PALETTE=1     启动即打开命令面板（⌘K 的等价物）
 #   GITUI_SETTINGS=1    启动即打开设置窗口（独立窗口）
+#   GITUI_SETTINGS_SECTION=general|shortcuts|agent|git|credentials|about
+#                       设置窗口初始分区；截图前需清理残留的 nsh-app 子进程
 #   GITUI_INSPECTOR=1   启动即展开右侧检查器（板 08 / 18）
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
@@ -103,6 +105,7 @@ echo "启动应用（HOME=$home_dir）…"
   GITUI_MODE="${GITUI_MODE:-history}" \
   GITUI_PALETTE="${GITUI_PALETTE:-0}" \
   GITUI_SETTINGS="${GITUI_SETTINGS:-0}" \
+  GITUI_SETTINGS_SECTION="${GITUI_SETTINGS_SECTION:-}" \
   GITUI_INSPECTOR="${GITUI_INSPECTOR:-0}" \
   GITUI_WELCOME_FORM="${GITUI_WELCOME_FORM:-}" \
   GITUI_WELCOME_STATE="${GITUI_WELCOME_STATE:-}" \

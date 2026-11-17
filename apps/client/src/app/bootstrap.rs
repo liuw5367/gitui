@@ -452,7 +452,6 @@ pub(crate) fn app() -> impl IntoElement {
         store_dir: store_dir.clone(),
         theme_mode,
         diff: diff_commands.clone(),
-        git_info,
     };
     settings_commands.refresh_identity();
 

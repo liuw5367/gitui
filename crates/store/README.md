@@ -19,14 +19,14 @@
 | `session.txt` | 第一行是当前 tab 下标，其后每行一个路径 | 打开的仓库与活动 tab |
 | `language.txt` | 一行语言标识 | `en` 或 `zh-Hans` |
 | `appearance.txt` | 一行 | `system`、`light` 或 `dark` |
-| `settings.txt` | 每行 `键=值` | 文件树、启动、更新方式、Git 路径、日期格式 |
+| `settings.txt` | 每行 `键=值` | 文件树、启动、更新、Git、日期、Agent、工具与网络偏好 |
 | `changelists.txt` | 每行 `<仓库>\t<清单名>\t<路径>` | 按仓库分组的变更清单 |
 | `shortcuts.txt` | 每行 `<动作 id>=<组合>` | 只保存与默认值不同的改键 |
 | `agent-policies.txt` | 每行 `<动作>=<权限>` | Agent 每个动作的权限 |
 | `agent-audit.txt` | 每行一条，格式为 `<时间>\t<动作>\t<结果>\t<详情>` | Agent 审计，最新的在前 |
 | `git-scan-folders.txt` | 每行一个绝对路径 | 设置页扫描 Git 仓库的目录 |
 
-`settings.txt` 的键包括 `file_tree`、`merge_empty_dirs`、`compact_single_child`、`restore_session`、`update_mode`、`use_system_git`、`git_path`、`date_format` 与 `date_pattern`。
+`settings.txt` 的键包括 `file_tree`、`merge_empty_dirs`、`compact_single_child`、`restore_session`、`update_mode`、`use_system_git`、`git_path`、`date_format`、`date_pattern`、`agent_protocol`、`agent_base_url`、`agent_model`、`agent_temperature`、`agent_max_tokens`、`agent_send_diffs`、`agent_send_repository_path`、`ssh_for_new_remotes`、`external_editor`、`diff_tool`、`merge_tool`、`terminal`、`external_editor_for_messages`、`proxy_mode`、`verify_ssl` 与 `use_system_git_config`。旧文件缺少新键时使用默认值。
 
 ## 写入约定
 

@@ -26,8 +26,6 @@ pub(crate) struct SettingsCommands {
     pub(crate) theme_mode: Signal<ThemeMode>,
     /// diff 的显示偏好（文件树分组）由 `shared::diff` 持有。
     pub(crate) diff: DiffCommands,
-    /// 本机 Git 的版本、执行路径与凭据助手：启动时探测一次，设置页只读展示。
-    pub(crate) git_info: (String, String, String),
 }
 
 impl SettingsCommands {

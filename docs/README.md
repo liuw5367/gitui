@@ -2,6 +2,8 @@
 
 `docs/` 按主题分目录：一个主题一个文件夹，文件夹里的 `README.md` 是该主题的入口。
 
+设置窗口的六个分区按 [pages/settings.md](pages/settings.md)、[pages/settings-shortcuts.md](pages/settings-shortcuts.md)、[pages/settings-agent.md](pages/settings-agent.md)、[pages/settings-git.md](pages/settings-git.md)、[pages/settings-credentials.md](pages/settings-credentials.md)、[pages/settings-about.md](pages/settings-about.md) 实现。Updates、Credentials 与 Agent 的跨系统动作只给事实性提示，实现边界以根 README 的「已知限制」为准。
+
 | 目录 | 内容 | 入口 |
 |---|---|---|
 | [design/](design/README.md) | 设计系统：视觉语言、token 契约、组件层、偏离清单 | [design/README.md](design/README.md) |

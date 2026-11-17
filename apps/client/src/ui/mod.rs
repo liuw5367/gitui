@@ -172,6 +172,7 @@ mod guard_tests {
         "features/settings/shortcuts.rs",
         "features/settings/about.rs",
         "features/settings/agent.rs",
+        "features/settings/credentials.rs",
         "features/refs/view.rs",
         "features/commit/view.rs",
         "features/agent/view.rs",
