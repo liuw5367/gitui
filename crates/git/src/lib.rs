@@ -5,7 +5,7 @@
 //!
 //! 模块划分：`exec` 起进程，`error` 认失败类别，`parse` 把文本变成类型，其余按
 //! 功能分（`query` / `history` / `diff` / `stage` / `commit` / `branch` /
-//! `remote` / `merge`）。`impl Repo` 分散在这些模块里，公开名字由本文件原样再
+//! `remote` / `merge` / `submodule`）。`impl Repo` 分散在这些模块里，公开名字由本文件原样再
 //! 导出，`git::Xxx` 的路径不变；测试跟着各自的模块走。
 
 mod branch;
@@ -19,6 +19,7 @@ mod parse;
 mod query;
 mod remote;
 mod stage;
+mod submodule;
 
 pub use commit::*;
 pub use error::*;

@@ -27,6 +27,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_pop`、`stash_apply`、`stash_drop` |
+| 子模块 | `SubmoduleInfo`、`update_submodule`、`sync_submodule`、`remove_submodule` |
 | 同步 | `fetch`、`fetch_with`、`pull`、`pull_with`、`pull_remote_branch`、`push`、`push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming` |
 | 冲突与多步操作 | `operation`、`conflict_content`、`conflicts`、`resolve_conflict`、`resolve_with`、`continue_operation`、`abort_operation` |
 | 克隆与初始化 | `clone`、`clone_with`、`start_clone`、`init_repository`、`init_with` |
@@ -34,7 +35,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 `diff_between`、`patch`、`patch_for_path`、`file_diff` 返回已解析的 `domain::diff::Patch`；Git 的原始文本保存在 `Patch::raw` 里，导出 patch 与复制直接用它，保证字节一致。
 
-`Repo::refs` 返回 `Refs { branches, remotes, remote_info, remote_branches, tags, stashes, submodules, worktrees }`。`RemoteInfo` 保存全部 fetch/push URL；`RemoteBranch` 分开保存远端名和远端内的分支名，`full_name()` 返回 `origin/feature/topic` 形式。远端 HEAD 符号别名不会作为远端分支返回。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 保存显示序号 `reference`、提交 OID `oid` 与摘要，操作可按 OID 在序号变化后重新定位。`stash_push_selected` 以 literal pathspec 只保存指定路径，`stash_show` 可读取包含未跟踪文件的差异。
+`Repo::refs` 返回 `Refs { branches, remotes, remote_info, remote_branches, tags, stashes, submodules, worktrees }`。`RemoteInfo` 保存全部 fetch/push URL；`RemoteBranch` 分开保存远端名和远端内的分支名，`full_name()` 返回 `origin/feature/topic` 形式。远端 HEAD 符号别名不会作为远端分支返回。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 保存显示序号 `reference`、提交 OID `oid` 与摘要，操作可按 OID 在序号变化后重新定位。`SubmoduleInfo` 保存 `.gitmodules` 的路径、URL、可选跟踪分支，以及初始化状态、当前提交、父仓库 index 中的 gitlink 提交和子模块自身是否有改动。`update_submodule(path, false)` 初始化并检出父仓库记录的版本，`update_submodule(path, true)` 要求配置跟踪分支并按 `--remote` 更新；`sync_submodule` 同步配置 URL，`remove_submodule` 会拒绝删除含本地改动或未记录提交的已初始化子模块。`stash_push_selected` 以 literal pathspec 只保存指定路径，`stash_show` 可读取包含未跟踪文件的差异。
 
 `rebase_onto` 把当前分支变基到指定引用；若 Git 因冲突退出，仓库会保留 rebase 状态供界面继续解决。`checkout_tracking_branch` 创建并检出跟踪指定远端分支的本地分支。`pull_remote_branch` 拉取指定远端分支并合入当前分支。`push_branch` 推送指定本地分支到远端同名分支，不要求当前检出该分支；`delete_remote_branch` 通过非强制删除 refspec 移除服务器分支。
 
@@ -79,7 +80,7 @@ cd crates/git
 cargo test
 ```
 
-当前 71 项通过（含从 `domain` 搬来的网络错误分类测试）。测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏（含按选择文件保存、未跟踪差异查看与 stash OID）、冲突解决与多步操作、同步选项与强推保护、推送未检出的分支、普通分支变基与变基冲突处理、按指定远端跟踪分支创建/拉取/删除、克隆选项与取消、blame、reflog 与错误路径。
+测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏/子模块、冲突解决与多步操作、同步选项与强推保护、推送未检出的分支、普通分支变基与变基冲突处理、按指定远端跟踪分支创建/拉取/删除、克隆选项与取消、blame、reflog 与错误路径。
 
 ## 依赖
 

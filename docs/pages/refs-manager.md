@@ -51,6 +51,8 @@ Tags 侧栏按标签名升序显示。组头右键提供 `New Tag…`，表单�
 
 Stashes 侧栏按摘要升序显示。组头的 `Stash Changes…` 打开全量贮藏表单；`Stash Selected Files…` 打开改动文件多选表单，支持说明和包含未跟踪文件选项，只贮藏所选路径。无工作区改动时两个入口禁用。贮藏行提供 `Apply Stash`、`Pop Stash`、确认后的 `Drop Stash…`、`Show Diff` 和 `Copy Stash Name`；显示差异时可返回普通改动视图。菜单目标以贮藏提交 OID 绑定，所以索引变化后会重新定位目标；若目标已不存在则提示重新选择。
 
+Submodules 侧栏按相对路径文字升序显示，每行展示路径与 `clean`、`changed`、`dirty` 或 `not initialized` 状态。Git 查询读取 `.gitmodules` 的路径、URL、可选跟踪分支，以及当前检出、父仓库 index 记录和子模块自身改动。组头右键提供确认后的 `Update All Submodules…`（按父仓库记录的提交逐个更新，继续尝试并报告失败路径）与组展开/收起。子模块行右键按 [菜单画板 22](menus.md) 顺序提供 `Update Submodule`（初始化或检出父仓库记录版本）、`Update to Latest`（仅配置跟踪分支时可用，更新后显示父仓库 gitlink 变更）、`Sync URL`、`Open in New Tab`（仅已初始化时可用）、`Commit Submodule Change`（仅 gitlink 有变化时可用）、`Remove Submodule…`、`Copy Path`。提交动作先暂存 gitlink，再列出所有当前暂存路径供用户确认，确认后切到该仓库的 Changes 提交面板；取消时已暂存的 gitlink 保留。移除操作先确认，若子模块有未提交改动或当前提交尚未记录在父仓库，则 Git 安全检查会拒绝删除。操作目标绑定发起菜单的仓库标签。
+
 中列 798 = 1390 − 232 − 360。Refs 条 32 + 表头 22 之后，表格区 **688** = 742 − 54；6 行只占 180，其余留白。第一列 364 = 798 − 20（左右内距）− 24（4 个 6 的列距）− 390（128 + 86 + 124 + 52）。
 
 ## 2. Refs 条与表头

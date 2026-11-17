@@ -212,11 +212,25 @@ pub(crate) fn refs_sidebar(
         ],
     ));
 
-    let submodule_rows: Vec<AnyElement> = refs
-        .submodules
+    let mut submodules = refs.submodules.clone();
+    submodules.sort_by(|left, right| {
+        left.path
+            .to_lowercase()
+            .cmp(&right.path.to_lowercase())
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let submodule_paths = submodules
         .iter()
-        .map(|path| plain_row(path.clone(), "folder", design::text2))
+        .map(|module| module.path.clone())
+        .collect::<Vec<_>>();
+    let submodule_rows: Vec<AnyElement> = submodules
+        .into_iter()
+        .map(|module| submodule_row(language, cmd, tab_id, module))
         .collect();
+    let update_all_submodules: std::sync::Arc<dyn Fn()> = {
+        let refs = cmd.clone();
+        std::sync::Arc::new(move || refs.update_all_submodules_at(tab_id, submodule_paths.clone()))
+    };
     groups.push(group(
         language,
         cmd,
@@ -226,7 +240,11 @@ pub(crate) fn refs_sidebar(
         refs.submodules.len(),
         collapsed.contains("group:submodules"),
         submodule_rows,
-        Vec::new(),
+        vec![(
+            "submodule.updateAll",
+            !refs.submodules.is_empty(),
+            update_all_submodules,
+        )],
     ));
 
     let worktree_rows: Vec<AnyElement> = refs
@@ -1384,6 +1402,118 @@ fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) ->
                 .text_color(move || design::text2())
                 .flex_1()
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .into_element();
+}
+
+fn submodule_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    module: git::SubmoduleInfo,
+) -> AnyElement {
+    let path = module.path.clone();
+    let row_path = path.clone();
+    let status_key = if !module.initialized {
+        "submodule.uninitialized"
+    } else if module.dirty {
+        "submodule.dirty"
+    } else if module.current_oid == module.index_oid {
+        "submodule.clean"
+    } else {
+        "submodule.changed"
+    };
+    let status_color = if !module.initialized {
+        design::text3
+    } else if module.dirty || module.current_oid != module.index_oid {
+        design::warn
+    } else {
+        design::ok
+    };
+    let menu_cmd = cmd.clone();
+    let menu_path = path.clone();
+    let branch_configured = module.branch.is_some();
+    let can_open = module.initialized;
+    let can_commit = module.initialized && module.current_oid != module.index_oid;
+    return view()
+        .w_full()
+        .h(px(metrics::SIDE_ROW_H))
+        .px(px(7.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .hover(|style| style.bg(move || design::hover()))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let update_cmd = menu_cmd.clone();
+            let update_path = menu_path.clone();
+            let mut items = vec![ui::menu::action(
+                i18n::t(language.get().as_str(), "submodule.update"),
+                true,
+                move || update_cmd.update_submodule_at(tab_id, update_path.clone(), false),
+            )];
+            let latest_cmd = menu_cmd.clone();
+            let latest_path = menu_path.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "submodule.updateLatest"),
+                branch_configured,
+                move || latest_cmd.update_submodule_at(tab_id, latest_path.clone(), true),
+            ));
+            let sync_cmd = menu_cmd.clone();
+            let sync_path = menu_path.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "submodule.syncUrl"),
+                true,
+                move || sync_cmd.sync_submodule_at(tab_id, sync_path.clone()),
+            ));
+            items.push(ui::menu::divider());
+            let open_cmd = menu_cmd.clone();
+            let open_path = menu_path.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "submodule.open"),
+                can_open,
+                move || open_cmd.open_submodule_at(tab_id, open_path.clone()),
+            ));
+            let commit_cmd = menu_cmd.clone();
+            let commit_path = menu_path.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "submodule.commitChange"),
+                can_commit,
+                move || commit_cmd.stage_submodule_change_at(tab_id, commit_path.clone()),
+            ));
+            items.push(ui::menu::divider());
+            let remove_cmd = menu_cmd.clone();
+            let remove_path = menu_path.clone();
+            items.push(ui::menu::danger(
+                i18n::t(language.get().as_str(), "submodule.remove"),
+                true,
+                move || remove_cmd.remove_submodule_at(tab_id, remove_path.clone()),
+            ));
+            let copy_notice = menu_cmd.notice;
+            let copy_path = menu_path.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "submodule.copyPath"),
+                true,
+                move || crate::shared::os::copy_text(copy_notice, language, copy_path.clone()),
+            ));
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::icon::icon_view(
+            "folder",
+            crate::ui::icon::IconSize::Compact,
+            design::text2,
+        ))
+        .child(
+            text(row_path)
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || design::text2())
+                .flex_1()
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(
+            text(move || i18n::t(language.get().as_str(), status_key))
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || status_color()),
         )
         .into_element();
 }

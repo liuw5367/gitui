@@ -2,7 +2,7 @@
 
 use crate::app::ops::refresh_refs;
 use crate::app::session::{Tab, load_tab, reload_after_history_change};
-use crate::features::changes::ops::refresh_changes;
+use crate::features::changes::ops::{load_change_diff, refresh_changes};
 use git::Repo;
 
 /// 工作区是否不干净（有暂存或未暂存的改动）。
@@ -332,6 +332,85 @@ pub(crate) fn drop_remote(tab: &mut Tab, name: &str) -> Result<(), String> {
     repo.remove_remote(name).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     return Ok(());
+}
+
+/// 初始化/更新子模块，并刷新父仓库状态，即使 Git 在部分更新后返回失败。
+pub(crate) fn update_submodule(
+    tab: &mut Tab,
+    path: &str,
+    latest: bool,
+) -> Result<(), domain::GitError> {
+    let repo = Repo::open(tab.path.as_str())?;
+    let result = repo.update_submodule(path, latest);
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    return result;
+}
+
+/// 把 `.gitmodules` 地址同步到本地配置，并刷新父仓库状态。
+pub(crate) fn sync_submodule(tab: &mut Tab, path: &str) -> Result<(), domain::GitError> {
+    let repo = Repo::open(tab.path.as_str())?;
+    let result = repo.sync_submodule(path);
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    return result;
+}
+
+/// 按 Git 安全规则移除子模块；删除会暂存父仓库的 gitlink 与 `.gitmodules`。
+pub(crate) fn remove_submodule(tab: &mut Tab, path: &str) -> Result<(), domain::GitError> {
+    let repo = Repo::open(tab.path.as_str())?;
+    let result = repo.remove_submodule(path);
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    return result;
+}
+
+/// 暂存父仓库中的 gitlink 变更，并返回当前全部已暂存路径供提交确认使用。
+pub(crate) fn stage_submodule_change(
+    tab: &mut Tab,
+    path: &str,
+) -> Result<Option<Vec<String>>, domain::GitError> {
+    let repo = Repo::open(tab.path.as_str())?;
+    let module = repo
+        .refs()?
+        .submodules
+        .into_iter()
+        .find(|module| module.path == path)
+        .ok_or_else(|| submodule_error("The submodule registration changed."))?;
+    if !module.initialized {
+        return Err(submodule_error("The submodule is not initialized."));
+    }
+    if module.current_oid.is_none() {
+        return Err(submodule_error(
+            "The current submodule commit could not be read.",
+        ));
+    }
+    if module.current_oid == module.index_oid {
+        return Ok(None);
+    }
+    repo.stage(&[path.to_string()])?;
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    if let Some(index) = tab.changes.iter().position(|change| change.path == path) {
+        tab.selected_change = Some(index);
+        load_change_diff(tab, index);
+    }
+    let staged = repo
+        .status()?
+        .into_iter()
+        .filter(|entry| entry.is_staged())
+        .map(|entry| entry.path)
+        .collect();
+    return Ok(Some(staged));
+}
+
+fn submodule_error(detail: &str) -> domain::GitError {
+    return domain::GitError::CommandFailed {
+        program: "git".to_string(),
+        args: "submodule".to_string(),
+        code: None,
+        detail: detail.to_string(),
+    };
 }
 
 pub(crate) fn pull_remote_branch(

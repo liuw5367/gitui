@@ -224,6 +224,23 @@ pub struct Stash {
     pub summary: String,
 }
 
+/// 子模块登记与当前检出状态。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SubmoduleInfo {
+    /// `.gitmodules` 中登记的仓库相对路径。
+    pub path: String,
+    pub url: String,
+    /// 配置的跟踪分支；为空时不能执行「更新到最新版」。
+    pub branch: Option<String>,
+    pub initialized: bool,
+    /// 子模块当前检出的提交。
+    pub current_oid: Option<String>,
+    /// 父仓库 index 当前记录的 gitlink 提交。
+    pub index_oid: Option<String>,
+    /// 子模块自身有暂存、未暂存或未跟踪改动。
+    pub dirty: bool,
+}
+
 /// 侧栏引用的完整集合。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Refs {
@@ -233,7 +250,7 @@ pub struct Refs {
     pub remote_branches: Vec<RemoteBranch>,
     pub tags: Vec<String>,
     pub stashes: Vec<Stash>,
-    pub submodules: Vec<String>,
+    pub submodules: Vec<SubmoduleInfo>,
     pub worktrees: Vec<String>,
 }
 
@@ -300,7 +317,7 @@ impl Repo {
             "refs/tags",
         ])?;
         let stashes = self.stashes()?;
-        let submodules = self.submodules();
+        let submodules = self.submodules()?;
         let worktrees = self.worktrees()?;
         return Ok(Refs {
             branches,
@@ -405,22 +422,114 @@ impl Repo {
         return Ok(stashes);
     }
 
-    fn submodules(&self) -> Vec<String> {
-        let text = match std::fs::read_to_string(self.root.join(".gitmodules")) {
-            Ok(text) => text,
-            Err(_) => return Vec::new(),
-        };
-        let mut paths = Vec::new();
-        for line in text.lines() {
-            let line = line.trim();
-            if let Some(path) = line.strip_prefix("path =") {
-                let path = path.trim();
-                if !path.is_empty() {
-                    paths.push(path.to_string());
-                }
-            }
+    fn submodules(&self) -> Result<Vec<SubmoduleInfo>, GitError> {
+        if !self.root.join(".gitmodules").exists() {
+            return Ok(Vec::new());
         }
-        return paths;
+        let output = match run_git(
+            &self.root,
+            &[
+                "config",
+                "--file",
+                ".gitmodules",
+                "--get-regexp",
+                r"^submodule\..*\.path$",
+            ],
+        ) {
+            Ok(output) => output,
+            Err(GitError::CommandFailed { code: Some(1), .. }) => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        let mut modules = Vec::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let Some((key, path)) = line.split_once(' ') else {
+                continue;
+            };
+            let Some(name) = key
+                .strip_prefix("submodule.")
+                .and_then(|key| key.strip_suffix(".path"))
+            else {
+                continue;
+            };
+            let path = path.trim();
+            if path.is_empty() {
+                continue;
+            }
+            let relative_path = Path::new(path);
+            if relative_path.is_absolute()
+                || relative_path
+                    .components()
+                    .any(|component| !matches!(component, std::path::Component::Normal(_)))
+            {
+                return Err(GitError::Parse {
+                    context: "submodule path".to_string(),
+                    detail: "path must stay within the parent repository".to_string(),
+                });
+            }
+            let url = self.submodule_config(name, "url").unwrap_or_default();
+            let branch = self.submodule_config(name, "branch");
+            let module_path = self.root.join(path);
+            let parent_root = self.root.canonicalize().ok();
+            let child = Repo::open(module_path.to_string_lossy().as_ref())
+                .ok()
+                .filter(|repo| {
+                    match (
+                        repo.root.canonicalize(),
+                        module_path.canonicalize(),
+                        parent_root.as_ref(),
+                    ) {
+                        (Ok(root), Ok(module), Some(parent)) => {
+                            root == module && root != *parent && root.starts_with(parent)
+                        }
+                        _ => false,
+                    }
+                });
+            let current_oid = child.as_ref().and_then(|repo| {
+                run_git(&repo.root, &["rev-parse", "--verify", "HEAD"])
+                    .ok()
+                    .map(|output| String::from_utf8_lossy(&output).trim().to_string())
+            });
+            let dirty = child
+                .as_ref()
+                .map(|repo| {
+                    repo.status()
+                        .map(|status| !status.is_empty())
+                        .unwrap_or(true)
+                })
+                .unwrap_or(false);
+            let index_oid = run_git(&self.root, &["ls-files", "--stage", "--", path])
+                .ok()
+                .and_then(|output| {
+                    String::from_utf8_lossy(&output).lines().find_map(|line| {
+                        let (entry, _) = line.split_once('\t')?;
+                        let mut fields = entry.split_whitespace();
+                        let mode = fields.next()?;
+                        let oid = fields.next()?;
+                        (mode == "160000").then(|| oid.to_string())
+                    })
+                });
+            modules.push(SubmoduleInfo {
+                path: path.to_string(),
+                url,
+                branch,
+                initialized: child.is_some(),
+                current_oid,
+                index_oid,
+                dirty,
+            });
+        }
+        return Ok(modules);
+    }
+
+    fn submodule_config(&self, name: &str, field: &str) -> Option<String> {
+        let key = format!("submodule.{name}.{field}");
+        let output = run_git(
+            &self.root,
+            &["config", "--file", ".gitmodules", "--get", key.as_str()],
+        )
+        .ok()?;
+        let value = String::from_utf8_lossy(&output).trim().to_string();
+        return (!value.is_empty()).then_some(value);
     }
 
     fn worktrees(&self) -> Result<Vec<String>, GitError> {

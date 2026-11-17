@@ -243,6 +243,307 @@ impl RefsCommands {
         tabs.set(list);
     }
 
+    pub(crate) fn update_submodule_at(&self, tab_id: u64, path: String, latest: bool) {
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let result = ops::update_submodule(tab, path.as_str(), latest);
+        self.session.tabs.set(list);
+        match result {
+            Ok(()) => crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    if latest {
+                        "submodule.updatedLatest"
+                    } else {
+                        "submodule.updated"
+                    },
+                ),
+            ),
+            Err(error) => crate::interactions::notify(
+                self.notice,
+                crate::features::welcome::commands::localized_error(
+                    self.language.get_untracked().as_str(),
+                    &error,
+                ),
+            ),
+        }
+    }
+
+    pub(crate) fn update_all_submodules_at(&self, tab_id: u64, paths: Vec<String>) {
+        if paths.is_empty() {
+            return;
+        }
+        let language = self.language;
+        let language_now = language.get_untracked();
+        let display_paths = paths.join("\n");
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "submodule.updateAllTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "submodule.updateAllMessage",
+                &[("count", paths.len().to_string()), ("paths", display_paths)],
+            ),
+            "update",
+            crate::i18n::t(language_now.as_str(), "submodule.updateAll"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            false,
+        );
+        let tabs = self.session.tabs;
+        let notice = self.notice;
+        let tab_id_for_update = tab_id;
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id_for_update) else {
+                return;
+            };
+            let mut failures = Vec::new();
+            for path in paths {
+                if let Err(error) = ops::update_submodule(tab, path.as_str(), false) {
+                    let lang = language.get_untracked();
+                    let message =
+                        crate::features::welcome::commands::localized_error(lang.as_str(), &error);
+                    failures.push(format!("{path}: {message}"));
+                }
+            }
+            tabs.set(list);
+            if failures.is_empty() {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "submodule.updatedAll"),
+                );
+            } else {
+                let lang = language.get_untracked();
+                crate::interactions::alert(
+                    crate::i18n::t(lang.as_str(), "submodule.updateAllFailedTitle"),
+                    crate::i18n::with_arguments(
+                        lang.as_str(),
+                        "submodule.updateAllFailedMessage",
+                        &[("paths", failures.join("\n"))],
+                    ),
+                    crate::i18n::t(lang.as_str(), "common.close"),
+                );
+            }
+        });
+    }
+
+    pub(crate) fn sync_submodule_at(&self, tab_id: u64, path: String) {
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let result = ops::sync_submodule(tab, path.as_str());
+        self.session.tabs.set(list);
+        match result {
+            Ok(()) => crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "submodule.urlSynced",
+                ),
+            ),
+            Err(error) => crate::interactions::notify(
+                self.notice,
+                crate::features::welcome::commands::localized_error(
+                    self.language.get_untracked().as_str(),
+                    &error,
+                ),
+            ),
+        }
+    }
+
+    pub(crate) fn open_submodule_at(&self, tab_id: u64, path: String) {
+        let Some(tab) = self
+            .session
+            .tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+        else {
+            return;
+        };
+        let Some(module) = tab
+            .refs
+            .submodules
+            .iter()
+            .find(|module| module.path == path)
+        else {
+            crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "submodule.targetChanged",
+                ),
+            );
+            return;
+        };
+        if !module.initialized {
+            crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "submodule.notInitialized",
+                ),
+            );
+            return;
+        }
+        let parent = std::path::Path::new(tab.path.as_str()).canonicalize();
+        let path = std::path::Path::new(tab.path.as_str())
+            .join(path)
+            .canonicalize();
+        let Some(path) = path.ok().filter(|path| {
+            parent
+                .as_ref()
+                .is_ok_and(|parent| path.as_path() != parent.as_path() && path.starts_with(parent))
+        }) else {
+            crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "submodule.targetChanged",
+                ),
+            );
+            return;
+        };
+        let Ok(repo) = git::Repo::open(path.to_string_lossy().as_ref()) else {
+            crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "submodule.targetChanged",
+                ),
+            );
+            return;
+        };
+        if repo.root().canonicalize().ok().as_ref() != Some(&path) {
+            crate::interactions::notify(
+                self.notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "submodule.targetChanged",
+                ),
+            );
+            return;
+        }
+        self.session.open_path(repo.root().display().to_string());
+    }
+
+    pub(crate) fn stage_submodule_change_at(&self, tab_id: u64, path: String) {
+        let tabs = self.session.tabs;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let staged_paths = match ops::stage_submodule_change(tab, path.as_str()) {
+            Ok(Some(paths)) => paths,
+            Ok(None) => {
+                crate::interactions::notify(
+                    self.notice,
+                    crate::i18n::t(self.language.get_untracked().as_str(), "submodule.noChange"),
+                );
+                tabs.set(list);
+                return;
+            }
+            Err(error) => {
+                tabs.set(list);
+                crate::interactions::notify(
+                    self.notice,
+                    crate::features::welcome::commands::localized_error(
+                        self.language.get_untracked().as_str(),
+                        &error,
+                    ),
+                );
+                return;
+            }
+        };
+        tabs.set(list);
+
+        let language = self.language;
+        let language_now = language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "submodule.commitTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "submodule.commitMessage",
+                &[("paths", staged_paths.join("\n"))],
+            ),
+            "commit",
+            crate::i18n::t(language_now.as_str(), "submodule.continueToCommit"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            false,
+        );
+        let session = self.session.clone();
+        let search = self.search.clone();
+        let notice = self.notice;
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            if !session
+                .tabs
+                .get_untracked()
+                .iter()
+                .any(|tab| tab.id == tab_id)
+            {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "submodule.targetChanged"),
+                );
+                return;
+            }
+            session.activate_tab_id(tab_id);
+            search.state.mode.set(crate::Mode::Changes);
+        });
+    }
+
+    pub(crate) fn remove_submodule_at(&self, tab_id: u64, path: String) {
+        let language = self.language;
+        let language_now = language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "submodule.removeTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "submodule.removeMessage",
+                &[("path", path.clone())],
+            ),
+            "remove",
+            crate::i18n::t(language_now.as_str(), "submodule.remove"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            true,
+        );
+        let tabs = self.session.tabs;
+        let notice = self.notice;
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            let result = ops::remove_submodule(tab, path.as_str());
+            tabs.set(list);
+            match result {
+                Ok(()) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "submodule.removed"),
+                ),
+                Err(error) => crate::interactions::notify(
+                    notice,
+                    crate::features::welcome::commands::localized_error(
+                        language.get_untracked().as_str(),
+                        &error,
+                    ),
+                ),
+            }
+        });
+    }
+
     /// 应用或弹出贮藏的共用体：`kind` 为 `apply` 或 `pop`。
     fn stash_action(&self, kind: &'static str, reference: String) {
         let tabs = self.session.tabs;
