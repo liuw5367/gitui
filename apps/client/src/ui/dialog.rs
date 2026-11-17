@@ -1,10 +1,4 @@
-//! 模态对话框：遮罩 + 居中面板 + 页头/正文/页脚三段。
-//!
-//! 行为与设计稿一致：点击遮罩关闭、内容区截获按压、Esc 由调用方在全局浮层栈里处理。
-//! 页头 44、页脚 48、正文内边距 16；面板最大高度 760，正文自己滚动。
-//!
-//! 返回值是 `AnyElement`：`open` 为 false 时返回零尺寸占位。调用方在构建时读一次
-//! `open`（信号读取会订阅重建），不需要在这里再做一层 `dynamic`。
+//! 模态对话框：NSH Modal 管理呈现与关闭语义，UI 层统一绘制遮罩和面板。
 
 use crate::design::{self, metrics};
 use crate::ui;
@@ -61,39 +55,81 @@ pub(crate) fn notice(
     return alert_with_actions(title, description, Vec::new(), None, cancel_label);
 }
 
-/// 一层遮罩：铺满父容器、居中内容、点遮罩关闭。
+/// 由 NSH Modal 承载应用绘制的遮罩与面板。
 ///
-/// 与 [`modality`] 配对使用：遮罩负责「点外面关掉」，`modality` 负责「点里面
-/// 不要关掉」。两者一起，自搭弹层的页面也不必出现裸 `.on_press`。
-pub(crate) fn scrim(
-    visible: impl Fn() -> bool + 'static,
+/// `content` 每次打开时重建，使打开状态跟随 NSH 的条件区域；Esc 与遮罩点击
+/// 都回调到调用方，由原有状态源关闭这一层。
+pub(crate) fn modal(
+    open: impl Fn() -> bool + 'static,
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl Fn() -> AnyElement + 'static,
+    on_dismiss: impl Fn() + 'static,
+) -> impl IntoElement {
+    let title = std::rc::Rc::new(title);
+    let content = std::rc::Rc::new(content);
+    let on_dismiss = std::rc::Rc::new(on_dismiss);
+    return when(open, move || {
+        let title = title.clone();
+        let content = content.clone();
+        let on_dismiss = on_dismiss.clone();
+        return modal_open(move || title(), z_index, content(), move || on_dismiss());
+    });
+}
+
+/// 用于调用方已按状态条件渲染的模态框。
+pub(crate) fn modal_open(
+    title: impl Fn() -> String + 'static,
     z_index: i32,
     content: impl IntoElement,
     on_dismiss: impl Fn() + 'static,
-) -> impl IntoElement {
+) -> AnyElement {
     let on_dismiss = std::rc::Rc::new(on_dismiss);
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(z_index)
-        .items_center()
-        .justify_center()
-        .bg(move || {
-            if visible() {
-                crate::design::token("overlay")
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press(move || on_dismiss())
-        .child(content);
+    let cancel = on_dismiss.clone();
+    let backdrop = on_dismiss.clone();
+    return modal_element(
+        title,
+        z_index,
+        content,
+        move || cancel(),
+        move || backdrop(),
+    )
+    .into_element();
+}
+
+fn modal_element(
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl IntoElement,
+    on_cancel: impl Fn() + 'static,
+    on_backdrop: impl Fn() + 'static,
+) -> impl IntoElement {
+    let title = std::rc::Rc::new(title);
+    return nsh_base::dialog()
+        .close_on_escape(true)
+        // 遮罩由应用绘制，自己的点击处理负责关闭。
+        .close_on_backdrop_press(false)
+        .label(move || SharedString::from(title()))
+        .on_cancel(move || on_cancel())
+        .child(
+            view()
+                .w_full()
+                .h_full()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .z_index(z_index)
+                .items_center()
+                .justify_center()
+                .bg(move || crate::design::token("overlay"))
+                .on_press(move || on_backdrop())
+                .child(content),
+        );
 }
 
 /// 让内容区截获按压、不再上浮到遮罩。
 ///
-/// 自搭弹层的面板需要它：不加的话点正文会穿透到遮罩，把对话框关掉。`dialog`
-/// 内部已自动这么做；这里单独导出，是为了让还没换成 `dialog` 的弹层也不必在
-/// 页面里写裸 `.on_press(|| {})`（那样该文件就无法通过 guard 的检查）。
+/// 模态面板需要它：不加的话点正文会穿透到遮罩，把对话框关掉。
 pub(crate) fn modality(content: impl IntoElement) -> impl IntoElement {
     return view().on_press(|| {}).child(content);
 }
@@ -110,6 +146,8 @@ pub(crate) fn dialog(
     if !open {
         return view().w(px(0.0)).h(px(0.0)).into_element();
     }
+    let title = std::rc::Rc::new(title);
+    let panel_title = title.clone();
     let mut panel = view()
         .w(px(width))
         .max_h(px(760.0))
@@ -132,7 +170,7 @@ pub(crate) fn dialog(
                 .border_b_1()
                 .border_color(move || design::line())
                 .child(
-                    text(move || title())
+                    text(move || panel_title())
                         .flex_1()
                         .min_w_0()
                         .text_size(px(ui::BODY))
@@ -167,14 +205,5 @@ pub(crate) fn dialog(
         }
         panel = panel.child(row);
     }
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(120)
-        .items_center()
-        .justify_center()
-        .bg(move || design::token("overlay"))
-        .on_press(move || on_dismiss())
-        .child(panel)
-        .into_element();
+    return modal_open(move || title(), 120, panel, on_dismiss);
 }

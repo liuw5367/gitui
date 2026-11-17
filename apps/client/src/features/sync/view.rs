@@ -39,365 +39,389 @@ pub(crate) fn sync_dialog(
         std::sync::Arc::new(move || cmd.close_sync())
     };
     let dismiss = on_close.clone();
-    return crate::ui::dialog::scrim(
+    return crate::ui::dialog::modal(
         move || state.get().is_some(),
-        110,
-        dynamic(move || -> AnyElement {
+        move || {
             let Some(dialog) = state.get() else {
-                return view().w(px(0.0)).h(px(0.0)).into_element();
+                return String::new();
             };
-            let current = tab.get();
-            let repo_name = current.as_ref().map(|tab| tab.label()).unwrap_or_default();
-            let branch = current
-                .as_ref()
-                .map(|tab| tab.branch.clone())
-                .unwrap_or_default();
-            let ahead = current.as_ref().map(|tab| tab.ahead).unwrap_or(0);
-            let behind = current.as_ref().map(|tab| tab.behind).unwrap_or(0);
-            let remote = current
-                .as_ref()
-                .and_then(|tab| tab.refs.remotes.first().cloned())
-                .unwrap_or_else(|| "origin".to_string());
-            let kind = dialog.kind;
-            let running = dialog.running;
-            let has_result = dialog.result.is_some();
-            let result = dialog.result.clone();
-            let options = dialog.options.clone();
-            let run = on_run.clone();
-            let close = on_close.clone();
+            let key = match dialog.kind {
+                Sync::Fetch => "sync.fetchTitle",
+                Sync::Pull => "sync.pullTitle",
+                Sync::Push => "sync.pushTitle",
+            };
+            i18n::t(language.get().as_str(), key)
+        },
+        110,
+        move || {
+            let state = state;
+            let tab = tab;
+            let language = language;
+            let on_run = on_run.clone();
+            let on_close = on_close.clone();
             let set_kind = set_kind.clone();
             let set_option = set_option.clone();
+            dynamic(move || -> AnyElement {
+                let Some(dialog) = state.get() else {
+                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                };
+                let current = tab.get();
+                let repo_name = current.as_ref().map(|tab| tab.label()).unwrap_or_default();
+                let branch = current
+                    .as_ref()
+                    .map(|tab| tab.branch.clone())
+                    .unwrap_or_default();
+                let ahead = current.as_ref().map(|tab| tab.ahead).unwrap_or(0);
+                let behind = current.as_ref().map(|tab| tab.behind).unwrap_or(0);
+                let remote = current
+                    .as_ref()
+                    .and_then(|tab| tab.refs.remotes.first().cloned())
+                    .unwrap_or_else(|| "origin".to_string());
+                let kind = dialog.kind;
+                let running = dialog.running;
+                let has_result = dialog.result.is_some();
+                let result = dialog.result.clone();
+                let options = dialog.options.clone();
+                let run = on_run.clone();
+                let close = on_close.clone();
+                let set_kind = set_kind.clone();
+                let set_option = set_option.clone();
 
-            return crate::ui::dialog::modality(
-                view()
-                    .w(px(metrics::SYNC_SHEET_W))
-                    .max_w(px(760.0))
-                    .h(px(metrics::SYNC_SHEET_H))
-                    .flex_col()
-                    .rounded(px(12.0))
-                    .border_1()
-                    .border_color(move || design::line())
-                    .bg(move || design::content())
-                    .overflow_hidden()
-                    .child(
-                        view()
-                            .w_full()
-                            .h(px(metrics::SYNC_HEAD_H))
-                            .flex_shrink_0()
-                            .px(px(14.0))
-                            .flex_row()
-                            .items_center()
-                            .gap(px(10.0))
-                            .bg(move || design::panel())
-                            .border_b_1()
-                            .border_color(move || design::line())
-                            .child(
-                                text(move || {
-                                    i18n::t(
-                                        language.get().as_str(),
-                                        match kind {
-                                            Sync::Fetch => "sync.fetchTitle",
-                                            Sync::Pull => "sync.pullTitle",
-                                            Sync::Push => "sync.pushTitle",
-                                        },
-                                    )
-                                })
-                                .text_size(px(crate::ui::BODY))
-                                .font_weight(FontWeight(600))
-                                .line_height(px(17.0))
-                                .text_color(move || design::text()),
-                            ),
-                    )
-                    // 三 tab：切换动作，不丢已选项。
-                    .child(
-                        view()
-                            .h(px(26.0))
-                            .flex_shrink_0()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(1.0))
-                            .p(px(2.0))
-                            .rounded(px(6.0))
-                            .border_1()
-                            .border_color(move || design::line_soft())
-                            .bg(move || design::panel2())
-                            .child(
-                                KINDS
-                                    .iter()
-                                    .map(|which| {
-                                        let which = *which;
-                                        let active = which == kind;
-                                        let set_kind = set_kind.clone();
-                                        let language = language;
-                                        let variant = if active {
-                                            crate::ui::button::ButtonVariant::Secondary
-                                        } else {
-                                            crate::ui::button::ButtonVariant::Ghost
-                                        };
-                                        return crate::ui::button::button(
-                                            {
-                                                let language = language;
-                                                move || {
-                                                    i18n::t(
-                                                        language.get().as_str(),
-                                                        match which {
-                                                            Sync::Fetch => "sync.fetch",
-                                                            Sync::Pull => "sync.pull",
-                                                            Sync::Push => "sync.push",
-                                                        },
-                                                    )
-                                                }
+                return crate::ui::dialog::modality(
+                    view()
+                        .w(px(metrics::SYNC_SHEET_W))
+                        .max_w(px(760.0))
+                        .h(px(metrics::SYNC_SHEET_H))
+                        .flex_col()
+                        .rounded(px(12.0))
+                        .border_1()
+                        .border_color(move || design::line())
+                        .bg(move || design::content())
+                        .overflow_hidden()
+                        .child(
+                            view()
+                                .w_full()
+                                .h(px(metrics::SYNC_HEAD_H))
+                                .flex_shrink_0()
+                                .px(px(14.0))
+                                .flex_row()
+                                .items_center()
+                                .gap(px(10.0))
+                                .bg(move || design::panel())
+                                .border_b_1()
+                                .border_color(move || design::line())
+                                .child(
+                                    text(move || {
+                                        i18n::t(
+                                            language.get().as_str(),
+                                            match kind {
+                                                Sync::Fetch => "sync.fetchTitle",
+                                                Sync::Pull => "sync.pullTitle",
+                                                Sync::Push => "sync.pushTitle",
                                             },
-                                            variant,
-                                            crate::ui::button::ButtonSize::Small,
-                                            false,
-                                            move || set_kind(which),
+                                        )
+                                    })
+                                    .text_size(px(crate::ui::BODY))
+                                    .font_weight(FontWeight(600))
+                                    .line_height(px(17.0))
+                                    .text_color(move || design::text()),
+                                ),
+                        )
+                        // 三 tab：切换动作，不丢已选项。
+                        .child(
+                            view()
+                                .h(px(26.0))
+                                .flex_shrink_0()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(1.0))
+                                .p(px(2.0))
+                                .rounded(px(6.0))
+                                .border_1()
+                                .border_color(move || design::line_soft())
+                                .bg(move || design::panel2())
+                                .child(
+                                    KINDS
+                                        .iter()
+                                        .map(|which| {
+                                            let which = *which;
+                                            let active = which == kind;
+                                            let set_kind = set_kind.clone();
+                                            let language = language;
+                                            let variant = if active {
+                                                crate::ui::button::ButtonVariant::Secondary
+                                            } else {
+                                                crate::ui::button::ButtonVariant::Ghost
+                                            };
+                                            return crate::ui::button::button(
+                                                {
+                                                    let language = language;
+                                                    move || {
+                                                        i18n::t(
+                                                            language.get().as_str(),
+                                                            match which {
+                                                                Sync::Fetch => "sync.fetch",
+                                                                Sync::Pull => "sync.pull",
+                                                                Sync::Push => "sync.push",
+                                                            },
+                                                        )
+                                                    }
+                                                },
+                                                variant,
+                                                crate::ui::button::ButtonSize::Small,
+                                                false,
+                                                move || set_kind(which),
+                                            )
+                                            .into_element();
+                                        })
+                                        .collect::<Vec<AnyElement>>(),
+                                ),
+                        )
+                        .child(
+                            text(format!("{} · {} · {}", repo_name, remote, branch))
+                                .text_size(px(crate::ui::CODE))
+                                .line_height(px(14.0))
+                                .text_color(move || design::text3()),
+                        )
+                        .child(
+                            text(move || {
+                                i18n::with_arguments(
+                                    language.get().as_str(),
+                                    "sync.tracking",
+                                    &[("ahead", ahead.to_string()), ("behind", behind.to_string())],
+                                )
+                            })
+                            .text_size(px(crate::ui::BODY))
+                            .line_height(px(15.0))
+                            .text_color(move || design::text2()),
+                        )
+                        // 动作专属选项。
+                        .child(match kind {
+                            Sync::Fetch => view()
+                                .w_full()
+                                .flex_col()
+                                .gap(px(2.0))
+                                .child(option_row(
+                                    language,
+                                    "sync.optPrune",
+                                    options.fetch.prune,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || set_option("prune", !options.fetch.prune)
+                                    },
+                                ))
+                                .child(option_row(language, "sync.optTags", options.fetch.tags, {
+                                    let set_option = set_option.clone();
+                                    move || set_option("fetchTags", !options.fetch.tags)
+                                }))
+                                .child(option_row(
+                                    language,
+                                    "sync.optAllRemotes",
+                                    options.fetch.all_remotes,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || set_option("allRemotes", !options.fetch.all_remotes)
+                                    },
+                                ))
+                                .into_element(),
+                            Sync::Pull => view()
+                                .w_full()
+                                .flex_col()
+                                .gap(px(2.0))
+                                .child(strategy_row(language, options.clone(), set_option.clone()))
+                                .child(option_row(
+                                    language,
+                                    "sync.optAutostash",
+                                    options.pull.autostash,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || set_option("autostash", !options.pull.autostash)
+                                    },
+                                ))
+                                .child(option_row(
+                                    language,
+                                    "sync.optRebaseLocal",
+                                    options.pull.rebase_local,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || {
+                                            set_option("rebaseLocal", !options.pull.rebase_local)
+                                        }
+                                    },
+                                ))
+                                .into_element(),
+                            Sync::Push => view()
+                                .w_full()
+                                .flex_col()
+                                .gap(px(2.0))
+                                .child(option_row(
+                                    language,
+                                    "sync.optPushTags",
+                                    options.push.tags,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || set_option("pushTags", !options.push.tags)
+                                    },
+                                ))
+                                .child(option_row(
+                                    language,
+                                    "sync.optForceLease",
+                                    options.push.force_with_lease,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || {
+                                            set_option("forceLease", !options.push.force_with_lease)
+                                        }
+                                    },
+                                ))
+                                .child(option_row(
+                                    language,
+                                    "sync.optAllBranches",
+                                    options.push.all_branches,
+                                    {
+                                        let set_option = set_option.clone();
+                                        move || {
+                                            set_option("allBranches", !options.push.all_branches)
+                                        }
+                                    },
+                                ))
+                                .into_element(),
+                        })
+                        .child(
+                            text(move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    match kind {
+                                        Sync::Fetch => "sync.fetchHint",
+                                        Sync::Pull => "sync.pullHint",
+                                        Sync::Push => "sync.pushHint",
+                                    },
+                                )
+                            })
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(move || design::text3()),
+                        )
+                        .child(
+                            view()
+                                .w_full()
+                                .h(move || if has_result { px(72.0) } else { px(0.0) })
+                                .overflow_hidden()
+                                .child(dynamic(move || -> AnyElement {
+                                    let Some(result) = result.clone() else {
+                                        return view().w_full().h(px(0.0)).into_element();
+                                    };
+                                    let (ok, output) = match result {
+                                        Ok(message) => (true, message),
+                                        Err(detail) => (false, detail),
+                                    };
+                                    let output = if output.trim().is_empty() {
+                                        i18n::t(language.get_untracked().as_str(), "sync.done")
+                                    } else {
+                                        output
+                                    };
+                                    return view()
+                                        .w_full()
+                                        .flex_col()
+                                        .gap(px(3.0))
+                                        .child(
+                                            text(move || {
+                                                i18n::t(
+                                                    language.get().as_str(),
+                                                    if ok { "sync.ok" } else { "sync.failed" },
+                                                )
+                                            })
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .font_weight(FontWeight(600))
+                                            .line_height(px(13.0))
+                                            .text_color(move || {
+                                                if ok { design::ok() } else { design::danger() }
+                                            }),
+                                        )
+                                        .child(
+                                            text(output)
+                                                .text_size(px(crate::ui::CODE))
+                                                .line_height(px(13.0))
+                                                .text_color(move || design::text2())
+                                                .text_overflow(nsh_core::EllipsizeMode::Tail),
                                         )
                                         .into_element();
-                                    })
-                                    .collect::<Vec<AnyElement>>(),
-                            ),
-                    )
-                    .child(
-                        text(format!("{} · {} · {}", repo_name, remote, branch))
-                            .text_size(px(crate::ui::CODE))
-                            .line_height(px(14.0))
-                            .text_color(move || design::text3()),
-                    )
-                    .child(
-                        text(move || {
-                            i18n::with_arguments(
-                                language.get().as_str(),
-                                "sync.tracking",
-                                &[("ahead", ahead.to_string()), ("behind", behind.to_string())],
-                            )
-                        })
-                        .text_size(px(crate::ui::BODY))
-                        .line_height(px(15.0))
-                        .text_color(move || design::text2()),
-                    )
-                    // 动作专属选项。
-                    .child(match kind {
-                        Sync::Fetch => view()
-                            .w_full()
-                            .flex_col()
-                            .gap(px(2.0))
-                            .child(option_row(
-                                language,
-                                "sync.optPrune",
-                                options.fetch.prune,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("prune", !options.fetch.prune)
-                                },
-                            ))
-                            .child(option_row(language, "sync.optTags", options.fetch.tags, {
-                                let set_option = set_option.clone();
-                                move || set_option("fetchTags", !options.fetch.tags)
-                            }))
-                            .child(option_row(
-                                language,
-                                "sync.optAllRemotes",
-                                options.fetch.all_remotes,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("allRemotes", !options.fetch.all_remotes)
-                                },
-                            ))
-                            .into_element(),
-                        Sync::Pull => view()
-                            .w_full()
-                            .flex_col()
-                            .gap(px(2.0))
-                            .child(strategy_row(language, options.clone(), set_option.clone()))
-                            .child(option_row(
-                                language,
-                                "sync.optAutostash",
-                                options.pull.autostash,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("autostash", !options.pull.autostash)
-                                },
-                            ))
-                            .child(option_row(
-                                language,
-                                "sync.optRebaseLocal",
-                                options.pull.rebase_local,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("rebaseLocal", !options.pull.rebase_local)
-                                },
-                            ))
-                            .into_element(),
-                        Sync::Push => view()
-                            .w_full()
-                            .flex_col()
-                            .gap(px(2.0))
-                            .child(option_row(
-                                language,
-                                "sync.optPushTags",
-                                options.push.tags,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("pushTags", !options.push.tags)
-                                },
-                            ))
-                            .child(option_row(
-                                language,
-                                "sync.optForceLease",
-                                options.push.force_with_lease,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("forceLease", !options.push.force_with_lease)
-                                },
-                            ))
-                            .child(option_row(
-                                language,
-                                "sync.optAllBranches",
-                                options.push.all_branches,
-                                {
-                                    let set_option = set_option.clone();
-                                    move || set_option("allBranches", !options.push.all_branches)
-                                },
-                            ))
-                            .into_element(),
-                    })
-                    .child(
-                        text(move || {
-                            i18n::t(
-                                language.get().as_str(),
-                                match kind {
-                                    Sync::Fetch => "sync.fetchHint",
-                                    Sync::Pull => "sync.pullHint",
-                                    Sync::Push => "sync.pushHint",
-                                },
-                            )
-                        })
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || design::text3()),
-                    )
-                    .child(
-                        view()
-                            .w_full()
-                            .h(move || if has_result { px(72.0) } else { px(0.0) })
-                            .overflow_hidden()
-                            .child(dynamic(move || -> AnyElement {
-                                let Some(result) = result.clone() else {
-                                    return view().w_full().h(px(0.0)).into_element();
-                                };
-                                let (ok, output) = match result {
-                                    Ok(message) => (true, message),
-                                    Err(detail) => (false, detail),
-                                };
-                                let output = if output.trim().is_empty() {
-                                    i18n::t(language.get_untracked().as_str(), "sync.done")
-                                } else {
-                                    output
-                                };
-                                return view()
-                                    .w_full()
-                                    .flex_col()
-                                    .gap(px(3.0))
-                                    .child(
-                                        text(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                if ok { "sync.ok" } else { "sync.failed" },
-                                            )
-                                        })
-                                        .text_size(px(crate::ui::SECONDARY))
-                                        .font_weight(FontWeight(600))
-                                        .line_height(px(13.0))
-                                        .text_color(
-                                            move || {
-                                                if ok { design::ok() } else { design::danger() }
-                                            },
-                                        ),
-                                    )
-                                    .child(
-                                        text(output)
-                                            .text_size(px(crate::ui::CODE))
-                                            .line_height(px(13.0))
-                                            .text_color(move || design::text2())
-                                            .text_overflow(nsh_core::EllipsizeMode::Tail),
-                                    )
-                                    .into_element();
-                            })),
-                    )
-                    // 强推会覆盖远端：在按钮上方单独用红色说明，不藏进选项里。
-                    .child(view().w_full().when(options.is_destructive(kind), |this| {
-                        this.child(
-                            text(move || i18n::t(language.get().as_str(), "sync.forceWarning"))
-                                .text_size(px(crate::ui::SECONDARY))
-                                .line_height(px(crate::ui::SECONDARY_LINE))
-                                .text_color(move || design::danger()),
+                                })),
                         )
-                    }))
-                    .child(
-                        view()
-                            .w_full()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(view().flex_1())
-                            .child(crate::ui::button::button(
-                                move || {
-                                    i18n::t(
-                                        language.get().as_str(),
-                                        if has_result {
-                                            "sync.close"
-                                        } else {
-                                            "common.cancel"
-                                        },
-                                    )
-                                },
-                                crate::ui::button::ButtonVariant::Secondary,
-                                crate::ui::button::ButtonSize::Regular,
-                                false,
-                                {
-                                    let close = close.clone();
-                                    move || close()
-                                },
-                            ))
-                            .child(dynamic(move || -> AnyElement {
-                                if has_result {
-                                    return view().w(px(0.0)).into_element();
-                                }
-                                return crate::ui::button::button(
+                        // 强推会覆盖远端：在按钮上方单独用红色说明，不藏进选项里。
+                        .child(view().w_full().when(options.is_destructive(kind), |this| {
+                            this.child(
+                                text(move || i18n::t(language.get().as_str(), "sync.forceWarning"))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
+                                    .text_color(move || design::danger()),
+                            )
+                        }))
+                        .child(
+                            view()
+                                .w_full()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(8.0))
+                                .child(view().flex_1())
+                                .child(crate::ui::button::button(
                                     move || {
                                         i18n::t(
                                             language.get().as_str(),
-                                            if running {
-                                                "sync.running"
+                                            if has_result {
+                                                "sync.close"
                                             } else {
-                                                match kind {
-                                                    Sync::Fetch => "sync.fetch",
-                                                    Sync::Pull => "sync.pull",
-                                                    Sync::Push => "sync.push",
-                                                }
+                                                "common.cancel"
                                             },
                                         )
                                     },
-                                    crate::ui::button::ButtonVariant::Primary,
+                                    crate::ui::button::ButtonVariant::Secondary,
                                     crate::ui::button::ButtonSize::Regular,
                                     false,
                                     {
-                                        let run = run.clone();
-                                        move || {
-                                            if !running {
-                                                run(kind)
-                                            }
-                                        }
+                                        let close = close.clone();
+                                        move || close()
                                     },
-                                )
-                                .into_element();
-                            })),
-                    )
-                    .into_element(),
-            )
-            .into_element();
-        }),
+                                ))
+                                .child(dynamic(move || -> AnyElement {
+                                    if has_result {
+                                        return view().w(px(0.0)).into_element();
+                                    }
+                                    return crate::ui::button::button(
+                                        move || {
+                                            i18n::t(
+                                                language.get().as_str(),
+                                                if running {
+                                                    "sync.running"
+                                                } else {
+                                                    match kind {
+                                                        Sync::Fetch => "sync.fetch",
+                                                        Sync::Pull => "sync.pull",
+                                                        Sync::Push => "sync.push",
+                                                    }
+                                                },
+                                            )
+                                        },
+                                        crate::ui::button::ButtonVariant::Primary,
+                                        crate::ui::button::ButtonSize::Regular,
+                                        false,
+                                        {
+                                            let run = run.clone();
+                                            move || {
+                                                if !running {
+                                                    run(kind)
+                                                }
+                                            }
+                                        },
+                                    )
+                                    .into_element();
+                                })),
+                        )
+                        .into_element(),
+                )
+                .into_element();
+            })
+        },
         move || dismiss(),
     );
 }

@@ -268,8 +268,8 @@ pub(crate) fn palette(
         let cmd = cmd.clone();
         move || cmd.state.palette_open.set(false)
     };
-    return crate::ui::dialog::scrim(
-        move || true,
+    return crate::ui::dialog::modal_open(
+        move || i18n::t(language.get().as_str(), "palette.placeholder"),
         100,
         view().w_full().h_full().items_center().child(
             view()
