@@ -146,7 +146,20 @@ pub(crate) fn app() -> impl IntoElement {
             })
             .collect::<Vec<_>>(),
     );
-    let settings_section = signal(features::settings::state::Section::General);
+    let settings_section = {
+        let section = signal(features::settings::state::Section::General);
+        if let Some(name) = acceptance::value("GITUI_SETTINGS_SECTION") {
+            section.set(match name.as_str() {
+                "shortcuts" => features::settings::state::Section::Shortcuts,
+                "agent" => features::settings::state::Section::Agent,
+                "git" => features::settings::state::Section::Git,
+                "credentials" => features::settings::state::Section::Credentials,
+                "about" => features::settings::state::Section::About,
+                _ => features::settings::state::Section::General,
+            });
+        }
+        section
+    };
     let palette_query = signal(String::new());
     let theme_mode = signal(ThemeMode::from_id(
         store::load_appearance(&store_dir)

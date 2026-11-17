@@ -323,6 +323,17 @@ impl SettingsCommands {
         }
     }
 
+    /// 解绑一个动作（录制卡里的 `⌫`）。
+    pub(crate) fn clear_shortcut(&self, id: &'static str) {
+        let registry = self.state.shortcut_registry;
+        let mut next = registry.get_untracked();
+        next.clear(id);
+        registry.set(next.clone());
+        store::save_shortcuts(&self.store_dir, &next.overrides());
+        self.state.recording_shortcut.set(None);
+        self.state.shortcut_error.set(None);
+    }
+
     /// 开始录制某个动作的新组合（原 `record_shortcut`）。
     pub(crate) fn record_shortcut(&self, id: &'static str) {
         self.state.shortcut_error.set(None);

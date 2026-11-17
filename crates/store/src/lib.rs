@@ -276,7 +276,7 @@ pub fn load_shortcuts(dir: &Path) -> Vec<(String, String)> {
         .lines()
         .filter_map(|line| line.split_once('='))
         .map(|(id, combo)| (id.trim().to_string(), combo.trim().to_string()))
-        .filter(|(id, combo)| !id.is_empty() && !combo.is_empty())
+        .filter(|(id, _combo)| !id.is_empty())
         .collect();
 }
 

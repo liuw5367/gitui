@@ -9,6 +9,13 @@
 
 use crate::i18n;
 
+/// 动作所属的分组（设置页 25 的 Global / Repository）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    Global,
+    Repository,
+}
+
 /// 一个可绑定动作。
 #[derive(Clone, Copy, Debug)]
 pub struct Action {
@@ -16,34 +23,38 @@ pub struct Action {
     pub id: &'static str,
     /// 文案键；`tab1`…`tab9` 使用带 `%{n}` 的同一个键。
     pub key: &'static str,
+    /// 说明文案键。
+    pub desc: &'static str,
     /// 默认组合（解析规则见 `nsh/keymap`）。
     pub default: &'static str,
+    /// 设置页的分组。
+    pub scope: Scope,
 }
 
 /// 全部可绑定动作，顺序即设置页的显示顺序。
 pub const ACTIONS: [Action; 22] = [
-    Action { id: "open", key: "shortcut.openRepo", default: "mod+o" },
-    Action { id: "openPalette", key: "shortcut.palette", default: "mod+p" },
-    Action { id: "closeTab", key: "shortcut.closeTab", default: "mod+w" },
-    Action { id: "refresh", key: "shortcut.refresh", default: "mod+r" },
-    Action { id: "filter", key: "shortcut.filter", default: "mod+f" },
-    Action { id: "filterHistory", key: "shortcut.filterHistory", default: "mod+shift+f" },
-    Action { id: "push", key: "shortcut.push", default: "mod+shift+p" },
-    Action { id: "commit", key: "shortcut.commit", default: "mod+shift+k" },
-    Action { id: "primary", key: "shortcut.primaryAction", default: "mod+enter" },
-    Action { id: "settings", key: "shortcut.settings", default: "mod+," },
-    Action { id: "toggleTheme", key: "shortcut.cycleAppearance", default: "mod+shift+a" },
-    Action { id: "prevTab", key: "shortcut.prevTab", default: "mod+shift+[" },
-    Action { id: "nextTab", key: "shortcut.nextTab", default: "mod+shift+]" },
-    Action { id: "tab1", key: "shortcut.tab", default: "mod+1" },
-    Action { id: "tab2", key: "shortcut.tab", default: "mod+2" },
-    Action { id: "tab3", key: "shortcut.tab", default: "mod+3" },
-    Action { id: "tab4", key: "shortcut.tab", default: "mod+4" },
-    Action { id: "tab5", key: "shortcut.tab", default: "mod+5" },
-    Action { id: "tab6", key: "shortcut.tab", default: "mod+6" },
-    Action { id: "tab7", key: "shortcut.tab", default: "mod+7" },
-    Action { id: "tab8", key: "shortcut.tab", default: "mod+8" },
-    Action { id: "tab9", key: "shortcut.tab", default: "mod+9" },
+    Action { id: "open", key: "shortcut.openRepo", desc: "shortcut.descOpen", default: "mod+o", scope: Scope::Global },
+    Action { id: "openPalette", key: "shortcut.palette", desc: "shortcut.descPalette", default: "mod+p", scope: Scope::Global },
+    Action { id: "closeTab", key: "shortcut.closeTab", desc: "shortcut.descCloseTab", default: "mod+w", scope: Scope::Global },
+    Action { id: "refresh", key: "shortcut.refresh", desc: "shortcut.descRefresh", default: "mod+r", scope: Scope::Global },
+    Action { id: "filter", key: "shortcut.filter", desc: "shortcut.descFilter", default: "mod+f", scope: Scope::Global },
+    Action { id: "filterHistory", key: "shortcut.filterHistory", desc: "shortcut.descFilterHistory", default: "mod+shift+f", scope: Scope::Global },
+    Action { id: "push", key: "shortcut.push", desc: "shortcut.descPush", default: "mod+shift+p", scope: Scope::Repository },
+    Action { id: "commit", key: "shortcut.commit", desc: "shortcut.descCommit", default: "mod+shift+k", scope: Scope::Repository },
+    Action { id: "primary", key: "shortcut.primaryAction", desc: "shortcut.descPrimary", default: "mod+enter", scope: Scope::Repository },
+    Action { id: "settings", key: "shortcut.settings", desc: "shortcut.descSettings", default: "mod+,", scope: Scope::Global },
+    Action { id: "toggleTheme", key: "shortcut.cycleAppearance", desc: "shortcut.descTheme", default: "mod+shift+a", scope: Scope::Global },
+    Action { id: "prevTab", key: "shortcut.prevTab", desc: "shortcut.descPrevTab", default: "mod+shift+[", scope: Scope::Global },
+    Action { id: "nextTab", key: "shortcut.nextTab", desc: "shortcut.descNextTab", default: "mod+shift+]", scope: Scope::Global },
+    Action { id: "tab1", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+1", scope: Scope::Global },
+    Action { id: "tab2", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+2", scope: Scope::Global },
+    Action { id: "tab3", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+3", scope: Scope::Global },
+    Action { id: "tab4", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+4", scope: Scope::Global },
+    Action { id: "tab5", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+5", scope: Scope::Global },
+    Action { id: "tab6", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+6", scope: Scope::Global },
+    Action { id: "tab7", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+7", scope: Scope::Global },
+    Action { id: "tab8", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+8", scope: Scope::Global },
+    Action { id: "tab9", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+9", scope: Scope::Global },
 ];
 
 /// 可绑定的字母：去掉 macOS 保留的 `q`（退出）、`h`（隐藏）、`m`（最小化）。
@@ -109,6 +120,10 @@ impl Registry {
             let Some(index) = ACTIONS.iter().position(|action| action.id == id.as_str()) else {
                 continue;
             };
+            if combo.is_empty() {
+                registry.combos[index].clear();
+                continue;
+            }
             if !catalog().iter().any(|known| known == combo) {
                 continue;
             }
@@ -132,9 +147,19 @@ impl Registry {
             .unwrap_or("");
     }
 
-    /// 某个组合当前归谁。
+    /// 某个组合当前归谁；空组合不属于任何动作。
     pub fn action_for(&self, combo: &str) -> Option<&'static str> {
+        if combo.is_empty() {
+            return None;
+        }
         return self.combo_owner(combo).map(|index| ACTIONS[index].id);
+    }
+
+    /// 解绑一个动作：行内显示 `Unassigned`，再录制可重新绑定。
+    pub fn clear(&mut self, id: &'static str) {
+        if let Some(index) = ACTIONS.iter().position(|action| action.id == id) {
+            self.combos[index].clear();
+        }
     }
 
     /// 改键：组合必须可绑定且未被其它动作占用。
@@ -171,6 +196,9 @@ impl Registry {
 
     /// 某个组合的下标（没有则为 `None`）。
     fn combo_owner(&self, combo: &str) -> Option<usize> {
+        if combo.is_empty() {
+            return None;
+        }
         return self.combos.iter().position(|known| known == combo);
     }
 }
@@ -183,8 +211,11 @@ pub fn label(action: &Action, language: &str) -> String {
     return i18n::t(language, action.key);
 }
 
-/// 把 `mod+shift+k` 这样的组合显示成键帽文字。
-pub fn pretty(combo: &str) -> String {
+/// 把组合拆成逐枚键帽：`mod+shift+k` → `["⌘", "⇧", "K"]`。
+pub fn keycaps(combo: &str) -> Vec<String> {
+    if combo.is_empty() {
+        return Vec::new();
+    }
     let mut modifiers: Vec<&str> = Vec::new();
     let mut key = "";
     for part in combo.split('+') {
@@ -198,23 +229,23 @@ pub fn pretty(combo: &str) -> String {
             other => key = other,
         }
     }
-    // 修饰键按 macOS 习惯排序：⌃⌥⇧⌘。
-    let order = ["⌃", "⌥", "⇧", "⌘"];
-    let mut text = String::new();
-    for symbol in order {
+    let mut caps: Vec<String> = Vec::new();
+    for symbol in ["⌃", "⌥", "⇧", "⌘"] {
         if modifiers.contains(&symbol) {
-            text.push_str(symbol);
+            caps.push(symbol.to_string());
         }
     }
-    // 单个字母按 macOS 的写法转成大写（⇧⌘K），其它键原样（↵、[、1）。
     let mut letters = key.chars();
-    match (letters.next(), letters.next()) {
+    let shown = match (letters.next(), letters.next()) {
         (Some(first), None) if first.is_ascii_alphabetic() => {
-            text.push(first.to_ascii_uppercase());
+            first.to_ascii_uppercase().to_string()
         }
-        _ => text.push_str(key),
+        _ => key.to_string(),
+    };
+    if !shown.is_empty() {
+        caps.push(shown);
     }
-    return text;
+    return caps;
 }
 
 #[cfg(test)]
@@ -291,12 +322,25 @@ mod tests {
     }
 
     #[test]
-    fn pretty_orders_modifiers_as_macos_shows_them() {
-        assert_eq!(pretty("mod+shift+k"), "⇧⌘K");
-        assert_eq!(pretty("mod+enter"), "⌘↵");
-        assert_eq!(pretty("mod+shift+["), "⇧⌘[");
-        assert_eq!(pretty("mod+1"), "⌘1");
-        assert_eq!(pretty("mod+,"), "⌘,");
+    fn clearing_unbinds_and_persists_an_empty_combo() {
+        let mut registry = Registry::defaults();
+        registry.clear("push");
+        assert_eq!(registry.combo("push"), "");
+        assert_eq!(registry.action_for(""), None);
+        let overrides = registry.overrides();
+        assert!(overrides.contains(&("push".to_string(), String::new())));
+        let loaded = Registry::with_overrides(&overrides);
+        assert_eq!(loaded.combo("push"), "");
+        // 重新录制可以恢复。
+        assert_eq!(loaded.clone().rebind("push", "mod+shift+e"), Ok(()));
+    }
+
+    #[test]
+    fn keycaps_split_modifiers_and_keys() {
+        assert_eq!(keycaps("mod+shift+k"), vec!["⇧", "⌘", "K"]);
+        assert_eq!(keycaps("mod+enter"), vec!["⌘", "↵"]);
+        assert_eq!(keycaps("mod+1"), vec!["⌘", "1"]);
+        assert_eq!(keycaps(""), Vec::<String>::new());
     }
 
     #[test]

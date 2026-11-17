@@ -1,186 +1,336 @@
-//! 设置页的快捷键分区（设计板 25）：列出本构建真实的按键绑定，支持搜索、录制与
-//! 恢复默认。
+//! 设置页的快捷键分区（设计板 25）：搜索、录制、按 Global / Repository 分组。
+//!
+//! 分组与行数来自 `shortcuts::ACTIONS` 的真实注册表：本构建有 22 个可绑定动作，
+//! 画板的 4 / 6 / 3 只是示例，不能为了对齐数量伪造动作。
 
-use crate::design::{self, metrics};
+use crate::design;
+use crate::shortcuts::{self, Scope};
+use crate::ui;
 use crate::i18n;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
-/// 快捷键分区（25）：列出本构建真实的按键绑定。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn shortcuts_page(
     language: Signal<SharedString>,
-    registry: Signal<crate::shortcuts::Registry>,
+    registry: Signal<shortcuts::Registry>,
     query: Signal<String>,
     recording: Signal<Option<&'static str>>,
     error: Signal<Option<String>>,
     record: Arc<dyn Fn(&'static str)>,
     restore: Arc<dyn Fn()>,
 ) -> AnyElement {
-    let needle = query.get_untracked().to_lowercase();
-    let bindings = registry.get_untracked();
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for action in crate::shortcuts::ACTIONS.iter() {
-        let label = crate::shortcuts::label(action, language.get_untracked().as_str());
-        if !needle.is_empty() && !label.to_lowercase().contains(&needle) {
-            continue;
-        }
-        let id = action.id;
-        let is_default = bindings.combo(id) == action.default;
-        let record = record.clone();
-        rows.push(
-            view()
-                .w_full()
-                .h(px(26.0))
-                .flex_row()
-                .items_center()
-                .gap(px(10.0))
-                .child(
-                    text(label)
-                        .flex_1()
-                        .text_size(px(crate::ui::BODY))
-                        .line_height(px(15.0))
-                        .text_color(move || design::text()),
-                )
-                .child(
-                    text(move || {
-                        if is_default {
-                            String::new()
-                        } else {
-                            i18n::t(language.get().as_str(), "settings.customized")
-                        }
-                    })
-                    .text_size(px(crate::ui::META))
-                    .line_height(px(crate::ui::SECONDARY_LINE))
-                    .text_color(move || design::text3()),
-                )
-                .child(
-                    text(move || {
-                        let value = registry.get().combo(id).to_string();
-                        crate::shortcuts::pretty(value.as_str())
-                    })
-                    .text_size(px(crate::ui::CODE))
-                    .line_height(px(14.0))
-                    .text_color(move || design::text2()),
-                )
-                .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "shortcut.record"),
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    {
-                        let record = record.clone();
-                        move || record(id)
-                    },
-                ))
-                .into_element(),
-        );
-    }
-    if rows.is_empty() {
-        rows.push(
-            text(move || i18n::t(language.get().as_str(), "shortcut.searchEmpty"))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text3())
-                .into_element(),
-        );
-    }
+    let search = ui::text_input::search_field(
+        query,
+        {
+            let language = language;
+            move || i18n::t(language.get().as_str(), "shortcut.search")
+        },
+        None,
+        move |text: &str| query.set(text.to_string()),
+    );
+    let restore_button = ui::button::button(
+        {
+            let language = language;
+            move || i18n::t(language.get().as_str(), "shortcut.restoreDefaults")
+        },
+        ui::button::ButtonVariant::Secondary,
+        ui::button::ButtonSize::Small,
+        false,
+        {
+            let restore = restore.clone();
+            move || restore()
+        },
+    );
+    let body = dynamic(move || {
+        body(
+            language,
+            registry,
+            query,
+            recording,
+            error,
+            record.clone(),
+        )
+        .into_element()
+    });
     return view()
         .w_full()
         .flex_col()
-        .gap(px(10.0))
-        .child(
-            text(move || i18n::t(language.get().as_str(), "settings.shortcutsHint"))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text3()),
-        )
         .child(
             view()
                 .w_full()
-                .h(px(metrics::FIELD_H))
+                .mt(px(14.0))
                 .flex_row()
                 .items_center()
-                .px(px(8.0))
-                .rounded(px(metrics::RADIUS_CONTROL))
-                .border_1()
-                .border_color(move || design::field_border())
-                .bg(move || design::field())
-                .child(crate::ui::icon::icon_view(
-                    "search",
-                    crate::ui::icon::IconSize::Button,
-                    design::text3,
-                ))
-                .child(
-                    nsh_base::input()
-                        .value(query)
-                        .on_change(move |text: &str| query.set(text.to_string()))
-                        .placeholder(move || i18n::t(language.get().as_str(), "shortcut.search"))
-                        .text_size(px(crate::ui::BODY))
-                        .flex_1(),
-                ),
+                .gap(px(8.0))
+                .child(view().w(px(240.0)).flex_shrink_0().child(search))
+                .child(view().flex_1())
+                .child(restore_button),
         )
-        // 录制提示与改键错误：两者都只在有内容时占高度。
         .child(
-            view()
-                .w_full()
-                .flex_col()
-                .gap(px(2.0))
-                .child(
-                    text(move || match recording.get() {
-                        Some(id) => {
-                            let name = crate::shortcuts::ACTIONS
-                                .iter()
-                                .find(|action| action.id == id)
-                                .map(|action| {
-                                    crate::shortcuts::label(
-                                        action,
-                                        language.get_untracked().as_str(),
-                                    )
-                                })
-                                .unwrap_or_default();
+            text({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "shortcut.recordingHint")
+            })
+            .mt(px(6.0))
+            .text_size(px(ui::SECONDARY))
+            .line_height(px(ui::SECONDARY_LINE))
+            .text_color(move || design::text3()),
+        )
+        .child(body)
+        .into_element();
+}
+
+#[allow(clippy::too_many_arguments)]
+fn body(
+    language: Signal<SharedString>,
+    registry: Signal<shortcuts::Registry>,
+    query: Signal<String>,
+    recording: Signal<Option<&'static str>>,
+    error: Signal<Option<String>>,
+    record: Arc<dyn Fn(&'static str)>,
+) -> AnyElement {
+    let _ = language.get();
+    let needle = query.get().to_lowercase();
+    let bindings = registry.get();
+    let recording_id = recording.get();
+    let error_text = error.get();
+    let mut body = view().w_full().flex_col();
+    if let Some(id) = recording_id {
+        body = body.child(recorder(language, id, bindings.clone()));
+    }
+    if let Some(text_value) = error_text {
+        body = body.child(
+            text(move || text_value.clone())
+                .mt(px(6.0))
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::danger()),
+        );
+    }
+    let mut any = false;
+    for scope in [Scope::Global, Scope::Repository] {
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for action in shortcuts::ACTIONS
+            .iter()
+            .filter(|action| action.scope == scope)
+        {
+            let label = shortcuts::label(action, language.get_untracked().as_str());
+            let combo = bindings.combo(action.id).to_string();
+            let searchable = format!("{label} {combo}").to_lowercase();
+            if !needle.is_empty() && !searchable.contains(&needle) {
+                continue;
+            }
+            any = true;
+            let id = action.id;
+            let record = record.clone();
+            rows.push(
+                ui::setting_row::setting_row(
+                    move || shortcuts::label(action, language.get().as_str()),
+                    Some(Box::new(move || {
+                        i18n::t(language.get().as_str(), action.desc)
+                    })),
+                    keycaps_control(language, combo.as_str(), id, record),
+                    true,
+                )
+                .into_element(),
+            );
+        }
+        if rows.is_empty() {
+            continue;
+        }
+        let count = rows.len();
+        let mut section = view()
+            .w_full()
+            .flex_col()
+            .mt(px(18.0))
+            .child(
+                view()
+                    .w_full()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(
+                        text(move || {
+                            i18n::t(language.get().as_str(), scope_key(scope))
+                        })
+                        .text_size(px(ui::BODY))
+                        .line_height(px(ui::BODY_LINE))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(move || design::text()),
+                    )
+                    .child(
+                        text(move || {
                             i18n::with_arguments(
                                 language.get().as_str(),
-                                "shortcut.recording",
-                                &[("action", name)],
+                                "shortcut.count",
+                                &[("count", count.to_string())],
                             )
-                        }
-                        None => String::new(),
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .line_height(px(crate::ui::SECONDARY_LINE))
-                    .text_color(move || design::accent()),
-                )
-                .child(
-                    text(move || error.get().unwrap_or_default())
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || design::danger()),
-                ),
-        )
-        .child(view().w_full().flex_col().gap(px(2.0)).child(rows))
+                        })
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text3()),
+                    ),
+            )
+            .child(view().w_full().flex_col().child(rows));
+        body = body.child(section);
+    }
+    if !any {
+        body = body.child(
+            text(move || i18n::t(language.get().as_str(), "shortcut.searchEmpty"))
+                .mt(px(18.0))
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::text3()),
+        );
+    }
+    return body.into_element();
+}
+
+fn scope_key(scope: Scope) -> &'static str {
+    return match scope {
+        Scope::Global => "shortcut.groupGlobal",
+        Scope::Repository => "shortcut.groupRepository",
+    };
+}
+
+fn keycaps_control(
+    language: Signal<SharedString>,
+    combo: &str,
+    id: &'static str,
+    record: Arc<dyn Fn(&'static str)>,
+) -> AnyElement {
+    let caps = shortcuts::keycaps(combo);
+    let mut keys = view().flex_row().items_center().gap(px(2.0));
+    if caps.is_empty() {
+        keys = keys.child(
+            text(move || i18n::t(language.get().as_str(), "shortcut.unassigned"))
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::text3()),
+        );
+    } else {
+        for cap in caps {
+            keys = keys.child(ui::badge::kbd(cap));
+        }
+    }
+    return view()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .child(keys)
+        .child(ui::button::button(
+            move || i18n::t(language.get().as_str(), "shortcut.record"),
+            ui::button::ButtonVariant::Ghost,
+            ui::button::ButtonSize::Small,
+            false,
+            move || record(id),
+        ))
+        .into_element();
+}
+
+fn recorder(
+    language: Signal<SharedString>,
+    id: &'static str,
+    bindings: shortcuts::Registry,
+) -> AnyElement {
+    let action = shortcuts::ACTIONS
+        .iter()
+        .find(|action| action.id == id)
+        .expect("recording action");
+    let name = shortcuts::label(action, language.get_untracked().as_str());
+    let combo = bindings.combo(id).to_string();
+    let caps = shortcuts::keycaps(combo.as_str());
+    let mut keys = view().flex_row().items_center().gap(px(2.0));
+    if caps.is_empty() {
+        keys = keys.child(
+            text(move || i18n::t(language.get().as_str(), "shortcut.unassigned"))
+                .text_size(px(ui::SECONDARY))
+                .text_color(move || design::text3()),
+        );
+    } else {
+        for cap in caps {
+            keys = keys.child(ui::badge::kbd(cap));
+        }
+    }
+    keys = keys.child(
+        view()
+            .w(px(2.0))
+            .h(px(16.0))
+            .flex_shrink_0()
+            .bg(move || design::accent()),
+    );
+    return view()
+        .w_full()
+        .mt(px(10.0))
+        .p(px(10.0))
+        .flex_col()
+        .gap(px(6.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(move || design::accent())
+        .bg(move || design::accent_soft())
         .child(
             view()
-                .w_full()
                 .flex_row()
-                .gap(px(8.0))
-                .child(view().flex_1())
-                .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "shortcut.restoreDefaults"),
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Regular,
-                    false,
-                    {
-                        let restore = restore.clone();
-                        move || restore()
-                    },
-                )),
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    view()
+                        .w(px(6.0))
+                        .h(px(6.0))
+                        .rounded(px(3.0))
+                        .bg(move || design::danger()),
+                )
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "shortcut.recordingTitle"))
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(move || design::accent()),
+                )
+                .child(
+                    text(move || format!("· {name}"))
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text()),
+                ),
         )
+        .child(refine_row(keys))
         .child(
-            text(move || i18n::t(language.get().as_str(), "shortcut.catalogHint"))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text3()),
+            view()
+                .flex_row()
+                .items_center()
+                .gap(px(4.0))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "shortcut.pressNew"))
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text3()),
+                )
+                .child(ui::badge::kbd("esc"))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "shortcut.cancel"))
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text3()),
+                )
+                .child(ui::badge::kbd("⌫"))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "shortcut.clear"))
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text3()),
+                ),
         )
         .into_element();
+}
+
+fn refine_row(keys: impl IntoElement) -> impl IntoElement {
+    return view()
+        .w_full()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .child(keys);
 }

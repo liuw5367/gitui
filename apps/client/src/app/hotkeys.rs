@@ -31,6 +31,17 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
             }
         });
     }
+    // 录制中按 Backspace（Mac 的 Delete）清空当前动作的绑定。
+    on_key("backspace", {
+        let settings_cmd = handles.settings.clone();
+        let recording = handles.settings.state.recording_shortcut;
+        move |_| {
+            if let Some(id) = recording.get_untracked() {
+                settings_cmd.clear_shortcut(id);
+            }
+        }
+    });
+
     // 组件画廊：调试入口，独立于命令注册表，避免 P0 就改动快捷键清单。
     on_key("mod+shift+d", move |_| {
         gallery_open.set(!gallery_open.get_untracked());
