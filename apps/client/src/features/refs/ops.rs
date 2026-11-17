@@ -178,6 +178,18 @@ pub(crate) fn push_tag(tab: &mut Tab, name: &str) -> Result<String, String> {
         .map_err(|error| error.detail());
 }
 
+/// 推送标签到明确指定的远端。
+pub(crate) fn push_tag_to_remote(
+    tab: &mut Tab,
+    name: &str,
+    remote: &str,
+) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    return repo
+        .push_tag(name, Some(remote))
+        .map_err(|error| error.detail());
+}
+
 /// 应用贮藏但保留条目。
 pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;

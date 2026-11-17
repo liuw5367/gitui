@@ -216,6 +216,33 @@ impl RefsCommands {
         }
     }
 
+    pub(crate) fn push_tag_to_remote_at(&self, tab_id: u64, name: String, remote: String) {
+        let tabs = self.session.tabs;
+        let notice = self.notice;
+        let language = self.language;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if !tab.refs.tags.iter().any(|tag| tag == &name)
+            || !tab.refs.remotes.iter().any(|item| item == &remote)
+        {
+            crate::interactions::notify(
+                notice,
+                crate::i18n::t(language.get_untracked().as_str(), "tag.targetChanged"),
+            );
+            return;
+        }
+        match ops::push_tag_to_remote(tab, name.as_str(), remote.as_str()) {
+            Ok(_) => crate::interactions::notify(
+                notice,
+                crate::i18n::t(language.get_untracked().as_str(), "toast.pushed"),
+            ),
+            Err(detail) => crate::interactions::notify(notice, detail),
+        }
+        tabs.set(list);
+    }
+
     /// 应用或弹出贮藏的共用体：`kind` 为 `apply` 或 `pop`。
     fn stash_action(&self, kind: &'static str, reference: String) {
         let tabs = self.session.tabs;
@@ -313,6 +340,49 @@ impl RefsCommands {
                 let _ = ops::drop_tag(tab, name.as_str());
                 tabs.set(list);
             }
+        });
+    }
+
+    pub(crate) fn drop_tag_at(&self, tab_id: u64, name: String) {
+        let tabs = self.session.tabs;
+        let language = self.language;
+        let notice = self.notice;
+        let language_now = language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "confirm.dropTagTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "confirm.dropTagMessage",
+                &[("name", name.clone())],
+            ),
+            "drop",
+            crate::i18n::t(language_now.as_str(), "confirm.deleteAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            true,
+        );
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            if !tab.refs.tags.iter().any(|tag| tag == &name) {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "tag.targetChanged"),
+                );
+                return;
+            }
+            match ops::drop_tag(tab, name.as_str()) {
+                Ok(()) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
+                ),
+                Err(detail) => crate::interactions::notify(notice, detail),
+            }
+            tabs.set(list);
         });
     }
 

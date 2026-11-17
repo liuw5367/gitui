@@ -746,6 +746,13 @@
     "deleteBranchMessage": "This removes the branch from the remote server and cannot be undone.",
     "targetChanged": "The remote reference changed while the menu was open. Reopen it and try again."
   },
+  "tag": {
+    "newTag": "New Tag…",
+    "pushTag": "Push Tag…",
+    "copyName": "Copy Name",
+    "deleteTag": "Delete Tag…",
+    "targetChanged": "The tag or remote changed while the menu was open. Reopen it and try again."
+  },
   "shortcut": {
     "openRepo": "Open repository",
     "palette": "Command palette",

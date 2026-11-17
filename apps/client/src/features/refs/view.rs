@@ -120,11 +120,35 @@ pub(crate) fn refs_sidebar(
         Some(("remote.addRemote", add_remote)),
     ));
 
-    let tag_rows: Vec<AnyElement> = refs
-        .tags
+    let mut tags = refs.tags.clone();
+    tags.sort_by(|left, right| {
+        left.to_lowercase()
+            .cmp(&right.to_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+    let mut configured_remotes = remote_infos
         .iter()
-        .map(|tag| plain_row(tag.clone(), "tag", design::text2))
+        .map(|remote| remote.name.clone())
+        .collect::<Vec<_>>();
+    configured_remotes.sort_by(|left, right| {
+        left.to_lowercase()
+            .cmp(&right.to_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+    let tag_rows: Vec<AnyElement> = tags
+        .into_iter()
+        .map(|tag| tag_row(language, cmd, tab_id, tag, configured_remotes.clone()))
         .collect();
+    let new_tag: std::sync::Arc<dyn Fn()> = {
+        let search = cmd.search.clone();
+        std::sync::Arc::new(move || {
+            search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::NewTag,
+                String::new(),
+            )
+        })
+    };
     groups.push(group(
         language,
         cmd,
@@ -134,7 +158,7 @@ pub(crate) fn refs_sidebar(
         refs.tags.len(),
         collapsed.contains("group:tags"),
         tag_rows,
-        None,
+        Some(("tag.newTag", new_tag)),
     ));
 
     let stash_rows: Vec<AnyElement> = refs
@@ -1320,6 +1344,70 @@ fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) ->
         ))
         .child(
             text(label)
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || design::text2())
+                .flex_1()
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .into_element();
+}
+
+fn tag_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    name: String,
+    remotes: Vec<String>,
+) -> AnyElement {
+    let menu_cmd = cmd.clone();
+    let menu_name = name.clone();
+    let menu_remotes = remotes.clone();
+    return view()
+        .w_full()
+        .h(px(metrics::SIDE_ROW_H))
+        .px(px(7.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .hover(|style| style.bg(move || design::hover()))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let push_items = menu_remotes.iter().map(|remote| {
+                let push_cmd = menu_cmd.clone();
+                let push_name = menu_name.clone();
+                let push_remote = remote.clone();
+                ui::menu::action(remote.clone(), true, move || {
+                    push_cmd.push_tag_to_remote_at(tab_id, push_name.clone(), push_remote.clone())
+                })
+            });
+            let mut items = vec![
+                MenuItem::submenu(i18n::t(language.get().as_str(), "tag.pushTag"), push_items)
+                    .disabled(menu_remotes.is_empty()),
+            ];
+            let copy_notice = menu_cmd.notice;
+            let copy_name = menu_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "tag.copyName"),
+                true,
+                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
+            ));
+            items.push(ui::menu::divider());
+            let delete_cmd = menu_cmd.clone();
+            let delete_name = menu_name.clone();
+            items.push(ui::menu::danger(
+                i18n::t(language.get().as_str(), "tag.deleteTag"),
+                true,
+                move || delete_cmd.drop_tag_at(tab_id, delete_name.clone()),
+            ));
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::icon::icon_view(
+            "tag",
+            crate::ui::icon::IconSize::Compact,
+            design::tag_fg,
+        ))
+        .child(
+            text(name)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
                 .flex_1()

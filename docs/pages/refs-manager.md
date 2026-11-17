@@ -47,6 +47,8 @@
 
 Remotes 侧栏按远端名称升序显示配置节点，即使远端还没有跟踪分支也保留节点。展开后列出配置的全部 Fetch URL、Push URL 和远端跟踪分支；`origin/HEAD` 等符号别名不作为分支展示。分支名按 `/` 分成多级折叠树，每层按文字升序。组头右键有 `Add Remote…` 与组展开/收起；远端节点菜单含 `Fetch…`（打开并预选此远端的同步面板）、`Edit Remote URL…`、`Copy Remote Name`、`Copy URL`（默认复制 Fetch URL）与 `Remove Remote…`；URL 行菜单有 `Copy URL`。远端分支叶菜单依序提供 `Checkout as New Local Branch`（预填本地名称和远端起点，创建跟踪分支并检出）、`Compare with Current`、`Merge into Current`、`Rebase Current onto`、`Pull into Current…`（确认框显示源与当前分支，要求干净工作区）、`Delete Remote Branch…`（确认后从服务器删除并剪枝刷新本地跟踪引用）、`Copy Name`（复制含远端前缀的全名）。远端分支变基和合并仅在仓库 HEAD 位于分支、工作区干净且没有其它 Git 操作时启用；确认期间菜单目标仍绑定发起操作的仓库标签。
 
+Tags 侧栏按标签名升序显示。组头右键提供 `New Tag…`，表单针对发起操作的仓库并从当前 HEAD 创建。标签行右键提供 `Push Tag…` 子菜单并列出配置远端，选择后推送该标签；没有配置远端时该菜单项禁用。其余动作是 `Copy Name` 和 `Delete Tag…`；删除确认后仅移除本地标签，不影响远端副本。删除确认与推送都绑定发起菜单的仓库标签，若标签或远端已变化则提示重新打开菜单。
+
 中列 798 = 1390 − 232 − 360。Refs 条 32 + 表头 22 之后，表格区 **688** = 742 − 54；6 行只占 180，其余留白。第一列 364 = 798 − 20（左右内距）− 24（4 个 6 的列距）− 390（128 + 86 + 124 + 52）。
 
 ## 2. Refs 条与表头

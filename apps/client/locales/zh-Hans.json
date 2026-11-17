@@ -746,6 +746,13 @@
     "deleteBranchMessage": "此操作会从远端服务器删除该分支，无法撤销。",
     "targetChanged": "菜单打开期间远端引用已变化，请重新打开菜单后重试。"
   },
+  "tag": {
+    "newTag": "新建标签…",
+    "pushTag": "推送标签…",
+    "copyName": "复制名称",
+    "deleteTag": "删除标签…",
+    "targetChanged": "菜单打开期间标签或远端已变化，请重新打开菜单后重试。"
+  },
   "shortcut": {
     "openRepo": "打开仓库",
     "palette": "命令面板",
