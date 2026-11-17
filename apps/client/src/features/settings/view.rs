@@ -34,12 +34,6 @@ pub(crate) fn settings(
         .into_iter()
         .map(|entry| entry.path)
         .collect();
-    let scan_folders: Vec<String> = store::load_git_scan_folders(&cmd.store_dir)
-        .iter()
-        .map(|folder| folder.display().to_string())
-        .collect();
-    let found_repos =
-        store::scan_git_repositories(&store::load_git_scan_folders(&cmd.store_dir)).len();
     let git_info = cmd.git_info.clone();
     return view()
         .w_full()
@@ -63,8 +57,6 @@ pub(crate) fn settings(
                     agent,
                     git_info,
                     last_session,
-                    scan_folders,
-                    found_repos,
                 )),
         )
         .child(
@@ -200,11 +192,7 @@ struct SettingsActions {
     clear_identity: Arc<dyn Fn()>,
     set_use_global: Arc<dyn Fn(bool)>,
     check_updates: Arc<dyn Fn()>,
-    add_found_repos: Arc<dyn Fn()>,
     open_browser: Arc<dyn Fn(String)>,
-    detect_git: Arc<dyn Fn()>,
-    choose_git: Arc<dyn Fn()>,
-    toggle_git_path: Arc<dyn Fn()>,
     record_shortcut: Arc<dyn Fn(&'static str)>,
     restore_shortcuts: Arc<dyn Fn()>,
 }
@@ -221,11 +209,7 @@ impl SettingsActions {
         let clear_identity = cmd.clone();
         let use_global = cmd.clone();
         let check_updates = cmd.clone();
-        let add_found = cmd.clone();
         let browser = cmd.clone();
-        let detect = cmd.clone();
-        let choose = cmd.clone();
-        let toggle_path = cmd.clone();
         let record = cmd.clone();
         let restore = cmd.clone();
         return SettingsActions {
@@ -249,13 +233,9 @@ impl SettingsActions {
                 use_global.set_use_global_identity(enabled)
             }),
             check_updates: Arc::new(move || check_updates.check_updates()),
-            add_found_repos: Arc::new(move || add_found.add_found_repos()),
             open_browser: Arc::new(move |url: String| {
                 crate::shared::os::open_browser(browser.notice, browser.language, url)
             }),
-            detect_git: Arc::new(move || detect.detect_git()),
-            choose_git: Arc::new(move || choose.choose_git()),
-            toggle_git_path: Arc::new(move || toggle_path.toggle_git_path()),
             record_shortcut: Arc::new(move |id: &'static str| record.record_shortcut(id)),
             restore_shortcuts: Arc::new(move || restore.restore_shortcuts()),
         };
@@ -270,8 +250,6 @@ fn main(
     agent: &AgentCommands,
     git_info: (String, String, String),
     last_session: Vec<String>,
-    scan_folders: Vec<String>,
-    found_repos: usize,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let theme_mode = cmd.theme_mode;
@@ -298,6 +276,7 @@ fn main(
         let diff = diff.clone();
         Arc::new(move |which: &'static str, value: bool| diff.set_tree_flag(which, value))
     };
+    let git_cmd = cmd.clone();
     let api = SettingsActions::new(cmd);
     return view().flex_1().min_w_0().h_full().child(
         scroll().w_full().h_full().child(
@@ -317,12 +296,20 @@ fn main(
                     },
                 ))
                 .child(dynamic(move || -> AnyElement {
-                    let settings = settings_state.get();
+                    let _ = settings_state.get();
                     let _ = agent_for_page.state.settings.get();
                     let _ = identity_name.get();
                     let _ = identity_email.get();
                     let _ = identity_use_global.get();
                     let _ = date_pattern.get();
+                    let _ = git_cmd.state.git_version.get();
+                    let _ = git_cmd.state.git_exec_path.get();
+                    let _ = git_cmd.state.git_path.get();
+                    let _ = git_cmd.state.scan_folders.get();
+                    let _ = git_cmd.state.scan_counts.get();
+                    let _ = git_cmd.state.scan_found.get();
+                    let _ = git_cmd.state.scan_selected.get();
+                    let _ = git_cmd.state.scan_last_at.get();
                     match section.get() {
                         Section::General => super::general::general(
                             language,
@@ -355,18 +342,7 @@ fn main(
                             api.open_browser.clone(),
                         )
                         .into_element(),
-                        Section::Git => super::git::git_page(
-                            language,
-                            git_info.clone(),
-                            api.choose_git.clone(),
-                            api.detect_git.clone(),
-                            api.toggle_git_path.clone(),
-                            settings.use_system_git,
-                            scan_folders.clone(),
-                            found_repos,
-                            api.add_found_repos.clone(),
-                        )
-                        .into_element(),
+                        Section::Git => super::git::git_page(git_cmd.clone()).into_element(),
                         Section::Shortcuts => super::shortcuts::shortcuts_page(
                             language,
                             shortcut_registry,
@@ -462,21 +438,4 @@ pub(super) fn section_block(
                 .text_color(move || design::text3()),
         )
         .child(body);
-}
-
-pub(super) fn toggle_row(
-    language: Signal<SharedString>,
-    label_key: &'static str,
-    checked: Arc<dyn Fn() -> bool>,
-    on_press: impl Fn() + 'static,
-) -> AnyElement {
-    let value = checked();
-    let toggle = move |_next: bool| on_press();
-    return ui::check::check_row(
-        move || i18n::t(language.get().as_str(), label_key),
-        value,
-        false,
-        toggle,
-    )
-    .into_element();
 }

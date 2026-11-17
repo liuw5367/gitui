@@ -154,89 +154,177 @@ impl SettingsCommands {
         store::save_language(&self.store_dir, next);
     }
 
-    /// 选择 Git 可执行文件（原 `choose_git`）：选完立刻用它探测一次。
+    /// 选择 Git 可执行文件；选完写设置并用它探测一次。
     pub(crate) fn choose_git(&self) {
-        let notice = self.notice;
-        let language = self.language;
-        // 只让选可执行文件；选完把路径记进设置并立刻用它探测一次。
         let pending = pick_paths(nsh_core::file_dialog::OpenDialog::files());
+        let this = self.clone();
         spawn(async move {
             let Ok(Some(paths)) = pending.await else {
                 return;
             };
-            let Some(path) = paths.into_iter().next() else {
-                return;
-            };
-            let lang = language.get_untracked();
-            match std::process::Command::new(&path).arg("--version").output() {
-                Ok(output) if output.status.success() => {
-                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    crate::interactions::notify(notice, format!("{version} · {}", path.display()));
-                }
-                _ => {
-                    crate::interactions::notify(
-                        notice,
-                        i18n::t(lang.as_str(), "settings.detectFailed"),
-                    );
-                }
+            if let Some(path) = paths.into_iter().next() {
+                this.set_git_path(path.display().to_string());
             }
         });
     }
 
-    /// 扫描已配置目录里的仓库并加入最近列表（原 `add_found_repos`）。
-    pub(crate) fn add_found_repos(&self) {
+    /// 保存手动输入的 Git 路径，并立即探测它。
+    pub(crate) fn set_git_path(&self, path: String) {
+        let path = path.trim().to_string();
+        let settings_state = self.state.settings_state;
         let store_dir = self.store_dir.clone();
-        let recent = self.session.recent;
-        let notice = self.notice;
-        let language = self.language;
-        let lang = language.get_untracked();
-        let folders = store::load_git_scan_folders(&store_dir);
-        let found = store::scan_git_repositories(&folders);
-        if found.is_empty() {
-            crate::interactions::notify(notice, i18n::t(lang.as_str(), "settings.scanEmpty"));
-            return;
-        }
-        let mut list = recent.get_untracked();
-        for path in &found {
-            store::remember_recent(&store_dir, &list, path.as_str());
-            list = store::load_recent(&store_dir);
-        }
-        recent.set(list);
-        crate::interactions::notify(
-            notice,
-            i18n::with_arguments(
-                lang.as_str(),
-                "settings.scanAdded",
-                &[("count", found.len().to_string())],
-            ),
-        );
+        let mut next = settings_state.get_untracked();
+        next.git_path = path.clone();
+        next.use_system_git = false;
+        settings_state.set(next.clone());
+        store::save_settings(&store_dir, &next);
+        self.state.git_path.set(path.clone());
+        self.probe_git(Some(path));
     }
 
-    /// 自动探测 Git（原 `detect_git`）：`git --version` 的结果放进状态栏提示。
+    /// 切换「使用 PATH 里的 Git」。
+    pub(crate) fn set_use_system_git(&self, enabled: bool) {
+        let settings_state = self.state.settings_state;
+        let store_dir = self.store_dir.clone();
+        let mut next = settings_state.get_untracked();
+        next.use_system_git = enabled;
+        settings_state.set(next.clone());
+        store::save_settings(&store_dir, &next);
+        let configured = self.state.git_path.get_untracked();
+        self.probe_git(if enabled { None } else { Some(configured) });
+    }
+
+    /// 自动探测 Git：PATH 或设置里的路径，结果显示在 Git 分区。
     pub(crate) fn detect_git(&self) {
-        let notice = self.notice;
-        let language = self.language;
-        let lang = language.get_untracked();
-        match git::info() {
-            Ok(info) => crate::interactions::notify(
-                notice,
-                format!("{} · {}", info.version, info.exec_path),
-            ),
-            Err(_error) => {
-                crate::interactions::notify(notice, i18n::t(lang.as_str(), "settings.detectFailed"))
+        let settings = self.state.settings_state.get_untracked();
+        let configured = self.state.git_path.get_untracked();
+        let path = if settings.use_system_git || configured.trim().is_empty() {
+            None
+        } else {
+            Some(configured)
+        };
+        self.probe_git(path);
+    }
+
+    fn probe_git(&self, path: Option<String>) {
+        let language = self.language.get_untracked();
+        let result = match path {
+            Some(path) => std::process::Command::new(path.as_str())
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| {
+                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    (version, path)
+                }),
+            None => git::info().ok().map(|info| (info.version, info.exec_path)),
+        };
+        match result {
+            Some((version, exec)) => {
+                self.state.git_version.set(version);
+                self.state.git_exec_path.set(exec);
+            }
+            None => {
+                self.state.git_version.set(String::new());
+                crate::interactions::notify(
+                    self.notice,
+                    i18n::t(language.as_str(), "settings.detectFailed"),
+                );
             }
         }
     }
 
-    /// 切换「使用 PATH 里的 git」（原 `toggle_git_path`）。
-    pub(crate) fn toggle_git_path(&self) {
-        let settings_state = self.state.settings_state;
-        let store_dir = self.store_dir.clone();
-        let mut next = settings_state.get_untracked();
-        let enabled = !next.use_system_git;
-        next.use_system_git = enabled;
-        settings_state.set(next.clone());
-        store::save_settings(&store_dir, &next);
+    /// 添加扫描目录；目录写入后立即重新扫描。
+    pub(crate) fn add_scan_folder(&self) {
+        let pending = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
+        let this = self.clone();
+        spawn(async move {
+            let Ok(Some(paths)) = pending.await else {
+                return;
+            };
+            let mut folders = this.state.scan_folders.get_untracked();
+            for path in paths {
+                if !folders.contains(&path) {
+                    folders.push(path);
+                }
+            }
+            store::save_git_scan_folders(&this.store_dir, &folders);
+            this.state.scan_folders.set(folders);
+            this.scan_now();
+        });
+    }
+
+    /// 移除一个扫描目录并重新扫描。
+    pub(crate) fn remove_scan_folder(&self, path: String) {
+        let mut folders = self.state.scan_folders.get_untracked();
+        folders.retain(|folder| folder.display().to_string() != path);
+        store::save_git_scan_folders(&self.store_dir, &folders);
+        self.state.scan_folders.set(folders);
+        self.scan_now();
+    }
+
+    /// 逐目录扫描，更新每个目录的计数、聚合结果与上次扫描时间。
+    pub(crate) fn scan_now(&self) {
+        let folders = self.state.scan_folders.get_untracked();
+        let counts: Vec<usize> = folders
+            .iter()
+            .map(|folder| store::scan_git_repositories(std::slice::from_ref(folder)).len())
+            .collect();
+        let found = store::scan_git_repositories(&folders);
+        self.state.scan_counts.set(counts);
+        self.state.scan_selected.set(found.clone());
+        self.state.scan_found.set(found);
+        self.state.scan_last_at.set(if folders.is_empty() {
+            None
+        } else {
+            Some(store::now_unix())
+        });
+    }
+
+    /// 勾选 / 取消一个扫描结果。
+    pub(crate) fn toggle_found(&self, path: String) {
+        let mut selected = self.state.scan_selected.get_untracked();
+        if let Some(index) = selected.iter().position(|item| item == &path) {
+            selected.remove(index);
+        } else {
+            selected.push(path);
+        }
+        self.state.scan_selected.set(selected);
+    }
+
+    /// 全选 / 全不选扫描结果。
+    pub(crate) fn select_all_found(&self, selected: bool) {
+        if selected {
+            self.state
+                .scan_selected
+                .set(self.state.scan_found.get_untracked());
+        } else {
+            self.state.scan_selected.set(Vec::new());
+        }
+    }
+
+    /// 只把勾选的仓库加入最近列表。
+    pub(crate) fn add_selected_repos(&self) {
+        let selected = self.state.scan_selected.get_untracked();
+        if selected.is_empty() {
+            return;
+        }
+        let recent = self.session.recent;
+        let mut list = recent.get_untracked();
+        for path in &selected {
+            store::remember_recent(&self.store_dir, &list, path.as_str());
+            list = store::load_recent(&self.store_dir);
+        }
+        recent.set(list);
+        crate::interactions::notify(
+            self.notice,
+            i18n::with_arguments(
+                self.language.get_untracked().as_str(),
+                "settings.scanAdded",
+                &[("count", selected.len().to_string())],
+            ),
+        );
     }
 
     /// 设置启动方式（原 `set_launch_restore`）：true = 恢复上次会话。

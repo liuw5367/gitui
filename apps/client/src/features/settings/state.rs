@@ -77,4 +77,16 @@ pub(crate) struct SettingsState {
     pub(crate) identity_use_global: Signal<bool>,
     /// 日期 pattern 的编辑值；失焦时才写回设置。
     pub(crate) date_pattern: Signal<String>,
+    /// 本机 Git 的版本、执行路径与凭据助手（启动时探测一次，可在 Git 分区刷新）。
+    pub(crate) git_version: Signal<String>,
+    pub(crate) git_exec_path: Signal<String>,
+    pub(crate) credential_helper: Signal<String>,
+    /// Git 可执行文件的编辑值（Choose… / 手动输入）。
+    pub(crate) git_path: Signal<String>,
+    /// 扫描目录、每个目录的仓库数、聚合结果、勾选结果与上次扫描时间。
+    pub(crate) scan_folders: Signal<Vec<std::path::PathBuf>>,
+    pub(crate) scan_counts: Signal<Vec<usize>>,
+    pub(crate) scan_found: Signal<Vec<String>>,
+    pub(crate) scan_selected: Signal<Vec<String>>,
+    pub(crate) scan_last_at: Signal<Option<i64>>,
 }

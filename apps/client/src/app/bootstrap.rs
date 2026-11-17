@@ -402,6 +402,19 @@ pub(crate) fn app() -> impl IntoElement {
         ),
         Err(error) => (error.detail(), String::new(), String::new()),
     };
+    let git_folders = store::load_git_scan_folders(&store_dir);
+    let git_counts: Vec<usize> = git_folders
+        .iter()
+        .map(|folder| store::scan_git_repositories(std::slice::from_ref(folder)).len())
+        .collect();
+    let git_found = store::scan_git_repositories(&git_folders);
+    let git_last = if git_found.is_empty() {
+        None
+    } else {
+        Some(store::now_unix())
+    };
+    let git_selected = git_found.clone();
+
     let settings_commands = features::settings::commands::SettingsCommands {
         state: features::settings::state::SettingsState {
             settings_state,
@@ -414,6 +427,15 @@ pub(crate) fn app() -> impl IntoElement {
             identity_email: signal(String::new()),
             identity_use_global: signal(true),
             date_pattern: signal(settings_state.get_untracked().date_pattern),
+            git_version: signal(git_info.0.clone()),
+            git_exec_path: signal(git_info.1.clone()),
+            credential_helper: signal(git_info.2.clone()),
+            git_path: signal(settings_state.get_untracked().git_path),
+            scan_folders: signal(git_folders),
+            scan_counts: signal(git_counts),
+            scan_found: signal(git_found),
+            scan_selected: signal(git_selected),
+            scan_last_at: signal(git_last),
         },
         session: session.clone(),
         language,
