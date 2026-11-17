@@ -112,8 +112,41 @@ impl SessionHandle {
         });
     }
 
+    /// 刷新最近仓库记录里的当前分支，供欢迎页名称右侧的分支 tag 使用。
+    ///
+    /// 记录里的分支是上次打开时的快照：仓库在外部切换过分支，或旧数据没有分支列，
+    /// 欢迎页就会缺 tag。这里重新读一次 HEAD；读不到仓库时保留原值，游离 HEAD
+    /// 则清空分支（没有“当前分支”可显示）。
+    pub(crate) fn refresh_recent_branches(&self) {
+        let recent = self.recent;
+        let store_dir = self.store_dir.clone();
+        spawn(async move {
+            let list = recent.get_untracked();
+            let mut changed = false;
+            for entry in &list {
+                let Ok(repo) = git::Repo::open(entry.path.as_str()) else {
+                    continue;
+                };
+                let branch = match repo.head_state() {
+                    git::HeadState::Branch(name) => name,
+                    git::HeadState::Unborn { branch } => branch,
+                    git::HeadState::Detached { .. } => String::new(),
+                };
+                if branch != entry.branch {
+                    store::set_recent_branch(&store_dir, entry.path.as_str(), &branch);
+                    changed = true;
+                }
+            }
+            if changed {
+                recent.set(store::load_recent(&store_dir));
+            }
+        });
+    }
+
     /// 打开欢迎窗口（独立窗口，由 `welcome_open` 驱动）。
     pub(crate) fn go_welcome(&self) {
+        // 列表要显示当前分支，而不是上次打开时的快照。
+        self.refresh_recent_branches();
         self.welcome_open.set(true);
     }
 

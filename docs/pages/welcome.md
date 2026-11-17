@@ -87,6 +87,8 @@
 - **图标** 27×27、圆角 7、描边 `line`；当前打开的仓库改用 `content` 底 + `accent` 图标。
 - **名称** 12/600，超长省略；**路径** mono 9.5 `text3`，显示成 `~/…`。
 - **分支 chip** 高 16、圆角 4、mono 10，只写分支名（板上：`main`、`feature/hero`、`release`）。
+  显示仓库**当前**分支：打开欢迎页时重新读一次 HEAD，不沿用上次打开时的快照；读不到分支
+  （游离 HEAD 或仓库缺失）时整块不渲染。
 - **时间** 9 `text3`，相对与简称混排：`2m`、`Yesterday`、`Mon`、`Nov 6`、`Oct 28`。
 - **删除** 19×19 的 `×`，无障碍名「Remove <仓库名> from recent repositories」。
 - 行状态：当前仓库 `wrepo on` 用 `sel` 底；hover 用 `hover` 底。整行可点，点开该仓库。

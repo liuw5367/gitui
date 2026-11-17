@@ -6,7 +6,7 @@
 use crate::design;
 use crate::ui;
 use crate::ui::badge::Tone;
-use crate::ui::button::{button, button_hint, icon_button, ButtonSize, ButtonVariant};
+use crate::ui::button::{button, button_hint, icon_button, icon_button_tip, ButtonSize, ButtonVariant};
 use crate::ui::feedback::BannerTone;
 use nsh_core::prelude::*;
 
@@ -148,6 +148,14 @@ fn body(
                         move || "Disabled icon".to_string(),
                         ButtonSize::Small,
                         true,
+                        || {},
+                    ))
+                    .child(icon_button_tip(
+                        "gear",
+                        move || "Settings".to_string(),
+                        ButtonSize::Small,
+                        false,
+                        move || "Hover shows this hint".to_string(),
                         || {},
                     )),
             ))

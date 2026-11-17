@@ -253,6 +253,47 @@ pub(crate) fn icon_button_tuned(
     disabled: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    return icon_shell(
+        name,
+        label,
+        size,
+        icon_size_override,
+        foreground,
+        disabled,
+        on_press,
+    );
+}
+
+/// 图标按钮 + hover 提示：指针停留半秒后在按钮上方显示 `tip`。
+///
+/// 用于只有图标、没有文字的入口（欢迎页底栏的检查更新与设置）：图标本身认不出来
+/// 时，提示就是它的文案。
+pub(crate) fn icon_button_tip(
+    name: &'static str,
+    label: impl Fn() -> String + 'static,
+    size: ButtonSize,
+    disabled: bool,
+    tip: impl Fn() -> String + 'static,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    // `nsh_base` 的按钮元素不带 `.tooltip`（提示是视图上的 overlay），所以套一层
+    // 与按钮同尺寸的 view，把提示挂在它上面。
+    return view()
+        .flex_shrink_0()
+        .child(icon_shell(name, label, size, None, None, disabled, on_press))
+        .tooltip(tooltip_bubble(tip));
+}
+
+/// 图标按钮的外壳（无障碍名、尺寸、悬停底色与焦点环），内容由调用方补。
+fn icon_shell(
+    name: &'static str,
+    label: impl Fn() -> String + 'static,
+    size: ButtonSize,
+    icon_size_override: Option<IconSize>,
+    foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> nsh_base::ButtonElement {
     let icon_size = icon_size_override.unwrap_or(match size {
         ButtonSize::Small => IconSize::Button,
         ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => IconSize::Toolbar,
@@ -270,6 +311,7 @@ pub(crate) fn icon_button_tuned(
         .accessibility_label(Some(SharedString::from(label_for_a11y)))
         .w(px(width))
         .h(px(height))
+        .flex_shrink_0()
         .items_center()
         .justify_center()
         .rounded(px(metrics::RADIUS_CONTROL))
@@ -286,4 +328,23 @@ pub(crate) fn icon_button_tuned(
             Some(color) => color(),
             None => design::text2(),
         }));
+}
+
+/// 提示气泡：按钮上方的小卡片（`nsh_base` 的 tooltip 只提供定位与时机，外观在这里）。
+fn tooltip_bubble(label: impl Fn() -> String + 'static) -> nsh_base::TooltipElement {
+    return nsh_base::tooltip().child(
+        view()
+            .px(px(ui::GAP))
+            .py(px(ui::GAP_XS))
+            .rounded(px(metrics::RADIUS_CONTROL))
+            .border_1()
+            .border_color(move || design::line())
+            .bg(move || design::panel())
+            .child(
+                text(move || label())
+                    .text_size(px(ui::SECONDARY))
+                    .line_height(px(ui::SECONDARY_LINE))
+                    .text_color(move || design::text()),
+            ),
+    );
 }

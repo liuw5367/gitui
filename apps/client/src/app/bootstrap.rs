@@ -279,6 +279,10 @@ pub(crate) fn app() -> impl IntoElement {
         notice,
         language,
     };
+    // 首屏直接落在欢迎页时，列表里的分支 tag 要先按仓库当前 HEAD 刷新一次。
+    if session.welcome_open.get_untracked() {
+        session.refresh_recent_branches();
+    }
 
     // 恢复操作（P3 批 B）：撤销 reflog、重置、拣选与回滚收进 RecoveryCommands。
     // 没有独立视图，入口在 refs 的 reflog 表与 history 的提交右键菜单。

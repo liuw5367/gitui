@@ -17,7 +17,7 @@ use crate::features::SessionHandle;
 use crate::features::settings::state::Section;
 use crate::i18n;
 use crate::ui;
-use crate::ui::button::{ButtonSize, ButtonVariant, button, button_hint, icon_button};
+use crate::ui::button::{ButtonSize, ButtonVariant, button, icon_button_tip};
 use nsh_core::prelude::*;
 use store::RecentRepo;
 
@@ -27,8 +27,8 @@ const SIDE_WIDTH: f32 = 312.0;
 const MAIN_MAX_WIDTH: f32 = 520.0;
 /// 右栏内边距：上、左右、下。
 const MAIN_PAD: (f32, f32, f32) = (44.0, 40.0, 30.0);
-/// 英雄区应用标记的边长。
-const APP_MARK: f32 = 64.0;
+/// 英雄区应用标记的边长（画板 64；按反馈缩小，避免压过标题）。
+const APP_MARK: f32 = 44.0;
 
 pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoElement + use<> {
     let language = cmd.language;
@@ -57,8 +57,7 @@ pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoE
                             .px(px(MAIN_PAD.1))
                             .flex_col()
                             .child(hero(language))
-                            .child(entry_section(language, state.clone(), cmd.clone()))
-                            .child(tip(language)),
+                            .child(entry_section(language, state.clone(), cmd.clone())),
                     ),
                 )
                 .child(cloning_indicator(
@@ -139,6 +138,7 @@ fn sidebar(
     let session = cmd.session.clone();
     let choose_folder = cmd.clone();
     let updates = cmd.clone();
+    let settings = cmd.clone();
     let forget = cmd.clone();
     let scan = cmd.clone();
     let search_ref = cmd.state.search_ref;
@@ -191,7 +191,7 @@ fn sidebar(
                 )
                 .child(button(
                     move || i18n::t(language.get().as_str(), "welcome.openFolder"),
-                    ButtonVariant::Ghost,
+                    ButtonVariant::Secondary,
                     ButtonSize::Small,
                     false,
                     {
@@ -297,7 +297,6 @@ fn sidebar(
                                     list = list.child(repo_row(
                                         language,
                                         repo,
-                                        now_value,
                                         selected,
                                         session.clone(),
                                         forget.clone(),
@@ -328,14 +327,26 @@ fn sidebar(
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
-                .child(button(
+                .child(icon_button_tip(
+                    "refresh",
                     move || i18n::t(language.get().as_str(), "welcome.checkUpdates"),
-                    ButtonVariant::Ghost,
                     ButtonSize::Small,
                     false,
+                    move || i18n::t(language.get().as_str(), "welcome.checkUpdates"),
                     {
                         let updates = updates.clone();
                         move || updates.check_updates()
+                    },
+                ))
+                .child(icon_button_tip(
+                    "gear",
+                    move || i18n::t(language.get().as_str(), "welcome.settingsEntry"),
+                    ButtonSize::Small,
+                    false,
+                    move || i18n::t(language.get().as_str(), "welcome.settingsEntry"),
+                    {
+                        let settings = settings.clone();
+                        move || settings.open_settings(Section::General)
                     },
                 )),
         );
@@ -344,7 +355,6 @@ fn sidebar(
 fn repo_row(
     language: Signal<SharedString>,
     repo: RecentRepo,
-    now: i64,
     selected: bool,
     session: SessionHandle,
     cmd: WelcomeCommands,
@@ -353,14 +363,12 @@ fn repo_row(
     let name = last_segment(&path);
     let subtitle = home_path(&path);
     let branch = repo.branch.clone();
-    let opened_at = repo.opened_at;
     let path_for_press = path.clone();
-    let path_for_remove = path.clone();
-    let name_for_remove = name.clone();
-    let language_for_time = language;
-    let language_for_remove = language;
+    let path_for_menu = path.clone();
+    let language_for_menu = language;
+    let notice = session.notice;
+    let remove = cmd.clone();
     let open = session;
-    let remove = cmd;
     let leading = view()
         .w(px(27.0))
         .h(px(27.0))
@@ -389,35 +397,56 @@ fn repo_row(
             },
         ))
         .into_element();
+    // 名称右侧是当前分支的 tag。
     let mut aside: Vec<AnyElement> = Vec::new();
     if !branch.is_empty() {
         aside.push(ui::badge::branch_chip(move || branch.clone()).into_element());
     }
+    // 行尾只有一个「更多」菜单：显示在 Finder、复制路径、从列表移除。
     let mut trailing: Vec<AnyElement> = Vec::new();
     trailing.push(
-        ui::meta(move || {
-            crate::dates::format(language_for_time.get().as_str(), opened_at, now)
-        })
-        .into_element(),
-    );
-    trailing.push(
-        icon_button(
-            "x",
+        ui::menu::menu_icon_button(
+            "more",
+            move || i18n::t(language_for_menu.get().as_str(), "welcome.moreActions"),
             move || {
-                i18n::with_arguments(
-                    language_for_remove.get().as_str(),
-                    "welcome.removeRepo",
-                    &[("name", name_for_remove.clone())],
-                )
+                let lang = language_for_menu.get_untracked();
+                let reveal = path_for_menu.clone();
+                let copy = path_for_menu.clone();
+                let forget_path = path_for_menu.clone();
+                let remove = remove.clone();
+                return vec![
+                    ui::menu::action(
+                        i18n::t(lang.as_str(), "files.revealInFinder"),
+                        true,
+                        move || {
+                            crate::shared::os::reveal_path(
+                                notice,
+                                language_for_menu,
+                                reveal.clone(),
+                            )
+                        },
+                    ),
+                    ui::menu::action(i18n::t(lang.as_str(), "files.copyPath"), true, move || {
+                        let lang = language_for_menu.get_untracked();
+                        crate::interactions::copy(
+                            notice,
+                            copy.clone(),
+                            i18n::t(lang.as_str(), "toast.copied"),
+                            i18n::t(lang.as_str(), "toast.copyFailed"),
+                        )
+                    }),
+                    ui::menu::divider(),
+                    ui::menu::action(
+                        i18n::t(lang.as_str(), "welcome.removeFromList"),
+                        true,
+                        move || remove.forget_recent(forget_path.clone()),
+                    ),
+                ];
             },
-            ButtonSize::Small,
-            false,
-            move || remove.forget_recent(path_for_remove.clone()),
         )
         .into_element(),
     );
-    // 画板的行高 47、删除按钮 19、分支 chip 10pt；这里用原生 47 / 22 / 11。
-    // 第一行：名称 + 分支 chip + 时间 + ×；第二行：路径。
+    // 行高 47：第一行名称 + 分支 tag + 更多；第二行路径。
     return ui::row::row_stacked(
         move || name.clone(),
         Some((Box::new(move || subtitle.clone()), true)),
@@ -444,9 +473,9 @@ fn hero(language: Signal<SharedString>) -> impl IntoElement {
                 .flex_shrink_0()
                 .items_center()
                 .justify_center()
-                .rounded(px(15.0))
+                .rounded(px(10.0))
                 .bg(move || design::accent2())
-                .child(ui::icon::brand_mark("branch", 30.0, || {
+                .child(ui::icon::brand_mark("branch", 20.0, || {
                     design::token("primary-foreground")
                 })),
         )
@@ -658,50 +687,36 @@ fn open_form(
 ) -> impl IntoElement {
     let path = state.open_path;
     let error = state.open_error;
-    let recent = cmd.session.recent;
     let open = cmd;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
         .flex_col()
         .gap(px(ui::GAP_LG))
-        // 字段与主操作同行：有值校验后打开，无值先选目录再校验打开（两者都是
-        // 同一个按钮，不再另起一行主按钮）。
+        // 路径输入框占满整行；主操作在下一行，不再带键帽提示。
+        .child(ui::field::field(
+            move || i18n::t(language.get().as_str(), "welcome.repositoryPath"),
+            ui::text_input::path_input(
+                path,
+                move || "~/Developer/gitui".to_string(),
+                Some("⌘V"),
+                move |text| path.set(text.to_string()),
+            ),
+            None,
+            None,
+        ))
         .child(
             view()
                 .w_full()
                 .flex_row()
-                .items_end()
-                .gap(px(ui::GAP))
-                .child(view().flex_1().min_w_0().child(ui::field::field(
-                    move || i18n::t(language.get().as_str(), "welcome.repositoryPath"),
-                    ui::text_input::path_input(
-                        path,
-                        move || "~/Developer/gitui".to_string(),
-                        Some("⌘V"),
-                        move |text| path.set(text.to_string()),
-                    ),
-                    None,
-                    None,
-                )))
-                .child(button_hint(
+                .items_center()
+                .child(button(
                     move || i18n::t(language.get().as_str(), "welcome.openAction"),
-                    || "⌘O".to_string(),
                     ButtonVariant::Primary,
                     ButtonSize::Regular,
                     false,
                     move || open.open_or_choose(),
                 )),
-        )
-        // 列表为空时给下一步；有最近仓库时这一行不占位置。
-        .child(
-            view().w_full().flex_row().items_center().child(ui::meta(move || {
-                if recent.get().is_empty() {
-                    i18n::t(language.get().as_str(), "welcome.openMeta")
-                } else {
-                    String::new()
-                }
-            })),
         )
         .child(form_error(error));
 }
@@ -1099,51 +1114,6 @@ fn init_form(
                 })),
         )
         .child(form_error(error));
-}
-
-fn tip(language: Signal<SharedString>) -> impl IntoElement {
-    return view()
-        .w_full()
-        .max_w(px(MAIN_MAX_WIDTH))
-        .mt(px(26.0))
-        .child(ui::feedback::card(
-            view()
-                .w_full()
-                .flex_row()
-                .items_start()
-                .gap(px(ui::GAP))
-                .p(px(ui::GAP_LG))
-                .child(ui::icon::icon_view(
-                    "info",
-                    ui::icon::IconSize::Inline,
-                    design::accent,
-                ))
-                .child(
-                    view()
-                        .flex_1()
-                        .min_w_0()
-                        .flex_row()
-                        .items_start()
-                        .gap(px(ui::GAP_XS))
-                        .child(
-                            text(move || {
-                                i18n::t(language.get().as_str(), "welcome.tipLead")
-                            })
-                            .text_size(px(ui::SECONDARY))
-                            .line_height(px(ui::SECONDARY_LINE))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(move || design::text2()),
-                        )
-                        .child(
-                            text(move || {
-                                i18n::t(language.get().as_str(), "welcome.tipRest")
-                            })
-                            .text_size(px(ui::SECONDARY))
-                            .line_height(px(ui::SECONDARY_LINE))
-                            .text_color(move || design::text2()),
-                        ),
-                ),
-        ));
 }
 
 /// 最近仓库在左栏的三种时间分组。

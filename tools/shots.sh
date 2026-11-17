@@ -5,6 +5,10 @@
 # 沙箱或只读缓存目录下会得到 "Operation not permitted"。把 HOME 指到仓库内的
 # .tmp/nsh-home 后，锁、增量缓存与应用数据都落在工作区内，可写也可清理。
 #
+# 但 CARGO_HOME 不跟着改：它决定依赖源码落在哪个 registry 下，路径不同会让 cargo
+# 把整套依赖判为变更，开发者的 `nsh run` 与截图脚本会互相作废对方的编译产物。
+# 所以这里把它钉在真实 HOME 的 ~/.cargo 上（可用 SHOTS_REAL_HOME 覆盖）。
+#
 # 用法：
 #   tools/shots.sh gallery            # 组件画廊（GITUI_GALLERY=1，并关掉欢迎窗口）
 #
@@ -43,6 +47,12 @@ name="${1:?用法: tools/shots.sh <gallery|welcome|名字> [秒数]}"
 settle_seconds="${2:-8}"
 home_dir="$root/.tmp/nsh-home"
 app_home="$root/.tmp/app-home"
+# 真实 HOME 与 cargo home：HOME 指到 .tmp 只是为了让 nsh 的会话锁
+# （$HOME/Library/Caches/nsh/dev-sessions）落在可写的工作区内；但 cargo 的
+# CARGO_HOME 必须与开发者本人用的一致——否则依赖源码路径不同，cargo 会把整套
+# 依赖判为变更，开发者下次 `nsh run` 就要全量重编一次（实测 1m26s，反之亦然）。
+real_home="${SHOTS_REAL_HOME:-$HOME}"
+cargo_home="${CARGO_HOME:-$real_home/.cargo}"
 swift_cache="$root/.tmp/swift-cache"
 bin="$root/.tmp/bin/winid"
 out_dir="$root/.tmp/shots"
@@ -85,6 +95,7 @@ echo "启动应用（HOME=$home_dir）…"
   cd "$root/apps/client"
   APP_HOME="$app_home" \
   HOME="$home_dir" \
+  CARGO_HOME="$cargo_home" \
   GITUI_NO_WELCOME="$([ "$welcome_shot" = 1 ] && echo 0 || echo 1)" \
   GITUI_GALLERY="$([ "$name" = "gallery" ] && echo 1 || echo 0)" \
   GITUI_SYNC="${GITUI_SYNC:-0}" \

@@ -102,6 +102,42 @@ pub(crate) fn menu_button(
     );
 }
 
+/// 图标版「点一下就弹菜单」的按钮：行尾的「更多」用它。
+///
+/// 与 [`menu_button`] 的差别是外观与锚点：22×22 的图标按钮，`label` 只作无障碍
+/// 名称；菜单在指针处弹出（`nsh_base::button` 的按压事件不带坐标）。
+pub(crate) fn menu_icon_button(
+    name: &'static str,
+    label: impl Fn() -> String + 'static,
+    build_items: impl Fn() -> Vec<MenuItem> + 'static,
+) -> impl IntoElement {
+    let build_items = std::rc::Rc::new(build_items);
+    let a11y = label();
+    let size = crate::ui::CONTROL_SMALL;
+    return nsh_base::button()
+        .w(px(size))
+        .h(px(size))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(6.0))
+        .accessibility_label(Some(SharedString::from(a11y)))
+        .bg(AdaptiveColor::TRANSPARENT)
+        .hover(|style| style.bg(move || crate::design::hover()))
+        .active(|style| style.bg(move || crate::design::line_soft()))
+        // `nsh_base::button` 的按压不带坐标，这里用不带锚点的 `popup_menu`：
+        // 菜单在指针处弹出，指针就落在这个按钮上。
+        .on_press(move |_: &()| {
+            let items = build_items();
+            let _ = nsh_core::element::desktop::popup_menu(items);
+        })
+        .child(crate::ui::icon::icon_view(
+            name,
+            crate::ui::icon::IconSize::Button,
+            || crate::design::text2(),
+        ));
+}
+
 /// 一级菜单标题（菜单栏用，与右键菜单无关）。
 pub(crate) fn section(label: impl Into<String>) -> MenuItem {
     return MenuItem::new(label);

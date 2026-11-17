@@ -31,6 +31,7 @@ pub(crate) fn row(
 ///
 /// 与 [`row_sized`] 的区别只在行内结构：`row_sized` 把 trailing 放在两行文字的右侧，
 /// 这里放在第一行右侧，第二行因此占满整行宽度（欢迎页画板的 `.wrepo`）。
+/// 两行都是单行文本；名称从右侧省略，路径从左侧省略（保留仓库目录名这一端）。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn row_stacked(
     caption: impl Fn() -> String + 'static,
@@ -93,6 +94,7 @@ pub(crate) fn row_stacked(
                         .line_height(px(ui::BODY_LINE))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(move || foreground)
+                        .number_of_lines(1)
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 ),
         );
@@ -103,13 +105,16 @@ pub(crate) fn row_stacked(
     for item in trailing {
         first = first.child(item);
     }
-    let mut labels = view().w_full().min_w_0().flex_col().child(first);
+    // 标签列用 flex_1 而不是 w_full：后者会占满整行，把行尾的动作挤出可视区。
+    let mut labels = view().flex_1().min_w_0().flex_col().child(first);
     if let Some((hint, mono)) = subtitle {
+        // 副标题只占一行，并且从左侧省略：路径的尾部（仓库目录名）比开头更有用。
         let mut line = text(move || hint())
             .text_size(px(ui::SECONDARY))
             .line_height(px(ui::SECONDARY_LINE))
             .text_color(move || design::text3())
-            .text_overflow(nsh_core::EllipsizeMode::Tail);
+            .number_of_lines(1)
+            .text_overflow(nsh_core::EllipsizeMode::Head);
         if mono {
             line = line.font_family(ui::MONO);
         }
@@ -176,11 +181,13 @@ pub(crate) fn row_sized(
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         );
     if let Some((hint, mono)) = subtitle {
+        // 副标题只占一行，并且从左侧省略：路径的尾部（仓库目录名）比开头更有用。
         let mut line = text(move || hint())
             .text_size(px(ui::SECONDARY))
             .line_height(px(ui::SECONDARY_LINE))
             .text_color(move || design::text3())
-            .text_overflow(nsh_core::EllipsizeMode::Tail);
+            .number_of_lines(1)
+            .text_overflow(nsh_core::EllipsizeMode::Head);
         if mono {
             line = line.font_family(ui::MONO);
         }

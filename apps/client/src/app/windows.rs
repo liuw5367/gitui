@@ -39,8 +39,8 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     let welcome_window = nsh_core::element::desktop::window()
         .id("welcome")
         .title(welcome_title)
-        .default_size(size(Points(960.0), Points(690.0)))
-        .attributes(attributes_with_min_size(900.0, 560.0))
+        .default_size(size(Points(900.0), Points(600.0)))
+        .attributes(attributes_with_min_size(800.0, 520.0))
         .open(welcome_open)
         .on_open_change(move |event| {
             if !event.open {
