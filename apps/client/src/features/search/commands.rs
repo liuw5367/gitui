@@ -8,12 +8,12 @@ use super::ops;
 use super::state::SearchState;
 use super::view;
 use crate::app::session::Sync;
+use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::history::commands::HistoryCommands;
 use crate::features::settings::commands::SettingsCommands;
 use crate::features::sync::commands::SyncCommands;
 use crate::features::welcome::commands::WelcomeCommands;
-use crate::features::SessionHandle;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -66,12 +66,7 @@ impl SearchCommands {
     }
 
     /// 打开表单并同时预填前两个字段（身份编辑：姓名与邮箱）。
-    pub(crate) fn open_form_prefilled(
-        &self,
-        kind: FormKind,
-        first: String,
-        second: String,
-    ) {
+    pub(crate) fn open_form_prefilled(&self, kind: FormKind, first: String, second: String) {
         let mut state = FormState::new(kind);
         state.first = first;
         state.second = second;
@@ -115,12 +110,8 @@ impl SearchCommands {
             FormKind::AddRemote => ops::add_remote(tab, first.as_str(), second.as_str()),
             FormKind::NewStash => ops::stash_changes(tab, first.as_str(), form.flag),
             // 重命名与改 URL：`second` 是被改对象的原名，`first` 是新值。
-            FormKind::RenameBranch => {
-                ops::rename_branch(tab, second.as_str(), first.as_str())
-            }
-            FormKind::EditRemote => {
-                ops::edit_remote(tab, second.as_str(), first.as_str())
-            }
+            FormKind::RenameBranch => ops::rename_branch(tab, second.as_str(), first.as_str()),
+            FormKind::EditRemote => ops::edit_remote(tab, second.as_str(), first.as_str()),
             // 身份：`first` 是姓名，`second` 是邮箱。
             FormKind::Identity => ops::set_identity(tab, first.as_str(), second.as_str()),
         };

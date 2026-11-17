@@ -118,7 +118,11 @@ pub(crate) fn titlebar(
                             let open = open.clone();
                             move || open.go_repo_manager()
                         })
-                        .child(crate::ui::icon::icon_view("plus", crate::ui::icon::IconSize::Button, design::text2)),
+                        .child(crate::ui::icon::icon_view(
+                            "plus",
+                            crate::ui::icon::IconSize::Button,
+                            design::text2,
+                        )),
                 ),
         )
         .child(
@@ -268,7 +272,11 @@ pub(crate) fn toolbar(
                 .border_1()
                 .border_color(move || design::field_border())
                 .bg(move || design::field())
-                .child(crate::ui::icon::icon_view("search", crate::ui::icon::IconSize::Button, design::text3))
+                .child(crate::ui::icon::icon_view(
+                    "search",
+                    crate::ui::icon::IconSize::Button,
+                    design::text3,
+                ))
                 .child(
                     input()
                         .value(history_query)
@@ -356,7 +364,9 @@ pub(crate) fn state_banner(
     let create_branch: std::sync::Arc<dyn Fn(crate::features::search::FormKind, String)> = {
         let search = search.clone();
         std::sync::Arc::new(
-            move |kind: crate::features::search::FormKind, from: String| search.open_form_from(kind, from),
+            move |kind: crate::features::search::FormKind, from: String| {
+                search.open_form_from(kind, from)
+            },
         )
     };
     // 「回到 main」「关闭同步失败横幅」已归引用管理与同步功能的用例。
@@ -550,7 +560,10 @@ pub(crate) fn state_banner(
                                     let create_branch = create_branch.clone();
                                     let sha = sha.clone();
                                     move || {
-                                        create_branch(crate::features::search::FormKind::NewBranch, sha.clone())
+                                        create_branch(
+                                            crate::features::search::FormKind::NewBranch,
+                                            sha.clone(),
+                                        )
                                     }
                                 },
                             )
@@ -618,10 +631,7 @@ pub(crate) fn state_banner(
 
 pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
     let has_message = move || {
-        return tab
-            .get()
-            .and_then(|tab| tab.sync_message)
-            .is_some();
+        return tab.get().and_then(|tab| tab.sync_message).is_some();
     };
     return view()
         .w_full()
@@ -633,11 +643,9 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
         .flex_row()
         .items_center()
         .gap(px(6.0))
-        .bg(move || {
-            match tab.get() {
-                Some(tab) if tab.sync_failed => design::del_bg(),
-                _ => design::panel(),
-            }
+        .bg(move || match tab.get() {
+            Some(tab) if tab.sync_failed => design::del_bg(),
+            _ => design::panel(),
         })
         .border_b_1()
         .border_color(move || design::line())
@@ -667,13 +675,9 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
                 )
                 .child(view().flex_1())
                 .child(
-                    text(move || {
-                        tab.get()
-                            .map(|tab| tab.branch.clone())
-                            .unwrap_or_default()
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .text_color(move || design::text3()),
+                    text(move || tab.get().map(|tab| tab.branch.clone()).unwrap_or_default())
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
                 )
                 .into_element();
         }));
@@ -701,13 +705,7 @@ pub(crate) fn op_banner(
     // 前置 info 图标），与另外两条横幅共用同一套外观。
     return view()
         .w_full()
-        .h(move || {
-            if has_operation() {
-                px(28.0)
-            } else {
-                px(0.0)
-            }
-        })
+        .h(move || if has_operation() { px(28.0) } else { px(0.0) })
         .overflow_hidden()
         .child(dynamic(move || -> AnyElement {
             if !has_operation() {
@@ -763,13 +761,14 @@ pub(crate) fn statusbar(
         .bg(move || design::status())
         .border_t_1()
         .border_color(move || design::line())
-        .child(crate::ui::icon::icon_view("branch", crate::ui::icon::IconSize::Compact, design::text3))
+        .child(crate::ui::icon::icon_view(
+            "branch",
+            crate::ui::icon::IconSize::Compact,
+            design::text3,
+        ))
         .child(
             text(move || {
-                return tab
-                    .get()
-                    .map(|tab| tab.branch)
-                    .unwrap_or_default();
+                return tab.get().map(|tab| tab.branch).unwrap_or_default();
             })
             .text_size(px(crate::ui::SECONDARY))
             .line_height(px(crate::ui::SECONDARY_LINE))
@@ -786,7 +785,11 @@ pub(crate) fn statusbar(
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
-                .child(crate::ui::icon::icon_view("check", crate::ui::icon::IconSize::Compact, design::ok))
+                .child(crate::ui::icon::icon_view(
+                    "check",
+                    crate::ui::icon::IconSize::Compact,
+                    design::ok,
+                ))
                 .child(
                     text(message)
                         .text_size(px(crate::ui::SECONDARY))
@@ -798,10 +801,7 @@ pub(crate) fn statusbar(
         }))
         .child(
             text(move || {
-                let count = tab
-                    .get()
-                    .map(|tab| tab.status.len())
-                    .unwrap_or(0);
+                let count = tab.get().map(|tab| tab.status.len()).unwrap_or(0);
                 return i18n::with_arguments(
                     language.get().as_str(),
                     "history.commits",

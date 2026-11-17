@@ -29,7 +29,15 @@ impl Repo {
     pub fn patch_for_path(&self, sha: &str, path: &str) -> Result<Patch, GitError> {
         let output = run_git(
             &self.root,
-            &["show", "--no-color", "--patch", "--format=", sha, "--", path],
+            &[
+                "show",
+                "--no-color",
+                "--patch",
+                "--format=",
+                sha,
+                "--",
+                path,
+            ],
         )?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
@@ -109,7 +117,6 @@ impl Repo {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,20 +167,22 @@ mod tests {
         assert!(!worktree.lines.is_empty());
         assert!(worktree.raw.contains("-one"));
         assert!(worktree.raw.contains("+two"));
-        assert!(repo
-            .file_diff("a.txt", true)
-            .expect("index diff")
-            .lines
-            .is_empty());
+        assert!(
+            repo.file_diff("a.txt", true)
+                .expect("index diff")
+                .lines
+                .is_empty()
+        );
 
         repo.stage(&["a.txt".to_string()]).expect("stage");
         let staged = repo.file_diff("a.txt", true).expect("index diff");
         assert!(!staged.lines.is_empty());
         assert!(staged.raw.contains("+two"));
-        assert!(repo
-            .file_diff("a.txt", false)
-            .expect("worktree diff")
-            .lines
-            .is_empty());
+        assert!(
+            repo.file_diff("a.txt", false)
+                .expect("worktree diff")
+                .lines
+                .is_empty()
+        );
     }
 }

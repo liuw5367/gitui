@@ -22,16 +22,15 @@ pub(crate) fn read_keys() -> Vec<(String, String, String)> {
         };
         if name.starts_with('.')
             || name.ends_with(".pub")
-            || matches!(name, "config" | "known_hosts" | "known_hosts.old" | "authorized_keys")
+            || matches!(
+                name,
+                "config" | "known_hosts" | "known_hosts.old" | "authorized_keys"
+            )
         {
             continue;
         }
         let fingerprint = public_fingerprint(path.as_os_str().to_string_lossy().as_ref());
-        keys.push((
-            name.to_string(),
-            format!("~/.ssh/{name}"),
-            fingerprint,
-        ));
+        keys.push((name.to_string(), format!("~/.ssh/{name}"), fingerprint));
     }
     keys.sort_by(|left, right| left.0.cmp(&right.0));
     return keys;

@@ -529,7 +529,10 @@ mod tests {
             merge_empty_dirs: true,
             compact_single_child: false,
         };
-        assert_eq!(plain.compact_label(&dirs, "src/git/legacy"), "src/git/legacy");
+        assert_eq!(
+            plain.compact_label(&dirs, "src/git/legacy"),
+            "src/git/legacy"
+        );
         // 根目录没有标签。
         assert_eq!(all.compact_label(&dirs, ""), "");
     }
@@ -570,7 +573,11 @@ mod tests {
         init_here(&mut tab).expect("init here");
         assert_eq!(tab.problem, RepoProblem::None);
         assert!(tab.error.is_none());
-        assert!(tab.branch == "main" || tab.branch == "master", "branch: {}", tab.branch);
+        assert!(
+            tab.branch == "main" || tab.branch == "master",
+            "branch: {}",
+            tab.branch
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -581,6 +588,9 @@ mod tests {
         let filter = LogFilter::default();
         let tab = load_tab(gone.display().to_string().as_str(), &filter);
         assert_eq!(tab.problem, RepoProblem::NotFound);
-        assert_eq!(parent_path(gone.display().to_string().as_str()), root.path.display().to_string());
+        assert_eq!(
+            parent_path(gone.display().to_string().as_str()),
+            root.path.display().to_string()
+        );
     }
 }

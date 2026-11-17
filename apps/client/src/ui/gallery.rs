@@ -6,7 +6,9 @@
 use crate::design;
 use crate::ui;
 use crate::ui::badge::Tone;
-use crate::ui::button::{button, button_hint, icon_button, icon_button_tip, ButtonSize, ButtonVariant};
+use crate::ui::button::{
+    ButtonSize, ButtonVariant, button, button_hint, icon_button, icon_button_tip,
+};
 use crate::ui::feedback::BannerTone;
 use nsh_core::prelude::*;
 
@@ -28,8 +30,15 @@ pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
             if !open.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            return body(input_value, area_value, checked, switched, segment, dialog_open)
-                .into_element();
+            return body(
+                input_value,
+                area_value,
+                checked,
+                switched,
+                segment,
+                dialog_open,
+            )
+            .into_element();
         }));
 }
 
@@ -195,7 +204,9 @@ fn body(
                             Some("⌘V"),
                             move |text| input_value.set(text.to_string()),
                         ),
-                        Some(Box::new(move || "Paste a path or choose a folder.".to_string())),
+                        Some(Box::new(move || {
+                            "Paste a path or choose a folder.".to_string()
+                        })),
                         None,
                     ))
                     .child(ui::field::field(
@@ -231,8 +242,12 @@ fn body(
                         move || "gitui".to_string(),
                         Some((Box::new(move || "~/Developer/gitui".to_string()), true)),
                         Some(
-                            ui::icon::icon_view("folder", ui::icon::IconSize::Inline, design::text2)
-                                .into_element(),
+                            ui::icon::icon_view(
+                                "folder",
+                                ui::icon::IconSize::Inline,
+                                design::text2,
+                            )
+                            .into_element(),
                         ),
                         vec![ui::badge::branch_chip(move || "main".to_string()).into_element()],
                         false,
@@ -244,11 +259,17 @@ fn body(
                         move || "atlas-web".to_string(),
                         Some((Box::new(move || "~/Developer/atlas-web".to_string()), true)),
                         Some(
-                            ui::icon::icon_view("folder", ui::icon::IconSize::Inline, design::accent)
-                                .into_element(),
+                            ui::icon::icon_view(
+                                "folder",
+                                ui::icon::IconSize::Inline,
+                                design::accent,
+                            )
+                            .into_element(),
                         ),
-                        vec![ui::badge::branch_chip(move || "feature/hero".to_string())
-                            .into_element()],
+                        vec![
+                            ui::badge::branch_chip(move || "feature/hero".to_string())
+                                .into_element(),
+                        ],
                         vec![
                             ui::meta(move || "2m".to_string()).into_element(),
                             icon_button(
@@ -267,10 +288,17 @@ fn body(
                     ))
                     .child(ui::row::row_stacked(
                         move || "A repository with a very long name".to_string(),
-                        Some((Box::new(move || "~/Developer/a-very-long-path".to_string()), true)),
+                        Some((
+                            Box::new(move || "~/Developer/a-very-long-path".to_string()),
+                            true,
+                        )),
                         Some(
-                            ui::icon::icon_view("folder", ui::icon::IconSize::Inline, design::text2)
-                                .into_element(),
+                            ui::icon::icon_view(
+                                "folder",
+                                ui::icon::IconSize::Inline,
+                                design::text2,
+                            )
+                            .into_element(),
                         ),
                         vec![ui::badge::branch_chip(move || "release".to_string()).into_element()],
                         vec![ui::meta(move || "Nov 6".to_string()).into_element()],
@@ -342,10 +370,19 @@ fn body(
                     .flex_row()
                     .items_center()
                     .gap(px(ui::GAP))
-                    .child(ui::badge::badge(move || "Neutral".to_string(), Tone::Neutral))
+                    .child(ui::badge::badge(
+                        move || "Neutral".to_string(),
+                        Tone::Neutral,
+                    ))
                     .child(ui::badge::badge(move || "Accent".to_string(), Tone::Accent))
-                    .child(ui::badge::badge(move || "Success".to_string(), Tone::Success))
-                    .child(ui::badge::badge(move || "Warning".to_string(), Tone::Warning))
+                    .child(ui::badge::badge(
+                        move || "Success".to_string(),
+                        Tone::Success,
+                    ))
+                    .child(ui::badge::badge(
+                        move || "Warning".to_string(),
+                        Tone::Warning,
+                    ))
                     .child(ui::badge::badge(move || "Danger".to_string(), Tone::Danger))
                     .child(ui::badge::kbd("⌘P"))
                     .child(ui::badge::kbd("⇧⌘F"))
@@ -387,7 +424,9 @@ fn body(
                         vec![ui::badge::kbd("⌘F").into_element()],
                     ))
                     .child(ui::section::section_label(move || "Branches".to_string()))
-                    .child(ui::section::section_label_upper(move || "Today".to_string()))
+                    .child(ui::section::section_label_upper(move || {
+                        "Today".to_string()
+                    }))
                     .child(ui::section::skeleton_row(&[120.0, 64.0, 40.0]))
                     .child(
                         view()
@@ -398,7 +437,9 @@ fn body(
                             .border_color(move || design::line())
                             .child(ui::section::empty(
                                 move || "Nothing to show".to_string(),
-                                Some(Box::new(move || "This repository has no commits yet.".to_string())),
+                                Some(Box::new(move || {
+                                    "This repository has no commits yet.".to_string()
+                                })),
                                 None,
                             )),
                     )

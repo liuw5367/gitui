@@ -154,7 +154,10 @@ pub fn absolute_time(language: &str, timestamp: i64) -> String {
 pub fn custom_time(language: &str, pattern: &str, timestamp: i64) -> String {
     let (month, day, year) = civil_from_unix(timestamp);
     let (hour, minute) = clock_from_unix(timestamp);
-    let month_name = t(language, &format!("time.months.{}", month.saturating_sub(1)));
+    let month_name = t(
+        language,
+        &format!("time.months.{}", month.saturating_sub(1)),
+    );
     let mut out = String::new();
     let mut chars = pattern.chars().peekable();
     while let Some(character) = chars.next() {
@@ -195,11 +198,7 @@ pub fn relative_time(language: &str, timestamp: i64, now: i64) -> String {
         return t(language, "time.now");
     }
     if minutes < 60 {
-        return with_arguments(
-            language,
-            "time.minutes",
-            &[("count", minutes.to_string())],
-        );
+        return with_arguments(language, "time.minutes", &[("count", minutes.to_string())]);
     }
     let hours = minutes / 60;
     if hours < 24 {
@@ -213,7 +212,10 @@ pub fn relative_time(language: &str, timestamp: i64, now: i64) -> String {
         return with_arguments(language, "time.days", &[("count", days.to_string())]);
     }
     let (month, day, year) = civil_from_unix(timestamp);
-    let month_name = t(language, &format!("time.months.{}", month.saturating_sub(1)));
+    let month_name = t(
+        language,
+        &format!("time.months.{}", month.saturating_sub(1)),
+    );
     let is_this_year = {
         let (_, _, now_year) = civil_from_unix(now);
         year == now_year
@@ -282,7 +284,11 @@ mod tests {
     fn arguments_replace_placeholders() {
         let text = with_arguments("en", "history.commits", &[("count", "128".to_string())]);
         assert_eq!(text, "128 commits");
-        let text = with_arguments("zh-Hans", "history.commits", &[("count", "128".to_string())]);
+        let text = with_arguments(
+            "zh-Hans",
+            "history.commits",
+            &[("count", "128".to_string())],
+        );
         assert_eq!(text, "128 次提交");
     }
 
@@ -340,6 +346,9 @@ mod tests {
             "2026 %q",
             "认不出的占位应原样保留"
         );
-        assert_eq!(format_date("en", DateStyle::Custom, "100%%", stamp, stamp), "100%%");
+        assert_eq!(
+            format_date("en", DateStyle::Custom, "100%%", stamp, stamp),
+            "100%%"
+        );
     }
 }

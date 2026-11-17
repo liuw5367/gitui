@@ -23,8 +23,7 @@ pub(crate) struct DiffOptions {
     pub whitespace: bool,
 }
 
-impl DiffOptions {
-}
+impl DiffOptions {}
 
 /// diff 的显示状态：并排/合并、三个显示开关。
 #[derive(Clone, Copy)]
@@ -173,24 +172,25 @@ pub(crate) fn diff(
                 .px(px(11.0))
                 .border_b_1()
                 .border_color(move || design::line())
-                .child(crate::ui::icon::icon_view("diff", crate::ui::icon::IconSize::Button, design::text3))
+                .child(crate::ui::icon::icon_view(
+                    "diff",
+                    crate::ui::icon::IconSize::Button,
+                    design::text3,
+                ))
                 .child(
                     text(file_label)
                         .text_size(px(crate::ui::CODE))
-                        
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
                     text(label)
                         .text_size(px(crate::ui::CODE))
-                        
                         .text_color(move || design::text3()),
                 )
                 .child(
                     text(format!("+{} −{}", additions, deletions))
                         .text_size(px(crate::ui::CODE))
-                        
                         .text_color(move || design::text3()),
                 )
                 .child(view().flex_1())
@@ -198,16 +198,15 @@ pub(crate) fn diff(
                 .child(wrap_toggle(language, options, toggle_option.clone()))
                 .child(space_toggle(language, options, toggle_option.clone()))
                 .child(crate::ui::button::button(
-                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "diff.export")
                     },
-                           crate::ui::button::ButtonVariant::Secondary,
-                           crate::ui::button::ButtonSize::Small,
-                           false,
-                           move || export_patch(),
-                       ))
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || export_patch(),
+                ))
                 .child(mode_toggle(language, split_view, set_split_mode.clone()))
                 .child(crate::ui::button::icon_button(
                     "copy",
@@ -218,8 +217,11 @@ pub(crate) fn diff(
                 )),
         )
         .child(
-            view().w_full().flex_1().min_h_0().child(
-                dynamic(move || -> AnyElement {
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .child(dynamic(move || -> AnyElement {
                     if patch.lines.is_empty() {
                         return empty_state(language).into_element();
                     }
@@ -237,8 +239,7 @@ pub(crate) fn diff(
                         None,
                     )
                     .into_element();
-                }),
-            ),
+                })),
         );
 }
 
@@ -302,9 +303,6 @@ fn space_toggle(
     return diff_toggle("space", "whitespace", options.whitespace, toggle);
 }
 
-
-
-
 /// 空补丁提示（无改动或读取失败）。
 fn empty_state(language: Signal<SharedString>) -> impl IntoElement {
     return view()
@@ -338,16 +336,13 @@ fn mode_toggle(
         .border_1()
         .border_color(move || design::line_soft())
         .bg(move || design::panel2())
-        .child(mode_button(
-            language,
-            "history.unified",
-            !split,
-            {
-                let set_split = set_split.clone();
-                move || set_split(false)
-            },
-        ))
-        .child(mode_button(language, "history.split", split, move || set_split(true)));
+        .child(mode_button(language, "history.unified", !split, {
+            let set_split = set_split.clone();
+            move || set_split(false)
+        }))
+        .child(mode_button(language, "history.split", split, move || {
+            set_split(true)
+        }));
 }
 
 fn mode_button(

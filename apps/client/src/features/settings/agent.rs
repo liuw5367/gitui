@@ -11,11 +11,7 @@ use crate::ui::select::SelectOption;
 use nsh_core::prelude::*;
 
 const OPENAI_MODELS: [&str; 3] = ["gpt-4.1", "gpt-4o-mini", "o4-mini"];
-const ANTHROPIC_MODELS: [&str; 3] = [
-    "claude-sonnet-4-5",
-    "claude-opus-4-1",
-    "claude-haiku-4-5",
-];
+const ANTHROPIC_MODELS: [&str; 3] = ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5"];
 
 pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
     let language = cmd.language;
@@ -72,7 +68,11 @@ pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
             let cmd = cmd.clone();
             let base_url = base_url;
             move || {
-                let value = base_url.get_untracked().trim().trim_end_matches('/').to_string();
+                let value = base_url
+                    .get_untracked()
+                    .trim()
+                    .trim_end_matches('/')
+                    .to_string();
                 cmd.update_settings(|settings| settings.agent_base_url = value.clone());
                 base_url.set(value);
             }
@@ -153,15 +153,11 @@ pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
             })
         })
         .collect::<Vec<SelectOption>>();
-    let model_select = ui::select::select(
-        model_options,
-        settings.agent_model.clone(),
-        Some(210.0),
-        {
+    let model_select =
+        ui::select::select(model_options, settings.agent_model.clone(), Some(210.0), {
             let cmd = cmd.clone();
             move |id| cmd.update_settings(|settings| settings.agent_model = id.to_string())
-        },
-    );
+        });
     let send_diffs = ui::check::check_control(
         move || i18n::t(language.get().as_str(), "settings.agentSendDiffs"),
         settings.agent_send_diffs,
@@ -169,9 +165,7 @@ pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
         {
             let cmd = cmd.clone();
             let value = settings.agent_send_diffs;
-            move |_next: bool| {
-                cmd.update_settings(|settings| settings.agent_send_diffs = !value)
-            }
+            move |_next: bool| cmd.update_settings(|settings| settings.agent_send_diffs = !value)
         },
     );
     let send_path = ui::check::check_control(
@@ -234,7 +228,11 @@ pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
                     language,
                     "settings.agentBaseUrl",
                     Some("settings.agentBaseUrlHint"),
-                    view().w(px(280.0)).flex_shrink_0().child(base_field).into_element(),
+                    view()
+                        .w(px(280.0))
+                        .flex_shrink_0()
+                        .child(base_field)
+                        .into_element(),
                     true,
                 ))
                 .child(setting_row(
@@ -248,7 +246,11 @@ pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
                     language,
                     "settings.agentAppKey",
                     Some("settings.agentAppKeyHint"),
-                    view().w(px(280.0)).flex_shrink_0().child(key_field).into_element(),
+                    view()
+                        .w(px(280.0))
+                        .flex_shrink_0()
+                        .child(key_field)
+                        .into_element(),
                     true,
                 ))
                 .child(setting_row(
@@ -417,7 +419,10 @@ fn resolved_endpoint(base: &str, protocol: &str) -> String {
     if base.is_empty() {
         return String::new();
     }
-    return format!("{base}{}", wire_format(protocol).trim_start_matches("POST "));
+    return format!(
+        "{base}{}",
+        wire_format(protocol).trim_start_matches("POST ")
+    );
 }
 
 fn model_ids(protocol: &str) -> &'static [&'static str] {

@@ -25,13 +25,6 @@ pub(crate) fn settings(
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let section = state.settings_section;
-    let last_session: Vec<String> = cmd
-        .session
-        .recent
-        .get()
-        .into_iter()
-        .map(|entry| entry.path)
-        .collect();
     return view()
         .w_full()
         .h_full()
@@ -47,12 +40,7 @@ pub(crate) fn settings(
                     let _ = section.get();
                     side(language, section).into_element()
                 }))
-                .child(main(
-                    state,
-                    cmd,
-                    tab,
-                    last_session,
-                )),
+                .child(main(state, cmd, tab)),
         )
         .child(
             view()
@@ -82,7 +70,51 @@ pub(crate) fn settings(
                         move || cmd.session.close_settings()
                     },
                 )),
-        );
+        )
+        .child(restore_confirm(state, cmd));
+}
+
+/// 「恢复默认快捷键」的确认弹层。
+///
+/// 用应用自绘而不是原生 `NSAlert`：原生弹窗没有取消键，且图标只能是应用图标
+/// （开发版与未打包的应用图标是系统占位图），无法满足这里的两个反馈。
+fn restore_confirm(state: &SettingsState, cmd: &SettingsCommands) -> AnyElement {
+    let language = cmd.language;
+    let open = state.restore_confirm;
+    let reset = cmd.clone();
+    return dynamic(move || -> AnyElement {
+        let reset = reset.clone();
+        let cancel = ui::button::button(
+            move || i18n::t(language.get().as_str(), "common.cancel"),
+            ui::button::ButtonVariant::Secondary,
+            ui::button::ButtonSize::Regular,
+            false,
+            move || open.set(false),
+        )
+        .into_element();
+        let confirm = ui::button::button(
+            move || i18n::t(language.get().as_str(), "confirm.restoreShortcutsAction"),
+            ui::button::ButtonVariant::Danger,
+            ui::button::ButtonSize::Regular,
+            false,
+            move || reset.restore_shortcuts(),
+        )
+        .into_element();
+        let message = text(move || {
+            i18n::t(language.get().as_str(), "confirm.restoreShortcutsMessage")
+        })
+        .text_size(px(ui::BODY))
+        .line_height(px(ui::BODY_LINE))
+        .text_color(move || design::text2());
+        ui::dialog::dialog(
+            open.get(),
+            420.0,
+            move || i18n::t(language.get().as_str(), "confirm.restoreShortcutsTitle"),
+            message,
+            vec![cancel, confirm],
+            move || open.set(false),
+        )
+    });
 }
 
 fn side(language: Signal<SharedString>, section: Signal<Section>) -> impl IntoElement {
@@ -111,7 +143,7 @@ fn side(language: Signal<SharedString>, section: Signal<Section>) -> impl IntoEl
                         .h(px(24.0))
                         .mt(px(8.0))
                         .px(px(8.0))
-                        .items_center()
+                        .items_start()
                         .child(
                             text(move || i18n::t(language.get().as_str(), title_key))
                                 .text_size(px(ui::SECONDARY))
@@ -189,7 +221,9 @@ struct SettingsActions {
     check_updates: Arc<dyn Fn()>,
     open_browser: Arc<dyn Fn(String)>,
     record_shortcut: Arc<dyn Fn(&'static str)>,
-    restore_shortcuts: Arc<dyn Fn()>,
+    ask_restore: Arc<dyn Fn()>,
+    clear_shortcut: Arc<dyn Fn(&'static str)>,
+    reset_shortcut: Arc<dyn Fn(&'static str)>,
 }
 
 impl SettingsActions {
@@ -207,6 +241,8 @@ impl SettingsActions {
         let browser = cmd.clone();
         let record = cmd.clone();
         let restore = cmd.clone();
+        let clear = cmd.clone();
+        let reset = cmd.clone();
         return SettingsActions {
             set_theme: Arc::new(move |mode: ThemeMode| theme.set_theme(mode)),
             set_language: Arc::new(move |language_id: &'static str| {
@@ -232,7 +268,12 @@ impl SettingsActions {
                 crate::shared::os::open_browser(browser.notice, browser.language, url)
             }),
             record_shortcut: Arc::new(move |id: &'static str| record.record_shortcut(id)),
-            restore_shortcuts: Arc::new(move || restore.restore_shortcuts()),
+            ask_restore: {
+                let confirm = restore.state.restore_confirm;
+                Arc::new(move || confirm.set(true))
+            },
+            clear_shortcut: Arc::new(move |id: &'static str| clear.clear_shortcut(id)),
+            reset_shortcut: Arc::new(move |id: &'static str| reset.reset_shortcut(id)),
         };
     }
 }
@@ -242,7 +283,6 @@ fn main(
     state: &SettingsState,
     cmd: &SettingsCommands,
     tab: Option<Tab>,
-    last_session: Vec<String>,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let theme_mode = cmd.theme_mode;
@@ -280,15 +320,11 @@ fn main(
                 .flex_col()
                 .child(ui::setting_row::page_header(
                     move || i18n::t(language.get().as_str(), section.get().title_key()),
-                    move || {
-                        i18n::t(
-                            language.get().as_str(),
-                            section_subtitle_key(section.get()),
-                        )
-                    },
+                    move || i18n::t(language.get().as_str(), section_subtitle_key(section.get())),
                 ))
                 .child(dynamic(move || -> AnyElement {
                     let _ = settings_state.get();
+                    let _ = theme_mode.get();
                     let _ = identity_name.get();
                     let _ = identity_email.get();
                     let _ = identity_use_global.get();
@@ -323,12 +359,10 @@ fn main(
                             api.clear_identity.clone(),
                             api.set_use_global.clone(),
                             api.check_updates.clone(),
-                            last_session.clone(),
                         )
                         .into_element(),
                         Section::About => {
-                            super::about::about(language, api.open_browser.clone())
-                                .into_element()
+                            super::about::about(language, api.open_browser.clone()).into_element()
                         }
                         Section::Git => super::git::git_page(git_cmd.clone()).into_element(),
                         Section::Shortcuts => super::shortcuts::shortcuts_page(
@@ -338,7 +372,9 @@ fn main(
                             recording_shortcut,
                             shortcut_error,
                             api.record_shortcut.clone(),
-                            api.restore_shortcuts.clone(),
+                            api.ask_restore.clone(),
+                            api.clear_shortcut.clone(),
+                            api.reset_shortcut.clone(),
                         )
                         .into_element(),
                         Section::Credentials => {

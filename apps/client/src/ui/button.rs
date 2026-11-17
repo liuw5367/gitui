@@ -4,8 +4,8 @@
 //! 三档，间距与圆角来自 `ui` 的常量，页面不再各自写高度与字号。
 
 use crate::design::{self, metrics};
-use crate::ui::icon::{icon_view, IconSize};
-use crate::ui::{self, focus_color, FOCUS_WIDTH};
+use crate::ui::icon::{IconSize, icon_view};
+use crate::ui::{self, FOCUS_WIDTH, focus_color};
 use nsh_core::prelude::*;
 
 /// 按钮的语义变体。
@@ -115,14 +115,12 @@ pub(crate) fn button_icon(
             .bg(move || design::danger())
             .hover(move |style| style.opacity(0.9)),
     };
-    return element
-        .child(crate::ui::icon::inline_icon(icon))
-        .child(
-            text(move || label())
-                .text_size(px(size.font()))
-                .line_height(px(size.line()))
-                .text_color(move || foreground),
-        );
+    return element.child(crate::ui::icon::inline_icon(icon)).child(
+        text(move || label())
+            .text_size(px(size.font()))
+            .line_height(px(size.line()))
+            .text_color(move || foreground),
+    );
 }
 
 /// 按钮外壳：变体、尺寸、焦点与按压行为。内容由 [`button`] / [`button_hint`] 补。
@@ -159,11 +157,7 @@ fn button_shell(
             .border_1()
             .border_color(move || design::btn_border())
             .hover(move |style| style.bg(move || design::hover()))
-            .active(move |style| {
-                style
-                    .bg(move || design::line_soft())
-                    .opacity(0.9)
-            }),
+            .active(move |style| style.bg(move || design::line_soft()).opacity(0.9)),
         ButtonVariant::Ghost => element
             .bg(AdaptiveColor::TRANSPARENT)
             .hover(move |style| style.bg(move || design::hover()))
@@ -280,7 +274,9 @@ pub(crate) fn icon_button_tip(
     // 与按钮同尺寸的 view，把提示挂在它上面。
     return view()
         .flex_shrink_0()
-        .child(icon_shell(name, label, size, None, None, disabled, on_press))
+        .child(icon_shell(
+            name, label, size, None, None, disabled, on_press,
+        ))
         .tooltip(tooltip_bubble(tip));
 }
 

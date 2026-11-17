@@ -58,7 +58,11 @@ pub(crate) fn refresh_changes(tab: &mut Tab) {
     tab.remote_urls = repo.remote_urls().unwrap_or_default();
     tab.selected_change = previous
         .and_then(|path| tab.changes.iter().position(|entry| entry.path == path))
-        .or(if tab.changes.is_empty() { None } else { Some(0) });
+        .or(if tab.changes.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
     if let Some(index) = tab.selected_change {
         load_change_diff(tab, index);
     } else {
@@ -263,12 +267,13 @@ mod tests {
             .position(|entry| entry.path == "a.txt")
             .expect("a.txt");
         toggle_stage(&mut tab, index);
-        assert!(!tab
-            .changes
-            .iter()
-            .find(|entry| entry.path == "a.txt")
-            .expect("a.txt")
-            .staged);
+        assert!(
+            !tab.changes
+                .iter()
+                .find(|entry| entry.path == "a.txt")
+                .expect("a.txt")
+                .staged
+        );
     }
 
     #[test]
@@ -295,11 +300,8 @@ mod tests {
         let mut changed: Vec<String> = (1..=30).map(|index| format!("line{index}")).collect();
         changed[1] = "line2-changed".to_string();
         changed[27] = "line28-changed".to_string();
-        std::fs::write(
-            repo.path.join("f.txt"),
-            format!("{}\n", changed.join("\n")),
-        )
-        .expect("write");
+        std::fs::write(repo.path.join("f.txt"), format!("{}\n", changed.join("\n")))
+            .expect("write");
 
         let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
         let index = tab
@@ -390,11 +392,13 @@ mod tests {
 
         // 重新读取：清单从磁盘恢复。
         let reloaded = load_tab(&repo.path.display().to_string(), &LogFilter::default());
-        assert!(reloaded
-            .changelists
-            .iter()
-            .any(|list| list.name == "Commit composer"
-                && list.paths == vec!["a.txt".to_string()]));
+        assert!(
+            reloaded
+                .changelists
+                .iter()
+                .any(|list| list.name == "Commit composer"
+                    && list.paths == vec!["a.txt".to_string()])
+        );
 
         // 移回默认清单：清单条目被清空。
         move_to_changelist(&mut tab, "a.txt", None);

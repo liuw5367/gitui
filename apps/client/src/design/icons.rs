@@ -8,44 +8,109 @@ use nsh_core::element::ImageSrc;
 /// 一个图标的 SVG 源。
 pub fn icon(name: &str) -> Option<ImageSrc> {
     let markup = match name {
-        "branch" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.9v6.2"></path><circle cx="4.5" cy="3.3" r="1.6"></circle><circle cx="11.5" cy="5.1" r="1.6"></circle><path d="M11.5 6.7c0 2.5-2.1 3.7-6 4.2"></path></g></svg>"#,
-        "clock" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.9v3.3l2.2 1.3"></path></g></svg>"#,
-        "diff" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 2.8v10.4"></path><path d="M2.6 6h3.6"></path><path d="M9.2 9.9h4.4"></path><path d="M4.4 4.4h.01"></path></g></svg>"#,
-        "tag" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 2.6h4.5l6.3 6.3-4.5 4.5-6.3-6.3z"></path><circle cx="5.3" cy="5.3" r=".9" fill="currentColor" stroke="none"></circle></g></svg>"#,
-        "globe" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M2.4 8h11.2"></path><path d="M8 2.4c1.7 1.7 2.6 3.5 2.6 5.6S9.7 12.3 8 13.6C6.3 12.3 5.4 10.5 5.4 8S6.3 3.9 8 2.4z"></path></g></svg>"#,
-        "archive" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="3" rx="1"></rect><path d="M3.4 6v7h9.2V6"></path><path d="M6.4 9h3.2"></path></g></svg>"#,
-        "chev-down" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.2 8 10l4-3.8"></path></g></svg>"#,
-        "chev-right" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 4 10 8l-3.8 4"></path></g></svg>"#,
-        "chev-left" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.8 4 6 8l3.8 4"></path></g></svg>"#,
-        "check" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.3 6.5 11.6 12.8 4.8"></path></g></svg>"#,
-        "file" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5.1l3.3 3.3v7.7H4z"></path><path d="M9 2.7V6h3.2"></path></g></svg>"#,
-        "folder" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.5h4.1l1.2-1.6h6.1v8.3H2.3z"></path></g></svg>"#,
+        "branch" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.9v6.2"></path><circle cx="4.5" cy="3.3" r="1.6"></circle><circle cx="11.5" cy="5.1" r="1.6"></circle><path d="M11.5 6.7c0 2.5-2.1 3.7-6 4.2"></path></g></svg>"#
+        }
+        "clock" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.9v3.3l2.2 1.3"></path></g></svg>"#
+        }
+        "diff" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 2.8v10.4"></path><path d="M2.6 6h3.6"></path><path d="M9.2 9.9h4.4"></path><path d="M4.4 4.4h.01"></path></g></svg>"#
+        }
+        "tag" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 2.6h4.5l6.3 6.3-4.5 4.5-6.3-6.3z"></path><circle cx="5.3" cy="5.3" r=".9" fill="currentColor" stroke="none"></circle></g></svg>"#
+        }
+        "globe" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M2.4 8h11.2"></path><path d="M8 2.4c1.7 1.7 2.6 3.5 2.6 5.6S9.7 12.3 8 13.6C6.3 12.3 5.4 10.5 5.4 8S6.3 3.9 8 2.4z"></path></g></svg>"#
+        }
+        "archive" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="3" rx="1"></rect><path d="M3.4 6v7h9.2V6"></path><path d="M6.4 9h3.2"></path></g></svg>"#
+        }
+        "chev-down" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.2 8 10l4-3.8"></path></g></svg>"#
+        }
+        "chev-right" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 4 10 8l-3.8 4"></path></g></svg>"#
+        }
+        "chev-left" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.8 4 6 8l3.8 4"></path></g></svg>"#
+        }
+        "check" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.3 6.5 11.6 12.8 4.8"></path></g></svg>"#
+        }
+        "file" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5.1l3.3 3.3v7.7H4z"></path><path d="M9 2.7V6h3.2"></path></g></svg>"#
+        }
+        "folder" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.5h4.1l1.2-1.6h6.1v8.3H2.3z"></path></g></svg>"#
+        }
         // 空态插画（画板 01b）：文件夹加一个「+」。
-        "folder-plus" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.5h4.1l1.2-1.6h6.1v8.3H2.3z"></path><path d="M5.9 9.6h4.2M8 7.5v4.2"></path></g></svg>"#,
-        "filter" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.6h11l-4.2 5v3.8l-2.6 1.4V8.6z"></path></g></svg>"#,
-        "split" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="10" rx="1.6"></rect><path d="M8 3v10"></path></g></svg>"#,
-        "unified" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.4h10.8M2.6 8h10.8M2.6 11.6h7"></path></g></svg>"#,
-        "fold" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 5 5.7 7.5 8.2 5"></path><path d="M7.8 11l2.5-2.5L12.8 11"></path></g></svg>"#,
-        "wrap" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 4.4h10.6M2.7 7.8h7.1a2 2 0 0 1 0 4H7.1"></path><path d="M8.8 10.3 6.9 12l1.9 1.7"></path></g></svg>"#,
-        "refresh" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.5-3.6"></path><path d="M13.2 2.8v3.5H9.7"></path></g></svg>"#,
-        "down" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8v9.4"></path><path d="M4.2 8.5 8 12.3l3.8-3.8"></path></g></svg>"#,
-        "up" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13.2V3.8"></path><path d="M4.2 7.5 8 3.7l3.8 3.8"></path></g></svg>"#,
-        "sparkle" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.4 2.2 8.6 5.3 11.7 6.5 8.6 7.7 7.4 10.8 6.2 7.7 3.1 6.5 6.2 5.3z"></path><path d="M12.2 10.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"></path></g></svg>"#,
-        "keys" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="4" width="12.4" height="8" rx="1.6"></rect><path d="M4 6.5h.01M6.2 6.5h.01M8.4 6.5h.01M10.6 6.5h.01M12.8 6.5h.01M4.4 9.5h7.2"></path></g></svg>"#,
-        "lock" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.6" rx="1.4"></rect><path d="M5.4 7V5.3a2.6 2.6 0 0 1 5.2 0V7"></path></g></svg>"#,
+        "folder-plus" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.5h4.1l1.2-1.6h6.1v8.3H2.3z"></path><path d="M5.9 9.6h4.2M8 7.5v4.2"></path></g></svg>"#
+        }
+        "filter" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.6h11l-4.2 5v3.8l-2.6 1.4V8.6z"></path></g></svg>"#
+        }
+        "split" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="10" rx="1.6"></rect><path d="M8 3v10"></path></g></svg>"#
+        }
+        "unified" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.4h10.8M2.6 8h10.8M2.6 11.6h7"></path></g></svg>"#
+        }
+        "fold" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 5 5.7 7.5 8.2 5"></path><path d="M7.8 11l2.5-2.5L12.8 11"></path></g></svg>"#
+        }
+        "wrap" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.7 4.4h10.6M2.7 7.8h7.1a2 2 0 0 1 0 4H7.1"></path><path d="M8.8 10.3 6.9 12l1.9 1.7"></path></g></svg>"#
+        }
+        "refresh" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.5-3.6"></path><path d="M13.2 2.8v3.5H9.7"></path></g></svg>"#
+        }
+        "down" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8v9.4"></path><path d="M4.2 8.5 8 12.3l3.8-3.8"></path></g></svg>"#
+        }
+        "up" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13.2V3.8"></path><path d="M4.2 7.5 8 3.7l3.8 3.8"></path></g></svg>"#
+        }
+        "sparkle" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.4 2.2 8.6 5.3 11.7 6.5 8.6 7.7 7.4 10.8 6.2 7.7 3.1 6.5 6.2 5.3z"></path><path d="M12.2 10.2l.6 1.5 1.5.6-1.5.6-.6 1.5-.6-1.5-1.5-.6 1.5-.6z"></path></g></svg>"#
+        }
+        "keys" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="4" width="12.4" height="8" rx="1.6"></rect><path d="M4 6.5h.01M6.2 6.5h.01M8.4 6.5h.01M10.6 6.5h.01M12.8 6.5h.01M4.4 9.5h7.2"></path></g></svg>"#
+        }
+        "lock" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.6" rx="1.4"></rect><path d="M5.4 7V5.3a2.6 2.6 0 0 1 5.2 0V7"></path></g></svg>"#
+        }
         // 齿轮：双圆（轮体 + 轴心）+ 八颗厚齿。画板原图是一圈细放射线，看起来像
         // 太阳/星芒，不像齿轮；这里换成可辨认的齿轮轮廓（见 DEVIATIONS #27）。
-        "gear" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="8" cy="8" r="4.4" stroke-width="1.6"></circle><circle cx="8" cy="8" r="1.7" stroke-width="1.4"></circle><path d="M8 1.7v2M8 12.3v2M1.7 8h2M12.3 8h2M3.55 3.55l1.42 1.42M11.03 11.03l1.42 1.42M12.45 3.55l-1.42 1.42M4.97 11.03l-1.42 1.42" stroke-width="2.1"></path></g></svg>"#,
-        "copy" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.4" y="5.4" width="8" height="8" rx="1.4"></rect><path d="M10.6 5.4V3.9c0-.8-.6-1.4-1.4-1.4H3.9c-.8 0-1.4.6-1.4 1.4v5.3c0 .8.6 1.4 1.4 1.4h1.5"></path></g></svg>"#,
-        "external" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3h3.5v3.5"></path><path d="M13 3 7.4 8.6"></path><path d="M11.5 9.5v3H3.5v-8h3"></path></g></svg>"#,
-        "sidebar" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="10" rx="1.8"></rect><path d="M6.2 3v10"></path></g></svg>"#,
-        "search" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.3 10.3 13.7 13.7"></path></g></svg>"#,
-        "plus" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"></path></g></svg>"#,
-        "x" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></g></svg>"#,
-        "more" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="currentColor" stroke="none"><circle cx="3.4" cy="8" r="1.1"></circle><circle cx="8" cy="8" r="1.1"></circle><circle cx="12.6" cy="8" r="1.1"></circle></g></svg>"#,
-        "info" => r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 7.2v3.6"></path><path d="M8 5h.01"></path></g></svg>"#,
+        "gear" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="8" cy="8" r="4.4" stroke-width="1.6"></circle><circle cx="8" cy="8" r="1.7" stroke-width="1.4"></circle><path d="M8 1.7v2M8 12.3v2M1.7 8h2M12.3 8h2M3.55 3.55l1.42 1.42M11.03 11.03l1.42 1.42M12.45 3.55l-1.42 1.42M4.97 11.03l-1.42 1.42" stroke-width="2.1"></path></g></svg>"#
+        }
+        "copy" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.4" y="5.4" width="8" height="8" rx="1.4"></rect><path d="M10.6 5.4V3.9c0-.8-.6-1.4-1.4-1.4H3.9c-.8 0-1.4.6-1.4 1.4v5.3c0 .8.6 1.4 1.4 1.4h1.5"></path></g></svg>"#
+        }
+        "external" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3h3.5v3.5"></path><path d="M13 3 7.4 8.6"></path><path d="M11.5 9.5v3H3.5v-8h3"></path></g></svg>"#
+        }
+        "sidebar" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="10" rx="1.8"></rect><path d="M6.2 3v10"></path></g></svg>"#
+        }
+        "search" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.3 10.3 13.7 13.7"></path></g></svg>"#
+        }
+        "plus" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"></path></g></svg>"#
+        }
+        "x" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></g></svg>"#
+        }
+        "more" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="currentColor" stroke="none"><circle cx="3.4" cy="8" r="1.1"></circle><circle cx="8" cy="8" r="1.1"></circle><circle cx="12.6" cy="8" r="1.1"></circle></g></svg>"#
+        }
+        "info" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 7.2v3.6"></path><path d="M8 5h.01"></path></g></svg>"#
+        }
         _ => return None,
     };
     return Some(ImageSrc::svg_markup(markup));
 }
-

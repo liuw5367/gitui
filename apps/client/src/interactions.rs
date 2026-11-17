@@ -25,9 +25,13 @@ pub(crate) fn confirm(
     message: String,
     action_id: &'static str,
     action_label: String,
+    cancel_label: String,
     destructive: bool,
 ) -> impl std::future::Future<Output = bool> + 'static {
-    let dialog = nsh_base::alert_dialog().title(title).description(message);
+    let dialog = nsh_base::alert_dialog()
+        .title(title)
+        .description(message)
+        .cancel("cancel", cancel_label);
     let dialog = if destructive {
         dialog.destructive(action_id, action_label)
     } else {

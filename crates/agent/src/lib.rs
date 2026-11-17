@@ -154,7 +154,10 @@ impl Settings {
         if action.is_read_only() || !self.is_protected(branch) {
             return None;
         }
-        return Some(format!("{branch} 是受保护分支，Agent 不会在上面执行 {}", action.id()));
+        return Some(format!(
+            "{branch} 是受保护分支，Agent 不会在上面执行 {}",
+            action.id()
+        ));
     }
 
     /// 从 `key=value` 行读取（与策略共用同一个文件）。
@@ -285,8 +288,7 @@ impl Plan {
             .iter()
             .enumerate()
             .filter(|(_, step)| {
-                !policies.is_denied(step.action)
-                    && settings.blocks(step.action, branch).is_none()
+                !policies.is_denied(step.action) && settings.blocks(step.action, branch).is_none()
             })
             .map(|(index, _)| index)
             .collect();
@@ -401,7 +403,9 @@ pub fn propose(
     }
     if staged > 0 || (unstaged > 0 && !commit_message.trim().is_empty()) {
         let label = format!("提交：{}", commit_message.trim());
-        steps.push(Step::new(Action::Commit, label).with_argument(commit_message.trim().to_string()));
+        steps.push(
+            Step::new(Action::Commit, label).with_argument(commit_message.trim().to_string()),
+        );
     }
     if behind > 0 {
         steps.push(Step::new(Action::Pull, "拉取远程改动"));
@@ -426,7 +430,11 @@ mod tests {
         assert!(!Automation::Off.may_push());
         assert!(!Automation::Commit.may_push());
         assert!(Automation::CommitAndPush.may_push());
-        for automation in [Automation::Off, Automation::Commit, Automation::CommitAndPush] {
+        for automation in [
+            Automation::Off,
+            Automation::Commit,
+            Automation::CommitAndPush,
+        ] {
             assert_eq!(Automation::from_id(automation.id()), automation);
         }
         assert_eq!(Automation::from_id("nonsense"), Automation::Off);
@@ -454,7 +462,10 @@ mod tests {
         let before = plan.steps.len();
         plan.push_step(Step::new(Action::Fetch, "取回远程"));
         assert_eq!(plan.steps.len(), before + 1);
-        assert_eq!(plan.steps.last().map(|step| step.action), Some(Action::Fetch));
+        assert_eq!(
+            plan.steps.last().map(|step| step.action),
+            Some(Action::Fetch)
+        );
         assert!(plan.remove_step(before));
         assert_eq!(plan.steps.len(), before);
         // 越界删除返回 false，不改计划。
@@ -476,7 +487,10 @@ mod tests {
         // 受保护分支挡住写动作，只读动作照常。
         assert_eq!(plan.runnable(&policies, &settings, "main"), vec![0]);
         // 非保护分支：除了被 Deny 的丢弃，其余都可执行。
-        assert_eq!(plan.runnable(&policies, &settings, "feature/x"), vec![0, 1, 3]);
+        assert_eq!(
+            plan.runnable(&policies, &settings, "feature/x"),
+            vec![0, 1, 3]
+        );
     }
 
     #[test]
@@ -516,10 +530,7 @@ mod tests {
         assert!(policies.is_denied(Action::Push));
         assert!(policies.may_run(Action::Commit));
         assert!(!policies.may_run(Action::StageAll));
-        assert_eq!(
-            Permission::from_id(Permission::Deny.id()),
-            Permission::Deny
-        );
+        assert_eq!(Permission::from_id(Permission::Deny.id()), Permission::Deny);
     }
 
     #[test]
@@ -528,12 +539,7 @@ mod tests {
         let actions: Vec<Action> = plan.steps.iter().map(|step| step.action).collect();
         assert_eq!(
             actions,
-            vec![
-                Action::StageAll,
-                Action::Commit,
-                Action::Pull,
-                Action::Push
-            ]
+            vec![Action::StageAll, Action::Commit, Action::Pull, Action::Push]
         );
         assert_eq!(plan.steps[1].argument.as_deref(), Some("fix composer"));
         assert!(plan.touches_worktree());

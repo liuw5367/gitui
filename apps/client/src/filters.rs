@@ -67,13 +67,7 @@ impl When {
 /// - `reference`：只在该分支/标签上读取；空字符串表示当前 HEAD 的全部历史。
 /// - `author`：空字符串表示不限。
 /// - `when`：时间预设。
-pub fn build(
-    query: &str,
-    reference: &str,
-    author: &str,
-    when: When,
-    now: i64,
-) -> LogFilter {
+pub fn build(query: &str, reference: &str, author: &str, when: When, now: i64) -> LogFilter {
     let reference = reference.trim();
     let author = author.trim();
     return LogFilter {

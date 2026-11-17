@@ -6,9 +6,9 @@
 
 use super::commands::CommitCommands;
 use super::state::CommitState;
+use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::app::session::Tab;
 use nsh_core::prelude::*;
 
 /// 面板宽度（与提交文件面板一致）。
@@ -47,7 +47,12 @@ pub(crate) fn commit_panel(
     let can_commit = staged_count > 0 || amend;
     let mut staged_rows: Vec<AnyElement> = Vec::new();
     for entry in &staged {
-        let name = entry.path.rsplit('/').next().unwrap_or(&entry.path).to_string();
+        let name = entry
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&entry.path)
+            .to_string();
         let status = entry.status_letter();
         let additions = entry.additions;
         let deletions = entry.deletions;
@@ -63,14 +68,12 @@ pub(crate) fn commit_panel(
                     text(name)
                         .flex_1()
                         .text_size(px(crate::ui::CODE))
-                        
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
                     text(status.to_string())
                         .text_size(px(crate::ui::CODE))
-                        
                         .text_color(move || design::warn()),
                 )
                 .child(
@@ -124,125 +127,131 @@ pub(crate) fn commit_panel(
                 .p(px(12.0))
                 .flex_col()
                 .gap(px(8.0))
-                .child(scroll().w_full().flex_1().child(
-                    view()
-                        .w_full()
-                        .flex_col()
-                        .gap(px(8.0))
-                        .child(
-                            text(move || {
-                                i18n::with_arguments(
-                                    language.get().as_str(),
-                                    "changes.summary",
-                                    &[
-                                        ("staged", staged_count.to_string()),
-                                        ("unstaged", unstaged_count.to_string()),
-                                    ],
-                                )
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::text3()),
-                        )
-                        .child(field_label(language, "commit.summary", "commit.required"))
-                        .child(
-                            view()
-                                .w_full()
-                                .h(px(29.0))
-                                .flex_row()
-                                .items_center()
-                                .px(px(8.0))
-                                .rounded(px(metrics::RADIUS_CONTROL))
-                                .border_1()
-                                .border_color(move || design::field_border())
-                                .bg(move || design::field())
-                                .child(
-                                    nsh_base::input()
-                                        .value(summary)
-                                        .on_change(move |text: &str| {
-                                            summary.set(text.to_string())
-                                        })
-                                        .placeholder(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "commit.summaryPlaceholder",
-                                            )
-                                        })
-                                        .text_size(px(crate::ui::BODY))
-                                        .flex_1(),
-                                ),
-                        )
-                        .child(field_label(language, "commit.description", "commit.markdown"))
-                        .child(
-                            view()
-                                .w_full()
-                                .min_h(px(76.0))
-                                .p(px(6.0))
-                                .rounded(px(metrics::RADIUS_CONTROL))
-                                .border_1()
-                                .border_color(move || design::field_border())
-                                .bg(move || design::field())
-                                .child(
-                                    nsh_base::input()
-                                        .value(description)
-                                        .on_change(move |text: &str| {
-                                            description.set(text.to_string())
-                                        })
-                                        .placeholder(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "commit.descriptionPlaceholder",
-                                            )
-                                        })
-                                        .text_size(px(crate::ui::BODY))
-                                        .flex_1(),
-                                ),
-                        )
-                        .child(crate::ui::button::button(
-                            move || i18n::t(language.get().as_str(), "commit.askAgent"),
-                            crate::ui::button::ButtonVariant::Ghost,
-                            crate::ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let ask_agent = ask_agent.clone();
-                                move || ask_agent()
-                            },
-                        ))
-                        .child(
-                            view()
-                                .w_full()
-                                .flex_col()
-                                .rounded(px(metrics::RADIUS_CONTROL))
-                                .border_1()
-                                .border_color(move || design::line())
-                                .bg(move || design::content())
-                                .child(
-                                    view()
-                                        .w_full()
-                                        .h(px(20.0))
-                                        .px(px(6.0))
-                                        .items_center()
-                                        .child(
-                                            text(move || {
-                                                i18n::with_arguments(
+                .child(
+                    scroll().w_full().flex_1().child(
+                        view()
+                            .w_full()
+                            .flex_col()
+                            .gap(px(8.0))
+                            .child(
+                                text(move || {
+                                    i18n::with_arguments(
+                                        language.get().as_str(),
+                                        "changes.summary",
+                                        &[
+                                            ("staged", staged_count.to_string()),
+                                            ("unstaged", unstaged_count.to_string()),
+                                        ],
+                                    )
+                                })
+                                .text_size(px(crate::ui::SECONDARY))
+                                .text_color(move || design::text3()),
+                            )
+                            .child(field_label(language, "commit.summary", "commit.required"))
+                            .child(
+                                view()
+                                    .w_full()
+                                    .h(px(29.0))
+                                    .flex_row()
+                                    .items_center()
+                                    .px(px(8.0))
+                                    .rounded(px(metrics::RADIUS_CONTROL))
+                                    .border_1()
+                                    .border_color(move || design::field_border())
+                                    .bg(move || design::field())
+                                    .child(
+                                        nsh_base::input()
+                                            .value(summary)
+                                            .on_change(move |text: &str| {
+                                                summary.set(text.to_string())
+                                            })
+                                            .placeholder(move || {
+                                                i18n::t(
                                                     language.get().as_str(),
-                                                    "commit.stagedFiles",
-                                                    &[("count", staged_count.to_string())],
+                                                    "commit.summaryPlaceholder",
                                                 )
                                             })
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .text_color(move || design::text3()),
-                                        ),
-                                )
-                                .child(staged_rows),
-                        )
-                        .child(dynamic(move || -> AnyElement {
-                            let Some(log) = hook_log.clone() else {
-                                return view().w_full().h(px(0.0)).into_element();
-                            };
-                            return hook_box(language, log, hook_ok, hook_cmd.clone())
-                                .into_element();
-                        })),
-                )),
+                                            .text_size(px(crate::ui::BODY))
+                                            .flex_1(),
+                                    ),
+                            )
+                            .child(field_label(
+                                language,
+                                "commit.description",
+                                "commit.markdown",
+                            ))
+                            .child(
+                                view()
+                                    .w_full()
+                                    .min_h(px(76.0))
+                                    .p(px(6.0))
+                                    .rounded(px(metrics::RADIUS_CONTROL))
+                                    .border_1()
+                                    .border_color(move || design::field_border())
+                                    .bg(move || design::field())
+                                    .child(
+                                        nsh_base::input()
+                                            .value(description)
+                                            .on_change(move |text: &str| {
+                                                description.set(text.to_string())
+                                            })
+                                            .placeholder(move || {
+                                                i18n::t(
+                                                    language.get().as_str(),
+                                                    "commit.descriptionPlaceholder",
+                                                )
+                                            })
+                                            .text_size(px(crate::ui::BODY))
+                                            .flex_1(),
+                                    ),
+                            )
+                            .child(crate::ui::button::button(
+                                move || i18n::t(language.get().as_str(), "commit.askAgent"),
+                                crate::ui::button::ButtonVariant::Ghost,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                {
+                                    let ask_agent = ask_agent.clone();
+                                    move || ask_agent()
+                                },
+                            ))
+                            .child(
+                                view()
+                                    .w_full()
+                                    .flex_col()
+                                    .rounded(px(metrics::RADIUS_CONTROL))
+                                    .border_1()
+                                    .border_color(move || design::line())
+                                    .bg(move || design::content())
+                                    .child(
+                                        view()
+                                            .w_full()
+                                            .h(px(20.0))
+                                            .px(px(6.0))
+                                            .items_center()
+                                            .child(
+                                                text(move || {
+                                                    i18n::with_arguments(
+                                                        language.get().as_str(),
+                                                        "commit.stagedFiles",
+                                                        &[("count", staged_count.to_string())],
+                                                    )
+                                                })
+                                                .text_size(px(crate::ui::SECONDARY))
+                                                .text_color(move || design::text3()),
+                                            ),
+                                    )
+                                    .child(staged_rows),
+                            )
+                            .child(dynamic(move || -> AnyElement {
+                                let Some(log) = hook_log.clone() else {
+                                    return view().w_full().h(px(0.0)).into_element();
+                                };
+                                return hook_box(language, log, hook_ok, hook_cmd.clone())
+                                    .into_element();
+                            })),
+                    ),
+                ),
         )
         .child(
             view()
@@ -257,36 +266,20 @@ pub(crate) fn commit_panel(
                         .w_full()
                         .flex_col()
                         .gap(px(3.0))
-                        .child(checkbox_row(
-                            language,
-                            "commit.amend",
-                            amend,
-                            {
-                                let cmd = cmd.clone();
-                                move || cmd.set_commit_option("amend", !amend)
-                            },
-                        ))
-                        .child(checkbox_row(
-                            language,
-                            "commit.signoff",
-                            signoff,
-                            {
-                                let cmd = cmd.clone();
-                                move || cmd.set_commit_option("signoff", !signoff)
-                            },
-                        ))
-                        .child(checkbox_row(
-                            language,
-                            "commit.pushAfter",
-                            push_after,
-                            {
-                                let cmd = cmd.clone();
-                                move || cmd.set_commit_option("pushAfter", !push_after)
-                            },
-                        )),
+                        .child(checkbox_row(language, "commit.amend", amend, {
+                            let cmd = cmd.clone();
+                            move || cmd.set_commit_option("amend", !amend)
+                        }))
+                        .child(checkbox_row(language, "commit.signoff", signoff, {
+                            let cmd = cmd.clone();
+                            move || cmd.set_commit_option("signoff", !signoff)
+                        }))
+                        .child(checkbox_row(language, "commit.pushAfter", push_after, {
+                            let cmd = cmd.clone();
+                            move || cmd.set_commit_option("pushAfter", !push_after)
+                        })),
                 )
                 .child(crate::ui::button::button(
-                           
                     move || {
                         if amend {
                             return i18n::t(language.get().as_str(), "commit.amendAction");
@@ -297,10 +290,10 @@ pub(crate) fn commit_panel(
                             &[("count", staged_count.to_string())],
                         )
                     },
-                           crate::ui::button::ButtonVariant::Primary,
-                           crate::ui::button::ButtonSize::Regular,
-                           false,
-                           {
+                    crate::ui::button::ButtonVariant::Primary,
+                    crate::ui::button::ButtonSize::Regular,
+                    false,
+                    {
                         let commit = commit.clone();
                         move || {
                             if can_commit {
@@ -308,7 +301,7 @@ pub(crate) fn commit_panel(
                             }
                         }
                     },
-                       ))
+                ))
                 .child(
                     text(move || {
                         if can_commit {
@@ -401,13 +394,7 @@ fn hook_box(
         .p(px(6.0))
         .rounded(px(metrics::RADIUS_CONTROL))
         .border_1()
-        .border_color(move || {
-            if ok {
-                design::line()
-            } else {
-                design::danger()
-            }
-        })
+        .border_color(move || if ok { design::line() } else { design::danger() })
         .bg(move || design::content())
         .child(
             view()
@@ -420,13 +407,7 @@ fn hook_box(
                         .w(px(6.0))
                         .h(px(6.0))
                         .rounded(px(3.0))
-                        .bg(move || {
-                            if ok {
-                                design::ok()
-                            } else {
-                                design::danger()
-                            }
-                        }),
+                        .bg(move || if ok { design::ok() } else { design::danger() }),
                 )
                 .child(
                     text(move || {
@@ -443,17 +424,15 @@ fn hook_box(
                     .text_color(move || design::text2()),
                 ),
         )
-        .child(
-            view().w_full().when(has_log, |this| {
-                this.child(
-                    text(preview)
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(crate::ui::CODE_LINE))
-                        .text_color(move || design::text2())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-            }),
-        )
+        .child(view().w_full().when(has_log, |this| {
+            this.child(
+                text(preview)
+                    .text_size(px(crate::ui::CODE))
+                    .line_height(px(crate::ui::CODE_LINE))
+                    .text_color(move || design::text2())
+                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+            )
+        }))
         .child(
             view()
                 .w_full()
@@ -462,44 +441,41 @@ fn hook_box(
                 .gap(px(6.0))
                 .when(!ok, |this| {
                     this.child(crate::ui::button::button(
-                                   
                         {
                             let language = language;
                             move || i18n::t(language.get().as_str(), "commit.retryHooks")
                         },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        {
                             let retry = retry.clone();
                             move || retry()
                         },
-                               ))
+                    ))
                     .child(crate::ui::button::button(
-                               
                         {
                             let language = language;
                             move || i18n::t(language.get().as_str(), "commit.withoutHooks")
                         },
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               {
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        {
                             let without_hooks = without_hooks.clone();
                             move || without_hooks()
                         },
-                           ))
+                    ))
                 })
                 .child(crate::ui::button::button(
-                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "commit.viewLog")
                     },
-                           crate::ui::button::ButtonVariant::Secondary,
-                           crate::ui::button::ButtonSize::Small,
-                           false,
-                           move || open_log(true),
-                       )),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || open_log(true),
+                )),
         );
 }

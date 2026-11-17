@@ -49,6 +49,11 @@
 | 26 | 最近仓库行 | 名称 + 分支 chip + 相对时间 + `×` 删除 | 名称 + 分支 tag + `更多` 菜单（Reveal in Finder / Copy Path / Remove from List），无时间 | 按反馈：移除时间、删除按钮改为菜单并承载更多动作 | 是（恢复时间与 `×`） |
 | 27 | 齿轮图标 | 设计 sprite 的 `gear`：中心小圆 + 八条细放射线（更像星芒） | 双圆（轮体 r4.4 + 轴心 r1.7）+ 八颗厚齿（`design/icons.rs` 的 `gear`） | 按反馈"设置应该使用齿轮图标"；细放射线不像齿轮 | 是（换回原路径） |
 | 28 | 欢迎页英雄区图标 | 64（圆角 15，图标 30） | 44（圆角 10，图标 20，`features/welcome/view.rs` 的 `APP_MARK`） | 按反馈"应用 Logo 太大了"；缩小后与标题、副标题的高度更均衡 | 是（改回 `APP_MARK = 64.0` 与 30/15） |
+| 29 | 设置页分段线间距 | `.settings-sec` 上距 20、上内距 16；`.set-row` 下内距 11 | 分段线上距 9、上内距 16（`ui/setting_row.rs` 的 `SECTION_GAP_ABOVE` / `SECTION_PAD_TOP` / `ROW_PAD_V`） | 按反馈：分隔线上下视觉等距；上一行自带 11 的底部内距，所以分段上边距要比下内距小 | 是（改回 20/16） |
+| 30 | 设置页分段标题 | `.settings-sec` 段标题 12.5/600 | 15/600、行高 20（`ui::TITLE` / `ui::TITLE_LINE`，`ui/setting_row.rs`） | 按反馈：分段标题不够明显；与 13pt 行标题拉开层级 | 是（改回 `ui::BODY`） |
+| 31 | 设置窗口 Esc | `WindowKind::Dialog` 默认 Esc 关窗 | 不因 Esc 关窗；快捷键页录制中 Esc 只取消录制（`app/windows.rs` 的 `settings_window_attributes`） | 按反馈：设置窗口不应被 Esc 直接关闭；Esc 在快捷键页承担取消键 | 是（去掉 `close_on_escape: Some(false)`） |
+| 32 | 快捷键录制卡位置 | `.shortcut-recorder` 在工具栏与三段列表之间 | 插在正在录制的那一行下方；该行被搜索过滤掉时才回落到列表顶部（`features/settings/shortcuts.rs` 的 `body`） | 按反馈：录制区应贴在要改键的 item 下方，而不是页面最上方 | 是 |
+| 33 | 录制期间的菜单加速键 | 画板不含菜单栏，未覆盖 | 录制中临时移除应用菜单的加速键，录制结束后恢复（`app/menu.rs` 的 `shortcuts` 参数、`app/bootstrap.rs` 的菜单 effect） | 原生 NSMenu 的键等价物先于窗口按键表消费组合键；不摘掉就录不到 ⌘O / ⌘W / ⌘P / ⌘, 等菜单组合 | 是（删除 `shortcuts_enabled`） |
 
 ## 3. 已澄清：不算偏离
 

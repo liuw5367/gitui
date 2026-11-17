@@ -32,8 +32,8 @@ use nsh_core::prelude::*;
 /// 供子模块使用的设计常量。
 pub use design::metrics;
 
-pub(crate) use app::windows::{persist, window_insets};
 pub(crate) use app::Mode;
+pub(crate) use app::windows::{persist, window_insets};
 
 /// 应用根组件。
 #[component]

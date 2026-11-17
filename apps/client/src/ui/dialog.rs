@@ -7,8 +7,8 @@
 //! `open`（信号读取会订阅重建），不需要在这里再做一层 `dynamic`。
 
 use crate::design::{self, metrics};
-use nsh_base::AlertDialogResult;
 use crate::ui;
+use nsh_base::AlertDialogResult;
 use nsh_core::prelude::*;
 
 /// 一个「危险操作」确认框：系统原生 alert，标题 + 说明 + 一个破坏性动作 + 取消。

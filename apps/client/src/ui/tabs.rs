@@ -65,18 +65,13 @@ pub(crate) fn tabs(
                             }
                         }),
                 )
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(2.0))
-                        .bg(move || {
-                            if is_selected {
-                                design::token("primary-bg")
-                            } else {
-                                AdaptiveColor::TRANSPARENT
-                            }
-                        }),
-                ),
+                .child(view().w_full().h(px(2.0)).bg(move || {
+                    if is_selected {
+                        design::token("primary-bg")
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })),
         );
     }
     return bar;

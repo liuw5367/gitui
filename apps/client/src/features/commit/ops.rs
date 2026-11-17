@@ -28,7 +28,8 @@ pub(crate) fn create_initial_commit(tab: &mut Tab, summary: &str) -> Result<(), 
 /// 改写提交说明。
 pub(crate) fn reword_commit(tab: &mut Tab, sha: &str, message: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.reword_commit(sha, message).map_err(|error| error.detail())?;
+    repo.reword_commit(sha, message)
+        .map_err(|error| error.detail())?;
     reload_after_history_change(tab)?;
     return Ok(());
 }
@@ -173,8 +174,7 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
+            std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         }
         std::fs::write(repo.path.join("a.txt"), "changed\n").expect("write");
         let mut tab = load_tab(&path, &LogFilter::default());
@@ -261,8 +261,7 @@ mod tests {
         // 合并最近两个。
         let newest = tab.commits[0].sha.clone();
         let older = tab.commits[1].sha.clone();
-        squash_commits(&mut tab, older.as_str(), newest.as_str(), "combined")
-            .expect("squash");
+        squash_commits(&mut tab, older.as_str(), newest.as_str(), "combined").expect("squash");
         assert_eq!(tab.commits.len(), 2);
         assert_eq!(tab.commits[0].summary, "combined");
     }

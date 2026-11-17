@@ -4,7 +4,7 @@
 //! Agent 只提议，执行走应用已有的 Git 动作（同步、提交、暂存），因此权限边界与
 //! 手动操作完全一致（见 `docs/AGENT-THREAT-MODEL.md`）。
 
-use super::commands::{action_key, AgentCommands};
+use super::commands::{AgentCommands, action_key};
 use super::state::AgentState;
 use crate::design;
 use crate::i18n;
@@ -67,12 +67,8 @@ pub(crate) fn agent_panel(
                 ),
         )
         .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .p(px(12.0))
-                .child(scroll().w_full().h_full().child(
+            view().w_full().flex_1().min_h_0().p(px(12.0)).child(
+                scroll().w_full().h_full().child(
                     view()
                         .w_full()
                         .flex_col()
@@ -162,27 +158,25 @@ pub(crate) fn agent_panel(
                                                         },
                                                     ),
                                                 )
-                                                .child(
-                                                    crate::ui::button::button(
-                                                        {
-                                                            let language = language;
-                                                            move || {
-                                                                i18n::t(
-                                                                    language.get().as_str(),
-                                                                    if denied {
-                                                                        "agent.denied"
-                                                                    } else {
-                                                                        "agent.run"
-                                                                    },
-                                                                )
-                                                            }
-                                                        },
-                                                        crate::ui::button::ButtonVariant::Secondary,
-                                                        crate::ui::button::ButtonSize::Small,
-                                                        denied,
-                                                        move || run_step.run_agent_step(index),
-                                                    ),
-                                                )
+                                                .child(crate::ui::button::button(
+                                                    {
+                                                        let language = language;
+                                                        move || {
+                                                            i18n::t(
+                                                                language.get().as_str(),
+                                                                if denied {
+                                                                    "agent.denied"
+                                                                } else {
+                                                                    "agent.run"
+                                                                },
+                                                            )
+                                                        }
+                                                    },
+                                                    crate::ui::button::ButtonVariant::Secondary,
+                                                    crate::ui::button::ButtonSize::Small,
+                                                    denied,
+                                                    move || run_step.run_agent_step(index),
+                                                ))
                                                 .into_element(),
                                         );
                                     }
@@ -240,7 +234,8 @@ pub(crate) fn agent_panel(
                         }))
                         .child(permissions_block(language, policies, permissions_cmd))
                         .child(audit_block(language, audit, now)),
-                )),
+                ),
+            ),
         );
 }
 
@@ -368,13 +363,7 @@ fn audit_block(
                                 .w(px(5.0))
                                 .h(px(5.0))
                                 .rounded(px(3.0))
-                                .bg(move || {
-                                    if ok {
-                                        design::ok()
-                                    } else {
-                                        design::danger()
-                                    }
-                                }),
+                                .bg(move || if ok { design::ok() } else { design::danger() }),
                         )
                         .child(
                             text(action)

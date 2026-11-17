@@ -99,7 +99,6 @@ pub(crate) fn parse_status(output: &[u8]) -> Result<Vec<StatusEntry>, GitError> 
     return Ok(entries);
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

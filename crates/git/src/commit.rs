@@ -155,12 +155,7 @@ impl Repo {
     /// 把 `from..=to` 这一段合成一个提交，说明用 `message`。
     ///
     /// 只接受连续、不含合并提交的区间；`to` 之后的提交原样保留。
-    pub fn squash_commits(
-        &self,
-        from: &str,
-        to: &str,
-        message: &str,
-    ) -> Result<(), GitError> {
+    pub fn squash_commits(&self, from: &str, to: &str, message: &str) -> Result<(), GitError> {
         let first = self.full_sha(from)?;
         let last = self.full_sha(to)?;
         self.ensure_clean_for_rewrite()?;
@@ -201,7 +196,10 @@ impl Repo {
             Ok(target) => target,
             Err(_) => return false,
         };
-        return self.full_sha("HEAD").map(|head| head == target).unwrap_or(false);
+        return self
+            .full_sha("HEAD")
+            .map(|head| head == target)
+            .unwrap_or(false);
     }
 
     /// 工作区是否干净到可以改写历史。
@@ -248,7 +246,8 @@ impl Repo {
         message: &str,
     ) -> Result<(), GitError> {
         // todo 由我们自己写全，不用 sed 改 git 生成的模板。
-        let shas: Vec<String> = self.lines(&["rev-list", "--reverse", format!("{base}..HEAD").as_str()])?;
+        let shas: Vec<String> =
+            self.lines(&["rev-list", "--reverse", format!("{base}..HEAD").as_str()])?;
         if shas.is_empty() {
             return Err(rewrite_error("没有需要重写的提交".to_string()));
         }
@@ -281,10 +280,7 @@ impl Repo {
             reason: error.to_string(),
         })?;
         // 序列编辑器：把 git 的模板整体覆盖成我们的 todo。
-        let sequence = format!(
-            "#!/bin/sh\ncat \"{}\" > \"$1\"\n",
-            todo_path.display()
-        );
+        let sequence = format!("#!/bin/sh\ncat \"{}\" > \"$1\"\n", todo_path.display());
         std::fs::write(&sequence_path, sequence).map_err(|error| GitError::Unreadable {
             path: sequence_path.display().to_string(),
             reason: error.to_string(),
@@ -295,10 +291,7 @@ impl Repo {
             path: message_path.display().to_string(),
             reason: error.to_string(),
         })?;
-        let editor = format!(
-            "#!/bin/sh\ncat \"{}\" > \"$1\"\n",
-            message_path.display()
-        );
+        let editor = format!("#!/bin/sh\ncat \"{}\" > \"$1\"\n", message_path.display());
         std::fs::write(&editor_path, editor).map_err(|error| GitError::Unreadable {
             path: editor_path.display().to_string(),
             reason: error.to_string(),
@@ -314,7 +307,10 @@ impl Repo {
             &self.root,
             &["rebase", "-i", base],
             &[
-                ("GIT_SEQUENCE_EDITOR", sequence_path.to_str().unwrap_or("true")),
+                (
+                    "GIT_SEQUENCE_EDITOR",
+                    sequence_path.to_str().unwrap_or("true"),
+                ),
                 ("GIT_EDITOR", editor_path.to_str().unwrap_or("true")),
                 ("GIT_TERMINAL_PROMPT", "0"),
             ],
@@ -349,7 +345,6 @@ impl Repo {
         return Ok(());
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -392,7 +387,11 @@ mod tests {
         let error = repo.commit("should fail", "").expect_err("hook failure");
         match error {
             GitError::HookFailed { log } => {
-                assert!(log.contains("lint failed"), "钩子输出应包含在日志里：{}", log);
+                assert!(
+                    log.contains("lint failed"),
+                    "钩子输出应包含在日志里：{}",
+                    log
+                );
             }
             other => panic!("期望 HookFailed，实际 {:?}", other),
         }
@@ -495,11 +494,12 @@ mod tests {
         // --soft 保留暂存区。
         repo.reset_to(base.as_str(), ResetMode::Soft).expect("soft");
         assert_eq!(repo.log(1, "").expect("log").remove(0).sha, base);
-        assert!(repo
-            .status()
-            .expect("status")
-            .iter()
-            .any(|entry| entry.is_staged()));
+        assert!(
+            repo.status()
+                .expect("status")
+                .iter()
+                .any(|entry| entry.is_staged())
+        );
 
         // --hard 丢掉改动。
         repo.reset_to(base.as_str(), ResetMode::Hard).expect("hard");
@@ -595,6 +595,9 @@ mod tests {
         let error = repo.squash_commits(head.as_str(), head.as_str(), "nope");
         assert!(error.is_err(), "单提交不该允许合并：{:?}", error);
         let detail = error.unwrap_err().detail();
-        assert!(detail.contains("两个提交"), "错误应说明原因，实际：{detail}");
+        assert!(
+            detail.contains("两个提交"),
+            "错误应说明原因，实际：{detail}"
+        );
     }
 }

@@ -233,9 +233,7 @@ pub fn load_settings(dir: &Path) -> Settings {
         match key.trim() {
             "file_tree" => settings.file_tree = value.trim() != "false",
             "merge_empty_dirs" => settings.merge_empty_dirs = value.trim() != "false",
-            "compact_single_child" => {
-                settings.compact_single_child = value.trim() != "false"
-            }
+            "compact_single_child" => settings.compact_single_child = value.trim() != "false",
             "restore_session" => settings.restore_session = value.trim() != "false",
             "update_mode" => settings.update_mode = value.trim().to_string(),
             "use_system_git" => settings.use_system_git = value.trim() != "false",
@@ -245,12 +243,8 @@ pub fn load_settings(dir: &Path) -> Settings {
             "agent_protocol" => settings.agent_protocol = value.trim().to_string(),
             "agent_base_url" => settings.agent_base_url = value.trim().to_string(),
             "agent_model" => settings.agent_model = value.trim().to_string(),
-            "agent_temperature" => {
-                settings.agent_temperature = value.trim().parse().unwrap_or(0.2)
-            }
-            "agent_max_tokens" => {
-                settings.agent_max_tokens = value.trim().parse().unwrap_or(4096)
-            }
+            "agent_temperature" => settings.agent_temperature = value.trim().parse().unwrap_or(0.2),
+            "agent_max_tokens" => settings.agent_max_tokens = value.trim().parse().unwrap_or(4096),
             "agent_send_diffs" => settings.agent_send_diffs = value.trim() != "false",
             "agent_send_repository_path" => {
                 settings.agent_send_repository_path = value.trim() != "false"
@@ -265,9 +259,7 @@ pub fn load_settings(dir: &Path) -> Settings {
             }
             "proxy_mode" => settings.proxy_mode = value.trim().to_string(),
             "verify_ssl" => settings.verify_ssl = value.trim() != "false",
-            "use_system_git_config" => {
-                settings.use_system_git_config = value.trim() != "false"
-            }
+            "use_system_git_config" => settings.use_system_git_config = value.trim() != "false",
             _ => {}
         }
     }
@@ -292,13 +284,19 @@ pub fn save_settings(dir: &Path, settings: &Settings) {
         format!("agent_temperature={}", settings.agent_temperature),
         format!("agent_max_tokens={}", settings.agent_max_tokens),
         format!("agent_send_diffs={}", settings.agent_send_diffs),
-        format!("agent_send_repository_path={}", settings.agent_send_repository_path),
+        format!(
+            "agent_send_repository_path={}",
+            settings.agent_send_repository_path
+        ),
         format!("ssh_for_new_remotes={}", settings.ssh_for_new_remotes),
         format!("external_editor={}", settings.external_editor),
         format!("diff_tool={}", settings.diff_tool),
         format!("merge_tool={}", settings.merge_tool),
         format!("terminal={}", settings.terminal),
-        format!("external_editor_for_messages={}", settings.external_editor_for_messages),
+        format!(
+            "external_editor_for_messages={}",
+            settings.external_editor_for_messages
+        ),
         format!("proxy_mode={}", settings.proxy_mode),
         format!("verify_ssl={}", settings.verify_ssl),
         format!("use_system_git_config={}", settings.use_system_git_config),
@@ -314,9 +312,7 @@ pub fn load_agent_policies(dir: &Path) -> Vec<(String, String)> {
     return text
         .lines()
         .filter_map(|line| line.split_once('='))
-        .map(|(action, permission)| {
-            (action.trim().to_string(), permission.trim().to_string())
-        })
+        .map(|(action, permission)| (action.trim().to_string(), permission.trim().to_string()))
         .filter(|(action, permission)| !action.is_empty() && !permission.is_empty())
         .collect();
 }
@@ -583,7 +579,10 @@ pub fn load_session(dir: &Path) -> Session {
         Err(_) => return Session::default(),
     };
     let mut lines = text.lines();
-    let active: usize = lines.next().and_then(|line| line.trim().parse().ok()).unwrap_or(0);
+    let active: usize = lines
+        .next()
+        .and_then(|line| line.trim().parse().ok())
+        .unwrap_or(0);
     let paths: Vec<String> = lines
         .map(|line| line.trim_end().to_string())
         .filter(|line| !line.is_empty())
@@ -690,10 +689,7 @@ mod tests {
     fn agent_policies_and_audit_round_trip() {
         let dir = TempDir::new("agent");
         assert!(load_agent_policies(dir.path()).is_empty());
-        save_agent_policies(
-            dir.path(),
-            &[("push".to_string(), "deny".to_string())],
-        );
+        save_agent_policies(dir.path(), &[("push".to_string(), "deny".to_string())]);
         assert_eq!(
             load_agent_policies(dir.path()),
             vec![("push".to_string(), "deny".to_string())]
@@ -896,10 +892,7 @@ mod tests {
     fn scan_folders_persist() {
         let dir = TempDir::new("scan-folders");
         assert!(load_git_scan_folders(dir.path()).is_empty());
-        let folders = vec![
-            PathBuf::from("/tmp/a"),
-            PathBuf::from("/tmp/b"),
-        ];
+        let folders = vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")];
         save_git_scan_folders(dir.path(), &folders);
         assert_eq!(load_git_scan_folders(dir.path()), folders);
     }

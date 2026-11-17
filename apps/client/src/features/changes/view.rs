@@ -8,10 +8,10 @@
 
 use super::commands::ChangesCommands;
 use super::state::ChangesState;
-use crate::widgets;
+use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::app::session::Tab;
+use crate::widgets;
 use domain::diff::DiffLineKind;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
@@ -122,7 +122,11 @@ pub(crate) fn changes(
                         .px(px(11.0))
                         .border_b_1()
                         .border_color(move || design::line())
-                        .child(crate::ui::icon::icon_view("file", crate::ui::icon::IconSize::Button, design::text3))
+                        .child(crate::ui::icon::icon_view(
+                            "file",
+                            crate::ui::icon::IconSize::Button,
+                            design::text3,
+                        ))
                         .child(
                             text(label)
                                 .text_size(px(crate::ui::CODE))
@@ -136,30 +140,35 @@ pub(crate) fn changes(
                         ),
                 )
                 .child(
-                    view().w_full().flex_1().min_h_0().child(
-                        scroll().w_full().h_full().child(
-                            view().w_full().flex_col().child(if rows.is_empty() {
-                                view()
-                                    .w_full()
-                                    .h(px(48.0))
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        text(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "changes.selectFile",
-                                            )
-                                        })
-                                        .text_size(px(crate::ui::BODY))
-                                        .text_color(move || design::text3()),
-                                    )
-                                    .into_element()
-                            } else {
-                                view().w_full().flex_col().child(rows).into_element()
-                            }),
+                    view()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .child(
+                            scroll()
+                                .w_full()
+                                .h_full()
+                                .child(view().w_full().flex_col().child(if rows.is_empty() {
+                                    view()
+                                        .w_full()
+                                        .h(px(48.0))
+                                        .items_center()
+                                        .justify_center()
+                                        .child(
+                                            text(move || {
+                                                i18n::t(
+                                                    language.get().as_str(),
+                                                    "changes.selectFile",
+                                                )
+                                            })
+                                            .text_size(px(crate::ui::BODY))
+                                            .text_color(move || design::text3()),
+                                        )
+                                        .into_element()
+                                } else {
+                                    view().w_full().flex_col().child(rows).into_element()
+                                })),
                         ),
-                    ),
                 ),
         );
 }
@@ -266,7 +275,11 @@ fn changes_list(
             let show_row = tree.shows_directory(direct_files);
             if group_by_directory && directory != current_directory && show_row {
                 current_directory = directory.clone();
-                let label = if directory.is_empty() { ".".to_string() } else { directory };
+                let label = if directory.is_empty() {
+                    ".".to_string()
+                } else {
+                    directory
+                };
                 rows.push(vec![format!("d|{label}")]);
             }
             rows.push(vec![format!("f|{index}")]);
@@ -379,8 +392,11 @@ fn changes_list(
                                                 return view().w_full().into_element();
                                             };
                                             let path = entry.path.clone();
-                                            let name =
-                                                path.rsplit('/').next().unwrap_or(&path).to_string();
+                                            let name = path
+                                                .rsplit('/')
+                                                .next()
+                                                .unwrap_or(&path)
+                                                .to_string();
                                             let letter = entry.status_letter();
                                             return view()
                                                 .w_full()
@@ -434,7 +450,9 @@ fn changes_list(
                                     let Some(spec) = rows_for_press.get(row as usize) else {
                                         return;
                                     };
-                                    let Some(RowSpec::File(index)) = spec.first().and_then(|c| rows_row(c)) else {
+                                    let Some(RowSpec::File(index)) =
+                                        spec.first().and_then(|c| rows_row(c))
+                                    else {
                                         return;
                                     };
                                     select_for_press(index as usize);
@@ -444,7 +462,9 @@ fn changes_list(
                                     let Some(spec) = rows_for_menu.get(row as usize) else {
                                         return;
                                     };
-                                    let Some(RowSpec::File(index)) = spec.first().and_then(|c| rows_row(c)) else {
+                                    let Some(RowSpec::File(index)) =
+                                        spec.first().and_then(|c| rows_row(c))
+                                    else {
                                         return;
                                     };
                                     let Some(entry) = changes_for_menu.get(index as usize) else {
@@ -513,21 +533,19 @@ fn changes_list(
                             .text_overflow(nsh_core::EllipsizeMode::Tail),
                     )
                     .child(crate::ui::button::button(
-                               
                         move || i18n::t(language.get().as_str(), "conflicts.ours"),
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               move || ours(ours_path.clone(), true),
-                           ))
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || ours(ours_path.clone(), true),
+                    ))
                     .child(crate::ui::button::button(
-                               
                         move || i18n::t(language.get().as_str(), "conflicts.theirs"),
-                               crate::ui::button::ButtonVariant::Secondary,
-                               crate::ui::button::ButtonSize::Small,
-                               false,
-                               move || theirs(theirs_path.clone(), false),
-                           ))
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || theirs(theirs_path.clone(), false),
+                    ))
                     .into_element(),
             );
         }
@@ -545,25 +563,22 @@ fn changes_list(
                         .items_center()
                         .gap(px(6.0))
                         .child(
-                            text(move || {
-                                i18n::t(language.get().as_str(), "conflicts.title")
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .font_weight(FontWeight(600))
-                            .text_color(move || design::danger()),
+                            text(move || i18n::t(language.get().as_str(), "conflicts.title"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .font_weight(FontWeight(600))
+                                .text_color(move || design::danger()),
                         )
                         .child(view().flex_1())
                         .child(crate::ui::button::button(
-                                   
                             move || i18n::t(language.get().as_str(), "conflicts.resolve"),
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let cmd = cmd.clone();
                                 move || cmd.merge.open_conflict()
                             },
-                               )),
+                        )),
                 )
                 .child(rows)
                 .into_element(),
@@ -634,13 +649,12 @@ fn changes_list(
                 ),
         )
         .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(scroll().w_full().h_full().child(
-                    view().w_full().flex_col().child(sections),
-                )),
+            view().w_full().flex_1().min_h_0().child(
+                scroll()
+                    .w_full()
+                    .h_full()
+                    .child(view().w_full().flex_col().child(sections)),
+            ),
         )
         .child(
             view()
@@ -733,11 +747,13 @@ fn file_menu(
     if !targets.is_empty() {
         targets.push(MenuItem::separator());
     }
-    targets.push(MenuItem::new(i18n::t(lang, "changelists.default")).on_select({
-        let move_to_changelist = move_to_changelist.clone();
-        let path = path.to_string();
-        move || move_to_changelist(path.clone(), None)
-    }));
+    targets.push(
+        MenuItem::new(i18n::t(lang, "changelists.default")).on_select({
+            let move_to_changelist = move_to_changelist.clone();
+            let path = path.to_string();
+            move || move_to_changelist(path.clone(), None)
+        }),
+    );
     items.push(MenuItem::separator());
     items.push(MenuItem::submenu(
         i18n::t(lang, "changelists.moveTo"),
@@ -853,16 +869,15 @@ fn hunk_header_row(
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
         .child(crate::ui::button::button(
-                          
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), label_key)
             },
-                          crate::ui::button::ButtonVariant::Secondary,
-                          crate::ui::button::ButtonSize::Small,
-                          false,
-                          move || apply(hunk_index, None, staged),
-                      ))
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || apply(hunk_index, None, staged),
+        ))
         .into_element();
 }
 
@@ -920,16 +935,15 @@ fn line_row_with_piece(
                 .text_overflow(nsh_core::EllipsizeMode::Clip),
         )
         .child(crate::ui::button::button(
-                          
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), label_key)
             },
-                          crate::ui::button::ButtonVariant::Secondary,
-                          crate::ui::button::ButtonSize::Small,
-                          false,
-                          move || apply(hunk_index, Some(line_index), staged),
-                      ))
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || apply(hunk_index, Some(line_index), staged),
+        ))
         .into_element();
 }
 
@@ -971,9 +985,9 @@ fn changelist_pop(
         let name_for_active = name.clone();
         let name_for_move = name.clone();
         let is_active = tab.active_changelist == name;
-        let label = name.clone().unwrap_or_else(|| {
-            i18n::t(language.get_untracked().as_str(), "changelists.default")
-        });
+        let label = name
+            .clone()
+            .unwrap_or_else(|| i18n::t(language.get_untracked().as_str(), "changelists.default"));
         rows.push(
             crate::ui::row::row(
                 move || label.clone(),
@@ -1068,12 +1082,11 @@ fn changelist_pop(
                         )),
                 )
                 .child(crate::ui::button::button(
-                                  
                     move || i18n::t(language.get().as_str(), "changelists.create"),
-                                  crate::ui::button::ButtonVariant::Secondary,
-                                  crate::ui::button::ButtonSize::Small,
-                                  false,
-                                  {
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
                         let create = create.clone();
                         let open = open;
                         move || {
@@ -1085,7 +1098,7 @@ fn changelist_pop(
                             open.set(false);
                         }
                     },
-                              )),
+                )),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), "changelists.footHint"))

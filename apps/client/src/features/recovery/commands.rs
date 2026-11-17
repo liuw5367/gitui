@@ -51,6 +51,7 @@ impl RecoveryCommands {
             i18n::t(lang, message_key),
             "history",
             i18n::t(lang, action_key),
+            i18n::t(lang, "common.cancel"),
             kind == "checkout",
         );
         spawn(async move {
@@ -68,10 +69,7 @@ impl RecoveryCommands {
                 match result {
                     Ok(_) => {
                         let lang = language.get_untracked();
-                        interactions::notify(
-                            notice,
-                            i18n::t(lang.as_str(), "toast.historyDone"),
-                        );
+                        interactions::notify(notice, i18n::t(lang.as_str(), "toast.historyDone"));
                     }
                     Err(detail) => tab.error = Some(detail),
                 }

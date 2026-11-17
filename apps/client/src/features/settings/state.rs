@@ -34,7 +34,7 @@ impl Section {
             Section::Shortcuts => "keys",
             Section::Git => "branch",
             Section::Credentials => "lock",
-            Section::Agent => "branch",
+            Section::Agent => "sparkle",
             Section::About => "info",
         };
     }
@@ -78,6 +78,10 @@ pub(crate) struct SettingsState {
     pub(crate) recording_shortcut: Signal<Option<&'static str>>,
     /// 改键失败的原因（冲突或不可绑定）；成功后清空。
     pub(crate) shortcut_error: Signal<Option<String>>,
+    /// 「恢复默认快捷键」确认弹层是否打开。
+    pub(crate) restore_confirm: Signal<bool>,
+    /// 录制中刚按下的组合（原始 keystroke），用于回显；换键成功或取消后清空。
+    pub(crate) pending_keystroke: Signal<Option<String>>,
     /// Commit identity 编辑框的值（仓库级；没有打开仓库时是全局值）。
     pub(crate) identity_name: Signal<String>,
     pub(crate) identity_email: Signal<String>,

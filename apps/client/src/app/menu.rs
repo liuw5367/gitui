@@ -15,7 +15,17 @@ pub(crate) fn build_menu(
     run: Arc<dyn Fn(&'static str)>,
     choose_folder: Arc<dyn Fn()>,
     combo: &dyn Fn(&str) -> String,
+    shortcuts: bool,
 ) -> Vec<MenuItem> {
+    // 录制快捷键时不给菜单挂加速键：原生 NSMenu 的键等价物会先于窗口按键表
+    // 消费组合键，否则录制 ⌘O / ⌘W / ⌘P 等只会触发菜单命令，无法改键。
+    let shortcut_item = |item: MenuItem, id: &str| {
+        if shortcuts {
+            item.shortcut(&combo(id))
+        } else {
+            item
+        }
+    };
     let lang = language;
     let menu = move |key: &'static str| i18n::t(lang, key);
     let menu_run = {
@@ -29,14 +39,11 @@ pub(crate) fn build_menu(
         MenuItem::submenu(
             menu("menu.app.file"),
             vec![
-                MenuItem::new(menu("menu.openRepo"))
-                    .shortcut(&combo("open"))
-                    .on_select({
-                        let choose_folder = choose_folder.clone();
-                        move || choose_folder()
-                    }),
-                MenuItem::new(menu("menu.closeTab"))
-                    .shortcut(&combo("closeTab"))
+                shortcut_item(MenuItem::new(menu("menu.openRepo")), "open").on_select({
+                    let choose_folder = choose_folder.clone();
+                    move || choose_folder()
+                }),
+                shortcut_item(MenuItem::new(menu("menu.closeTab")), "closeTab")
                     .on_select(menu_run("closeTab")),
                 MenuItem::separator(),
                 MenuItem::role(MenuRole::Close),
@@ -57,16 +64,14 @@ pub(crate) fn build_menu(
         MenuItem::submenu(
             menu("menu.app.view"),
             vec![
-                MenuItem::new(menu("menu.commandPalette"))
-                    .shortcut(&combo("openPalette"))
+                shortcut_item(MenuItem::new(menu("menu.commandPalette")), "openPalette")
                     .on_select(menu_run("openPalette")),
                 MenuItem::separator(),
                 MenuItem::new(menu("menu.showHistory")).on_select(menu_run("history")),
                 MenuItem::new(menu("menu.showChanges")).on_select(menu_run("changes")),
                 MenuItem::new(menu("menu.toggleInspector")).on_select(menu_run("inspector")),
                 MenuItem::separator(),
-                MenuItem::new(menu("menu.cycleAppearance"))
-                    .shortcut(&combo("toggleTheme"))
+                shortcut_item(MenuItem::new(menu("menu.cycleAppearance")), "toggleTheme")
                     .on_select(menu_run("toggleTheme")),
                 MenuItem::new(menu("menu.switchLanguage")).on_select(menu_run("toggleLanguage")),
             ],
@@ -78,13 +83,11 @@ pub(crate) fn build_menu(
                 MenuItem::new(menu("menu.pull")).on_select(menu_run("pull")),
                 MenuItem::new(menu("menu.push")).on_select(menu_run("push")),
                 MenuItem::separator(),
-                MenuItem::new(menu("menu.refresh"))
-                    .shortcut(&combo("refresh"))
+                shortcut_item(MenuItem::new(menu("menu.refresh")), "refresh")
                     .on_select(menu_run("refresh")),
                 MenuItem::new(menu("menu.repoManager")).on_select(menu_run("repoManager")),
                 MenuItem::separator(),
-                MenuItem::new(menu("menu.settings"))
-                    .shortcut(&combo("settings"))
+                shortcut_item(MenuItem::new(menu("menu.settings")), "settings")
                     .on_select(menu_run("settings")),
             ],
         ),

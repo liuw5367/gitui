@@ -2,11 +2,15 @@
 //!
 //! 分组与行数来自 `shortcuts::ACTIONS` 的真实注册表：本构建有 22 个可绑定动作，
 //! 画板的 4 / 6 / 3 只是示例，不能为了对齐数量伪造动作。
+//!
+//! 录制卡插在**正在录制的那一行下方**（画板把它画在列表顶部），被搜索过滤掉时才
+//! 回落到列表顶部。按键绑定居中在 `app::hotkeys::install_settings_window`，随窗口
+//! 内容挂载一次：`on_key` 不能从会被重建的动态子树里可靠地重复绑定。
 
 use crate::design;
+use crate::i18n;
 use crate::shortcuts::{self, Scope};
 use crate::ui;
-use crate::i18n;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -19,6 +23,8 @@ pub(super) fn shortcuts_page(
     error: Signal<Option<String>>,
     record: Arc<dyn Fn(&'static str)>,
     restore: Arc<dyn Fn()>,
+    clear: Arc<dyn Fn(&'static str)>,
+    reset: Arc<dyn Fn(&'static str)>,
 ) -> AnyElement {
     let search = ui::text_input::search_field(
         query,
@@ -50,6 +56,8 @@ pub(super) fn shortcuts_page(
             recording,
             error,
             record.clone(),
+            clear.clone(),
+            reset.clone(),
         )
         .into_element()
     });
@@ -89,93 +97,88 @@ fn body(
     recording: Signal<Option<&'static str>>,
     error: Signal<Option<String>>,
     record: Arc<dyn Fn(&'static str)>,
+    clear: Arc<dyn Fn(&'static str)>,
+    reset: Arc<dyn Fn(&'static str)>,
 ) -> AnyElement {
     let _ = language.get();
     let needle = query.get().to_lowercase();
     let bindings = registry.get();
     let recording_id = recording.get();
     let error_text = error.get();
-    let mut body = view().w_full().flex_col();
-    if let Some(id) = recording_id {
-        body = body.child(recorder(language, id, bindings.clone()));
-    }
-    if let Some(text_value) = error_text {
-        body = body.child(
-            text(move || text_value.clone())
-                .mt(px(6.0))
-                .text_size(px(ui::SECONDARY))
-                .line_height(px(ui::SECONDARY_LINE))
-                .text_color(move || design::danger()),
-        );
-    }
-    let mut any = false;
+    // 录制卡默认插在正在录制的那一行下方；只有该行被搜索过滤掉时才退回到列表顶部，
+    // 否则录制中会看不到取消入口。
+    let mut recorder_card = recording_id
+        .map(|id| recorder(language, id, bindings.clone(), error_text.clone()));
+    let mut sections: Vec<AnyElement> = Vec::new();
     for scope in [Scope::Global, Scope::Repository] {
-        let mut rows: Vec<AnyElement> = Vec::new();
-        for action in shortcuts::ACTIONS
+        let visible = shortcuts::ACTIONS
             .iter()
             .filter(|action| action.scope == scope)
-        {
-            let label = shortcuts::label(action, language.get_untracked().as_str());
-            let combo = bindings.combo(action.id).to_string();
-            let searchable = format!("{label} {combo}").to_lowercase();
-            if !needle.is_empty() && !searchable.contains(&needle) {
-                continue;
-            }
-            any = true;
+            .filter(|action| {
+                let label = shortcuts::label(action, language.get_untracked().as_str());
+                let combo = bindings.combo(action.id);
+                let searchable = format!("{label} {combo}").to_lowercase();
+                needle.is_empty() || searchable.contains(&needle)
+            })
+            .collect::<Vec<_>>();
+        let count = visible.len();
+        if count == 0 {
+            continue;
+        }
+        let first = sections.is_empty();
+        let mut rows: Vec<AnyElement> = Vec::new();
+        for (index, action) in visible.into_iter().enumerate() {
+            let last = index + 1 == count;
             let id = action.id;
+            let is_recording = recording_id == Some(id);
             let record = record.clone();
+            let clear = clear.clone();
+            let reset = reset.clone();
             rows.push(
                 ui::setting_row::setting_row(
                     move || shortcuts::label(action, language.get().as_str()),
                     Some(Box::new(move || {
                         i18n::t(language.get().as_str(), action.desc)
                     })),
-                    keycaps_control(language, combo.as_str(), id, record),
-                    true,
+                    keycaps_control(language, bindings.combo(id), id, record, clear, reset),
+                    !last && !is_recording,
                 )
                 .into_element(),
             );
+            if is_recording && let Some(card) = recorder_card.take() {
+                rows.push(card);
+            }
         }
-        if rows.is_empty() {
-            continue;
-        }
-        let count = rows.len();
-        let section = view()
-            .w_full()
-            .flex_col()
-            .mt(px(18.0))
-            .child(
-                view()
-                    .w_full()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .child(
-                        text(move || {
-                            i18n::t(language.get().as_str(), scope_key(scope))
-                        })
-                        .text_size(px(ui::BODY))
-                        .line_height(px(ui::BODY_LINE))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(move || design::text()),
-                    )
-                    .child(
-                        text(move || {
-                            i18n::with_arguments(
-                                language.get().as_str(),
-                                "shortcut.count",
-                                &[("count", count.to_string())],
-                            )
-                        })
-                        .text_size(px(ui::SECONDARY))
-                        .line_height(px(ui::SECONDARY_LINE))
-                        .text_color(move || design::text3()),
-                    ),
+        let count_text = text(move || {
+            i18n::with_arguments(
+                language.get().as_str(),
+                "shortcut.count",
+                &[("count", count.to_string())],
             )
-            .child(view().w_full().flex_col().child(rows));
+        })
+        .text_size(px(ui::SECONDARY))
+        .line_height(px(ui::SECONDARY_LINE))
+        .text_color(move || design::text3());
+        sections.push(
+            ui::setting_row::settings_section_titled(
+                first,
+                move || i18n::t(language.get().as_str(), scope_key(scope)),
+                Some(count_text.into_element()),
+                None,
+                view().w_full().flex_col().child(rows),
+            )
+            .into_element(),
+        );
+    }
+    let mut body = view().w_full().flex_col();
+    if let Some(card) = recorder_card {
+        body = body.child(card);
+    }
+    let empty = sections.is_empty();
+    for section in sections {
         body = body.child(section);
     }
-    if !any {
+    if empty && recording_id.is_none() {
         body = body.child(
             text(move || i18n::t(language.get().as_str(), "shortcut.searchEmpty"))
                 .mt(px(18.0))
@@ -199,6 +202,8 @@ fn keycaps_control(
     combo: &str,
     id: &'static str,
     record: Arc<dyn Fn(&'static str)>,
+    clear: Arc<dyn Fn(&'static str)>,
+    reset: Arc<dyn Fn(&'static str)>,
 ) -> AnyElement {
     let caps = shortcuts::keycaps(combo);
     let mut keys = view().flex_row().items_center().gap(px(2.0));
@@ -226,6 +231,20 @@ fn keycaps_control(
             false,
             move || record(id),
         ))
+        .child(ui::button::button(
+            move || i18n::t(language.get().as_str(), "shortcut.reset"),
+            ui::button::ButtonVariant::Ghost,
+            ui::button::ButtonSize::Small,
+            false,
+            move || reset(id),
+        ))
+        .child(ui::button::button(
+            move || i18n::t(language.get().as_str(), "shortcut.clear"),
+            ui::button::ButtonVariant::Ghost,
+            ui::button::ButtonSize::Small,
+            false,
+            move || clear(id),
+        ))
         .into_element();
 }
 
@@ -233,6 +252,7 @@ fn recorder(
     language: Signal<SharedString>,
     id: &'static str,
     bindings: shortcuts::Registry,
+    error: Option<String>,
 ) -> AnyElement {
     let action = shortcuts::ACTIONS
         .iter()
@@ -260,9 +280,10 @@ fn recorder(
             .flex_shrink_0()
             .bg(move || design::accent()),
     );
-    return view()
+    let mut card = view()
         .w_full()
-        .mt(px(10.0))
+        .mt(px(4.0))
+        .mb(px(6.0))
         .p(px(10.0))
         .flex_col()
         .gap(px(6.0))
@@ -322,8 +343,17 @@ fn recorder(
                         .line_height(px(ui::SECONDARY_LINE))
                         .text_color(move || design::text3()),
                 ),
-        )
-        .into_element();
+        );
+    // 冲突与不可绑定只发生在录制中：错误贴着录制卡显示，录制状态保留，可直接改按别的组合。
+    if let Some(message) = error {
+        card = card.child(
+            text(move || message.clone())
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::danger()),
+        );
+    }
+    return card.into_element();
 }
 
 fn refine_row(keys: impl IntoElement) -> impl IntoElement {

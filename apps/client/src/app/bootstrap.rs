@@ -73,7 +73,9 @@ pub(crate) fn app() -> impl IntoElement {
     }
     // 验收开关：`GITUI_FORM=1` 启动即打开「新建分支」表单，用于核对表单弹层。
     let form_state = signal(if acceptance::flag("GITUI_FORM") {
-        Some(features::search::FormState::new(features::search::FormKind::NewBranch))
+        Some(features::search::FormState::new(
+            features::search::FormKind::NewBranch,
+        ))
     } else {
         None
     });
@@ -94,6 +96,10 @@ pub(crate) fn app() -> impl IntoElement {
     let recording_shortcut = signal(Option::<&'static str>::None);
     let shortcut_query = signal(String::new());
     let shortcut_error = signal(Option::<String>::None);
+    let restore_confirm = signal(acceptance::flag("GITUI_RESTORE_CONFIRM"));
+    let pending_keystroke = signal(
+        acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()),
+    );
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
     // 冲突视图：可编辑的结果区与 base 显隐。
@@ -423,6 +429,8 @@ pub(crate) fn app() -> impl IntoElement {
             shortcut_query,
             recording_shortcut,
             shortcut_error,
+            restore_confirm,
+            pending_keystroke,
             identity_name: signal(String::new()),
             identity_email: signal(String::new()),
             identity_use_global: signal(true),
@@ -437,12 +445,8 @@ pub(crate) fn app() -> impl IntoElement {
             scan_selected: signal(git_selected),
             scan_last_at: signal(git_last),
             agent_base_url: signal(settings_state.get_untracked().agent_base_url),
-            agent_temperature: signal(
-                settings_state.get_untracked().agent_temperature.to_string(),
-            ),
-            agent_max_tokens: signal(
-                settings_state.get_untracked().agent_max_tokens.to_string(),
-            ),
+            agent_temperature: signal(settings_state.get_untracked().agent_temperature.to_string()),
+            agent_max_tokens: signal(settings_state.get_untracked().agent_max_tokens.to_string()),
             agent_app_key: signal(String::new()),
             ssh_keys: signal(features::settings::ssh::read_keys()),
         },
@@ -454,6 +458,16 @@ pub(crate) fn app() -> impl IntoElement {
         diff: diff_commands.clone(),
     };
     settings_commands.refresh_identity();
+    // 验收开关：`GITUI_RECORD=<动作 id>` 启动即进入该动作的录制态，截图核对录制卡。
+    if let Some(id) = acceptance::value("GITUI_RECORD") {
+        let id = crate::shortcuts::ACTIONS
+            .iter()
+            .find(|action| action.id == id.as_str())
+            .map(|action| action.id);
+        if let Some(id) = id {
+            settings_commands.record_shortcut(id);
+        }
+    }
 
     // 欢迎页（P3 批 B）：表单输入收进 WelcomeState，用例收进 WelcomeCommands。
     let welcome_commands = features::welcome::commands::WelcomeCommands {
@@ -559,16 +573,20 @@ pub(crate) fn app() -> impl IntoElement {
         effect({
             let language = language;
             let shortcuts = shortcut_registry;
+            let recording = settings_commands.state.recording_shortcut;
             move || {
                 let lang = language.get();
                 // 菜单里的加速键也取注册表：改键后菜单跟着变。
                 let bindings = shortcuts.get();
                 let combo = move |id: &str| bindings.combo(id).to_string();
+                // 录制期间临时摘掉菜单加速键：原生菜单会先于窗口按键表消费组合键。
+                let shortcuts_enabled = recording.get().is_none();
                 let items = crate::app::menu::build_menu(
                     lang.as_str(),
                     run.clone(),
                     choose_folder.clone(),
                     &combo,
+                    shortcuts_enabled,
                 );
                 nsh_core::element::desktop::set_application_menu(items);
             }

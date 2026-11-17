@@ -183,9 +183,9 @@ mod theme_tests {
     /// 取出某个选择器块里的 `--x: value` 变量。
     fn variables(css: &str, selector: &str) -> BTreeMap<String, String> {
         let needle = format!("{selector}{{");
-        let start = css.find(needle.as_str()).unwrap_or_else(|| {
-            panic!("设计 CSS 里找不到 {selector} 块（路径或格式变了？）")
-        });
+        let start = css
+            .find(needle.as_str())
+            .unwrap_or_else(|| panic!("设计 CSS 里找不到 {selector} 块（路径或格式变了？）"));
         let body_start = start + needle.len();
         let body_end = css[body_start..]
             .find('}')
@@ -201,7 +201,10 @@ mod theme_tests {
             if !key.starts_with("--") {
                 continue;
             }
-            out.insert(key.trim_start_matches("--").to_string(), value.trim().to_string());
+            out.insert(
+                key.trim_start_matches("--").to_string(),
+                value.trim().to_string(),
+            );
         }
         return out;
     }
@@ -220,8 +223,7 @@ mod theme_tests {
     }
 
     fn ours(mode: &str) -> BTreeMap<String, String> {
-        let parsed: serde_json::Value =
-            serde_json::from_str(THEME).expect("theme.json 可以解析");
+        let parsed: serde_json::Value = serde_json::from_str(THEME).expect("theme.json 可以解析");
         let block = parsed["cssVars"][mode]
             .as_object()
             .unwrap_or_else(|| panic!("theme.json 缺少 cssVars.{mode}"));
@@ -248,14 +250,16 @@ mod theme_tests {
             if SEMANTIC.contains(&key.as_str()) {
                 continue;
             }
-            let lookup = if key == "panel-2" { "panel2" } else { key.as_str() };
+            let lookup = if key == "panel-2" {
+                "panel2"
+            } else {
+                key.as_str()
+            };
             match ours.get(lookup) {
                 None => problems.push(format!("缺少 {lookup}（设计值 {design_value}）")),
                 Some(value) => {
                     if normalize(value) != normalize(design_value) {
-                        problems.push(format!(
-                            "{lookup}: 设计 {design_value} / 我们 {value}"
-                        ));
+                        problems.push(format!("{lookup}: 设计 {design_value} / 我们 {value}"));
                     }
                 }
             }

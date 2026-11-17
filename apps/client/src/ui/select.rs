@@ -18,10 +18,7 @@ pub(crate) struct SelectOption {
 }
 
 impl SelectOption {
-    pub(crate) fn new(
-        id: &'static str,
-        label: impl Fn() -> String + 'static,
-    ) -> SelectOption {
+    pub(crate) fn new(id: &'static str, label: impl Fn() -> String + 'static) -> SelectOption {
         return SelectOption {
             id,
             label: Box::new(label),

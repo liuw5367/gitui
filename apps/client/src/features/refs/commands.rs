@@ -41,10 +41,7 @@ impl RefsCommands {
         let language = self.language;
         let notice = self.notice;
         let current = active.get_untracked();
-        let dirty = tabs
-            .get_untracked()
-            .get(current)
-            .is_some_and(ops::is_dirty);
+        let dirty = tabs.get_untracked().get(current).is_some_and(ops::is_dirty);
         if !dirty {
             let mut list = tabs.get_untracked();
             if let Some(tab) = list.get_mut(current) {
@@ -225,6 +222,7 @@ impl RefsCommands {
             ),
             "drop",
             crate::i18n::t(language_now.as_str(), "confirm.dropAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
         spawn(async move {
@@ -255,6 +253,7 @@ impl RefsCommands {
             ),
             "drop",
             crate::i18n::t(language_now.as_str(), "confirm.deleteAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
         spawn(async move {
@@ -285,6 +284,7 @@ impl RefsCommands {
             ),
             "drop",
             crate::i18n::t(language_now.as_str(), "confirm.removeAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
         spawn(async move {

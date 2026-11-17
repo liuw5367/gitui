@@ -83,14 +83,9 @@ pub(super) fn general(
     clear_identity: Arc<dyn Fn()>,
     set_use_global: Arc<dyn Fn(bool)>,
     check_updates: Arc<dyn Fn()>,
-    last_session: Vec<String>,
 ) -> impl IntoElement {
     let settings = settings_state.get_untracked();
-    let selected_theme = match theme_mode.get_untracked() {
-        ThemeMode::System => "system",
-        ThemeMode::Light => "light",
-        ThemeMode::Dark => "dark",
-    };
+    let selected_theme = theme_mode.get_untracked().id();
     let theme_segments = [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System]
         .into_iter()
         .map(|mode| ui::segmented::Segment {
@@ -142,7 +137,11 @@ pub(super) fn general(
             })
         })
         .collect::<Vec<SelectOption>>();
-    let launch_selected = if settings.restore_session { "restore" } else { "welcome" };
+    let launch_selected = if settings.restore_session {
+        "restore"
+    } else {
+        "welcome"
+    };
     let language_now = language;
     let preview = move || {
         let _ = date_pattern.get();
@@ -190,7 +189,12 @@ pub(super) fn general(
             let save = save_identity.clone();
             let identity_name = identity_name;
             let identity_email = identity_email;
-            move || save(identity_name.get_untracked(), identity_email.get_untracked())
+            move || {
+                save(
+                    identity_name.get_untracked(),
+                    identity_email.get_untracked(),
+                )
+            }
         },
     );
     let email_input = ui::text_input::text_input_bound_commit(
@@ -206,7 +210,12 @@ pub(super) fn general(
             let save = save_identity.clone();
             let identity_name = identity_name;
             let identity_email = identity_email;
-            move || save(identity_name.get_untracked(), identity_email.get_untracked())
+            move || {
+                save(
+                    identity_name.get_untracked(),
+                    identity_email.get_untracked(),
+                )
+            }
         },
     );
     let identity_toggle = ui::check::check_control(
@@ -225,41 +234,73 @@ pub(super) fn general(
             }
         },
     );
-    let last_session_row = setting_row(
-        language,
-        "settings.lastSession",
-        None,
-        if last_session.is_empty() {
-            text(move || i18n::t(language.get().as_str(), "settings.none"))
-                .text_size(px(ui::SECONDARY))
-                .text_color(move || design::text3())
-                .into_element()
-        } else {
-            let chips = last_session
-                .iter()
-                .map(|path| {
-                    let name = std::path::Path::new(path)
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or(path.as_str())
-                        .to_string();
-                    ui::badge::badge(move || name.clone(), ui::badge::Tone::Accent).into_element()
-                })
-                .collect::<Vec<AnyElement>>();
-            view()
-                .flex_row()
-                .items_center()
-                .gap(px(4.0))
-                .child(chips)
-                .into_element()
-        },
-        false,
-    );
     return view()
         .w_full()
         .flex_col()
         .child(ui::setting_row::settings_section(
             true,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.updates")
+            },
+            Some(Box::new({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.updatesHint")
+            })),
+            view()
+                .w_full()
+                .flex_col()
+                .child(setting_row(
+                    language,
+                    "settings.checkForUpdates",
+                    None,
+                    ui::select::select(
+                        update_options,
+                        settings.update_mode.clone(),
+                        Some(210.0),
+                        {
+                            let set_update_mode = set_update_mode.clone();
+                            move |id| set_update_mode(id.to_string())
+                        },
+                    )
+                    .into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.status",
+                    None,
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            text(move || {
+                                format!(
+                                    "{} · {}",
+                                    brand::version_line(),
+                                    i18n::t(language.get().as_str(), "settings.notChecked")
+                                )
+                            })
+                            .text_size(px(ui::SECONDARY))
+                            .text_color(move || design::text3()),
+                        )
+                        .child(ui::button::button(
+                            move || i18n::t(language.get().as_str(), "settings.checkNow"),
+                            ui::button::ButtonVariant::Secondary,
+                            ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let check = check_updates.clone();
+                                move || check()
+                            },
+                        ))
+                        .into_element(),
+                    false,
+                )),
+        ))
+        .child(ui::setting_row::settings_section(
+            false,
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), "settings.appearance")
@@ -306,6 +347,31 @@ pub(super) fn general(
             false,
             {
                 let language = language;
+                move || i18n::t(language.get().as_str(), "settings.onLaunch")
+            },
+            Some(Box::new({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.onLaunchHint")
+            })),
+            view()
+                .w_full()
+                .flex_col()
+                .child(setting_row(
+                    language,
+                    "settings.launchBehavior",
+                    None,
+                    ui::select::select(launch_options, launch_selected, Some(210.0), {
+                        let set_launch = set_launch_restore.clone();
+                        move |id| set_launch(id == "restore")
+                    })
+                    .into_element(),
+                    false,
+                )),
+        ))
+        .child(ui::setting_row::settings_section(
+            false,
+            {
+                let language = language;
                 move || i18n::t(language.get().as_str(), "settings.dates")
             },
             Some(Box::new({
@@ -334,12 +400,7 @@ pub(super) fn general(
                         .flex_row()
                         .items_center()
                         .gap(px(8.0))
-                        .child(
-                            view()
-                                .w(px(210.0))
-                                .flex_shrink_0()
-                                .child(pattern_input),
-                        )
+                        .child(view().w(px(210.0)).flex_shrink_0().child(pattern_input))
                         .child(
                             text(preview)
                                 .text_size(px(ui::SECONDARY))
@@ -454,94 +515,6 @@ pub(super) fn general(
                         },
                     )
                     .into_element(),
-                    false,
-                )),
-        ))
-        .child(ui::setting_row::settings_section(
-            false,
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), "settings.onLaunch")
-            },
-            Some(Box::new({
-                let language = language;
-                move || i18n::t(language.get().as_str(), "settings.onLaunchHint")
-            })),
-            view()
-                .w_full()
-                .flex_col()
-                .child(setting_row(
-                    language,
-                    "settings.launchBehavior",
-                    None,
-                    ui::select::select(launch_options, launch_selected, Some(210.0), {
-                        let set_launch = set_launch_restore.clone();
-                        move |id| set_launch(id == "restore")
-                    })
-                    .into_element(),
-                    true,
-                ))
-                .child(last_session_row),
-        ))
-        .child(ui::setting_row::settings_section(
-            false,
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), "settings.updates")
-            },
-            Some(Box::new({
-                let language = language;
-                move || i18n::t(language.get().as_str(), "settings.updatesHint")
-            })),
-            view()
-                .w_full()
-                .flex_col()
-                .child(setting_row(
-                    language,
-                    "settings.checkForUpdates",
-                    None,
-                    ui::select::select(
-                        update_options,
-                        settings.update_mode.clone(),
-                        Some(210.0),
-                        {
-                            let set_update_mode = set_update_mode.clone();
-                            move |id| set_update_mode(id.to_string())
-                        },
-                    )
-                    .into_element(),
-                    true,
-                ))
-                .child(setting_row(
-                    language,
-                    "settings.status",
-                    None,
-                    view()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(
-                            text(move || {
-                                format!(
-                                    "{} · {}",
-                                    brand::version_line(),
-                                    i18n::t(language.get().as_str(), "settings.notChecked")
-                                )
-                            })
-                            .text_size(px(ui::SECONDARY))
-                            .text_color(move || design::text3()),
-                        )
-                        .child(ui::button::button(
-                            move || i18n::t(language.get().as_str(), "settings.checkNow"),
-                            ui::button::ButtonVariant::Secondary,
-                            ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let check = check_updates.clone();
-                                move || check()
-                            },
-                        ))
-                        .into_element(),
                     false,
                 )),
         ));

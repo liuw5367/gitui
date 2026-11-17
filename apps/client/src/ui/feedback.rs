@@ -97,7 +97,12 @@ pub(crate) fn progress(value: Option<f32>) -> impl IntoElement {
         .h(px(4.0))
         .w_full()
         .rounded(px(2.0))
-        .track_style(move |style| style.h(px(4.0)).rounded(px(2.0)).bg(move || design::line_soft()))
+        .track_style(move |style| {
+            style
+                .h(px(4.0))
+                .rounded(px(2.0))
+                .bg(move || design::line_soft())
+        })
         .indicator_style(move |style| {
             style
                 .h(px(4.0))

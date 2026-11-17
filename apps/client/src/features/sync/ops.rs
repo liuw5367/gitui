@@ -101,8 +101,14 @@ mod tests {
                 .expect("git");
             assert!(status.success(), "git {:?}", args);
         };
-        run(&base, &["init", "-q", "--bare", remote.to_str().expect("utf8")]);
-        run(&base, &["init", "-q", "-b", "main", repo_dir.to_str().expect("utf8")]);
+        run(
+            &base,
+            &["init", "-q", "--bare", remote.to_str().expect("utf8")],
+        );
+        run(
+            &base,
+            &["init", "-q", "-b", "main", repo_dir.to_str().expect("utf8")],
+        );
         run(&repo_dir, &["config", "user.name", "Test"]);
         run(&repo_dir, &["config", "user.email", "test@example.com"]);
         std::fs::write(repo_dir.join("a.txt"), "one\n").expect("write");

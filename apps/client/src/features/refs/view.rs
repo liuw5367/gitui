@@ -10,11 +10,11 @@
 
 use super::commands::RefsCommands;
 use super::state::{RefsState, RefsTab};
-use crate::design::{self, metrics};
-use crate::i18n;
 use crate::app::session::Tab;
-use crate::ui;
+use crate::design::{self, metrics};
 use crate::features::search::commands::SearchCommands;
+use crate::i18n;
+use crate::ui;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
@@ -163,7 +163,11 @@ fn group(
                 .flex_row()
                 .items_center()
                 .gap(px(5.0))
-                .child(crate::ui::icon::icon_view("chev-down", crate::ui::icon::IconSize::Compact, design::text3))
+                .child(crate::ui::icon::icon_view(
+                    "chev-down",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                ))
                 .child(
                     text(move || i18n::t(language.get().as_str(), key))
                         .text_size(px(crate::ui::SECONDARY))
@@ -252,7 +256,11 @@ fn branch_row(
         .child(crate::ui::icon::icon_view(
             "branch",
             crate::ui::icon::IconSize::Button,
-            if current { design::accent } else { design::text3 },
+            if current {
+                design::accent
+            } else {
+                design::text3
+            },
         ))
         .child(
             text(name)
@@ -288,7 +296,11 @@ fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) ->
         .gap(px(7.0))
         .rounded(px(metrics::RADIUS_CONTROL))
         .hover(|style| style.bg(move || design::hover()))
-        .child(crate::ui::icon::icon_view(icon, crate::ui::icon::IconSize::Compact, color))
+        .child(crate::ui::icon::icon_view(
+            icon,
+            crate::ui::icon::IconSize::Compact,
+            color,
+        ))
         .child(
             text(label)
                 .text_size(px(crate::ui::BODY))
@@ -349,38 +361,22 @@ pub(crate) fn refs_view(
                         .text_color(move || design::text()),
                 )
                 .child(view().flex_1())
-                .child(create_button(
-                    language,
-                    "form.newBranch",
-                    {
-                        let open_form = open_form.clone();
-                        move || open_form(crate::features::search::FormKind::NewBranch)
-                    },
-                ))
-                .child(create_button(
-                    language,
-                    "form.newTag",
-                    {
-                        let open_form = open_form.clone();
-                        move || open_form(crate::features::search::FormKind::NewTag)
-                    },
-                ))
-                .child(create_button(
-                    language,
-                    "form.addRemote",
-                    {
-                        let open_form = open_form.clone();
-                        move || open_form(crate::features::search::FormKind::AddRemote)
-                    },
-                ))
-                .child(create_button(
-                    language,
-                    "form.newStash",
-                    {
-                        let open_form = open_form.clone();
-                        move || open_form(crate::features::search::FormKind::NewStash)
-                    },
-                ))
+                .child(create_button(language, "form.newBranch", {
+                    let open_form = open_form.clone();
+                    move || open_form(crate::features::search::FormKind::NewBranch)
+                }))
+                .child(create_button(language, "form.newTag", {
+                    let open_form = open_form.clone();
+                    move || open_form(crate::features::search::FormKind::NewTag)
+                }))
+                .child(create_button(language, "form.addRemote", {
+                    let open_form = open_form.clone();
+                    move || open_form(crate::features::search::FormKind::AddRemote)
+                }))
+                .child(create_button(language, "form.newStash", {
+                    let open_form = open_form.clone();
+                    move || open_form(crate::features::search::FormKind::NewStash)
+                }))
                 .child(tab_button(language, RefsTab::Refs, selected_tab))
                 .child(tab_button(language, RefsTab::Reflog, selected_tab)),
         )
@@ -447,9 +443,11 @@ fn refs_table(
     };
     let open_form_from: std::sync::Arc<dyn Fn(crate::features::search::FormKind, String)> = {
         let search = search.clone();
-        std::sync::Arc::new(move |kind: crate::features::search::FormKind, from: String| {
-            search.open_form_from(kind, from)
-        })
+        std::sync::Arc::new(
+            move |kind: crate::features::search::FormKind, from: String| {
+                search.open_form_from(kind, from)
+            },
+        )
     };
     // 「比较」与各段引用行的写动作要 `Arc<dyn Fn>`，这里把用例包成回调。
     let compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
@@ -574,7 +572,12 @@ fn refs_table(
                 {
                     let open_form = open_form.clone();
                     let name = name_for_menu.clone();
-                    move || open_form(crate::features::search::FormKind::RenameBranch, name.clone())
+                    move || {
+                        open_form(
+                            crate::features::search::FormKind::RenameBranch,
+                            name.clone(),
+                        )
+                    }
                 },
             ),
             ui::menu::action(
@@ -796,10 +799,11 @@ fn refs_table(
                 i18n::t(language.get_untracked().as_str(), "menu.copyPath"),
                 true,
                 {
-                let copy_text = copy_text.clone();
-                let path = path_for_menu.clone();
-                move || copy_text(path.clone())
-            }),
+                    let copy_text = copy_text.clone();
+                    let path = path_for_menu.clone();
+                    move || copy_text(path.clone())
+                },
+            ),
         ];
         worktree_rows.push(menu_row(
             language,
@@ -904,9 +908,11 @@ fn reflog_list(
     let notice = cmd.notice;
     let open_form_from: std::sync::Arc<dyn Fn(crate::features::search::FormKind, String)> = {
         let search = search.clone();
-        std::sync::Arc::new(move |kind: crate::features::search::FormKind, from: String| {
-            search.open_form_from(kind, from)
-        })
+        std::sync::Arc::new(
+            move |kind: crate::features::search::FormKind, from: String| {
+                search.open_form_from(kind, from)
+            },
+        )
     };
     let copy_text_fn: std::sync::Arc<dyn Fn(String)> = {
         let language = language;
@@ -963,11 +969,9 @@ fn reflog_list(
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
-                    text(move || {
-                        crate::dates::format(language.get().as_str(), timestamp, now)
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .text_color(move || design::text3()),
+                    text(move || crate::dates::format(language.get().as_str(), timestamp, now))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
                 )
                 .child(crate::ui::button::button(
                     move || i18n::t(language.get().as_str(), "reflog.undo"),
@@ -987,18 +991,11 @@ fn reflog_list(
                         let lang = language.get_untracked();
                         let lang = lang.as_str();
                         let items = vec![
-                            ui::menu::action(
-                                i18n::t(lang, "reflog.undo"),
-                                true,
-                                {
-                                    let undo = undo.clone();
-                                    move || undo.undo_reflog(index)
-                                },
-                            ),
-                            ui::menu::action(
-                                i18n::t(lang, "menu.newBranchFromHere"),
-                                true,
-                                {
+                            ui::menu::action(i18n::t(lang, "reflog.undo"), true, {
+                                let undo = undo.clone();
+                                move || undo.undo_reflog(index)
+                            }),
+                            ui::menu::action(i18n::t(lang, "menu.newBranchFromHere"), true, {
                                 let open_form = open_form.clone();
                                 let sha = sha.clone();
                                 move || {
@@ -1008,36 +1005,25 @@ fn reflog_list(
                                     )
                                 }
                             }),
-                            ui::menu::action(
-                                i18n::t(lang, "menu.showInHistory"),
-                                true,
-                                {
+                            ui::menu::action(i18n::t(lang, "menu.showInHistory"), true, {
                                 let show = show.clone();
                                 let sha = sha.clone();
                                 move || show.show_in_history(sha.clone())
                             }),
                             ui::menu::divider(),
-                            ui::menu::action(
-                                i18n::t(lang, "menu.copySha"),
-                                true,
-                                {
+                            ui::menu::action(i18n::t(lang, "menu.copySha"), true, {
                                 let copy_text = copy_text.clone();
                                 let sha = sha.clone();
                                 move || copy_text(sha.clone())
                             }),
-                            ui::menu::action(
-                                i18n::t(lang, "menu.copyName"),
-                                true,
-                                {
+                            ui::menu::action(i18n::t(lang, "menu.copyName"), true, {
                                 let copy_text = copy_text.clone();
                                 let short = short.clone();
                                 move || copy_text(short.clone())
                             }),
                         ];
-                        let _ = nsh_core::element::desktop::popup_menu_at(
-                            items,
-                            event.page_position,
-                        );
+                        let _ =
+                            nsh_core::element::desktop::popup_menu_at(items, event.page_position);
                     }
                 })
                 .into_element(),
@@ -1078,10 +1064,7 @@ fn reflog_list(
                                         .value(query)
                                         .on_change(move |text: &str| query.set(text.to_string()))
                                         .placeholder(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "reflog.filterHint",
-                                            )
+                                            i18n::t(language.get().as_str(), "reflog.filterHint")
                                         })
                                         .text_size(px(crate::ui::SECONDARY))
                                         .flex_1(),
@@ -1129,10 +1112,7 @@ fn menu_row(
         .rounded(px(4.0))
         .hover(|style| style.bg(move || design::hover()))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let _ = nsh_core::element::desktop::popup_menu_at(
-                items.clone(),
-                event.page_position,
-            );
+            let _ = nsh_core::element::desktop::popup_menu_at(items.clone(), event.page_position);
         })
         .child(
             text(name)

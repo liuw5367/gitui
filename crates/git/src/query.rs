@@ -120,8 +120,10 @@ impl Repo {
 
     /// 与上游的 `(ahead, behind)`；没有上游时返回 `(0, 0)`。
     pub fn ahead_behind(&self) -> (u32, u32) {
-        let output = match run_git(&self.root, &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
-        {
+        let output = match run_git(
+            &self.root,
+            &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
+        ) {
             Ok(output) => output,
             Err(_) => return (0, 0),
         };
@@ -427,7 +429,6 @@ pub(crate) mod testkit {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,11 +454,14 @@ mod tests {
         let repo = Repo::open(&path).expect("open");
         let summary = repo.summary().expect("summary");
         assert_eq!(summary.branch, "main");
-        assert_eq!(summary.name, std::path::Path::new(&path)
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string());
+        assert_eq!(
+            summary.name,
+            std::path::Path::new(&path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        );
         assert_eq!((summary.ahead, summary.behind), (0, 0));
     }
 

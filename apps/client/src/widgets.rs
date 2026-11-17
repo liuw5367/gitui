@@ -30,4 +30,3 @@ pub(crate) fn icon(
     }
     return holder;
 }
-

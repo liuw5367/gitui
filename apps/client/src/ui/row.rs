@@ -17,11 +17,7 @@ pub(crate) fn row(
     disabled: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
-    let height = if subtitle.is_some() {
-        44.0
-    } else {
-        ui::ROW
-    };
+    let height = if subtitle.is_some() { 44.0 } else { ui::ROW };
     return row_sized(
         caption, subtitle, leading, trailing, selected, disabled, height, on_press,
     );
@@ -85,18 +81,15 @@ pub(crate) fn row_stacked(
         .items_center()
         .gap(px(ui::GAP_XS))
         .child(
-            view()
-                .min_w_0()
-                .flex_shrink(1.0)
-                .child(
-                    text(move || caption())
-                        .text_size(px(ui::BODY))
-                        .line_height(px(ui::BODY_LINE))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(move || foreground)
-                        .number_of_lines(1)
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                ),
+            view().min_w_0().flex_shrink(1.0).child(
+                text(move || caption())
+                    .text_size(px(ui::BODY))
+                    .line_height(px(ui::BODY_LINE))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(move || foreground)
+                    .number_of_lines(1)
+                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+            ),
         );
     for item in aside {
         first = first.child(item);
@@ -169,17 +162,13 @@ pub(crate) fn row_sized(
     }
     // 选中行用 sel 底色；文字保持正文色，sel-strong 与底色对比度不足。
     let foreground = design::text();
-    let mut labels = view()
-        .flex_1()
-        .min_w_0()
-        .flex_col()
-        .child(
-            text(move || caption())
-                .text_size(px(ui::BODY))
-                .line_height(px(ui::BODY_LINE))
-                .text_color(move || foreground)
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        );
+    let mut labels = view().flex_1().min_w_0().flex_col().child(
+        text(move || caption())
+            .text_size(px(ui::BODY))
+            .line_height(px(ui::BODY_LINE))
+            .text_color(move || foreground)
+            .text_overflow(nsh_core::EllipsizeMode::Tail),
+    );
     if let Some((hint, mono)) = subtitle {
         // 副标题只占一行，并且从左侧省略：路径的尾部（仓库目录名）比开头更有用。
         let mut line = text(move || hint())

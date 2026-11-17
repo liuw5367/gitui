@@ -67,9 +67,7 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
         {
             let cmd = cmd.clone();
             let value = settings.ssh_for_new_remotes;
-            move |_next: bool| {
-                cmd.update_settings(|settings| settings.ssh_for_new_remotes = !value)
-            }
+            move |_next: bool| cmd.update_settings(|settings| settings.ssh_for_new_remotes = !value)
         },
     );
     let ssh_row = setting_row(
@@ -176,7 +174,9 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
         ],
         {
             let cmd = cmd.clone();
-            Arc::new(move |id| cmd.update_settings(|settings| settings.external_editor = id.to_string()))
+            Arc::new(move |id| {
+                cmd.update_settings(|settings| settings.external_editor = id.to_string())
+            })
         },
     );
     let diff = select_control(

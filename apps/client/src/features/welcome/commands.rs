@@ -318,19 +318,15 @@ impl WelcomeCommands {
 pub(crate) fn localized_error(language: &str, error: &GitError) -> String {
     return match error {
         GitError::GitMissing => i18n::t(language, "welcome.error.gitMissing"),
-        GitError::NotARepository { path } => i18n::with_arguments(
-            language,
-            "welcome.error.notRepo",
-            &[("path", path.clone())],
-        ),
+        GitError::NotARepository { path } => {
+            i18n::with_arguments(language, "welcome.error.notRepo", &[("path", path.clone())])
+        }
         GitError::Unreadable { path, .. } => i18n::with_arguments(
             language,
             "welcome.error.unreadable",
             &[("path", path.clone())],
         ),
-        GitError::CommandFailed { .. } => {
-            i18n::t(language, "welcome.error.commandFailed")
-        }
+        GitError::CommandFailed { .. } => i18n::t(language, "welcome.error.commandFailed"),
         GitError::Spawn { program, .. } => i18n::with_arguments(
             language,
             "welcome.error.spawn",

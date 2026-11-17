@@ -25,15 +25,14 @@ pub(crate) mod key_value;
 pub(crate) mod menu;
 pub(crate) mod row;
 pub(crate) mod section;
+pub(crate) mod segmented;
 pub(crate) mod select;
 pub(crate) mod setting_row;
 pub(crate) mod split;
-pub(crate) mod segmented;
-pub(crate) mod tabs;
 pub(crate) mod table;
-pub(crate) mod tree;
+pub(crate) mod tabs;
 pub(crate) mod text_input;
-
+pub(crate) mod tree;
 
 // ---- 字号 ----
 
@@ -61,8 +60,10 @@ pub(crate) const TITLE_MEDIUM_LINE: f32 = 24.0;
 pub(crate) const PAGE_TITLE: f32 = 17.0;
 /// 表单页主标题行高。
 pub(crate) const PAGE_TITLE_LINE: f32 = 22.0;
-/// 面板与侧栏标题。
+/// 面板、侧栏与设置页分段标题。
 pub(crate) const TITLE: f32 = 15.0;
+/// 面板与设置页分段标题行高。
+pub(crate) const TITLE_LINE: f32 = 20.0;
 /// 等宽字体族。
 pub(crate) const MONO: &str = "SF Mono";
 
@@ -213,7 +214,12 @@ mod guard_tests {
         let mut rest = source;
         while let Some(index) = rest.find(needle) {
             let after = &rest[index + needle.len()..];
-            if after.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            if after
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_digit())
+                .unwrap_or(false)
+            {
                 return true;
             }
             rest = after;

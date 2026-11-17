@@ -84,11 +84,7 @@ pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement {
             &commit,
             &search,
         ))
-        .child(shell::op_banner(
-            language,
-            current,
-            &merge,
-        ))
+        .child(shell::op_banner(language, current, &merge))
         .child(shell::sync_banner(current))
         .child(
             view()
@@ -127,13 +123,13 @@ fn match_body(
     session: crate::features::SessionHandle,
     search: SearchCommands,
 ) -> impl IntoElement {
-    return view().w_full().h_full().flex_row().child(dynamic(
-        move || -> AnyElement {
+    return view()
+        .w_full()
+        .h_full()
+        .flex_row()
+        .child(dynamic(move || -> AnyElement {
             let tab = current.get();
-            let has_error = tab
-                .as_ref()
-                .map(|tab| tab.error.is_some())
-                .unwrap_or(false);
+            let has_error = tab.as_ref().map(|tab| tab.error.is_some()).unwrap_or(false);
             if has_error {
                 let detail = tab
                     .and_then(|tab| tab.error)
@@ -171,8 +167,7 @@ fn match_body(
                 search.clone(),
             )
             .into_element();
-        },
-    ));
+        }));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -211,7 +206,10 @@ fn body(
                 "compare.range",
                 &[("from", from_short), ("to", to_short)],
             );
-            (label, crate::features::history::ops::compare_patch(&tab).unwrap_or_default())
+            (
+                label,
+                crate::features::history::ops::compare_patch(&tab).unwrap_or_default(),
+            )
         }
         None => match tab.file_patch.clone() {
             Some((path, patch)) => (path, patch),
@@ -229,7 +227,8 @@ fn body(
     // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
     let refs_tab = signal(refs::state::RefsTab::Refs);
     let group_by_directory = settings_state.get_untracked().file_tree;
-    let tree_options = crate::app::session::TreeOptions::from_settings(&settings_state.get_untracked());
+    let tree_options =
+        crate::app::session::TreeOptions::from_settings(&settings_state.get_untracked());
     let commit_for_panel = commit.clone();
     let history_for_inspector = history.clone();
     let search_for_body = search.clone();
@@ -244,65 +243,56 @@ fn body(
             language,
             tab_for_sidebar,
         ))
-        .child(
-            view()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .flex_col()
-                .child(dynamic(move || -> AnyElement {
-                    match mode.get() {
-                        crate::Mode::History => view()
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .flex_col()
-                            .child(history_view::history(
-                                &history.state,
-                                &history,
-                                tab_for_history.clone(),
-                                &search_for_body,
-                                &refs,
-                            ))
-                            .child(diff::diff(
-                                &history.diff.state,
-                                &history.diff,
-                                language,
-                                label.clone(),
-                                patch.clone(),
-                            ))
-                            .into_element(),
-                        crate::Mode::Agent => view()
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .into_element(),
-                        crate::Mode::Blame => {
-                            crate::features::history::blame_view(language, tab_for_history.clone(), notice)
-                                .into_element()
-                        }
-                        crate::Mode::Refs => refs::view::refs_view(
-                            &refs.state,
+        .child(view().flex_1().min_w_0().h_full().flex_col().child(dynamic(
+            move || -> AnyElement {
+                match mode.get() {
+                    crate::Mode::History => view()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .flex_col()
+                        .child(history_view::history(
+                            &history.state,
+                            &history,
+                            tab_for_history.clone(),
+                            &search_for_body,
                             &refs,
+                        ))
+                        .child(diff::diff(
+                            &history.diff.state,
+                            &history.diff,
                             language,
-                            tab_for_changes.clone(),
-                            &search,
-                            refs_tab,
-                        )
+                            label.clone(),
+                            patch.clone(),
+                        ))
                         .into_element(),
-                        crate::Mode::Changes => {
-                            crate::features::changes::view::changes(
-                                &changes.state,
-                                &changes,
-                                tab_for_changes.clone(),
-                                group_by_directory,
-                                tree_options,
-                            )
-                            .into_element()
-                        }
-                    }
-                })),
-        )
+                    crate::Mode::Agent => view().w_full().flex_1().min_h_0().into_element(),
+                    crate::Mode::Blame => crate::features::history::blame_view(
+                        language,
+                        tab_for_history.clone(),
+                        notice,
+                    )
+                    .into_element(),
+                    crate::Mode::Refs => refs::view::refs_view(
+                        &refs.state,
+                        &refs,
+                        language,
+                        tab_for_changes.clone(),
+                        &search,
+                        refs_tab,
+                    )
+                    .into_element(),
+                    crate::Mode::Changes => crate::features::changes::view::changes(
+                        &changes.state,
+                        &changes,
+                        tab_for_changes.clone(),
+                        group_by_directory,
+                        tree_options,
+                    )
+                    .into_element(),
+                }
+            },
+        )))
         .child(dynamic(move || -> AnyElement {
             match mode.get() {
                 crate::Mode::History if inspector_visible => inspector::inspector(
@@ -376,26 +366,24 @@ fn error_panel(
                 .flex_row()
                 .gap(px(8.0))
                 .child(crate::ui::button::button(
-                                  
                     move || i18n::t(language.get().as_str(), "error.retry"),
-                                  crate::ui::button::ButtonVariant::Secondary,
-                                  crate::ui::button::ButtonSize::Regular,
-                                  false,
-                                  {
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Regular,
+                    false,
+                    {
                         let retry = retry.clone();
                         move || retry()
                     },
-                              ))
+                ))
                 .child(crate::ui::button::button(
-                                  
                     move || i18n::t(language.get().as_str(), "error.close"),
-                                  crate::ui::button::ButtonVariant::Secondary,
-                                  crate::ui::button::ButtonSize::Regular,
-                                  false,
-                                  {
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Regular,
+                    false,
+                    {
                         let welcome = welcome.clone();
                         move || welcome.go_welcome()
                     },
-                              )),
+                )),
         );
 }

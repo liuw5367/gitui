@@ -8,9 +8,9 @@
 
 use super::commands::MergeCommands;
 use super::state::MergeState;
+use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::app::session::Tab;
 use domain::conflict::{self, Side};
 use nsh_core::prelude::*;
 
@@ -243,26 +243,24 @@ pub(crate) fn conflict_view(
                                 )
                                 .child(view().flex_1())
                                 .child(crate::ui::button::button(
-                                           
                                     move || {
                                         i18n::t(language_value.get().as_str(), "conflicts.base")
                                     },
-                                           crate::ui::button::ButtonVariant::Secondary,
-                                           crate::ui::button::ButtonSize::Small,
-                                           false,
-                                           move || base_open.set(!base_open.get_untracked()),
-                                       ))
+                                    crate::ui::button::ButtonVariant::Secondary,
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    move || base_open.set(!base_open.get_untracked()),
+                                ))
                                 .child(crate::ui::button::button(
-                                           
                                     move || "‹".to_string(),
-                                           crate::ui::button::ButtonVariant::Secondary,
-                                           crate::ui::button::ButtonSize::Small,
-                                           false,
-                                           {
+                                    crate::ui::button::ButtonVariant::Secondary,
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    {
                                         let step = step.clone();
                                         move || step(false)
                                     },
-                                       ))
+                                ))
                                 .child(
                                     text(move || format!("{} / {}", index + 1, total.max(1)))
                                         .text_size(px(crate::ui::CODE))
@@ -270,27 +268,25 @@ pub(crate) fn conflict_view(
                                         .text_color(move || design::text3()),
                                 )
                                 .child(crate::ui::button::button(
-                                           
                                     move || "›".to_string(),
-                                           crate::ui::button::ButtonVariant::Secondary,
-                                           crate::ui::button::ButtonSize::Small,
-                                           false,
-                                           {
+                                    crate::ui::button::ButtonVariant::Secondary,
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    {
                                         let step = step.clone();
                                         move || step(true)
                                     },
-                                       ))
+                                ))
                                 .child(crate::ui::button::button(
-                                           
                                     move || i18n::t(language_value.get().as_str(), "common.close"),
-                                           crate::ui::button::ButtonVariant::Secondary,
-                                           crate::ui::button::ButtonSize::Small,
-                                           false,
-                                           {
+                                    crate::ui::button::ButtonVariant::Secondary,
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    {
                                         let close = close.clone();
                                         move || close()
                                     },
-                                       )),
+                                )),
                         ),
                 )
                 // `.merge-body`：左侧 224 文件列表 + 三栏。
@@ -332,21 +328,14 @@ pub(crate) fn conflict_view(
                                             .text_color(move || design::text2()),
                                         ),
                                 )
-                                .child(
-                                    view().w_full().flex_1().min_h_0().p(px(6.0)).child(
-                                        scroll().w_full().h_full().child(
-                                            view().w_full().flex_col().gap(px(1.0)).child(chips),
-                                        ),
+                                .child(view().w_full().flex_1().min_h_0().p(px(6.0)).child(
+                                    scroll().w_full().h_full().child(
+                                        view().w_full().flex_col().gap(px(1.0)).child(chips),
                                     ),
-                                ),
+                                )),
                         )
-                        .child(
-                            view()
-                                .flex_1()
-                                .min_w_0()
-                                .h_full()
-                                .p(px(12.0))
-                                .child(crate::ui::split::horizontal(vec![
+                        .child(view().flex_1().min_w_0().h_full().p(px(12.0)).child(
+                            crate::ui::split::horizontal(vec![
                                     crate::ui::split::Pane::flex(pane(
                                         language,
                                         "conflicts.ours",
@@ -403,48 +392,40 @@ pub(crate) fn conflict_view(
                                         "conflicts.theirs",
                                         side_text(conflict_text.as_str(), Side::Theirs),
                                     )),
-                                ])),
-                        ),
+                                ]),
+                        )),
                 )
                 // base 条：只在 diff3 风格有内容，且需要用户展开。
-                .child(
-                    view()
-                        .w_full()
-                        .px(px(12.0))
-                        .when(base_open.get(), |this| {
-                            let base = base_text(conflict_text.as_str());
-                            this.child(
-                                view()
-                                    .w_full()
-                                    .h(px(metrics::MERGE_BASE_H))
-                                    .flex_col()
-                                    .rounded(px(metrics::RADIUS_CONTROL))
-                                    .border_1()
-                                    .border_color(move || design::line_soft())
-                                    .bg(move || design::content())
-                                    .child(
-                                        text(move || {
-                                            i18n::t(
-                                                language_value.get().as_str(),
-                                                "conflicts.basePane",
-                                            )
-                                        })
-                                        .text_size(px(crate::ui::SECONDARY))
-                                        .px(px(8.0))
-                                        .py(px(4.0))
-                                        .text_color(move || design::text3()),
-                                    )
-                                    .child(
-                                        view().w_full().p(px(7.0)).child(
-                                            text(base)
-                                                .text_size(px(crate::ui::CODE))
-                                                .line_height(px(crate::ui::CODE_LINE))
-                                                .text_color(move || design::text2()),
-                                        ),
-                                    ),
+                .child(view().w_full().px(px(12.0)).when(base_open.get(), |this| {
+                    let base = base_text(conflict_text.as_str());
+                    this.child(
+                        view()
+                            .w_full()
+                            .h(px(metrics::MERGE_BASE_H))
+                            .flex_col()
+                            .rounded(px(metrics::RADIUS_CONTROL))
+                            .border_1()
+                            .border_color(move || design::line_soft())
+                            .bg(move || design::content())
+                            .child(
+                                text(move || {
+                                    i18n::t(language_value.get().as_str(), "conflicts.basePane")
+                                })
+                                .text_size(px(crate::ui::SECONDARY))
+                                .px(px(8.0))
+                                .py(px(4.0))
+                                .text_color(move || design::text3()),
                             )
-                        }),
-                )
+                            .child(
+                                view().w_full().p(px(7.0)).child(
+                                    text(base)
+                                        .text_size(px(crate::ui::CODE))
+                                        .line_height(px(crate::ui::CODE_LINE))
+                                        .text_color(move || design::text2()),
+                                ),
+                            ),
+                    )
+                }))
                 // 底部：接受一侧、标记、继续、放弃。
                 .child(
                     view()
@@ -460,56 +441,51 @@ pub(crate) fn conflict_view(
                         .border_t_1()
                         .border_color(move || design::line())
                         .child(crate::ui::button::button(
-                                   
                             move || i18n::t(language_value.get().as_str(), "conflicts.acceptOurs"),
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let apply_side = apply_side.clone();
                                 move || apply_side(Side::Ours)
                             },
-                               ))
+                        ))
                         .child(crate::ui::button::button(
-                                   
                             move || {
                                 i18n::t(language_value.get().as_str(), "conflicts.acceptTheirs")
                             },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let apply_side = apply_side.clone();
                                 move || apply_side(Side::Theirs)
                             },
-                               ))
+                        ))
                         .child(crate::ui::button::button(
-                                   
                             move || i18n::t(language_value.get().as_str(), "conflicts.acceptBoth"),
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let apply_side = apply_side.clone();
                                 move || apply_side(Side::Both)
                             },
-                               ))
+                        ))
                         .child(view().flex_1())
                         .child(crate::ui::button::button(
-                                   
                             move || {
                                 i18n::t(language_value.get().as_str(), "conflicts.markResolved")
                             },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let mark = mark.clone();
                                 move || mark()
                             },
-                               ))
+                        ))
                         .child(crate::ui::button::button(
-                                   
                             {
                                 let operation = operation.clone();
                                 move || {
@@ -520,10 +496,10 @@ pub(crate) fn conflict_view(
                                     )
                                 }
                             },
-                                   crate::ui::button::ButtonVariant::Primary,
-                                   crate::ui::button::ButtonSize::Regular,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Primary,
+                            crate::ui::button::ButtonSize::Regular,
+                            false,
+                            {
                                 let continue_op = continue_op.clone();
                                 move || {
                                     if can_continue {
@@ -531,9 +507,8 @@ pub(crate) fn conflict_view(
                                     }
                                 }
                             },
-                               ))
+                        ))
                         .child(crate::ui::button::button(
-                                   
                             {
                                 let operation = operation.clone();
                                 move || {
@@ -544,12 +519,12 @@ pub(crate) fn conflict_view(
                                     )
                                 }
                             },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   move || abort(),
-                               )),
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            move || abort(),
+                        )),
                 )
                 .into_element();
-        }))
+        }));
 }

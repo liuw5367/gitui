@@ -4,7 +4,7 @@ use domain::GitError;
 use std::path::Path;
 use std::process::Command;
 
-use crate::exec::{run_git, run_git_combined, truncate, MAX_DETAIL};
+use crate::exec::{MAX_DETAIL, run_git, run_git_combined, truncate};
 use crate::parse::summarise;
 use crate::query::Repo;
 
@@ -81,10 +81,13 @@ pub struct PushOptions {
 impl Repo {
     /// 从远程取回引用（`git fetch --prune <remote>`）。
     pub fn fetch(&self, remote: &str) -> Result<String, GitError> {
-        return self.fetch_with(remote, &FetchOptions {
-            prune: true,
-            ..FetchOptions::default()
-        });
+        return self.fetch_with(
+            remote,
+            &FetchOptions {
+                prune: true,
+                ..FetchOptions::default()
+            },
+        );
     }
 
     /// 带选项的取回：剪枝、标签、全部远端。
@@ -107,17 +110,11 @@ impl Repo {
 
     /// 上游新增的提交数（`HEAD..@{u}`）；没有上游时为 0。
     pub fn upstream_incoming(&self) -> u32 {
-        let output = match run_git(
-            &self.root,
-            &["rev-list", "--count", "HEAD..@{upstream}"],
-        ) {
+        let output = match run_git(&self.root, &["rev-list", "--count", "HEAD..@{upstream}"]) {
             Ok(output) => output,
             Err(_) => return 0,
         };
-        return String::from_utf8_lossy(&output)
-            .trim()
-            .parse()
-            .unwrap_or(0);
+        return String::from_utf8_lossy(&output).trim().parse().unwrap_or(0);
     }
 
     /// 拉取当前分支的上游（`git pull --ff-only`）。
@@ -155,7 +152,12 @@ impl Repo {
         let branch = self.abbrev_branch()?;
         let has_upstream = run_git(
             &self.root,
-            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+            &[
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{upstream}",
+            ],
         )
         .is_ok();
         let mut args: Vec<&str> = vec!["push"];
@@ -360,7 +362,8 @@ fn utc_year() -> i64 {
 ///
 /// 不写具体语言或框架的条目：初始化面板只提供一个通用勾选项，替用户决定技术栈
 /// 会在错误的时候写出错误的忽略规则。
-const DEFAULT_GITIGNORE: &str = "\n# macOS\n.DS_Store\n\n# Editors\n.idea/\n.vscode/\n\n# Logs\n*.log\n\n# Environment\n.env\n";
+const DEFAULT_GITIGNORE: &str =
+    "\n# macOS\n.DS_Store\n\n# Editors\n.idea/\n.vscode/\n\n# Logs\n*.log\n\n# Environment\n.env\n";
 
 /// MIT 许可正文；年份与版权人由调用处补在前两行。
 const MIT_BODY: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.";
@@ -381,11 +384,7 @@ pub struct CloneOptions {
 }
 
 /// 带选项的克隆。目录非空时直接报错，不覆盖已有内容。
-pub fn clone_with(
-    url: &str,
-    destination: &str,
-    options: &CloneOptions,
-) -> Result<(), GitError> {
+pub fn clone_with(url: &str, destination: &str, options: &CloneOptions) -> Result<(), GitError> {
     let destination_path = Path::new(destination);
     if destination_path.exists() {
         let empty = std::fs::read_dir(destination_path)
@@ -604,7 +603,6 @@ pub fn start_clone(
     });
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -634,12 +632,24 @@ mod tests {
         // 用第二个克隆向远程推一个新提交。
         let other_dir = TempDir::new("pull-other");
         let other = other_dir.path().display().to_string();
-        run_git(Path::new("."), &["clone", "-q", remote.as_str(), other.as_str()]).expect("clone");
+        run_git(
+            Path::new("."),
+            &["clone", "-q", remote.as_str(), other.as_str()],
+        )
+        .expect("clone");
         run_git(Path::new(other.as_str()), &["config", "user.name", "Other"]).expect("name");
-        run_git(Path::new(other.as_str()), &["config", "user.email", "o@example.com"]).expect("mail");
+        run_git(
+            Path::new(other.as_str()),
+            &["config", "user.email", "o@example.com"],
+        )
+        .expect("mail");
         std::fs::write(Path::new(other.as_str()).join("b.txt"), "b\n").expect("write");
         run_git(Path::new(other.as_str()), &["add", "-A"]).expect("add");
-        run_git(Path::new(other.as_str()), &["commit", "-q", "-m", "remote work"]).expect("commit");
+        run_git(
+            Path::new(other.as_str()),
+            &["commit", "-q", "-m", "remote work"],
+        )
+        .expect("commit");
         run_git(Path::new(other.as_str()), &["push", "-q", "origin", "main"]).expect("push");
 
         let repo = Repo::open(&path).expect("open");
@@ -659,9 +669,17 @@ mod tests {
         // 让远程前进，本地推送会被拒（non-fast-forward）。
         let other_dir = TempDir::new("pushfail-other");
         let other = other_dir.path().display().to_string();
-        run_git(Path::new("."), &["clone", "-q", remote.as_str(), other.as_str()]).expect("clone");
+        run_git(
+            Path::new("."),
+            &["clone", "-q", remote.as_str(), other.as_str()],
+        )
+        .expect("clone");
         run_git(Path::new(other.as_str()), &["config", "user.name", "Other"]).expect("name");
-        run_git(Path::new(other.as_str()), &["config", "user.email", "o@example.com"]).expect("mail");
+        run_git(
+            Path::new(other.as_str()),
+            &["config", "user.email", "o@example.com"],
+        )
+        .expect("mail");
         std::fs::write(Path::new(other.as_str()).join("c.txt"), "c\n").expect("write");
         run_git(Path::new(other.as_str()), &["add", "-A"]).expect("add");
         run_git(Path::new(other.as_str()), &["commit", "-q", "-m", "remote"]).expect("commit");
@@ -804,7 +822,10 @@ mod tests {
         assert!(license.contains("Copyright (c)"));
         let ignore = std::fs::read_to_string(target.join(".gitignore")).expect("ignore");
         assert!(ignore.contains(".DS_Store"));
-        assert!(!ignore.contains("DerivedData/"), "不再内置 Xcode/Swift 条目");
+        assert!(
+            !ignore.contains("DerivedData/"),
+            "不再内置 Xcode/Swift 条目"
+        );
     }
 
     #[test]

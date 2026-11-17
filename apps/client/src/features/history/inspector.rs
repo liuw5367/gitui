@@ -10,10 +10,10 @@
 
 use super::commands::HistoryCommands;
 use super::state::HistoryState;
+use crate::app::session::Tab;
 use crate::design;
 use crate::features::recovery::commands::RecoveryCommands;
 use crate::i18n;
-use crate::app::session::Tab;
 use nsh_core::prelude::*;
 
 /// 面板宽度（设计板 `.insp`）。
@@ -103,7 +103,6 @@ pub(crate) fn inspector(
                         crate::dates::format(language.get_untracked().as_str(), timestamp, now)
                     ))
                     .text_size(px(crate::ui::CODE))
-                    
                     .line_height(px(13.0))
                     .text_color(move || design::text3()),
                 )
@@ -177,15 +176,13 @@ pub(crate) fn inspector(
                 InspectorTab::Files => {
                     files_body(language, tab_for_body.clone(), select_file.clone()).into_element()
                 }
-                InspectorTab::Info => {
-                    info_body(
-                        language,
-                        tab_for_body.clone(),
-                        notice,
-                        recovery_for_body.clone(),
-                    )
-                    .into_element()
-                }
+                InspectorTab::Info => info_body(
+                    language,
+                    tab_for_body.clone(),
+                    notice,
+                    recovery_for_body.clone(),
+                )
+                .into_element(),
                 InspectorTab::Blame => blame_body(language, tab_for_body.clone()).into_element(),
             }
         }))
@@ -200,15 +197,14 @@ pub(crate) fn inspector(
                 .border_t_1()
                 .border_color(move || design::line())
                 .child(crate::ui::button::button(
-                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "files.copyPath")
                     },
-                           crate::ui::button::ButtonVariant::Secondary,
-                           crate::ui::button::ButtonSize::Small,
-                           false,
-                           {
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
                         let root = tab.path.clone();
                         let relative = selected_path.clone();
                         move || {
@@ -221,18 +217,17 @@ pub(crate) fn inspector(
                             }
                         }
                     },
-                       ))
+                ))
                 .child(view().flex_1())
                 .child(crate::ui::button::button(
-                           
                     {
                         let language = language;
                         move || i18n::t(language.get().as_str(), "files.openInEditor")
                     },
-                           crate::ui::button::ButtonVariant::Secondary,
-                           crate::ui::button::ButtonSize::Small,
-                           false,
-                           {
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
                         let root = tab.path.clone();
                         let relative = selected_path.clone();
                         move || {
@@ -245,7 +240,7 @@ pub(crate) fn inspector(
                             }
                         }
                     },
-                       )),
+                )),
         );
 }
 
@@ -293,7 +288,11 @@ fn files_body(
                 .items_center()
                 .gap(px(crate::ui::GAP_SM))
                 .px(px(crate::ui::GAP_SM))
-                .child(crate::ui::icon::icon_view("file", crate::ui::icon::IconSize::Compact, design::text3))
+                .child(crate::ui::icon::icon_view(
+                    "file",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                ))
                 .child(
                     text(file.path.clone())
                         .flex_1()
@@ -398,7 +397,6 @@ fn info_body(
                 .child(
                     text(value)
                         .text_size(px(crate::ui::CODE))
-                        
                         .line_height(px(14.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -426,60 +424,50 @@ fn info_body(
                         .border_t_1()
                         .border_color(move || design::line())
                         .child(crate::ui::button::button(
-                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "files.copySha")
                             },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let sha = sha_for_actions.clone();
-                                move || {
-                                    crate::shared::os::copy_text(
-                                        notice,
-                                        language,
-                                        sha.clone(),
-                                    )
-                                }
+                                move || crate::shared::os::copy_text(notice, language, sha.clone())
                             },
-                               ))
+                        ))
                         .child(crate::ui::button::button(
-                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "files.cherryPick")
                             },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let cherry_pick = recovery.clone();
                                 let sha = sha_for_actions.clone();
                                 move || cherry_pick.cherry_pick(sha.clone())
                             },
-                               ))
+                        ))
                         .child(crate::ui::button::button(
-                                   
                             {
                                 let language = language;
                                 move || i18n::t(language.get().as_str(), "files.revert")
                             },
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   {
+                            crate::ui::button::ButtonVariant::Secondary,
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
                                 let revert_commit = recovery.clone();
                                 let sha = sha_for_actions.clone();
                                 move || revert_commit.revert_commit(sha.clone())
                             },
-                               )),
+                        )),
                 ),
         )
         .into_element();
 }
-
 
 fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
     let now = store::now_unix();
@@ -503,7 +491,6 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                     text(short)
                         .w(px(52.0))
                         .text_size(px(crate::ui::CODE))
-                        
                         .line_height(px(12.0))
                         .text_color(move || design::text3()),
                 )
@@ -511,7 +498,6 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                     text(number.to_string())
                         .w(px(26.0))
                         .text_size(px(crate::ui::CODE))
-                        
                         .line_height(px(12.0))
                         .text_color(move || design::text3()),
                 )
@@ -519,7 +505,6 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                     text(text_value)
                         .flex_1()
                         .text_size(px(crate::ui::CODE))
-                        
                         .line_height(px(13.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Clip),
@@ -543,7 +528,6 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                 .child(
                     text(short)
                         .text_size(px(crate::ui::CODE))
-                        
                         .line_height(px(12.0))
                         .text_color(move || design::text3()),
                 )
@@ -556,11 +540,9 @@ fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
-                    text(move || {
-                        crate::dates::format(language.get().as_str(), timestamp, now)
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .text_color(move || design::text3()),
+                    text(move || crate::dates::format(language.get().as_str(), timestamp, now))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
                 )
                 .into_element(),
         );

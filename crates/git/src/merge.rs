@@ -36,10 +36,7 @@ impl Repo {
     ///
     /// 冲突时返回 `HookFailed`，日志里有 Git 的提示；操作状态由 `operation()` 读出。
     pub fn merge(&self, reference: &str) -> Result<String, GitError> {
-        let output = run_git_combined(
-            &self.root,
-            &["merge", "--no-edit", reference],
-        )?;
+        let output = run_git_combined(&self.root, &["merge", "--no-edit", reference])?;
         return Ok(summarise(&output));
     }
 
@@ -164,7 +161,6 @@ impl Repo {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,7 +235,8 @@ mod tests {
         repo.stage_all().expect("stage");
         let picked = repo.commit("add b", "").expect("commit").sha;
 
-        repo.checkout_new_branch("side", base.as_str()).expect("branch");
+        repo.checkout_new_branch("side", base.as_str())
+            .expect("branch");
         repo.cherry_pick(&picked).expect("cherry-pick");
         assert!(repo.root().join("b.txt").exists(), "拣选应带过来文件");
         assert_eq!(repo.log(1, "").expect("log")[0].summary, "add b");

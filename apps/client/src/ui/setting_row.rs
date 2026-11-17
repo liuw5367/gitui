@@ -16,6 +16,15 @@ use crate::design;
 use crate::ui;
 use nsh_core::prelude::*;
 
+/// 行内容区的上下内距（画板 `.set-row` 的 `padding:11px 0`）。
+const ROW_PAD_V: f32 = 11.0;
+/// 分段线到上一行内容的间距。上一行自带 [`ROW_PAD_V`] 的底部内距，所以这里只补差额。
+const SECTION_GAP_ABOVE: f32 = 9.0;
+/// 分段线到分段标题的间距。
+const SECTION_PAD_TOP: f32 = 16.0;
+/// 第一段（无分段线）与页面副标题的间距。
+const SECTION_GAP_FIRST: f32 = 14.0;
+
 /// 一行设置项。`divider` 为 false 时不留底部分隔线（用于一组里的最后一行）。
 pub(crate) fn setting_row(
     title: impl Fn() -> String + 'static,
@@ -23,17 +32,13 @@ pub(crate) fn setting_row(
     control: AnyElement,
     divider: bool,
 ) -> impl IntoElement {
-    let mut labels = view()
-        .flex_1()
-        .min_w_0()
-        .flex_col()
-        .child(
-            text(move || title())
-                .text_size(px(ui::BODY))
-                .line_height(px(ui::BODY_LINE))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(move || design::text()),
-        );
+    let mut labels = view().flex_1().min_w_0().flex_col().child(
+        text(move || title())
+            .text_size(px(ui::BODY))
+            .line_height(px(ui::BODY_LINE))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(move || design::text()),
+    );
     if let Some(hint_text) = hint {
         labels = labels.child(
             text(move || hint_text())
@@ -47,13 +52,11 @@ pub(crate) fn setting_row(
         .flex_row()
         .items_center()
         .gap(px(14.0))
-        .py(px(11.0))
+        .py(px(ROW_PAD_V))
         .child(labels)
         .child(view().flex_shrink_0().child(control));
     if divider {
-        row = row
-            .border_b_1()
-            .border_color(move || design::line_soft());
+        row = row.border_b_1().border_color(move || design::line_soft());
     }
     return row;
 }
@@ -120,24 +123,48 @@ pub(crate) fn settings_section(
     hint: Option<Box<dyn Fn() -> String>>,
     body: impl IntoElement,
 ) -> impl IntoElement {
+    return settings_section_titled(first, title, None, hint, body);
+}
+
+/// 设置页的一段，`trailing` 显示在段标题右侧（快捷键分组的分段计数）。
+///
+/// 非首段的分段线在视觉上要上下等距：上一段最后一行自带 `ROW_PAD_V` 的底部
+/// 内距，所以这里的上边距比下内距小，靠 [`ROW_PAD_V`] 补足差额。
+pub(crate) fn settings_section_titled(
+    first: bool,
+    title: impl Fn() -> String + 'static,
+    trailing: Option<AnyElement>,
+    hint: Option<Box<dyn Fn() -> String>>,
+    body: impl IntoElement,
+) -> impl IntoElement {
     let mut section = view().w_full().flex_col();
     if first {
-        section = section.mt(px(14.0));
+        section = section.mt(px(SECTION_GAP_FIRST));
     } else {
         section = section
-            .mt(px(20.0))
-            .pt(px(16.0))
+            .mt(px(SECTION_GAP_ABOVE))
+            .pt(px(SECTION_PAD_TOP))
             .border_t_1()
             .border_color(move || design::line());
     }
     let has_hint = hint.is_some();
-    let mut head = view().w_full().flex_col().gap(px(2.0)).child(
-        text(move || title())
-            .text_size(px(ui::BODY))
-            .line_height(px(ui::BODY_LINE))
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(move || design::text()),
-    );
+    let has_trailing = trailing.is_some();
+    let mut title_row = view()
+        .w_full()
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_SM))
+        .child(
+            text(move || title())
+                .text_size(px(ui::TITLE))
+                .line_height(px(ui::TITLE_LINE))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(move || design::text()),
+        );
+    if let Some(trailing) = trailing {
+        title_row = title_row.child(trailing);
+    }
+    let mut head = view().w_full().flex_col().gap(px(2.0)).child(title_row);
     if let Some(hint) = hint {
         head = head.child(
             text(move || hint())
@@ -146,7 +173,15 @@ pub(crate) fn settings_section(
                 .text_color(move || design::text3()),
         );
     }
+    // 带分段计数的分组没有说明行，正文与标题之间留一点距离即可。
+    let body_gap = if has_hint {
+        12.0
+    } else if has_trailing {
+        6.0
+    } else {
+        2.0
+    };
     return section
         .child(head)
-        .child(view().w_full().mt(px(if has_hint { 12.0 } else { 2.0 })).child(body));
+        .child(view().w_full().mt(px(body_gap)).child(body));
 }

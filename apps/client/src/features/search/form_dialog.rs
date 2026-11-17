@@ -141,143 +141,139 @@ pub(crate) fn form_dialog(
             let form_for_flag = form.clone();
             return crate::ui::dialog::modality(
                 view()
-                .w(px(420.0))
-                .p(px(16.0))
-                .flex_col()
-                .gap(px(10.0))
-                .rounded(px(metrics::RADIUS_PANEL))
-                .border_1()
-                .border_color(move || design::line())
-                .bg(move || design::token("popover"))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), form.kind.title()))
-                        .text_size(px(crate::ui::TITLE))
-                        .font_weight(FontWeight(600))
-                        .line_height(px(18.0))
-                        .text_color(move || design::text()),
-                )
-                .child(field(
-                    language,
-                    form.kind.first_label(),
-                    form_for_field_one.clone(),
-                    |state: &FormState| state.first.clone(),
-                    {
-                        let form = form_for_field_one.clone();
-                        move |text: String| {
-                            let mut next = form.clone();
-                            next.first = text;
-                            state.set(Some(next));
-                        }
-                    },
-                ))
-                .child(dynamic(move || -> AnyElement {
-                    let Some(label_key) = form.kind.second_label() else {
-                        return view().w_full().h(px(0.0)).into_element();
-                    };
-                    return field(
+                    .w(px(420.0))
+                    .p(px(16.0))
+                    .flex_col()
+                    .gap(px(10.0))
+                    .rounded(px(metrics::RADIUS_PANEL))
+                    .border_1()
+                    .border_color(move || design::line())
+                    .bg(move || design::token("popover"))
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), form.kind.title()))
+                            .text_size(px(crate::ui::TITLE))
+                            .font_weight(FontWeight(600))
+                            .line_height(px(18.0))
+                            .text_color(move || design::text()),
+                    )
+                    .child(field(
                         language,
-                        label_key,
-                        form_for_field_two.clone(),
-                        |state: &FormState| state.second.clone(),
+                        form.kind.first_label(),
+                        form_for_field_one.clone(),
+                        |state: &FormState| state.first.clone(),
                         {
-                            let state = state;
-                            let form = form_for_field_two.clone();
+                            let form = form_for_field_one.clone();
                             move |text: String| {
                                 let mut next = form.clone();
-                                next.second = text;
+                                next.first = text;
                                 state.set(Some(next));
                             }
                         },
-                    )
-                    .into_element();
-                }))
-                .child(dynamic(move || -> AnyElement {
-                    let Some(label_key) = form.kind.third_label() else {
-                        return view().w_full().h(px(0.0)).into_element();
-                    };
-                    let form_for_third = form_for_third.clone();
-                    return field(
-                        language,
-                        label_key,
-                        form_for_third.clone(),
-                        |state: &FormState| state.third.clone(),
-                        {
-                            let state = state;
-                            let form = form_for_third.clone();
-                            move |text: String| {
-                                let mut next = form.clone();
-                                next.third = text;
-                                state.set(Some(next));
-                            }
-                        },
-                    )
-                    .into_element();
-                }))
-                .child(dynamic(move || -> AnyElement {
-                    let Some(label_key) = form.kind.flag_label() else {
-                        return view().w_full().h(px(0.0)).into_element();
-                    };
-                    let form_for_flag = form_for_flag.clone();
-                    return flag_row(language, label_key, form_for_flag, state).into_element();
-                }))
-                .child(
-                    view()
-                        .w_full()
-                        .h(move || {
-                            if state
-                                .get()
-                                .map(|form| form.error.is_some())
-                                .unwrap_or(false)
+                    ))
+                    .child(dynamic(move || -> AnyElement {
+                        let Some(label_key) = form.kind.second_label() else {
+                            return view().w_full().h(px(0.0)).into_element();
+                        };
+                        return field(
+                            language,
+                            label_key,
+                            form_for_field_two.clone(),
+                            |state: &FormState| state.second.clone(),
                             {
-                                px(16.0)
-                            } else {
-                                px(0.0)
-                            }
-                        })
-                        .overflow_hidden()
-                        .items_center()
-                        .child(
-                            text(move || {
-                                state
+                                let state = state;
+                                let form = form_for_field_two.clone();
+                                move |text: String| {
+                                    let mut next = form.clone();
+                                    next.second = text;
+                                    state.set(Some(next));
+                                }
+                            },
+                        )
+                        .into_element();
+                    }))
+                    .child(dynamic(move || -> AnyElement {
+                        let Some(label_key) = form.kind.third_label() else {
+                            return view().w_full().h(px(0.0)).into_element();
+                        };
+                        let form_for_third = form_for_third.clone();
+                        return field(
+                            language,
+                            label_key,
+                            form_for_third.clone(),
+                            |state: &FormState| state.third.clone(),
+                            {
+                                let state = state;
+                                let form = form_for_third.clone();
+                                move |text: String| {
+                                    let mut next = form.clone();
+                                    next.third = text;
+                                    state.set(Some(next));
+                                }
+                            },
+                        )
+                        .into_element();
+                    }))
+                    .child(dynamic(move || -> AnyElement {
+                        let Some(label_key) = form.kind.flag_label() else {
+                            return view().w_full().h(px(0.0)).into_element();
+                        };
+                        let form_for_flag = form_for_flag.clone();
+                        return flag_row(language, label_key, form_for_flag, state).into_element();
+                    }))
+                    .child(
+                        view()
+                            .w_full()
+                            .h(move || {
+                                if state
                                     .get()
-                                    .and_then(|form| form.error)
-                                    .unwrap_or_default()
+                                    .map(|form| form.error.is_some())
+                                    .unwrap_or(false)
+                                {
+                                    px(16.0)
+                                } else {
+                                    px(0.0)
+                                }
                             })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::danger()),
-                        ),
-                )
-                .child(
-                    view()
-                        .w_full()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(view().flex_1())
-                        .child(crate::ui::button::button(
-                            move || i18n::t(language.get().as_str(), "common.cancel"),
-                            crate::ui::button::ButtonVariant::Secondary,
-                            crate::ui::button::ButtonSize::Regular,
-                            false,
-                            {
-                                let on_cancel = on_cancel.clone();
-                                move || on_cancel()
-                            },
-                        ))
-                        .child(crate::ui::button::button(
-                                          
-                            move || i18n::t(language.get().as_str(), form.kind.confirm()),
-                                          crate::ui::button::ButtonVariant::Primary,
-                                          crate::ui::button::ButtonSize::Regular,
-                                          false,
-                                          {
-                                let on_submit = on_submit.clone();
-                                move || on_submit(submit_form.clone())
-                            },
-                                      )),
-                )
-                .into_element(),
+                            .overflow_hidden()
+                            .items_center()
+                            .child(
+                                text(move || {
+                                    state.get().and_then(|form| form.error).unwrap_or_default()
+                                })
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
+                                .text_color(move || design::danger()),
+                            ),
+                    )
+                    .child(
+                        view()
+                            .w_full()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(view().flex_1())
+                            .child(crate::ui::button::button(
+                                move || i18n::t(language.get().as_str(), "common.cancel"),
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Regular,
+                                false,
+                                {
+                                    let on_cancel = on_cancel.clone();
+                                    move || on_cancel()
+                                },
+                            ))
+                            .child(crate::ui::button::button(
+                                move || i18n::t(language.get().as_str(), form.kind.confirm()),
+                                crate::ui::button::ButtonVariant::Primary,
+                                crate::ui::button::ButtonSize::Regular,
+                                false,
+                                {
+                                    let on_submit = on_submit.clone();
+                                    move || on_submit(submit_form.clone())
+                                },
+                            )),
+                    )
+                    .into_element(),
             )
             .into_element();
         }),
@@ -300,19 +296,16 @@ fn flag_row(
             state.set(Some(updated));
         }
     };
-    return view()
-        .w_full()
-        .h(px(22.0))
-        .flex_row()
-        .items_center()
-        .child(crate::ui::check::check_inline(
+    return view().w_full().h(px(22.0)).flex_row().items_center().child(
+        crate::ui::check::check_inline(
             move || i18n::t(language.get().as_str(), label_key),
             form.flag,
             22.0,
             14.0,
             false,
             toggle,
-        ));
+        ),
+    );
 }
 
 fn field(

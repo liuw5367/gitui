@@ -62,7 +62,7 @@ impl GitError {
     pub fn detail(&self) -> String {
         match self {
             GitError::GitMissing => {
-                return "请安装 Git，或在设置中指定 git 可执行文件路径".to_string()
+                return "请安装 Git，或在设置中指定 git 可执行文件路径".to_string();
             }
             GitError::NotARepository { path } => {
                 return format!("{} 不是 Git 仓库", path);

@@ -170,7 +170,6 @@ impl Repo {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,7 +204,10 @@ mod tests {
         std::fs::write(repo.root().join("a.txt"), "changed\n").expect("write");
 
         repo.stash_push("wip").expect("stash");
-        assert!(repo.status().expect("status").is_empty(), "贮藏后工作区应干净");
+        assert!(
+            repo.status().expect("status").is_empty(),
+            "贮藏后工作区应干净"
+        );
         let stashes = repo.refs().expect("refs").stashes;
         assert_eq!(stashes.len(), 1);
         assert!(stashes[0].summary.contains("wip"));
@@ -227,12 +229,13 @@ mod tests {
         repo.checkout_new_branch("topic/one", head.as_str())
             .expect("checkout -b");
         assert_eq!(repo.abbrev_branch().expect("branch"), "topic/one");
-        assert!(repo
-            .refs()
-            .expect("refs")
-            .branches
-            .iter()
-            .any(|branch| branch.name == "topic/one" && branch.current));
+        assert!(
+            repo.refs()
+                .expect("refs")
+                .branches
+                .iter()
+                .any(|branch| branch.name == "topic/one" && branch.current)
+        );
     }
 
     #[test]
@@ -247,22 +250,25 @@ mod tests {
         // 当前分支不能删除。
         let error = repo.delete_branch("feature").expect_err("refuse current");
         assert!(error.detail().contains("当前分支"), "{}", error.detail());
-        assert!(repo
-            .refs()
-            .expect("refs")
-            .branches
-            .iter()
-            .any(|branch| branch.name == "feature"));
+        assert!(
+            repo.refs()
+                .expect("refs")
+                .branches
+                .iter()
+                .any(|branch| branch.name == "feature")
+        );
 
         // 切回去之后可以删。
         repo.checkout_branch("main").expect("checkout main");
         repo.delete_branch("feature").expect("delete");
-        assert!(!repo
-            .refs()
-            .expect("refs")
-            .branches
-            .iter()
-            .any(|branch| branch.name == "feature"));
+        assert!(
+            !repo
+                .refs()
+                .expect("refs")
+                .branches
+                .iter()
+                .any(|branch| branch.name == "feature")
+        );
     }
 
     #[test]
@@ -274,12 +280,17 @@ mod tests {
 
         let entries = repo.refs().expect("refs").stashes;
         assert_eq!(entries.len(), 1);
-        repo.stash_apply(entries[0].reference.as_str()).expect("apply");
+        repo.stash_apply(entries[0].reference.as_str())
+            .expect("apply");
         assert_eq!(
             std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
             "two\n"
         );
-        assert_eq!(repo.refs().expect("refs").stashes.len(), 1, "apply 不删除贮藏");
+        assert_eq!(
+            repo.refs().expect("refs").stashes.len(),
+            1,
+            "apply 不删除贮藏"
+        );
 
         repo.rename_branch("main", "renamed").expect("rename");
         assert_eq!(repo.abbrev_branch().expect("branch"), "renamed");
@@ -294,7 +305,10 @@ mod tests {
         repo.set_remote_url("origin", "git@example.com:b.git")
             .expect("set-url");
         let url = run_git(repo.root(), &["remote", "get-url", "origin"]).expect("get-url");
-        assert_eq!(String::from_utf8_lossy(&url).trim(), "git@example.com:b.git");
+        assert_eq!(
+            String::from_utf8_lossy(&url).trim(),
+            "git@example.com:b.git"
+        );
     }
 
     #[test]
@@ -316,7 +330,8 @@ mod tests {
         let lightweight = run_git(repo.root(), &["cat-file", "-t", "v2"]).expect("type");
         assert_eq!(String::from_utf8_lossy(&lightweight).trim(), "commit");
         // 没给说明的附注标签用标签名兜底，不会卡在编辑器上。
-        repo.create_tag_with("v3", None, "  ", true).expect("fallback");
+        repo.create_tag_with("v3", None, "  ", true)
+            .expect("fallback");
         let fallback = run_git(repo.root(), &["tag", "-l", "-n1", "v3"]).expect("message");
         assert!(String::from_utf8_lossy(&fallback).contains("v3"));
     }
@@ -331,7 +346,8 @@ mod tests {
         std::fs::write(repo.root().join("tracked.txt"), "changed again\n").expect("write");
         std::fs::write(repo.root().join("loose.txt"), "untracked\n").expect("write");
 
-        repo.stash_push_with("without untracked", false).expect("stash");
+        repo.stash_push_with("without untracked", false)
+            .expect("stash");
         assert!(
             repo.root().join("loose.txt").exists(),
             "未跟踪文件应留在工作区"

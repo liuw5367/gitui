@@ -199,19 +199,13 @@ impl Repo {
     pub fn commits_between(&self, base: &str, target: &str) -> Result<Vec<Commit>, GitError> {
         let range = format!("{}..{}", base, target);
         let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
-        let output = run_git(
-            &self.root,
-            &["log", "--date=unix", format, range.as_str()],
-        )?;
+        let output = run_git(&self.root, &["log", "--date=unix", format, range.as_str()])?;
         return parse_log(&String::from_utf8_lossy(&output));
     }
 
     /// 一个文件的逐行归属（`git blame --line-porcelain`）。
     pub fn blame(&self, path: &str) -> Result<Vec<BlameLine>, GitError> {
-        let output = run_git(
-            &self.root,
-            &["blame", "--line-porcelain", "--", path],
-        )?;
+        let output = run_git(&self.root, &["blame", "--line-porcelain", "--", path])?;
         let text = String::from_utf8_lossy(&output);
         let mut lines: Vec<BlameLine> = Vec::new();
         let mut sha = String::new();
@@ -293,7 +287,10 @@ impl Repo {
             }
             let short = fields.next().unwrap_or("").to_string();
             let subject = fields.next().unwrap_or("").to_string();
-            let timestamp = fields.next().and_then(|value| value.parse().ok()).unwrap_or(0);
+            let timestamp = fields
+                .next()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(0);
             // `%gs` 形如 `commit: message`、`reset: moving to HEAD~1`。
             let (action, summary) = match subject.split_once(portable_separator()) {
                 Some((action, summary)) => (action.trim().to_string(), summary.trim().to_string()),
@@ -311,7 +308,6 @@ impl Repo {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,7 +318,11 @@ mod tests {
     fn log_reads_commits_newest_first() {
         let (_guard, path) = fixture("log", &[("a.txt", "one\n")], "first commit");
         let repo = Repo::open(&path).expect("open");
-        run_git(repo.root(), &["commit", "-q", "--allow-empty", "-m", "second commit"]).expect("commit");
+        run_git(
+            repo.root(),
+            &["commit", "-q", "--allow-empty", "-m", "second commit"],
+        )
+        .expect("commit");
         let commits = repo.log(10, "").expect("log");
         assert_eq!(commits.len(), 2);
         assert_eq!(commits[0].summary, "second commit");
@@ -337,7 +337,11 @@ mod tests {
     fn log_filters_by_query() {
         let (_guard, path) = fixture("filter", &[("a.txt", "one\n")], "add parser");
         let repo = Repo::open(&path).expect("open");
-        run_git(repo.root(), &["commit", "-q", "--allow-empty", "-m", "fix runner"]).expect("commit");
+        run_git(
+            repo.root(),
+            &["commit", "-q", "--allow-empty", "-m", "fix runner"],
+        )
+        .expect("commit");
         let commits = repo.log(10, "parser").expect("log");
         assert_eq!(commits.len(), 1);
         assert_eq!(commits[0].summary, "add parser");
@@ -350,7 +354,11 @@ mod tests {
         let (_guard, path) = fixture("filtered", &[("a.txt", "one\n")], "first");
         let repo = Repo::open(&path).expect("open");
         run_git(repo.root(), &["checkout", "-q", "-b", "side"]).expect("checkout");
-        run_git(repo.root(), &["commit", "-q", "--allow-empty", "-m", "side work"]).expect("commit");
+        run_git(
+            repo.root(),
+            &["commit", "-q", "--allow-empty", "-m", "side work"],
+        )
+        .expect("commit");
         run_git(repo.root(), &["checkout", "-q", "main"]).expect("checkout");
 
         let only_side = repo
@@ -394,7 +402,15 @@ mod tests {
         let repo = Repo::open(&path).expect("open");
         run_git(
             repo.root(),
-            &["-c", "user.name=Other", "commit", "-q", "--allow-empty", "-m", "second"],
+            &[
+                "-c",
+                "user.name=Other",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "second",
+            ],
         )
         .expect("commit");
         let authors = repo.authors().expect("authors");

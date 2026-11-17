@@ -64,6 +64,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | `row` | `ui/row.rs` | `nsh_base::button` | 单行 28 / 双行 44 | selected、hover、focus、disabled |
 | `badge` / `count` / `kbd` | `ui/badge.rs` | `view` + `text` | 高 18；`Tone` 五档 | — |
 | `setting_row` / `read_only_row` | `ui/setting_row.rs` | `view` + `text` | 最小高 36 | 有/无说明、有/无分隔线 |
+| `settings_section` / `settings_section_titled` | `ui/setting_row.rs` | `view` + `text` | 段标题 15/600；分段线到上一行 9、到标题 16（上一行自带 11 底内距） | 首段无分段线；标题右侧可带分段计数 |
 | `pane_header` / `section_label` / `empty` / `skeleton_row` | `ui/section.rs` | `view` + `text` | 28 / 24 | — |
 | `banner` / `banner_sized` / `progress` / `card` | `ui/feedback.rs` | `nsh_base::progress` | `BannerTone` 六档：Info / Warning / Danger / Accent / Neutral / Highlight | 确定与不确定进度 |
 | `dialog` / `scrim` / `modality` / `confirm_destructive` / `notice` | `ui/dialog.rs` | `view` + 遮罩 | 页头 44、页脚 48、正文内距 16，最大高 760 | — |

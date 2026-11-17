@@ -5,9 +5,9 @@
 
 use super::commands::CommitCommands;
 use super::state::CommitState;
+use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::app::session::Tab;
 use nsh_core::prelude::*;
 
 /// 日志弹层：居中、可滚动、Esc 或点背景关闭。
@@ -43,69 +43,67 @@ pub(crate) fn hook_sheet(
             let log_for_copy = log.clone();
             return crate::ui::dialog::modality(
                 view()
-                .w(px(560.0))
-                .h(px(420.0))
-                .flex_col()
-                .rounded(px(12.0))
-                .border_1()
-                .border_color(move || design::line())
-                .bg(move || design::token("popover"))
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(metrics::DIALOG_HEAD_H))
-                        .flex_shrink_0()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .px(px(14.0))
-                        .bg(move || design::panel())
-                        .border_b_1()
-                        .border_color(move || design::line())
-                        .child(
-                            text(move || {
-                                i18n::t(language_value.get().as_str(), "commit.logTitle")
-                            })
-                            .text_size(px(crate::ui::BODY))
-                            .font_weight(FontWeight(600))
-                            .line_height(px(16.0))
-                            .text_color(move || design::text()),
-                        )
-                        .child(view().flex_1())
-                        .child(crate::ui::button::button(
-                                   
-                            move || i18n::t(language_value.get().as_str(), "common.copy"),
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   move || {
-                                       crate::shared::os::copy_text(
-                                           notice,
-                                           language_value,
-                                           log_for_copy.clone(),
-                                       )
-                                   },
-                               ))
-                        .child(crate::ui::button::button(
-                                   
-                            move || i18n::t(language_value.get().as_str(), "common.close"),
-                                   crate::ui::button::ButtonVariant::Secondary,
-                                   crate::ui::button::ButtonSize::Small,
-                                   false,
-                                   move || close_button(false),
-                               )),
-                )
-                .child(
-                    view().w_full().flex_1().min_h_0().p(px(12.0)).child(
-                        scroll().w_full().h_full().child(
-                            text(log)
-                                .text_size(px(crate::ui::CODE))
-                                .line_height(px(crate::ui::CODE_LINE))
-                                .text_color(move || design::text2()),
+                    .w(px(560.0))
+                    .h(px(420.0))
+                    .flex_col()
+                    .rounded(px(12.0))
+                    .border_1()
+                    .border_color(move || design::line())
+                    .bg(move || design::token("popover"))
+                    .child(
+                        view()
+                            .w_full()
+                            .h(px(metrics::DIALOG_HEAD_H))
+                            .flex_shrink_0()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .px(px(14.0))
+                            .bg(move || design::panel())
+                            .border_b_1()
+                            .border_color(move || design::line())
+                            .child(
+                                text(move || {
+                                    i18n::t(language_value.get().as_str(), "commit.logTitle")
+                                })
+                                .text_size(px(crate::ui::BODY))
+                                .font_weight(FontWeight(600))
+                                .line_height(px(16.0))
+                                .text_color(move || design::text()),
+                            )
+                            .child(view().flex_1())
+                            .child(crate::ui::button::button(
+                                move || i18n::t(language_value.get().as_str(), "common.copy"),
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                move || {
+                                    crate::shared::os::copy_text(
+                                        notice,
+                                        language_value,
+                                        log_for_copy.clone(),
+                                    )
+                                },
+                            ))
+                            .child(crate::ui::button::button(
+                                move || i18n::t(language_value.get().as_str(), "common.close"),
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                move || close_button(false),
+                            )),
+                    )
+                    .child(
+                        view().w_full().flex_1().min_h_0().p(px(12.0)).child(
+                            scroll().w_full().h_full().child(
+                                text(log)
+                                    .text_size(px(crate::ui::CODE))
+                                    .line_height(px(crate::ui::CODE_LINE))
+                                    .text_color(move || design::text2()),
+                            ),
                         ),
-                    ),
-                )
-                .into_element(),
+                    )
+                    .into_element(),
             )
             .into_element();
         }),

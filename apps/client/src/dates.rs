@@ -35,7 +35,10 @@ fn decode(value: u8) -> i18n::DateStyle {
 
 /// 从持久化的字符串装上当前设置。
 pub fn load(style_id: &str, pattern: &str) {
-    STYLE.store(encode(i18n::DateStyle::from_id(style_id)), Ordering::Relaxed);
+    STYLE.store(
+        encode(i18n::DateStyle::from_id(style_id)),
+        Ordering::Relaxed,
+    );
     set_pattern(pattern);
 }
 
@@ -58,10 +61,7 @@ pub fn set_pattern(pattern: &str) {
 
 /// 当前 pattern（拿不到锁时返回空串，渲染退回默认格式）。
 pub fn pattern() -> String {
-    return PATTERN
-        .lock()
-        .map(|slot| slot.clone())
-        .unwrap_or_default();
+    return PATTERN.lock().map(|slot| slot.clone()).unwrap_or_default();
 }
 
 /// 按当前设置格式化时间戳。

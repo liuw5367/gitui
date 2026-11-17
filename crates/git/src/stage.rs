@@ -61,7 +61,6 @@ impl Repo {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,18 +107,22 @@ mod tests {
 
         repo.unstage(&["a.txt".to_string()]).expect("unstage");
         let entries = repo.status().expect("status");
-        let a = entries.iter().find(|entry| entry.path == "a.txt").expect("a");
+        let a = entries
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a");
         assert!(!a.is_staged());
         assert!(a.is_unstaged());
 
         repo.stage(&["a.txt".to_string()]).expect("stage");
-        assert!(repo
-            .status()
-            .expect("status")
-            .iter()
-            .find(|entry| entry.path == "a.txt")
-            .expect("a")
-            .is_staged());
+        assert!(
+            repo.status()
+                .expect("status")
+                .iter()
+                .find(|entry| entry.path == "a.txt")
+                .expect("a")
+                .is_staged()
+        );
     }
 
     #[test]
@@ -127,7 +130,12 @@ mod tests {
         let (_guard, path) = fixture("discard", &[("a.txt", "one\n")], "base");
         let repo = Repo::open(&path).expect("open");
         std::fs::write(repo.root().join("a.txt"), "changed\n").expect("write");
-        assert!(repo.status().expect("status").iter().any(|entry| entry.is_unstaged()));
+        assert!(
+            repo.status()
+                .expect("status")
+                .iter()
+                .any(|entry| entry.is_unstaged())
+        );
 
         repo.discard(&["a.txt".to_string()]).expect("discard");
         assert_eq!(
@@ -146,8 +154,11 @@ mod tests {
         let mut changed: Vec<String> = (1..=30).map(|index| format!("line{index}")).collect();
         changed[1] = "line2-changed".to_string();
         changed[27] = "line28-changed".to_string();
-        std::fs::write(repo.root().join("f.txt"), format!("{}\n", changed.join("\n")))
-            .expect("write");
+        std::fs::write(
+            repo.root().join("f.txt"),
+            format!("{}\n", changed.join("\n")),
+        )
+        .expect("write");
         let patch = run_git(repo.root(), &["diff", "--", "f.txt"]).expect("diff");
         let patch = String::from_utf8_lossy(&patch).to_string();
 
@@ -157,7 +168,8 @@ mod tests {
 
         // 只应用第二个 hunk。
         let only_second = sections.hunk_patch(0, 1).expect("第二个 hunk");
-        repo.apply_cached(only_second.as_str(), false).expect("apply");
+        repo.apply_cached(only_second.as_str(), false)
+            .expect("apply");
 
         let staged = run_git(repo.root(), &["diff", "--cached"]).expect("cached");
         let staged = String::from_utf8_lossy(&staged).to_string();
@@ -177,8 +189,11 @@ mod tests {
         let mut changed: Vec<String> = (1..=10).map(|index| format!("line{index}")).collect();
         // 在 5 和 6 之间插入一行。
         changed.insert(5, "inserted".to_string());
-        std::fs::write(repo.root().join("f.txt"), format!("{}\n", changed.join("\n")))
-            .expect("write");
+        std::fs::write(
+            repo.root().join("f.txt"),
+            format!("{}\n", changed.join("\n")),
+        )
+        .expect("write");
         let patch = run_git(repo.root(), &["diff", "--", "f.txt"]).expect("diff");
         let patch = String::from_utf8_lossy(&patch).to_string();
         let sections = domain::stage::Sections::parse(patch.as_str());
@@ -224,6 +239,9 @@ mod tests {
         let only = sections.hunk_patch(0, 0).expect("hunk");
         repo.apply_cached(only.as_str(), true).expect("reverse");
         let after = run_git(repo.root(), &["diff", "--cached", "--", "f.txt"]).expect("diff");
-        assert!(String::from_utf8_lossy(&after).trim().is_empty(), "应已取消暂存");
+        assert!(
+            String::from_utf8_lossy(&after).trim().is_empty(),
+            "应已取消暂存"
+        );
     }
 }

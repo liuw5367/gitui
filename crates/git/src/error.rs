@@ -31,11 +31,17 @@ pub fn classify_network_error(detail: &str) -> Option<NetworkFault> {
         "failed to connect",
         "no route to host",
     ];
-    if offline_markers.iter().any(|marker| lowered.contains(marker)) {
+    if offline_markers
+        .iter()
+        .any(|marker| lowered.contains(marker))
+    {
         return Some(NetworkFault::Offline);
     }
     let rejection_markers = ["non-fast-forward", "rejected", "fetch first"];
-    if rejection_markers.iter().any(|marker| lowered.contains(marker)) {
+    if rejection_markers
+        .iter()
+        .any(|marker| lowered.contains(marker))
+    {
         return Some(NetworkFault::Rejected);
     }
     return None;

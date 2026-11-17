@@ -169,6 +169,7 @@ impl MergeCommands {
             crate::i18n::t(language_now.as_str(), "confirm.abortMessage"),
             "abort",
             crate::i18n::t(language_now.as_str(), "confirm.abortAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
         spawn(async move {

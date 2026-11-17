@@ -12,7 +12,7 @@ pub(crate) mod ops;
 pub(crate) mod state;
 pub(crate) mod view;
 
-pub(crate) use form_dialog::{form_dialog, FormKind, FormState};
+pub(crate) use form_dialog::{FormKind, FormState, form_dialog};
 
 /// 表单浮层的现成接线：提交与取消都交给搜索用例。
 ///

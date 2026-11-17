@@ -22,10 +22,7 @@ pub(super) fn about(
         &[
             ("version", brand::VERSION.to_string()),
             ("build", brand::BUILD.to_string()),
-            (
-                "arch",
-                i18n::t(language.get_untracked().as_str(), arch),
-            ),
+            ("arch", i18n::t(language.get_untracked().as_str(), arch)),
             (
                 "status",
                 i18n::t(language.get_untracked().as_str(), "settings.notChecked"),
@@ -135,13 +132,11 @@ pub(super) fn about(
                     let language = language;
                     move || i18n::t(language.get().as_str(), "settings.builtWithHint")
                 })),
-                text(move || {
-                    i18n::t(language.get().as_str(), "settings.copyright")
-                })
-                .text_size(px(ui::SECONDARY))
-                .line_height(px(ui::SECONDARY_LINE))
-                .text_color(move || design::text3())
-                .into_element(),
+                text(move || i18n::t(language.get().as_str(), "settings.copyright"))
+                    .text_size(px(ui::SECONDARY))
+                    .line_height(px(ui::SECONDARY_LINE))
+                    .text_color(move || design::text3())
+                    .into_element(),
                 false,
             ),
         ))

@@ -311,7 +311,6 @@ index 111..222 100644
         assert_eq!(parse_hunk_header("@@ -0,0 +1,3 @@"), (0, 1));
     }
 
-
     #[test]
     fn split_pairs_removed_and_added_lines() {
         let lines = vec![
@@ -347,8 +346,14 @@ index 111..222 100644
         // 上下文行两侧相同。
         assert_eq!(rows[1].left, rows[1].right);
         // 删除与新增配对成同一行。
-        assert_eq!(rows[2].left.as_ref().map(|line| line.text.as_str()), Some("old"));
-        assert_eq!(rows[2].right.as_ref().map(|line| line.text.as_str()), Some("new"));
+        assert_eq!(
+            rows[2].left.as_ref().map(|line| line.text.as_str()),
+            Some("old")
+        );
+        assert_eq!(
+            rows[2].right.as_ref().map(|line| line.text.as_str()),
+            Some("new")
+        );
     }
 
     #[test]
@@ -375,7 +380,10 @@ index 111..222 100644
         ];
         let rows = split_rows(&lines);
         assert_eq!(rows.len(), 2, "两删一增应配成两行");
-        assert_eq!(rows[0].right.as_ref().map(|line| line.text.as_str()), Some("only"));
+        assert_eq!(
+            rows[0].right.as_ref().map(|line| line.text.as_str()),
+            Some("only")
+        );
         assert!(rows[1].right.is_none(), "多出来的删除行右侧为空");
     }
 }

@@ -13,10 +13,9 @@ pub(crate) fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
         return true;
     }
     let filter = LogFilter::default();
-    if let Ok(commits) = Repo::open(tab.path.as_str()).and_then(|repo| {
-        repo.log_filtered(200, &filter)
-            .map_err(|error| error)
-    }) {
+    if let Ok(commits) = Repo::open(tab.path.as_str())
+        .and_then(|repo| repo.log_filtered(200, &filter).map_err(|error| error))
+    {
         tab.commits = commits;
         tab.filter = filter;
     }
@@ -134,7 +133,11 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
             tab.commits = commits;
             tab.compare_base = Some(base);
             tab.compare_target = Some(target);
-            tab.selected = if tab.commits.is_empty() { None } else { Some(0) };
+            tab.selected = if tab.commits.is_empty() {
+                None
+            } else {
+                Some(0)
+            };
             if let Some(index) = tab.selected {
                 select_commit(tab, index);
             }
@@ -209,14 +212,22 @@ mod tests {
         let filtered = load_tab(&path, &tab.filter);
         assert_eq!(filtered.commits.len(), 1, "筛选应只剩一条");
         let mut tab = filtered;
-        assert!(select_by_sha(&mut tab, oldest.as_str()), "应能在清筛选后找到");
+        assert!(
+            select_by_sha(&mut tab, oldest.as_str()),
+            "应能在清筛选后找到"
+        );
         assert_eq!(
-            tab.commits.get(tab.selected.unwrap_or(0)).map(|c| c.sha.clone()),
+            tab.commits
+                .get(tab.selected.unwrap_or(0))
+                .map(|c| c.sha.clone()),
             Some(oldest)
         );
 
         // 不存在的 SHA 返回 false，不改变选中。
-        assert!(!select_by_sha(&mut tab, "0000000000000000000000000000000000000000"));
+        assert!(!select_by_sha(
+            &mut tab,
+            "0000000000000000000000000000000000000000"
+        ));
     }
 
     #[test]

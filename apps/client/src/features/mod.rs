@@ -267,6 +267,7 @@ impl SessionHandle {
             ),
             "close",
             crate::i18n::t(language_now.as_str(), "confirm.closeAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
             false,
         );
         let perform = perform.clone();

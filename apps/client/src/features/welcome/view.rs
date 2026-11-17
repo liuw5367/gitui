@@ -236,10 +236,7 @@ fn sidebar(
                                         Some(
                                             button(
                                                 move || {
-                                                    i18n::t(
-                                                        language.get().as_str(),
-                                                        "welcome.scan",
-                                                    )
+                                                    i18n::t(language.get().as_str(), "welcome.scan")
                                                 },
                                                 ButtonVariant::Secondary,
                                                 ButtonSize::Small,
@@ -257,9 +254,7 @@ fn sidebar(
                                 .collect();
                             if visible.is_empty() {
                                 return ui::section::empty(
-                                    move || {
-                                        i18n::t(language.get().as_str(), "welcome.noMatch")
-                                    },
+                                    move || i18n::t(language.get().as_str(), "welcome.noMatch"),
                                     Some(Box::new(move || {
                                         i18n::t(language.get().as_str(), "welcome.noMatchHint")
                                     })),
@@ -606,9 +601,7 @@ fn entry_section(
                                                 super::state::RepoForm::Open => {
                                                     "repoManager.openHint"
                                                 }
-                                                super::state::RepoForm::Clone => {
-                                                    "welcome.cloneSub"
-                                                }
+                                                super::state::RepoForm::Clone => "welcome.cloneSub",
                                                 super::state::RepoForm::Init => {
                                                     "repoManager.initHint"
                                                 }
@@ -643,10 +636,7 @@ fn entry_section(
                                     ui::segmented::Segment {
                                         id: "ssh",
                                         label: Box::new(move || {
-                                            i18n::t(
-                                                language.get().as_str(),
-                                                "welcome.protocolSsh",
-                                            )
+                                            i18n::t(language.get().as_str(), "welcome.protocolSsh")
                                         }),
                                     },
                                 ],
@@ -705,19 +695,13 @@ fn open_form(
             None,
             None,
         ))
-        .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_center()
-                .child(button(
-                    move || i18n::t(language.get().as_str(), "welcome.openAction"),
-                    ButtonVariant::Primary,
-                    ButtonSize::Regular,
-                    false,
-                    move || open.open_or_choose(),
-                )),
-        )
+        .child(view().w_full().flex_row().items_center().child(button(
+            move || i18n::t(language.get().as_str(), "welcome.openAction"),
+            ButtonVariant::Primary,
+            ButtonSize::Regular,
+            false,
+            move || open.open_or_choose(),
+        )))
         .child(form_error(error));
 }
 
@@ -975,7 +959,10 @@ fn clone_form(
                     let language = language.get();
                     let hint = i18n::t(language.as_str(), "welcome.cloneHint");
                     if url_for_hint.get().trim_start().starts_with("http://") {
-                        format!("{hint}  {}", i18n::t(language.as_str(), "welcome.cloneHttpHint"))
+                        format!(
+                            "{hint}  {}",
+                            i18n::t(language.as_str(), "welcome.cloneHttpHint")
+                        )
                     } else {
                         hint
                     }
@@ -1138,7 +1125,10 @@ fn bucket_of(opened_at: i64, now: i64) -> RecentBucket {
 /// 从克隆 URL 里取主机名；只用于账号行的短提示，不解析完整 URL。
 fn remote_host(url: &str) -> Option<String> {
     let url = url.trim();
-    if let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) {
+    if let Some(rest) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    {
         return rest
             .split('/')
             .next()
@@ -1196,8 +1186,14 @@ mod tests {
 
     #[test]
     fn remote_host_reads_https_and_ssh() {
-        assert_eq!(remote_host("https://github.com/mia/gitui.git").as_deref(), Some("github.com"));
-        assert_eq!(remote_host("git@github.com:mia/gitui.git").as_deref(), Some("github.com"));
+        assert_eq!(
+            remote_host("https://github.com/mia/gitui.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            remote_host("git@github.com:mia/gitui.git").as_deref(),
+            Some("github.com")
+        );
         assert_eq!(remote_host(""), None);
     }
 

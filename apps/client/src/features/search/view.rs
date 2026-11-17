@@ -54,11 +54,7 @@ pub(crate) struct Command {
 
 impl Command {
     pub fn new(id: &'static str, key: &'static str, shortcut: &'static str) -> Command {
-        return Command {
-            id,
-            key,
-            shortcut,
-        };
+        return Command { id, key, shortcut };
     }
 }
 
@@ -275,43 +271,39 @@ pub(crate) fn palette(
     return crate::ui::dialog::scrim(
         move || true,
         100,
-        view()
-            .w_full()
-            .h_full()
-            .items_center()
-            .child(
-                view()
-                    .w(px(WIDTH))
-                    .mt(px(-120.0))
-                    .p(px(6.0))
-                    .flex_col()
-                    .gap(px(3.0))
-                    .rounded(px(metrics::RADIUS_PANEL))
-                    .border_1()
-                    .border_color(move || design::line())
-                    .bg(move || design::token("popover"))
-                    .child(
-                        view()
-                            .w_full()
-                            .h(px(30.0))
-                            .px(px(8.0))
-                            .flex_row()
-                            .items_center()
-                            .gap(px(6.0))
-                            .child(crate::ui::icon::icon_view(
-                                "search",
-                                crate::ui::icon::IconSize::Button,
-                                design::text3,
-                            ))
-                            .child(crate::ui::text_input::text_input(
-                                query,
-                                move || i18n::t(language.get().as_str(), "palette.placeholder"),
-                                false,
-                                move |text: &str| query.set(text.to_string()),
-                            )),
-                    )
-                    .child(children),
-            ),
+        view().w_full().h_full().items_center().child(
+            view()
+                .w(px(WIDTH))
+                .mt(px(-120.0))
+                .p(px(6.0))
+                .flex_col()
+                .gap(px(3.0))
+                .rounded(px(metrics::RADIUS_PANEL))
+                .border_1()
+                .border_color(move || design::line())
+                .bg(move || design::token("popover"))
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(30.0))
+                        .px(px(8.0))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(crate::ui::icon::icon_view(
+                            "search",
+                            crate::ui::icon::IconSize::Button,
+                            design::text3,
+                        ))
+                        .child(crate::ui::text_input::text_input(
+                            query,
+                            move || i18n::t(language.get().as_str(), "palette.placeholder"),
+                            false,
+                            move |text: &str| query.set(text.to_string()),
+                        )),
+                )
+                .child(children),
+        ),
         dismiss,
     );
 }

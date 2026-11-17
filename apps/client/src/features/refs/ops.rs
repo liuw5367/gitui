@@ -158,7 +158,8 @@ pub(crate) fn push_tag(tab: &mut Tab, name: &str) -> Result<String, String> {
 /// 应用贮藏但保留条目。
 pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.stash_apply(reference).map_err(|error| error.detail())?;
+    repo.stash_apply(reference)
+        .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
     return Ok(());
@@ -168,7 +169,8 @@ pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> 
 pub(crate) fn pop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     // `git stash pop` 只取最近一条；指定引用时用 `apply` + `drop` 组合，语义一致。
-    repo.stash_apply(reference).map_err(|error| error.detail())?;
+    repo.stash_apply(reference)
+        .map_err(|error| error.detail())?;
     repo.stash_drop(reference).map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
@@ -178,8 +180,10 @@ pub(crate) fn pop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
 /// 清掉仓库级身份，回到全局配置。
 pub(crate) fn clear_identity(tab: &Tab) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.config_unset("user.name").map_err(|error| error.detail())?;
-    repo.config_unset("user.email").map_err(|error| error.detail())?;
+    repo.config_unset("user.name")
+        .map_err(|error| error.detail())?;
+    repo.config_unset("user.email")
+        .map_err(|error| error.detail())?;
     return Ok(());
 }
 
@@ -272,16 +276,22 @@ mod tests {
         // 重命名分支：引用列表与当前分支名一起变。
         rename_branch(&mut tab, "main", "renamed").expect("rename");
         assert_eq!(tab.branch, "renamed");
-        assert!(tab.refs.branches.iter().any(|branch| branch.name == "renamed"));
+        assert!(
+            tab.refs
+                .branches
+                .iter()
+                .any(|branch| branch.name == "renamed")
+        );
 
         // 远端 URL 列表与编辑。
         add_remote(&mut tab, "origin", "https://example.com/a.git").expect("add remote");
         assert!(tab.remote_urls.iter().any(|(name, _)| name == "origin"));
         edit_remote(&mut tab, "origin", "git@example.com:b.git").expect("edit remote");
-        assert!(tab
-            .remote_urls
-            .iter()
-            .any(|(_, url)| url == "git@example.com:b.git"));
+        assert!(
+            tab.remote_urls
+                .iter()
+                .any(|(_, url)| url == "git@example.com:b.git")
+        );
     }
 
     #[test]
@@ -304,11 +314,12 @@ mod tests {
         checkout_branch(&mut tab, "feature");
         assert_eq!(tab.branch, "feature");
         assert!(tab.error.is_none());
-        assert!(tab
-            .refs
-            .branches
-            .iter()
-            .any(|branch| branch.name == "feature" && branch.current));
+        assert!(
+            tab.refs
+                .branches
+                .iter()
+                .any(|branch| branch.name == "feature" && branch.current)
+        );
     }
 
     #[test]

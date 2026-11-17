@@ -192,9 +192,11 @@ pub(crate) fn check_row<MC, MD>(
             return view()
                 .w(px(9.0))
                 .h(px(9.0))
-                .child(ui::icon::icon_view("check", ui::icon::IconSize::Button, || {
-                    design::token("primary-foreground")
-                }))
+                .child(ui::icon::icon_view(
+                    "check",
+                    ui::icon::IconSize::Button,
+                    || design::token("primary-foreground"),
+                ))
                 .into_element();
         }))
         .on_change(move |next: &bool| on_change(*next))
@@ -221,16 +223,12 @@ pub(crate) fn switch_row(
         .items_center()
         .gap(px(ui::GAP_LG))
         .opacity(if disabled { 0.45 } else { 1.0 });
-    let mut labels = view()
-        .flex_1()
-        .min_w_0()
-        .flex_col()
-        .child(
-            text(move || caption())
-                .text_size(px(ui::BODY))
-                .line_height(px(ui::BODY_LINE))
-                .text_color(move || design::text()),
-        );
+    let mut labels = view().flex_1().min_w_0().flex_col().child(
+        text(move || caption())
+            .text_size(px(ui::BODY))
+            .line_height(px(ui::BODY_LINE))
+            .text_color(move || design::text()),
+    );
     if let Some(hint_text) = hint {
         labels = labels.child(
             text(move || hint_text())

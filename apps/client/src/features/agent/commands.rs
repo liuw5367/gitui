@@ -261,7 +261,15 @@ impl AgentCommands {
         // 确认框返回后要逐条执行，先把用例克隆一份带进异步块。
         let run_step = self.clone();
         spawn(async move {
-            let ok = interactions::confirm(title, message, "runPlan", action_label, false).await;
+            let ok = interactions::confirm(
+                title,
+                message,
+                "runPlan",
+                action_label,
+                i18n::t(lang.as_str(), "common.cancel"),
+                false,
+            )
+            .await;
             if !ok {
                 return;
             }

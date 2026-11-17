@@ -24,6 +24,8 @@
 #   GITUI_SETTINGS=1    启动即打开设置窗口（独立窗口）
 #   GITUI_SETTINGS_SECTION=general|shortcuts|agent|git|credentials|about
 #                       设置窗口初始分区；截图前需清理残留的 nsh-app 子进程
+#   GITUI_RECORD=<动作 id>  启动即进入该动作的快捷键录制态（如 palette），
+#                       用于核对录制卡的显示位置
 #   GITUI_INSPECTOR=1   启动即展开右侧检查器（板 08 / 18）
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，

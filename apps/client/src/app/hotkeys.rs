@@ -22,8 +22,7 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
         };
         on_key(combo.as_str(), move |_| {
             // 录制期间按键只用于改键，不执行命令。
-            if let Some(id) = recording.get_untracked() {
-                settings_cmd.rebind_shortcut(id, pressed.clone());
+            if recording.get_untracked().is_some() {
                 return;
             }
             if let Some(id) = registry.get_untracked().action_for(pressed.as_str()) {
@@ -115,6 +114,77 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
                 return;
             }
             filter_open.set(false);
+        }
+    });
+}
+
+/// 设置窗口自己的按键：录制改键，以及录制中的 Esc 取消与 ⌫ 清空。
+///
+/// 这些绑定必须挂在**窗口内容挂载时**（`on_key` 的生命周期跟着挂载它的 owner
+/// 走）：放进会随录制状态重建的 `dynamic` 子树里，重绑定与清理都不可靠，按下
+/// 组合键不会触发改键。主窗口与设置窗口各有一份按键表，互不串窗。
+pub(crate) fn install_settings_window(
+    settings: &crate::features::settings::commands::SettingsCommands,
+) {
+    let settings = settings.clone();
+    let recording = settings.state.recording_shortcut;
+    let restore_confirm = settings.state.restore_confirm;
+    for combo in shortcuts::catalog() {
+        let cmd = settings.clone();
+        // 写回注册表的是**绑定的清单组合**，不是平台规范化后的按键串：
+        // `Registry::rebind` 只接受 `catalog()` 里的原样字符串。
+        let bound = combo.clone();
+        on_key_with(
+            combo.as_str(),
+            KeyOptions {
+                when: nsh_core::keymap::When::Always,
+                // 没在录制时把手让给输入框和其它默认行为，不能吞掉设置页里的组合键。
+                pass_through: true,
+                ..Default::default()
+            },
+            move |_| {
+                // 确认弹层开着时不改键，避免在弹层后面误改。
+                if restore_confirm.get_untracked() {
+                    return;
+                }
+                if let Some(id) = recording.get_untracked() {
+                    cmd.rebind_shortcut(id, bound.clone());
+                }
+            },
+        );
+    }
+    // Esc 先关确认弹层，再取消录制；设置窗口本身不因 Esc 关闭
+    // （见 windows.rs 的 close_on_escape）。
+    on_key_with(
+        "escape",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            pass_through: true,
+            ..Default::default()
+        },
+        {
+            let cmd = settings.clone();
+            move |_| {
+                if restore_confirm.get_untracked() {
+                    restore_confirm.set(false);
+                    return;
+                }
+                if recording.get_untracked().is_some() {
+                    cmd.cancel_recording();
+                }
+            }
+        },
+    );
+    // ⌫ 清空当前动作的绑定；与主窗口一致，输入框使用时让位。
+    on_key("backspace", {
+        let cmd = settings.clone();
+        move |_| {
+            if restore_confirm.get_untracked() {
+                return;
+            }
+            if let Some(id) = recording.get_untracked() {
+                cmd.clear_shortcut(id);
+            }
         }
     });
 }

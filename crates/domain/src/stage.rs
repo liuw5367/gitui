@@ -143,8 +143,16 @@ impl Sections {
             }
         }
         let header = match kind {
-            LineKind::Add => format!("@@ -{},0 +{},1 @@", old_cursor.saturating_sub(1), new_cursor),
-            LineKind::Remove => format!("@@ -{},1 +{},0 @@", old_cursor, new_cursor.saturating_sub(1)),
+            LineKind::Add => format!(
+                "@@ -{},0 +{},1 @@",
+                old_cursor.saturating_sub(1),
+                new_cursor
+            ),
+            LineKind::Remove => format!(
+                "@@ -{},1 +{},0 @@",
+                old_cursor,
+                new_cursor.saturating_sub(1)
+            ),
             LineKind::Context => return None,
         };
         let mut out: Vec<String> = file.header.clone();

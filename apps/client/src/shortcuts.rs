@@ -33,28 +33,160 @@ pub struct Action {
 
 /// 全部可绑定动作，顺序即设置页的显示顺序。
 pub const ACTIONS: [Action; 22] = [
-    Action { id: "open", key: "shortcut.openRepo", desc: "shortcut.descOpen", default: "mod+o", scope: Scope::Global },
-    Action { id: "openPalette", key: "shortcut.palette", desc: "shortcut.descPalette", default: "mod+p", scope: Scope::Global },
-    Action { id: "closeTab", key: "shortcut.closeTab", desc: "shortcut.descCloseTab", default: "mod+w", scope: Scope::Global },
-    Action { id: "refresh", key: "shortcut.refresh", desc: "shortcut.descRefresh", default: "mod+r", scope: Scope::Global },
-    Action { id: "filter", key: "shortcut.filter", desc: "shortcut.descFilter", default: "mod+f", scope: Scope::Global },
-    Action { id: "filterHistory", key: "shortcut.filterHistory", desc: "shortcut.descFilterHistory", default: "mod+shift+f", scope: Scope::Global },
-    Action { id: "push", key: "shortcut.push", desc: "shortcut.descPush", default: "mod+shift+p", scope: Scope::Repository },
-    Action { id: "commit", key: "shortcut.commit", desc: "shortcut.descCommit", default: "mod+shift+k", scope: Scope::Repository },
-    Action { id: "primary", key: "shortcut.primaryAction", desc: "shortcut.descPrimary", default: "mod+enter", scope: Scope::Repository },
-    Action { id: "settings", key: "shortcut.settings", desc: "shortcut.descSettings", default: "mod+,", scope: Scope::Global },
-    Action { id: "toggleTheme", key: "shortcut.cycleAppearance", desc: "shortcut.descTheme", default: "mod+shift+a", scope: Scope::Global },
-    Action { id: "prevTab", key: "shortcut.prevTab", desc: "shortcut.descPrevTab", default: "mod+shift+[", scope: Scope::Global },
-    Action { id: "nextTab", key: "shortcut.nextTab", desc: "shortcut.descNextTab", default: "mod+shift+]", scope: Scope::Global },
-    Action { id: "tab1", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+1", scope: Scope::Global },
-    Action { id: "tab2", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+2", scope: Scope::Global },
-    Action { id: "tab3", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+3", scope: Scope::Global },
-    Action { id: "tab4", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+4", scope: Scope::Global },
-    Action { id: "tab5", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+5", scope: Scope::Global },
-    Action { id: "tab6", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+6", scope: Scope::Global },
-    Action { id: "tab7", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+7", scope: Scope::Global },
-    Action { id: "tab8", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+8", scope: Scope::Global },
-    Action { id: "tab9", key: "shortcut.tab", desc: "shortcut.descTab", default: "mod+9", scope: Scope::Global },
+    Action {
+        id: "open",
+        key: "shortcut.openRepo",
+        desc: "shortcut.descOpen",
+        default: "mod+o",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "openPalette",
+        key: "shortcut.palette",
+        desc: "shortcut.descPalette",
+        default: "mod+p",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "closeTab",
+        key: "shortcut.closeTab",
+        desc: "shortcut.descCloseTab",
+        default: "mod+w",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "refresh",
+        key: "shortcut.refresh",
+        desc: "shortcut.descRefresh",
+        default: "mod+r",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "filter",
+        key: "shortcut.filter",
+        desc: "shortcut.descFilter",
+        default: "mod+f",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "filterHistory",
+        key: "shortcut.filterHistory",
+        desc: "shortcut.descFilterHistory",
+        default: "mod+shift+f",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "push",
+        key: "shortcut.push",
+        desc: "shortcut.descPush",
+        default: "mod+shift+p",
+        scope: Scope::Repository,
+    },
+    Action {
+        id: "commit",
+        key: "shortcut.commit",
+        desc: "shortcut.descCommit",
+        default: "mod+shift+k",
+        scope: Scope::Repository,
+    },
+    Action {
+        id: "primary",
+        key: "shortcut.primaryAction",
+        desc: "shortcut.descPrimary",
+        default: "mod+enter",
+        scope: Scope::Repository,
+    },
+    Action {
+        id: "settings",
+        key: "shortcut.settings",
+        desc: "shortcut.descSettings",
+        default: "mod+,",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "toggleTheme",
+        key: "shortcut.cycleAppearance",
+        desc: "shortcut.descTheme",
+        default: "mod+shift+a",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "prevTab",
+        key: "shortcut.prevTab",
+        desc: "shortcut.descPrevTab",
+        default: "mod+shift+[",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "nextTab",
+        key: "shortcut.nextTab",
+        desc: "shortcut.descNextTab",
+        default: "mod+shift+]",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab1",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+1",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab2",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+2",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab3",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+3",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab4",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+4",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab5",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+5",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab6",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+6",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab7",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+7",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab8",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+8",
+        scope: Scope::Global,
+    },
+    Action {
+        id: "tab9",
+        key: "shortcut.tab",
+        desc: "shortcut.descTab",
+        default: "mod+9",
+        scope: Scope::Global,
+    },
 ];
 
 /// 可绑定的字母：去掉 macOS 保留的 `q`（退出）、`h`（隐藏）、`m`（最小化）。
@@ -79,6 +211,29 @@ pub fn catalog() -> Vec<String> {
     combos.push("mod+shift+]".to_string());
     combos.push("mod+enter".to_string());
     combos.push("mod+,".to_string());
+    return combos;
+}
+
+/// 录制时要回显的组合：可绑定清单之外的常见按法（⌥/⌃ 系列、⌘⇧ 数字）。
+///
+/// 这些组合绑定不上，但录制时按下它们要能立刻看到并按到的是哪几个键，
+/// 并得到「不可绑定」的说明；否则按下去毫无反馈，像是录制没生效。
+pub fn observable() -> Vec<String> {
+    let mut combos: Vec<String> = Vec::new();
+    let keys: Vec<String> = LETTERS
+        .iter()
+        .map(|letter| (*letter).to_string())
+        .chain((1..=9).map(|digit| digit.to_string()))
+        .collect();
+    for mask in ["alt", "alt+shift", "ctrl", "ctrl+shift"] {
+        for key in &keys {
+            combos.push(format!("{mask}+{key}"));
+        }
+    }
+    for digit in 1..=9 {
+        combos.push(format!("mod+shift+{digit}"));
+    }
+    combos.retain(|combo| !catalog().contains(combo));
     return combos;
 }
 
@@ -107,7 +262,10 @@ impl Registry {
     /// 默认绑定。
     pub fn defaults() -> Registry {
         return Registry {
-            combos: ACTIONS.iter().map(|action| action.default.to_string()).collect(),
+            combos: ACTIONS
+                .iter()
+                .map(|action| action.default.to_string())
+                .collect(),
         };
     }
 
@@ -304,7 +462,10 @@ mod tests {
         assert!(registry.overrides().is_empty());
         assert_eq!(registry.rebind("push", "mod+shift+e"), Ok(()));
         let overrides = registry.overrides();
-        assert_eq!(overrides, vec![("push".to_string(), "mod+shift+e".to_string())]);
+        assert_eq!(
+            overrides,
+            vec![("push".to_string(), "mod+shift+e".to_string())]
+        );
         let loaded = Registry::with_overrides(&overrides);
         assert_eq!(loaded.combo("push"), "mod+shift+e");
         // 非法与未知的旧记录被忽略，不能把应用带进无效状态。

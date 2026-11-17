@@ -72,6 +72,7 @@ impl CommitCommands {
             crate::i18n::t(language_now.as_str(), "confirm.noVerifyMessage"),
             "no_verify",
             crate::i18n::t(language_now.as_str(), "confirm.noVerifyAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
         let this = self.clone();
@@ -122,7 +123,11 @@ impl CommitCommands {
                 .and_then(ops::rewrite_blocker)
         };
         rewrite_state.set(Some(RewriteState::new(
-            RewriteKind::Reword { sha, short, summary: summary.clone() },
+            RewriteKind::Reword {
+                sha,
+                short,
+                summary: summary.clone(),
+            },
             summary,
             blocker,
         )));
@@ -181,22 +186,16 @@ impl CommitCommands {
             RewriteKind::Reword { sha, .. } => {
                 ops::reword_commit(tab, sha.as_str(), state.message.as_str())
             }
-            RewriteKind::Squash { from, to, .. } => ops::squash_commits(
-                tab,
-                from.as_str(),
-                to.as_str(),
-                state.message.as_str(),
-            ),
+            RewriteKind::Squash { from, to, .. } => {
+                ops::squash_commits(tab, from.as_str(), to.as_str(), state.message.as_str())
+            }
         };
         match result {
             Ok(()) => {
                 tabs.set(list);
                 rewrite_state.set(None);
                 let lang = language.get_untracked();
-                crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(lang.as_str(), "rewrite.done"),
-                );
+                crate::interactions::notify(notice, crate::i18n::t(lang.as_str(), "rewrite.done"));
             }
             Err(detail) => {
                 tabs.set(list);

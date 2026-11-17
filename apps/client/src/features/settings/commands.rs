@@ -54,7 +54,9 @@ impl SettingsCommands {
             Some(tab) => crate::app::ops::identity(&tab),
             None => global_identity(),
         };
-        self.state.identity_use_global.set(name.is_empty() && email.is_empty());
+        self.state
+            .identity_use_global
+            .set(name.is_empty() && email.is_empty());
         self.state.identity_name.set(name);
         self.state.identity_email.set(email);
     }
@@ -89,7 +91,10 @@ impl SettingsCommands {
         let Some(tab) = self.current_tab() else {
             crate::interactions::notify(
                 self.notice,
-                i18n::t(self.language.get_untracked().as_str(), "settings.identityNoRepo"),
+                i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "settings.identityNoRepo",
+                ),
             );
             return;
         };
@@ -415,8 +420,7 @@ impl SettingsCommands {
         store::save_settings(&store_dir, &next);
     }
 
-    /// 改键（原 `rebind_shortcut`）：写入注册表并持久化；冲突/不可绑定时把原因
-    /// 交给设置页显示。
+    /// 接受设置页录制出的组合；冲突时保留录制状态并显示错误。
     pub(crate) fn rebind_shortcut(&self, id: &'static str, combo: String) {
         let registry = self.state.shortcut_registry;
         let recording = self.state.recording_shortcut;
@@ -453,7 +457,7 @@ impl SettingsCommands {
         }
     }
 
-    /// 解绑一个动作（录制卡里的 `⌫`）。
+    /// 解绑一个动作。
     pub(crate) fn clear_shortcut(&self, id: &'static str) {
         let registry = self.state.shortcut_registry;
         let mut next = registry.get_untracked();
@@ -470,40 +474,44 @@ impl SettingsCommands {
         self.state.recording_shortcut.set(Some(id));
     }
 
-    /// 恢复默认快捷键（原 `restore_shortcuts`）：先确认（会覆盖用户的自定义），
-    /// 再重置并清空持久化。
+    /// 取消录制（Esc）：不改任何绑定，只退出录制态并清掉上一条冲突提示。
+    pub(crate) fn cancel_recording(&self) {
+        self.state.recording_shortcut.set(None);
+        self.state.shortcut_error.set(None);
+    }
+
+    pub(crate) fn reset_shortcut(&self, id: &'static str) {
+        let registry = self.state.shortcut_registry;
+        let mut next = registry.get_untracked();
+        let default = crate::shortcuts::ACTIONS
+            .iter()
+            .find(|action| action.id == id)
+            .map(|action| action.default);
+        next.clear(id);
+        if let Some(default) = default
+            && !default.is_empty()
+        {
+            let _ = next.rebind(id, default);
+        }
+        registry.set(next.clone());
+        store::save_shortcuts(&self.store_dir, &next.overrides());
+        self.state.recording_shortcut.set(None);
+        self.state.shortcut_error.set(None);
+    }
+
+
+    /// 恢复全部默认快捷键。确认弹层由设置页自己画（`view.rs`），这里只执行。
     pub(crate) fn restore_shortcuts(&self) {
         let registry = self.state.shortcut_registry;
-        let recording = self.state.recording_shortcut;
-        let error = self.state.shortcut_error;
-        let store_dir = self.store_dir.clone();
-        let notice = self.notice;
-        let language = self.language;
-        let lang = language.get_untracked();
-        let title = i18n::t(lang.as_str(), "confirm.restoreShortcutsTitle");
-        let message = i18n::t(lang.as_str(), "confirm.restoreShortcutsMessage");
-        let action_label = i18n::t(lang.as_str(), "confirm.restoreShortcutsAction");
-        let done = i18n::t(lang.as_str(), "shortcut.restored");
-        spawn(async move {
-            let ok = crate::interactions::confirm(
-                title,
-                message,
-                "restoreShortcuts",
-                action_label,
-                false,
-            )
-            .await;
-            if !ok {
-                return;
-            }
-            let mut next = registry.get_untracked();
-            next.restore_defaults();
-            registry.set(next.clone());
-            store::save_shortcuts(&store_dir, &next.overrides());
-            recording.set(None);
-            error.set(None);
-            crate::interactions::notify(notice, done);
-        });
+        let mut next = registry.get_untracked();
+        next.restore_defaults();
+        registry.set(next.clone());
+        store::save_shortcuts(&self.store_dir, &next.overrides());
+        self.state.recording_shortcut.set(None);
+        self.state.shortcut_error.set(None);
+        self.state.restore_confirm.set(false);
+        let done = i18n::t(self.language.get_untracked().as_str(), "shortcut.restored");
+        crate::interactions::notify(self.notice, done);
     }
 }
 

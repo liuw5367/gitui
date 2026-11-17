@@ -70,10 +70,7 @@ pub(crate) fn vertical(panes: Vec<Pane>) -> impl IntoElement {
 }
 
 /// 把手与容器共用的外观：把手用 1pt 分隔线色，不额外加粗。
-fn group(
-    mut builder: nsh_base::ResizablePanelGroupElement,
-    panes: Vec<Pane>,
-) -> impl IntoElement {
+fn group(mut builder: nsh_base::ResizablePanelGroupElement, panes: Vec<Pane>) -> impl IntoElement {
     builder = builder
         .w_full()
         .h_full()

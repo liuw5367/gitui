@@ -104,7 +104,9 @@ mod tests {
         let mut names: Vec<String> = Vec::new();
         let mut stack = vec![root];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -114,7 +116,9 @@ mod tests {
                     if path.file_name().map(|n| n == "icon.rs").unwrap_or(false) {
                         continue;
                     }
-                    let Ok(source) = fs::read_to_string(&path) else { continue };
+                    let Ok(source) = fs::read_to_string(&path) else {
+                        continue;
+                    };
                     // marker 不带引号：调用可以写成 `icon_button(` 后换行再给名字
                     // （`chev_left` 那处就是这么漏过检查的——它写成了下划线，
                     // 静默渲染空白，而扫描因为匹配不到跨行而没报）。

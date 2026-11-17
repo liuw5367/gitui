@@ -6,7 +6,12 @@ use crate::features::changes::ops::refresh_changes;
 use git::Repo;
 
 /// 新建分支；`from` 为空时基于当前 HEAD。
-pub(crate) fn create_branch(tab: &mut Tab, name: &str, from: &str, checkout: bool) -> Result<(), String> {
+pub(crate) fn create_branch(
+    tab: &mut Tab,
+    name: &str,
+    from: &str,
+    checkout: bool,
+) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     let from = if from.trim().is_empty() {
         None
@@ -18,8 +23,12 @@ pub(crate) fn create_branch(tab: &mut Tab, name: &str, from: &str, checkout: boo
         (true, Some(from)) => repo
             .checkout_new_branch(name, from)
             .map_err(|error| error.detail())?,
-        (true, None) => repo.checkout_new_branch(name, "HEAD").map_err(|error| error.detail())?,
-        (false, from) => repo.create_branch(name, from).map_err(|error| error.detail())?,
+        (true, None) => repo
+            .checkout_new_branch(name, "HEAD")
+            .map_err(|error| error.detail())?,
+        (false, from) => repo
+            .create_branch(name, from)
+            .map_err(|error| error.detail())?,
     }
     refresh_refs(tab, &repo);
     if checkout {
@@ -81,7 +90,8 @@ pub(crate) fn stash_changes(
 /// 重命名分支。
 pub(crate) fn rename_branch(tab: &mut Tab, old: &str, new: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.rename_branch(old, new).map_err(|error| error.detail())?;
+    repo.rename_branch(old, new)
+        .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     tab.branch = repo.abbrev_branch().unwrap_or_default();
     return Ok(());
@@ -100,7 +110,8 @@ pub(crate) fn set_identity(tab: &Tab, name: &str, email: &str) -> Result<(), Str
 /// 改写远端的 URL。
 pub(crate) fn edit_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.set_remote_url(name, url).map_err(|error| error.detail())?;
+    repo.set_remote_url(name, url)
+        .map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     return Ok(());
 }
@@ -121,7 +132,12 @@ mod tests {
 
         create_branch(&mut tab, "feature/x", "", false).expect("branch");
         assert_eq!(tab.refs.branches.len(), before + 1);
-        assert!(tab.refs.branches.iter().any(|branch| branch.name == "feature/x"));
+        assert!(
+            tab.refs
+                .branches
+                .iter()
+                .any(|branch| branch.name == "feature/x")
+        );
 
         create_tag(&mut tab, "v0.0.1", "", "", false).expect("tag");
         assert_eq!(tab.refs.tags, vec!["v0.0.1".to_string()]);

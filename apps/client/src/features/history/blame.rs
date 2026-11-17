@@ -6,9 +6,9 @@
 //! 这个视图不占工具栏的分段——画板的入口是 `.blamebar` 里的 Files 按钮，从检查器
 //! 的 Blame 页或文件行进来。
 
+use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
-use crate::app::session::Tab;
 use crate::ui;
 use nsh_core::prelude::*;
 
@@ -88,18 +88,21 @@ fn history_side(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
                 ),
         )
         .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(scroll().w_full().h_full().child(
-                    view().w_full().flex_col().children(rows),
-                )),
+            view().w_full().flex_1().min_h_0().child(
+                scroll()
+                    .w_full()
+                    .h_full()
+                    .child(view().w_full().flex_col().children(rows)),
+            ),
         );
 }
 
 /// 右栏：`.blamebar` + `.blamecode`。
-fn pane(language: Signal<SharedString>, tab: Tab, notice: Signal<Option<String>>) -> impl IntoElement {
+fn pane(
+    language: Signal<SharedString>,
+    tab: Tab,
+    notice: Signal<Option<String>>,
+) -> impl IntoElement {
     let path = tab.blame_path.clone();
     let count = tab.blame.len();
     let copy_source = tab.blame_text();
@@ -191,18 +194,15 @@ fn pane(language: Signal<SharedString>, tab: Tab, notice: Signal<Option<String>>
                     ui::button::ButtonVariant::Secondary,
                     ui::button::ButtonSize::Small,
                     false,
-                    move || {
-                        crate::shared::os::copy_text(notice, language, copy_source.clone())
-                    },
+                    move || crate::shared::os::copy_text(notice, language, copy_source.clone()),
                 )),
         )
         .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(scroll().w_full().h_full().child(
-                    view().w_full().flex_col().children(rows),
-                )),
+            view().w_full().flex_1().min_h_0().child(
+                scroll()
+                    .w_full()
+                    .h_full()
+                    .child(view().w_full().flex_col().children(rows)),
+            ),
         );
 }
