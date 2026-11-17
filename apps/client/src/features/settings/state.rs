@@ -34,7 +34,7 @@ impl Section {
             Section::Shortcuts => "keys",
             Section::Git => "branch",
             Section::Credentials => "lock",
-            Section::Agent => "sparkle",
+            Section::Agent => "branch",
             Section::About => "info",
         };
     }
@@ -70,4 +70,11 @@ pub(crate) struct SettingsState {
     pub(crate) recording_shortcut: Signal<Option<&'static str>>,
     /// 改键失败的原因（冲突或不可绑定）；成功后清空。
     pub(crate) shortcut_error: Signal<Option<String>>,
+    /// Commit identity 编辑框的值（仓库级；没有打开仓库时是全局值）。
+    pub(crate) identity_name: Signal<String>,
+    pub(crate) identity_email: Signal<String>,
+    /// 是否继承全局身份（复选框状态）。
+    pub(crate) identity_use_global: Signal<bool>,
+    /// 日期 pattern 的编辑值；失焦时才写回设置。
+    pub(crate) date_pattern: Signal<String>,
 }

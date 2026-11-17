@@ -40,6 +40,7 @@ impl SettingsCommands {
 
     /// 打开设置窗口（独立窗口，由 `settings_open` 驱动）。
     pub(crate) fn go_settings(&self) {
+        self.refresh_identity();
         self.session.settings_open.set(true);
     }
 
@@ -47,6 +48,103 @@ impl SettingsCommands {
     pub(crate) fn go_settings_section(&self, section: Section) {
         self.state.settings_section.set(section);
         self.go_settings();
+    }
+
+    /// 设置窗口打开前把当前仓库的身份读进编辑信号。
+    pub(crate) fn refresh_identity(&self) {
+        let (name, email) = match self.current_tab() {
+            Some(tab) => crate::app::ops::identity(&tab),
+            None => global_identity(),
+        };
+        self.state.identity_use_global.set(name.is_empty() && email.is_empty());
+        self.state.identity_name.set(name);
+        self.state.identity_email.set(email);
+    }
+
+    fn current_tab(&self) -> Option<crate::app::session::Tab> {
+        return self
+            .session
+            .tabs
+            .get_untracked()
+            .get(self.session.active.get_untracked())
+            .cloned();
+    }
+
+    /// 写仓库级身份；两个字段都为空时改为清空、继承全局。
+    pub(crate) fn save_identity(&self, name: String, email: String) {
+        let name = name.trim().to_string();
+        let email = email.trim().to_string();
+        if name.is_empty() && email.is_empty() {
+            self.clear_identity();
+            return;
+        }
+        if name.is_empty() || email.is_empty() {
+            crate::interactions::notify(
+                self.notice,
+                i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "settings.identityIncomplete",
+                ),
+            );
+            return;
+        }
+        let Some(tab) = self.current_tab() else {
+            crate::interactions::notify(
+                self.notice,
+                i18n::t(self.language.get_untracked().as_str(), "settings.identityNoRepo"),
+            );
+            return;
+        };
+        if crate::app::ops::identity(&tab) == (name.clone(), email.clone()) {
+            return;
+        }
+        match crate::features::search::ops::set_identity(&tab, name.as_str(), email.as_str()) {
+            Ok(()) => {
+                self.state.identity_use_global.set(false);
+                self.refresh_identity();
+            }
+            Err(detail) => crate::interactions::notify(self.notice, detail),
+        }
+    }
+
+    /// 清空仓库级身份，回到全局配置。
+    pub(crate) fn clear_identity(&self) {
+        let Some(tab) = self.current_tab() else {
+            return;
+        };
+        match crate::features::refs::ops::clear_identity(&tab) {
+            Ok(()) => {
+                self.state.identity_use_global.set(true);
+                self.refresh_identity();
+            }
+            Err(detail) => crate::interactions::notify(self.notice, detail),
+        }
+    }
+
+    /// 勾选 / 取消「使用全局身份」。勾选时清空仓库级值。
+    pub(crate) fn set_use_global_identity(&self, enabled: bool) {
+        if enabled {
+            self.clear_identity();
+        } else {
+            self.state.identity_use_global.set(false);
+        }
+    }
+
+    /// 立即检查更新：没有发布源，给出事实性状态说明。
+    pub(crate) fn check_updates(&self) {
+        crate::interactions::notify(
+            self.notice,
+            i18n::t(
+                self.language.get_untracked().as_str(),
+                "settings.updateCheckUnavailable",
+            ),
+        );
+    }
+
+    /// 直接选一种语言（下拉用）；与 `toggle_language` 共用持久化。
+    pub(crate) fn set_language(&self, next: &'static str) {
+        self.language.set(SharedString::from(next));
+        store::save_language(&self.store_dir, next);
     }
 
     /// 在英文与中文之间切换（原 `toggle_language`）。
@@ -164,6 +262,7 @@ impl SettingsCommands {
 
     /// 设置自定义日期 pattern（原 `set_date_pattern`）：同时切到 Custom。
     pub(crate) fn set_date_pattern(&self, pattern: String) {
+        self.state.date_pattern.set(pattern.clone());
         let settings_state = self.state.settings_state;
         let store_dir = self.store_dir.clone();
         crate::dates::set_pattern(pattern.as_str());
@@ -265,4 +364,18 @@ impl SettingsCommands {
             crate::interactions::notify(notice, done);
         });
     }
+}
+
+/// 没有打开仓库时编辑框显示的全局身份。
+fn global_identity() -> (String, String) {
+    let read = |key: &str| {
+        return std::process::Command::new("git")
+            .args(["config", "--get", key])
+            .output()
+            .ok()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default();
+    };
+    return (read("user.name"), read("user.email"));
 }

@@ -64,6 +64,39 @@ pub(crate) fn text_input_bound(
     );
 }
 
+/// 值由结构体信号承载、失焦或回车提交的输入框。
+///
+/// 设置页的 Name / Email 用它：输入过程只改本地信号，`on_blur` / `on_submit`
+/// 才写入 git config，避免每按一个键都起一次 `git config`。
+pub(crate) fn text_input_bound_commit(
+    get: impl Fn() -> String + 'static,
+    placeholder: impl Fn() -> String + 'static,
+    invalid: bool,
+    disabled: bool,
+    set: impl Fn(String) + 'static,
+    commit: impl Fn() + 'static,
+) -> impl IntoElement {
+    let commit = std::rc::Rc::new(commit);
+    let blur = commit.clone();
+    let submit = commit.clone();
+    let input = style_input(
+        nsh_base::input()
+            .readonly(disabled)
+            .value(move || get())
+            .placeholder(placeholder)
+            .on_change(move |text: &str| set(text.to_string()))
+            .on_blur(move || blur())
+            .on_submit(move |_: &str| submit()),
+        invalid,
+        ui::CONTROL,
+    );
+    let mut wrapper = view().w_full();
+    if disabled {
+        wrapper = wrapper.opacity(0.45);
+    }
+    return wrapper.child(input);
+}
+
 /// 路径输入：输入框 + 右侧键帽，整体一个描边容器。
 ///
 /// 用于 Open 的仓库路径、Clone 的目标目录与 Init 的目录；⌘V 由系统输入框处理，

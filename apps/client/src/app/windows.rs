@@ -24,9 +24,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     let welcome_open = welcome.session.welcome_open;
     let settings = handles.settings.clone();
     let settings_open = settings.session.settings_open;
-    let refs = handles.refs.clone();
     let agent = handles.agent.clone();
-    let search = handles.search.clone();
     let tabs = handles.session.tabs;
     let active = handles.session.active;
     let language = handles.language;
@@ -83,11 +81,8 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
                     &settings.state,
                     &settings,
                     tab,
-                    &refs,
                     &agent,
-                ))
-                // 身份编辑的表单浮层归设置窗口（它只从设置页打开）。
-                .child(features::search::form_overlay(&search, language));
+                ));
         });
 
     return view().child(welcome_window).child(settings_window);

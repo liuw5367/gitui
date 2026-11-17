@@ -397,6 +397,10 @@ pub(crate) fn app() -> impl IntoElement {
             shortcut_query,
             recording_shortcut,
             shortcut_error,
+            identity_name: signal(String::new()),
+            identity_email: signal(String::new()),
+            identity_use_global: signal(true),
+            date_pattern: signal(settings_state.get_untracked().date_pattern),
         },
         session: session.clone(),
         language,
@@ -406,6 +410,7 @@ pub(crate) fn app() -> impl IntoElement {
         diff: diff_commands.clone(),
         git_info,
     };
+    settings_commands.refresh_identity();
 
     // 欢迎页（P3 批 B）：表单输入收进 WelcomeState，用例收进 WelcomeCommands。
     let welcome_commands = features::welcome::commands::WelcomeCommands {

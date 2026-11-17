@@ -199,3 +199,75 @@ pub(crate) fn row_sized(
     }
     return element;
 }
+
+/// 设置页左树的导航行：28 高、强调底 + 白色文字/图标。
+pub(crate) fn nav_row(
+    label: impl Fn() -> String + 'static,
+    icon: &'static str,
+    selected: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let foreground = move || {
+        if selected {
+            design::token("primary-foreground")
+        } else {
+            design::text()
+        }
+    };
+    return nsh_base::button()
+        .h(px(28.0))
+        .w_full()
+        .px(px(8.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .rounded(px(6.0))
+        .bg(move || {
+            if selected {
+                design::accent()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .hover(move |style| {
+            if selected {
+                style
+            } else {
+                style.bg(move || design::hover())
+            }
+        })
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .on_press(move |_: &()| on_press())
+        .child(
+            view()
+                .w(px(16.0))
+                .items_center()
+                .justify_center()
+                .child(ui::icon::icon_view(
+                    icon,
+                    ui::icon::IconSize::Inline,
+                    move || {
+                        if selected {
+                            design::token("primary-foreground")
+                        } else {
+                            design::text3()
+                        }
+                    },
+                )),
+        )
+        .child(
+            text(move || label())
+                .text_size(px(ui::BODY))
+                .line_height(px(ui::BODY_LINE))
+                .font_weight(if selected {
+                    FontWeight::MEDIUM
+                } else {
+                    FontWeight(400)
+                })
+                .text_color(foreground),
+        );
+}

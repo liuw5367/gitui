@@ -341,3 +341,62 @@ pub(crate) fn check_row_button(
                 .text_color(move || design::text()),
         );
 }
+
+/// 行右的独立复选：只有 14×14 方框，无障碍名由 `label` 提供。
+///
+/// 设置页的「标签在左、复选在右」行用它，避免把整行做成复选而改变标签排版。
+pub(crate) fn check_control(
+    label: impl Fn() -> String + 'static,
+    checked: bool,
+    disabled: bool,
+    on_change: impl Fn(bool) + 'static,
+) -> impl IntoElement {
+    let accessibility = label();
+    return nsh_base::button()
+        .accessibility_label(Some(SharedString::from(accessibility)))
+        .disabled(disabled)
+        .opacity(if disabled { 0.45 } else { 1.0 })
+        .w(px(18.0))
+        .h(px(18.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.0))
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .on_press(move |_: &()| on_change(!checked))
+        .child(
+            view()
+                .w(px(14.0))
+                .h(px(14.0))
+                .items_center()
+                .justify_center()
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(move || {
+                    if checked {
+                        design::token("primary-bg")
+                    } else {
+                        design::field_border()
+                    }
+                })
+                .bg(move || {
+                    if checked {
+                        design::token("primary-bg")
+                    } else {
+                        design::field()
+                    }
+                })
+                .child(if checked {
+                    ui::icon::icon_view("check", ui::icon::IconSize::Compact, || {
+                        design::token("primary-foreground")
+                    })
+                    .into_element()
+                } else {
+                    view().w(px(0.0)).h(px(0.0)).into_element()
+                }),
+        );
+}
