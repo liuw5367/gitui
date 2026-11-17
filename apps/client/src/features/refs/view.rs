@@ -247,11 +247,30 @@ pub(crate) fn refs_sidebar(
         )],
     ));
 
-    let worktree_rows: Vec<AnyElement> = refs
-        .worktrees
+    let mut worktrees = refs.worktrees.clone();
+    worktrees.sort_by(|left, right| {
+        short_path(&left.path)
+            .to_lowercase()
+            .cmp(&short_path(&right.path).to_lowercase())
+            .then_with(|| short_path(&left.path).cmp(&short_path(&right.path)))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let prune_available = worktrees
         .iter()
-        .map(|path| plain_row(short_path(path), "folder", design::text2))
+        .any(|worktree| worktree.prunable && !worktree.locked);
+    let worktree_rows: Vec<AnyElement> = worktrees
+        .iter()
+        .cloned()
+        .map(|worktree| worktree_row(language, cmd, tab_id, worktree))
         .collect();
+    let new_worktree: std::sync::Arc<dyn Fn()> = {
+        let refs = cmd.clone();
+        std::sync::Arc::new(move || refs.new_worktree_form_at(tab_id))
+    };
+    let prune_worktrees: std::sync::Arc<dyn Fn()> = {
+        let refs = cmd.clone();
+        std::sync::Arc::new(move || refs.prune_worktrees_at(tab_id))
+    };
     groups.push(group(
         language,
         cmd,
@@ -261,7 +280,10 @@ pub(crate) fn refs_sidebar(
         refs.worktrees.len(),
         collapsed.contains("group:worktrees"),
         worktree_rows,
-        Vec::new(),
+        vec![
+            ("worktree.new", true, new_worktree),
+            ("worktree.prune", prune_available, prune_worktrees),
+        ],
     ));
 
     return view()
@@ -1381,8 +1403,99 @@ fn branch_row(
     return row.into_element();
 }
 
-fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) -> AnyElement {
-    return view()
+fn worktree_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    worktree: git::WorktreeInfo,
+) -> AnyElement {
+    let path = worktree.path.clone();
+    let name = short_path(path.as_str());
+    let branch = worktree
+        .branch
+        .clone()
+        .unwrap_or_else(|| i18n::t(language.get_untracked().as_str(), "worktree.detached"));
+    let group_exists = worktree.exists && !worktree.prunable;
+    let can_remove = worktree.exists && !worktree.prunable && !worktree.locked && !worktree.dirty;
+    let can_reveal = worktree.exists;
+    let group_prune = cmd
+        .session
+        .tabs
+        .get_untracked()
+        .iter()
+        .find(|tab| tab.id == tab_id)
+        .is_some_and(|tab| {
+            tab.refs
+                .worktrees
+                .iter()
+                .any(|item| item.prunable && !item.locked)
+        });
+    let menu_cmd = cmd.clone();
+    let menu_path = path.clone();
+    let menu_new = cmd.clone();
+    let menu_open = cmd.clone();
+    let menu_remove = cmd.clone();
+    let menu_prune = cmd.clone();
+    let menu_notice = cmd.notice;
+    let menu = move |event: &nsh_core::ContextMenuEvent| {
+        let mut items = vec![ui::menu::action(
+            i18n::t(language.get().as_str(), "worktree.openNewWindow"),
+            group_exists,
+            {
+                let cmd = menu_open.clone();
+                let path = menu_path.clone();
+                move || cmd.open_worktree_window_at(tab_id, path.clone())
+            },
+        )];
+        items.push(ui::menu::action(
+            i18n::t(language.get().as_str(), "worktree.new"),
+            true,
+            {
+                let cmd = menu_new.clone();
+                move || cmd.new_worktree_form_at(tab_id)
+            },
+        ));
+        items.push(ui::menu::divider());
+        let is_open = menu_cmd.worktree_is_open(menu_path.as_str());
+        items.push(ui::menu::danger(
+            i18n::t(language.get().as_str(), "worktree.remove"),
+            can_remove && !is_open,
+            {
+                let cmd = menu_remove.clone();
+                let path = menu_path.clone();
+                move || cmd.remove_worktree_at(tab_id, path.clone())
+            },
+        ));
+        items.push(ui::menu::action(
+            i18n::t(language.get().as_str(), "worktree.prune"),
+            group_prune,
+            {
+                let cmd = menu_prune.clone();
+                move || cmd.prune_worktrees_at(tab_id)
+            },
+        ));
+        items.push(ui::menu::divider());
+        items.push(ui::menu::action(
+            i18n::t(language.get().as_str(), "menu.reveal"),
+            can_reveal,
+            {
+                let notice = menu_notice;
+                let path = menu_path.clone();
+                move || crate::shared::os::reveal_path(notice, language, path.clone())
+            },
+        ));
+        items.push(ui::menu::action(
+            i18n::t(language.get().as_str(), "menu.copyPath"),
+            true,
+            {
+                let notice = menu_notice;
+                let path = menu_path.clone();
+                move || crate::shared::os::copy_text(notice, language, path.clone())
+            },
+        ));
+        ui::menu::popup_at(items, event.page_position);
+    };
+    let mut row = view()
         .w_full()
         .h(px(metrics::SIDE_ROW_H))
         .px(px(7.0))
@@ -1391,19 +1504,29 @@ fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) ->
         .gap(px(7.0))
         .rounded(px(metrics::RADIUS_CONTROL))
         .hover(|style| style.bg(move || design::hover()))
+        .on_context_menu(menu)
         .child(crate::ui::icon::icon_view(
-            icon,
+            "folder",
             crate::ui::icon::IconSize::Compact,
-            color,
+            design::accent,
         ))
         .child(
-            text(label)
+            text(name)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
                 .flex_1()
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .into_element();
+        );
+    if !branch.is_empty() {
+        row = row.child(
+            text(branch)
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::text3())
+                .max_w(px(86.0))
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        );
+    }
+    return row.into_element();
 }
 
 fn submodule_row(
@@ -2138,10 +2261,10 @@ fn refs_table(
     }
     // 工作树：在 Finder 中显示、复制路径。
     let mut worktree_rows: Vec<AnyElement> = Vec::new();
-    for (index, path) in tab.refs.worktrees.iter().enumerate() {
+    for (index, worktree) in tab.refs.worktrees.iter().enumerate() {
         let reveal = reveal_path.clone();
         let copy_text = copy_text.clone();
-        let path_for_menu = path.clone();
+        let path_for_menu = worktree.path.clone();
         let items = vec![
             ui::menu::action(
                 i18n::t(language.get_untracked().as_str(), "menu.reveal"),
@@ -2164,8 +2287,8 @@ fn refs_table(
         ];
         worktree_rows.push(menu_row(
             language,
-            path.clone(),
-            String::new(),
+            short_path(worktree.path.as_str()),
+            worktree.branch.clone().unwrap_or_default(),
             String::new(),
             design::text2,
             items,

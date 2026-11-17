@@ -163,6 +163,26 @@ impl SearchCommands {
         let first = form.first.trim().to_string();
         let second = form.second.trim().to_string();
         let selected_stash_paths = form.selected_stash_paths();
+        if form.kind == FormKind::NewWorktree && first.is_empty() {
+            let mut next = form.clone();
+            next.error = Some(crate::i18n::t(
+                self.language.get_untracked().as_str(),
+                "worktree.pathRequired",
+            ));
+            form_state.set(Some(next));
+            return;
+        }
+        if form.kind == FormKind::NewWorktree
+            && (second.is_empty() || (form.flag && form.third.trim().is_empty()))
+        {
+            let mut next = form.clone();
+            next.error = Some(crate::i18n::t(
+                self.language.get_untracked().as_str(),
+                "worktree.branchRequired",
+            ));
+            form_state.set(Some(next));
+            return;
+        }
         if first.is_empty() && form.kind != FormKind::StashSelectedFiles {
             let mut next = form.clone();
             next.error = Some("名称不能为空".to_string());
@@ -205,6 +225,14 @@ impl SearchCommands {
             FormKind::EditRemote => ops::edit_remote(tab, second.as_str(), first.as_str()),
             // 身份：`first` 是姓名，`second` 是邮箱。
             FormKind::Identity => ops::set_identity(tab, first.as_str(), second.as_str()),
+            FormKind::NewWorktree => crate::features::refs::ops::create_worktree(
+                tab,
+                first.as_str(),
+                second.as_str(),
+                form.flag
+                    .then_some(form.third.trim())
+                    .filter(|start| !start.is_empty()),
+            ),
         };
         tabs.set(list);
         match result {

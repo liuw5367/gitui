@@ -22,7 +22,7 @@ use crate::shell;
 use nsh_core::prelude::*;
 
 /// 主窗口版式：工具条 + 侧栏 + 主体 + 状态栏。
-pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement {
+pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement + use<> {
     let language = handles.language;
     let tabs = handles.session.tabs;
     let active = handles.session.active;

@@ -1,6 +1,6 @@
-//! 窗口与会话级函数：欢迎页与设置两个独立窗口、会话持久化与标题栏留白。
+//! 窗口与会话级函数：欢迎页与设置声明式窗口、关联工作树辅助窗、会话持久化与标题栏留白。
 //!
-//! 两个窗口都以**声明式** `window()` 元素挂在 App 根（见 `bootstrap`）：nsh 0.5.0 的
+//! 欢迎与设置窗口以**声明式** `window()` 元素挂在 App 根（见 `bootstrap`）：nsh 0.5.0 的
 //! `open_window()` 会忽略 `Window::open`（命令式建出来的窗口只能被用户关闭），而这两
 //! 扇窗都要能被信号开关——打开仓库时关欢迎页、关掉最后一个标签页时重新打开它、菜单
 //! 与 Done 开关设置页。
@@ -15,7 +15,9 @@ use crate::app::handles::AppHandles;
 use crate::app::session::Tab;
 use crate::features;
 use crate::i18n;
-use nsh_core::desktop::{WindowAttributes, WindowKind, WindowPosition};
+use nsh_core::desktop::{
+    TitleBarOptions, TitleBarStyle, WindowAttributes, WindowKind, WindowPosition,
+};
 use nsh_core::element::desktop::title_bar;
 use nsh_core::prelude::*;
 
@@ -87,6 +89,207 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
         });
 
     return view().child(welcome_window).child(settings_window);
+}
+
+/// Install a per-window opener without capturing the callback signal it writes to.
+pub(crate) fn install_worktree_opener(handles: &mut AppHandles) {
+    let mut opener_handles = handles.clone();
+    opener_handles.refs.open_worktree_window = None;
+    let opener = std::sync::Arc::new(move |tab_id, path| {
+        open_worktree_window(&opener_handles, tab_id, path)
+    });
+    handles.refs.open_worktree_window = Some(opener);
+}
+
+/// Open a registered linked worktree in its own one-repository native window.
+pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: String) {
+    let Some(parent) = handles
+        .session
+        .tabs
+        .get_untracked()
+        .iter()
+        .find(|tab| tab.id == tab_id)
+        .map(|tab| tab.path.clone())
+    else {
+        return;
+    };
+    let registered = git::Repo::open(parent.as_str())
+        .ok()
+        .and_then(|repo| repo.refs().ok())
+        .and_then(|refs| refs.worktrees.into_iter().find(|tree| tree.path == path));
+    let Some(registered) = registered.filter(|tree| tree.exists && !tree.prunable) else {
+        crate::interactions::notify(
+            handles.session.notice,
+            crate::i18n::t(
+                handles.language.get_untracked().as_str(),
+                "worktree.targetChanged",
+            ),
+        );
+        return;
+    };
+    let Ok(repo) = git::Repo::open(registered.path.as_str()) else {
+        crate::interactions::notify(
+            handles.session.notice,
+            crate::i18n::t(
+                handles.language.get_untracked().as_str(),
+                "worktree.targetChanged",
+            ),
+        );
+        return;
+    };
+    let repo_root = repo
+        .root()
+        .canonicalize()
+        .unwrap_or_else(|_| repo.root().to_path_buf());
+    let requested = std::path::Path::new(registered.path.as_str())
+        .canonicalize()
+        .unwrap_or_else(|_| std::path::PathBuf::from(registered.path.as_str()));
+    if repo_root != requested {
+        crate::interactions::notify(
+            handles.session.notice,
+            crate::i18n::t(
+                handles.language.get_untracked().as_str(),
+                "worktree.targetChanged",
+            ),
+        );
+        return;
+    }
+    let path = repo.root().display().to_string();
+    let windows = handles.refs.worktree_windows;
+    if let Some((_, existing)) = windows
+        .get_untracked()
+        .into_iter()
+        .find(|(open_path, _)| open_path == &path)
+    {
+        existing.focus();
+        return;
+    }
+
+    let mut worktree_handles = handles.for_worktree();
+    install_worktree_opener(&mut worktree_handles);
+    worktree_handles.session.open_path(path.clone());
+    let session = worktree_handles.session.clone();
+    let content_handles = worktree_handles.clone();
+    let id = worktree_window_id(path.as_str());
+    let title = repo.name();
+    let registry = windows;
+    let close_path = path.clone();
+    let auxiliary_gallery = signal(false);
+    let window = nsh_core::element::desktop::window()
+        .id(id)
+        .title(title)
+        .default_size(size(Points(1280.0), Points(820.0)))
+        .attributes(worktree_window_attributes())
+        .on_open_change(move |change| {
+            if !change.open {
+                registry.update(|open| open.retain(|(open_path, _)| open_path != &close_path));
+            }
+        })
+        .content(move || {
+            crate::app::hotkeys::install(&content_handles, auxiliary_gallery);
+            worktree_window_content(content_handles.clone())
+        });
+    if let Some(window_ref) = nsh_core::element::desktop::open_window(window) {
+        session.window.set(Some(window_ref.clone()));
+        windows.update(|open| {
+            open.retain(|(open_path, _)| open_path != &path);
+            open.push((path, window_ref));
+        });
+    } else {
+        crate::interactions::notify(
+            handles.session.notice,
+            crate::i18n::t(
+                handles.language.get_untracked().as_str(),
+                "worktree.windowUnavailable",
+            ),
+        );
+    }
+}
+
+fn worktree_window_content(handles: AppHandles) -> impl IntoElement + use<> {
+    let tabs = handles.session.tabs;
+    let active = handles.session.active;
+    let current_tab = computed(move || tabs.get().get(active.get()).cloned());
+    let language = handles.language;
+    let search = handles.search.clone();
+    let settings_open = handles.session.settings_open;
+    return view()
+        .w_full()
+        .h_full()
+        .flex_col()
+        .overflow_hidden()
+        .bg(move || crate::design::content())
+        .text_color(move || crate::design::text())
+        .child(crate::app::workspace::workspace(&handles))
+        .child(crate::features::commit::rewrite_dialog::rewrite_dialog(
+            &handles.commit.state,
+            &handles.commit,
+            language,
+        ))
+        .child(crate::features::merge::view::conflict_view(
+            &handles.merge.state,
+            &handles.merge,
+            language,
+            current_tab,
+        ))
+        .child(crate::features::commit::hook_sheet::hook_sheet(
+            &handles.commit.state,
+            &handles.commit,
+            language,
+            current_tab,
+        ))
+        .child(crate::features::sync::view::sync_dialog(
+            &handles.sync.state,
+            &handles.sync,
+            language,
+            tabs,
+            current_tab,
+        ))
+        .child(dynamic(move || -> AnyElement {
+            if settings_open.get() {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            crate::features::search::form_overlay(&search, language).into_element()
+        }))
+        .child(dynamic({
+            let search = handles.search.clone();
+            let recent = handles.session.recent;
+            move || -> AnyElement {
+                if !search.state.palette_open.get() {
+                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                }
+                let paths: Vec<String> = tabs.get().iter().map(|tab| tab.path.clone()).collect();
+                let recent_paths = recent
+                    .get()
+                    .iter()
+                    .map(|entry| entry.path.clone())
+                    .collect();
+                return crate::features::search::view::palette(
+                    &search.state,
+                    &search,
+                    paths,
+                    recent_paths,
+                )
+                .into_element();
+            }
+        }));
+}
+
+fn worktree_window_id(path: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut hasher);
+    return format!("worktree:{:016x}", hasher.finish());
+}
+
+fn worktree_window_attributes() -> WindowAttributes {
+    let mut attributes = attributes_with_min_size(1000.0, 640.0);
+    let mut title_bar = TitleBarOptions::default();
+    title_bar.style = TitleBarStyle::Hidden;
+    title_bar.height = Some(Points(crate::design::metrics::TITLEBAR_H));
+    attributes.title_bar = Some(title_bar);
+    attributes.close_on_press = Some(true);
+    return attributes;
 }
 
 /// 设置窗口的属性：最小尺寸之外，显式关掉 `Dialog` 的“Esc 关窗”默认值。

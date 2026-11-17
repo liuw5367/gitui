@@ -20,7 +20,67 @@ pub(crate) fn titlebar(
     settings: crate::features::settings::commands::SettingsCommands,
 ) -> impl IntoElement {
     let (left, right) = crate::window_insets();
+    let auxiliary = session.auxiliary;
     let open = session;
+    let repository_area = dynamic(move || -> AnyElement {
+        if auxiliary {
+            let title = tabs
+                .get()
+                .get(active.get())
+                .map(|tab| tab.name.clone())
+                .unwrap_or_default();
+            return view()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex_row()
+                .items_center()
+                .pl(px(8.0))
+                .child(
+                    text(title)
+                        .text_size(px(crate::ui::BODY))
+                        .font_weight(FontWeight(600))
+                        .text_color(move || design::text()),
+                )
+                .into_element();
+        }
+        return view()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex_row()
+            .items_center()
+            .gap(px(4.0))
+            .child(crate::ui::tabs::repository_tabs(
+                tabs,
+                active,
+                open.clone(),
+                language,
+            ))
+            .child(
+                view()
+                    .w(px(27.0))
+                    .h(px(metrics::RTAB_H))
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(metrics::RADIUS_CONTROL))
+                    .hover(|style| style.bg(move || design::hover()))
+                    .label(SharedString::from(i18n::t(
+                        language.get_untracked().as_str(),
+                        "shell.addTab",
+                    )))
+                    .on_press({
+                        let open = open.clone();
+                        move || open.go_repo_manager()
+                    })
+                    .child(crate::ui::icon::icon_view(
+                        "plus",
+                        crate::ui::icon::IconSize::Button,
+                        design::text2,
+                    )),
+            )
+            .into_element();
+    });
     return view()
         .w_full()
         .h(px(metrics::TITLEBAR_H))
@@ -33,43 +93,7 @@ pub(crate) fn titlebar(
         .border_b_1()
         .border_color(move || design::line())
         .window_drag(true)
-        .child(
-            view()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .flex_row()
-                .items_center()
-                .gap(px(4.0))
-                .child(crate::ui::tabs::repository_tabs(
-                    tabs,
-                    active,
-                    open.clone(),
-                    language,
-                ))
-                .child(
-                    view()
-                        .w(px(27.0))
-                        .h(px(metrics::RTAB_H))
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(metrics::RADIUS_CONTROL))
-                        .hover(|style| style.bg(move || design::hover()))
-                        .label(SharedString::from(i18n::t(
-                            language.get_untracked().as_str(),
-                            "shell.addTab",
-                        )))
-                        .on_press({
-                            let open = open.clone();
-                            move || open.go_repo_manager()
-                        })
-                        .child(crate::ui::icon::icon_view(
-                            "plus",
-                            crate::ui::icon::IconSize::Button,
-                            design::text2,
-                        )),
-                ),
-        )
+        .child(repository_area)
         .child(
             view()
                 .flex_row()

@@ -18,6 +18,7 @@ APP_HOME=/tmp/app-home nsh run
 - 应用数据目录默认是 `~/.config/gitui`，由 `src/brand.rs` 的 `STORAGE_DIR` 决定；`APP_HOME` 可以直接覆盖。解析规则见 [store README](../../crates/store/README.md)。
 - 窗口初始内容区 1392×852，与设计板的内容区一致；最小尺寸为 1100×700。
 - 启动行为由设置的 `Launch behavior` 决定：恢复上次会话时按保存顺序打开主窗口标签且不打开欢迎页；空会话或 `Show Welcome` 只显示欢迎窗口。主窗口 `+` 打开欢迎窗口，关闭最后一个标签会清空会话并返回欢迎页；应用退出会保存当前标签顺序和活动仓库。
+- Worktrees 侧栏的 `Open in New Window` 为关联工作树打开独立单仓库窗口，不显示仓库标签栏或加号；重复打开同一路径会聚焦已有工作树窗口，关闭辅助窗口不会改动主窗口会话。
 - 打包用 `scripts/release-macos.sh`：脚本调用 `nsh package --target macos`，设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 
 ## 结构

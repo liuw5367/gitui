@@ -241,6 +241,17 @@ pub struct SubmoduleInfo {
     pub dirty: bool,
 }
 
+/// 一个已登记的 linked worktree。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    pub path: String,
+    pub branch: Option<String>,
+    pub locked: bool,
+    pub prunable: bool,
+    pub exists: bool,
+    pub dirty: bool,
+}
+
 /// 侧栏引用的完整集合。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Refs {
@@ -251,7 +262,7 @@ pub struct Refs {
     pub tags: Vec<String>,
     pub stashes: Vec<Stash>,
     pub submodules: Vec<SubmoduleInfo>,
-    pub worktrees: Vec<String>,
+    pub worktrees: Vec<WorktreeInfo>,
 }
 
 /// HEAD 的三种形态。
@@ -532,17 +543,67 @@ impl Repo {
         return (!value.is_empty()).then_some(value);
     }
 
-    fn worktrees(&self) -> Result<Vec<String>, GitError> {
+    fn worktrees(&self) -> Result<Vec<WorktreeInfo>, GitError> {
         let output = run_git(&self.root, &["worktree", "list", "--porcelain"])?;
         let mut worktrees = Vec::new();
+        let mut current: Option<WorktreeInfo> = None;
         for line in String::from_utf8_lossy(&output).lines() {
             if let Some(path) = line.strip_prefix("worktree ") {
-                worktrees.push(path.to_string());
+                if let Some(worktree) = current.take() {
+                    worktrees.push(worktree);
+                }
+                current = Some(WorktreeInfo {
+                    path: path.to_string(),
+                    ..WorktreeInfo::default()
+                });
+            } else if let Some(worktree) = current.as_mut() {
+                if let Some(branch) = line.strip_prefix("branch refs/heads/") {
+                    worktree.branch = Some(branch.to_string());
+                } else if line == "locked" || line.starts_with("locked ") {
+                    worktree.locked = true;
+                } else if line == "prunable" || line.starts_with("prunable ") {
+                    worktree.prunable = true;
+                }
             }
         }
-        // 主工作树就是仓库本身，侧栏只列附加工作树。
-        let root = self.root.display().to_string();
-        worktrees.retain(|path| *path != root);
+        if let Some(worktree) = current {
+            worktrees.push(worktree);
+        }
+        let root = self
+            .root
+            .canonicalize()
+            .unwrap_or_else(|_| self.root.clone());
+        for worktree in &mut worktrees {
+            let path = Path::new(&worktree.path);
+            worktree.exists = path.is_dir();
+            if worktree.exists {
+                if let Ok(path) = path.canonicalize() {
+                    if let Ok(repo) = Repo::open(path.to_string_lossy().as_ref()) {
+                        let repo_root = repo
+                            .root()
+                            .canonicalize()
+                            .unwrap_or_else(|_| repo.root().to_path_buf());
+                        worktree.dirty = if repo_root == path {
+                            repo.status()
+                                .map(|status| !status.is_empty())
+                                .unwrap_or(true)
+                        } else {
+                            true
+                        };
+                    } else {
+                        worktree.dirty = true;
+                    }
+                } else {
+                    worktree.dirty = true;
+                }
+            }
+        }
+        worktrees.retain(|worktree| {
+            Path::new(&worktree.path)
+                .canonicalize()
+                .map(|path| path != root)
+                .unwrap_or_else(|_| Path::new(&worktree.path) != self.root)
+        });
         return Ok(worktrees);
     }
 

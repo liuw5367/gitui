@@ -25,8 +25,7 @@ pub(crate) mod welcome;
 ///
 /// 除了标签页本身，还收打开仓库、返回欢迎页、重新定位、关闭与切换页签这些
 /// **跨功能的会话动作** 所需的句柄：屏幕、欢迎窗口、最近仓库、数据目录与当前
-/// 筛选条件。这些动作原先以闭包形式放在 `Actions` 里，多个功能都要调，因此
-/// 改成这里的方法。
+/// 筛选条件。辅助工作树窗口使用独立标签集合，并关闭主会话持久化。
 ///
 /// P4 会把 `Tab` 的壳收进 `app/session.rs`，届时这里只剩类型别名。
 #[derive(Clone)]
@@ -47,6 +46,10 @@ pub(crate) struct SessionHandle {
     pub(crate) notice: Signal<Option<String>>,
     /// 当前界面语言（「在此初始化」的提示文案按它取）。
     pub(crate) language: Signal<SharedString>,
+    /// Auxiliary worktree windows own a single repo tab and never write the main session.
+    pub(crate) auxiliary: bool,
+    pub(crate) persist_session: bool,
+    pub(crate) window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
 }
 
 impl SessionHandle {
@@ -58,7 +61,9 @@ impl SessionHandle {
         let repo = match git::Repo::open(path.trim()) {
             Ok(repo) => repo,
             Err(error) => {
-                self.go_welcome();
+                if !self.auxiliary {
+                    self.go_welcome();
+                }
                 let language = self.language.get_untracked();
                 crate::interactions::alert(
                     crate::i18n::t(language.as_str(), "welcome.openAction"),
@@ -76,6 +81,8 @@ impl SessionHandle {
         let store_dir = self.store_dir.clone();
         let current_filter = self.filter.clone();
         let filter = current_filter();
+        let auxiliary = self.auxiliary;
+        let persist_session = self.persist_session;
         let mut list = tabs.get_untracked();
         if let Some(index) = list
             .iter()
@@ -83,10 +90,14 @@ impl SessionHandle {
         {
             active.set(index);
             tabs.set(list);
-            welcome_open.set(false);
-            nsh_core::element::desktop::main_window().show();
-            nsh_core::element::desktop::main_window().focus();
-            crate::persist(&store_dir, active, tabs);
+            if !auxiliary {
+                welcome_open.set(false);
+                nsh_core::element::desktop::main_window().show();
+                nsh_core::element::desktop::main_window().focus();
+            }
+            if persist_session {
+                crate::persist(&store_dir, active, tabs);
+            }
             return;
         }
         list.push(crate::app::session::placeholder_tab(path.as_str(), &filter));
@@ -98,13 +109,19 @@ impl SessionHandle {
             .map(|tab| tab.load_id)
             .unwrap_or_default();
         tabs.set(list);
-        store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
-        recent.set(store::load_recent(&store_dir));
+        if persist_session {
+            store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
+            recent.set(store::load_recent(&store_dir));
+        }
         // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
-        welcome_open.set(false);
-        nsh_core::element::desktop::main_window().show();
-        nsh_core::element::desktop::main_window().focus();
-        crate::persist(&store_dir, active, tabs);
+        if !auxiliary {
+            welcome_open.set(false);
+            nsh_core::element::desktop::main_window().show();
+            nsh_core::element::desktop::main_window().focus();
+        }
+        if persist_session {
+            crate::persist(&store_dir, active, tabs);
+        }
 
         let path_for_load = path.clone();
         let branch_dir = store_dir.clone();
@@ -130,7 +147,7 @@ impl SessionHandle {
             loaded.load_id = load_id;
             list[index] = loaded;
             tabs.set(list);
-            if let Some(branch) = branch {
+            if persist_session && let Some(branch) = branch {
                 store::set_recent_branch(&branch_dir, &loaded_path, &branch);
                 recent.set(store::load_recent(&branch_dir));
             }
@@ -266,6 +283,7 @@ impl SessionHandle {
             let active = active;
             let store_dir = store_dir.clone();
             let session = session.clone();
+            let persist_session = session.persist_session;
             Arc::new(move |tab_id: u64| {
                 let mut list = tabs.get_untracked();
                 let Some(index) = list.iter().position(|tab| tab.id == tab_id) else {
@@ -284,11 +302,14 @@ impl SessionHandle {
                 tabs.set(list.clone());
                 active.set(next_active);
                 if list.is_empty() {
-                    crate::persist(&store_dir, active, tabs);
-                    nsh_core::element::desktop::main_window().hide();
-                    session.go_welcome();
+                    if persist_session {
+                        crate::persist(&store_dir, active, tabs);
+                    }
+                    session.finish_empty_session();
                 } else {
-                    crate::persist(&store_dir, active, tabs);
+                    if persist_session {
+                        crate::persist(&store_dir, active, tabs);
+                    }
                 }
             })
         };
@@ -382,10 +403,13 @@ impl SessionHandle {
         };
         self.tabs.set(remaining);
         self.active.set(next_active);
-        crate::persist(&self.store_dir, self.active, self.tabs);
         if self.tabs.get_untracked().is_empty() {
-            nsh_core::element::desktop::main_window().hide();
-            self.go_welcome();
+            if self.persist_session {
+                crate::persist(&self.store_dir, self.active, self.tabs);
+            }
+            self.finish_empty_session();
+        } else if self.persist_session {
+            crate::persist(&self.store_dir, self.active, self.tabs);
         }
     }
 
@@ -411,17 +435,17 @@ impl SessionHandle {
                 self.active.set(index);
             }
         }
-        crate::persist(&self.store_dir, self.active, self.tabs);
+        self.persist();
     }
 
     /// 切到第 `index` 个标签页并写回会话（原 `Actions::activate_tab`）。
     pub(crate) fn activate_tab(&self, index: usize) {
         let active = self.active;
         let tabs = self.tabs;
-        let store_dir = self.store_dir.clone();
+        let session = self.clone();
         if index < tabs.get_untracked().len() {
             active.set(index);
-            crate::persist(&store_dir, active, tabs);
+            session.persist();
         }
     }
 
@@ -452,7 +476,7 @@ impl SessionHandle {
             (current + count - 1) % count
         };
         active.set(next);
-        crate::persist(&self.store_dir, active, tabs);
+        self.persist();
     }
 
     /// 切到第 `slot` 个标签页；越界不动（不把用户送到空标签）。
@@ -461,7 +485,24 @@ impl SessionHandle {
         let active = self.active;
         if slot < tabs.get_untracked().len() {
             active.set(slot);
-            crate::persist(&self.store_dir, active, tabs);
+            self.persist();
+        }
+    }
+
+    fn persist(&self) {
+        if self.persist_session {
+            crate::persist(&self.store_dir, self.active, self.tabs);
+        }
+    }
+
+    fn finish_empty_session(&self) {
+        if self.auxiliary {
+            if let Some(window) = self.window.get_untracked() {
+                window.close();
+            }
+        } else {
+            nsh_core::element::desktop::main_window().hide();
+            self.go_welcome();
         }
     }
 }

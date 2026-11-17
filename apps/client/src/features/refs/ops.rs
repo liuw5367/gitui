@@ -453,6 +453,37 @@ pub(crate) fn delete_remote_branch(
     fetch_result.map(|_| ())
 }
 
+/// Create a linked worktree and refresh the parent tab's references.
+pub(crate) fn create_worktree(
+    tab: &mut Tab,
+    path: &str,
+    branch: &str,
+    start_point: Option<&str>,
+) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.add_worktree(path, branch, start_point)
+        .map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    tab.error = None;
+    return Ok(());
+}
+
+pub(crate) fn remove_worktree(tab: &mut Tab, path: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.remove_worktree(path).map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    tab.error = None;
+    return Ok(());
+}
+
+pub(crate) fn prune_worktrees(tab: &mut Tab) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.prune_worktrees().map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    tab.error = None;
+    return Ok(());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

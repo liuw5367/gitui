@@ -19,6 +19,7 @@ pub(crate) enum FormKind {
     RenameBranch,
     EditRemote,
     Identity,
+    NewWorktree,
 }
 
 impl FormKind {
@@ -32,6 +33,7 @@ impl FormKind {
             FormKind::RenameBranch => "form.renameBranch",
             FormKind::EditRemote => "form.editRemote",
             FormKind::Identity => "form.identity",
+            FormKind::NewWorktree => "worktree.newTitle",
         };
     }
 
@@ -44,6 +46,7 @@ impl FormKind {
             FormKind::RenameBranch => "form.newName",
             FormKind::EditRemote => "form.urlNew",
             FormKind::Identity => "form.authorName",
+            FormKind::NewWorktree => "worktree.path",
         };
     }
 
@@ -51,6 +54,7 @@ impl FormKind {
     fn third_label(self) -> Option<&'static str> {
         return match self {
             FormKind::NewTag => Some("form.message"),
+            FormKind::NewWorktree => Some("worktree.startPoint"),
             _ => None,
         };
     }
@@ -60,6 +64,7 @@ impl FormKind {
         return match self {
             FormKind::NewBranch => Some("form.checkoutAfter"),
             FormKind::NewTag => Some("form.annotated"),
+            FormKind::NewWorktree => Some("worktree.createBranch"),
             FormKind::NewStash | FormKind::StashSelectedFiles => Some("form.includeUntracked"),
             _ => None,
         };
@@ -74,6 +79,7 @@ impl FormKind {
     fn second_label(self) -> Option<&'static str> {
         return match self {
             FormKind::NewBranch | FormKind::NewTag => Some("form.from"),
+            FormKind::NewWorktree => Some("worktree.branch"),
             FormKind::AddRemote => Some("form.url"),
             FormKind::NewStash | FormKind::StashSelectedFiles => None,
             FormKind::RenameBranch | FormKind::EditRemote => None,
@@ -91,6 +97,7 @@ impl FormKind {
             FormKind::RenameBranch => "form.rename",
             FormKind::EditRemote => "form.save",
             FormKind::Identity => "form.save",
+            FormKind::NewWorktree => "worktree.create",
         };
     }
 }
@@ -176,6 +183,7 @@ pub(crate) fn form_dialog(
                 let form_for_third = form.clone();
                 let form_for_flag = form.clone();
                 let form_for_stash_paths = form.clone();
+                let form_for_worktree_path = form.clone();
                 return crate::ui::dialog::modality(
                     view()
                         .w(px(420.0))
@@ -207,6 +215,17 @@ pub(crate) fn form_dialog(
                                 }
                             },
                         ))
+                        .child(dynamic(move || -> AnyElement {
+                            if form.kind != FormKind::NewWorktree {
+                                return view().w_full().h(px(0.0)).into_element();
+                            }
+                            return choose_worktree_path(
+                                language,
+                                form_for_worktree_path.clone(),
+                                state,
+                            )
+                            .into_element();
+                        }))
                         .child(dynamic(move || -> AnyElement {
                             let Some(label_key) = form.kind.second_label() else {
                                 return view().w_full().h(px(0.0)).into_element();
@@ -243,6 +262,9 @@ pub(crate) fn form_dialog(
                             let Some(label_key) = form.kind.third_label() else {
                                 return view().w_full().h(px(0.0)).into_element();
                             };
+                            if form.kind == FormKind::NewWorktree && !form.flag {
+                                return view().w_full().h(px(0.0)).into_element();
+                            }
                             let form_for_third = form_for_third.clone();
                             return field(
                                 language,
@@ -333,6 +355,37 @@ pub(crate) fn form_dialog(
         },
         move || dismiss(),
     );
+}
+
+fn choose_worktree_path(
+    language: Signal<SharedString>,
+    form: FormState,
+    state: Signal<Option<FormState>>,
+) -> impl IntoElement {
+    let choose = crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), "worktree.choosePath"),
+        crate::ui::button::ButtonVariant::Secondary,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        move || {
+            let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
+            let state = state;
+            let form = form.clone();
+            spawn(async move {
+                let Ok(Some(paths)) = answer.await else {
+                    return;
+                };
+                let Some(path) = paths.first() else {
+                    return;
+                };
+                let mut updated = form;
+                updated.first = path.display().to_string();
+                updated.error = None;
+                state.set(Some(updated));
+            });
+        },
+    );
+    return view().w_full().flex_row().justify_end().child(choose);
 }
 
 fn stash_file_picker(

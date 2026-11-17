@@ -306,6 +306,9 @@ pub(crate) fn app() -> impl IntoElement {
         filter: current_filter.clone(),
         notice,
         language,
+        auxiliary: false,
+        persist_session: true,
+        window: signal(None),
     };
     let close_session = session.clone();
     main_window().on_close_press(move |reason| {
@@ -565,10 +568,13 @@ pub(crate) fn app() -> impl IntoElement {
         recovery: recovery_commands.clone(),
         search: search_commands.clone(),
         sync: sync_commands.clone(),
+        main_tabs: tabs,
+        worktree_windows: signal(Vec::new()),
+        open_worktree_window: None,
     };
 
     // 各功能的句柄收成一个结构：主窗口版式（`app::workspace`）只取这一个参数。
-    let handles = AppHandles {
+    let mut handles = AppHandles {
         session: session.clone(),
         history: history_commands.clone(),
         changes: changes_commands.clone(),
@@ -584,6 +590,7 @@ pub(crate) fn app() -> impl IntoElement {
         diff: diff_commands.clone(),
         language,
     };
+    crate::app::windows::install_worktree_opener(&mut handles);
 
     // 欢迎页的相对时间与分组每分钟刷新一次，窗口开着时不会停在挂载时刻。
     {

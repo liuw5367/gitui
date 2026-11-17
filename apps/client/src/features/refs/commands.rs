@@ -13,6 +13,7 @@ use crate::features::search::commands::SearchCommands;
 use crate::features::search::form_dialog::FormKind;
 use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct RefsCommands {
@@ -31,6 +32,10 @@ pub(crate) struct RefsCommands {
     pub(crate) search: SearchCommands,
     /// 同步功能的用例：Refs 表里远程行的「取回」打开同步面板。
     pub(crate) sync: SyncCommands,
+    /// Root session and auxiliary-window registry guard worktree removal.
+    pub(crate) main_tabs: Signal<Vec<crate::app::session::Tab>>,
+    pub(crate) worktree_windows: Signal<Vec<(String, nsh_core::element::desktop::WindowRef)>>,
+    pub(crate) open_worktree_window: Option<Arc<dyn Fn(u64, String)>>,
 }
 
 impl RefsCommands {
@@ -67,6 +72,259 @@ impl RefsCommands {
             }
         }
         self.session.tabs.set(list);
+    }
+
+    pub(crate) fn new_worktree_form_at(&self, tab_id: u64) {
+        self.search
+            .open_form_from_tab(tab_id, FormKind::NewWorktree, String::new());
+    }
+
+    pub(crate) fn open_worktree_window_at(&self, tab_id: u64, path: String) {
+        let registered = self
+            .session
+            .tabs
+            .get_untracked()
+            .iter()
+            .find(|tab| tab.id == tab_id)
+            .is_some_and(|tab| {
+                tab.refs
+                    .worktrees
+                    .iter()
+                    .any(|worktree| worktree.path == path && worktree.exists)
+            });
+        if !registered {
+            self.notify_worktree("worktree.targetChanged");
+            return;
+        }
+        let Some(open) = self.open_worktree_window.as_ref() else {
+            self.notify_worktree("worktree.windowUnavailable");
+            return;
+        };
+        open(tab_id, path);
+    }
+
+    pub(crate) fn remove_worktree_at(&self, tab_id: u64, path: String) {
+        if self.worktree_is_open(path.as_str()) {
+            self.notify_worktree("worktree.cannotRemoveOpen");
+            return;
+        }
+        let safe = self
+            .worktree_info(tab_id, path.as_str())
+            .is_some_and(|worktree| {
+                worktree.exists && !worktree.prunable && !worktree.locked && !worktree.dirty
+            });
+        if !safe {
+            self.notify_worktree("worktree.cannotRemove");
+            return;
+        }
+        let language = self.language;
+        let lang = language.get_untracked();
+        let pending = crate::ui::dialog::confirm_destructive(
+            crate::i18n::t(lang.as_str(), "worktree.removeTitle"),
+            crate::i18n::with_arguments(
+                lang.as_str(),
+                "worktree.removeMessage",
+                &[("path", path.clone())],
+            ),
+            crate::i18n::t(lang.as_str(), "worktree.removeAction"),
+            crate::i18n::t(lang.as_str(), "common.cancel"),
+        );
+        let commands = self.clone();
+        spawn(async move {
+            if !matches!(pending.await, Ok(result) if result.action.as_deref() == Some("delete")) {
+                return;
+            }
+            if commands.worktree_is_open(path.as_str()) {
+                commands.notify_worktree("worktree.cannotRemoveOpen");
+                return;
+            }
+            let tabs = commands.session.tabs;
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                commands.notify_worktree("worktree.targetChanged");
+                return;
+            };
+            let still_safe = commands
+                .fresh_worktree(tab.path.as_str(), path.as_str())
+                .is_some_and(|worktree| {
+                    worktree.exists && !worktree.prunable && !worktree.locked && !worktree.dirty
+                });
+            if !still_safe {
+                commands.notify_worktree("worktree.cannotRemove");
+                return;
+            }
+            match ops::remove_worktree(tab, path.as_str()) {
+                Ok(()) => crate::interactions::notify(
+                    commands.notice,
+                    crate::i18n::t(
+                        commands.language.get_untracked().as_str(),
+                        "worktree.removed",
+                    ),
+                ),
+                Err(detail) => crate::interactions::notify(commands.notice, detail),
+            }
+            tabs.set(list);
+        });
+    }
+
+    pub(crate) fn prune_worktrees_at(&self, tab_id: u64) {
+        let Some(parent) = self
+            .session
+            .tabs
+            .get_untracked()
+            .iter()
+            .find(|tab| tab.id == tab_id)
+            .map(|tab| tab.path.clone())
+        else {
+            return;
+        };
+        let mut candidates = self
+            .fresh_worktrees(parent.as_str())
+            .into_iter()
+            .filter(|worktree| worktree.prunable && !worktree.locked)
+            .map(|worktree| worktree.path)
+            .collect::<Vec<_>>();
+        candidates.sort();
+        if candidates.is_empty() {
+            self.notify_worktree("worktree.pruneEmpty");
+            return;
+        }
+        if candidates
+            .iter()
+            .any(|path| self.worktree_is_open(path.as_str()))
+        {
+            self.notify_worktree("worktree.cannotPruneOpen");
+            return;
+        }
+        let language = self.language;
+        let lang = language.get_untracked();
+        let pending = crate::ui::dialog::confirm_destructive(
+            crate::i18n::t(lang.as_str(), "worktree.pruneTitle"),
+            crate::i18n::with_arguments(
+                lang.as_str(),
+                "worktree.pruneMessage",
+                &[("paths", candidates.join("\n"))],
+            ),
+            crate::i18n::t(lang.as_str(), "worktree.pruneAction"),
+            crate::i18n::t(lang.as_str(), "common.cancel"),
+        );
+        let commands = self.clone();
+        spawn(async move {
+            if !matches!(pending.await, Ok(result) if result.action.as_deref() == Some("delete")) {
+                return;
+            }
+            let tabs = commands.session.tabs;
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                commands.notify_worktree("worktree.targetChanged");
+                return;
+            };
+            let mut latest = commands
+                .fresh_worktrees(tab.path.as_str())
+                .into_iter()
+                .filter(|worktree| worktree.prunable && !worktree.locked)
+                .map(|worktree| worktree.path)
+                .collect::<Vec<_>>();
+            latest.sort();
+            if latest != candidates {
+                commands.notify_worktree("worktree.pruneChanged");
+                return;
+            }
+            if latest
+                .iter()
+                .any(|path| commands.worktree_is_open(path.as_str()))
+            {
+                commands.notify_worktree("worktree.cannotPruneOpen");
+                return;
+            }
+            match ops::prune_worktrees(tab) {
+                Ok(()) => crate::interactions::notify(
+                    commands.notice,
+                    crate::i18n::t(
+                        commands.language.get_untracked().as_str(),
+                        "worktree.pruned",
+                    ),
+                ),
+                Err(detail) => crate::interactions::notify(commands.notice, detail),
+            }
+            tabs.set(list);
+        });
+    }
+
+    pub(crate) fn worktree_is_open(&self, path: &str) -> bool {
+        return self
+            .main_tabs
+            .get_untracked()
+            .iter()
+            .any(|tab| Self::same_worktree_path(tab.path.as_str(), path))
+            || self
+                .worktree_windows
+                .get_untracked()
+                .iter()
+                .any(|(open_path, _)| Self::same_worktree_path(open_path.as_str(), path));
+    }
+
+    fn same_worktree_path(left: &str, right: &str) -> bool {
+        return Self::normalize_worktree_path(left) == Self::normalize_worktree_path(right);
+    }
+
+    fn normalize_worktree_path(path: &str) -> std::path::PathBuf {
+        let mut ancestor = std::path::Path::new(path);
+        let mut missing = Vec::new();
+        while !ancestor.exists() {
+            let Some(name) = ancestor.file_name() else {
+                break;
+            };
+            missing.push(name.to_os_string());
+            let Some(parent) = ancestor.parent() else {
+                break;
+            };
+            ancestor = parent;
+        }
+        let mut normalized = ancestor
+            .canonicalize()
+            .unwrap_or_else(|_| ancestor.to_path_buf());
+        for part in missing.iter().rev() {
+            normalized.push(part);
+        }
+        return normalized;
+    }
+
+    fn worktree_info(&self, tab_id: u64, path: &str) -> Option<git::WorktreeInfo> {
+        let parent = self
+            .session
+            .tabs
+            .get_untracked()
+            .iter()
+            .find(|tab| tab.id == tab_id)?
+            .path
+            .clone();
+        return self.fresh_worktree(parent.as_str(), path);
+    }
+
+    fn fresh_worktree(&self, parent: &str, path: &str) -> Option<git::WorktreeInfo> {
+        git::Repo::open(parent)
+            .ok()?
+            .refs()
+            .ok()?
+            .worktrees
+            .into_iter()
+            .find(|worktree| worktree.path == path)
+    }
+
+    fn fresh_worktrees(&self, parent: &str) -> Vec<git::WorktreeInfo> {
+        git::Repo::open(parent)
+            .ok()
+            .and_then(|repo| repo.refs().ok())
+            .map(|refs| refs.worktrees)
+            .unwrap_or_default()
+    }
+
+    fn notify_worktree(&self, key: &'static str) {
+        crate::interactions::notify(
+            self.notice,
+            crate::i18n::t(self.language.get_untracked().as_str(), key),
+        );
     }
 
     /// 检出分支（原 `checkout_branch`）：有改动时先问贮藏后切、带过去还是取消。

@@ -17,6 +17,7 @@ use crate::features::sync::commands::SyncCommands;
 use crate::features::welcome::commands::WelcomeCommands;
 use crate::shared::diff::DiffCommands;
 use nsh_core::prelude::*;
+use std::sync::Arc;
 
 /// 各功能的用例句柄与当前语言；`bootstrap` 构造一次，页面按需克隆。
 #[derive(Clone)]
@@ -40,4 +41,100 @@ pub(crate) struct AppHandles {
     #[allow(dead_code)]
     pub(crate) diff: DiffCommands,
     pub(crate) language: Signal<SharedString>,
+}
+
+impl AppHandles {
+    /// Fork workspace state for an auxiliary one-repo worktree window.
+    pub(crate) fn for_worktree(&self) -> Self {
+        let session = crate::features::SessionHandle {
+            tabs: signal(Vec::new()),
+            active: signal(0),
+            welcome_open: self.session.welcome_open,
+            settings_open: self.session.settings_open,
+            recent: self.session.recent,
+            store_dir: self.session.store_dir.clone(),
+            filter: self.session.filter.clone(),
+            notice: signal(None),
+            language: self.language,
+            auxiliary: true,
+            persist_session: false,
+            window: signal(None),
+        };
+
+        let mut handles = self.clone();
+        handles.session = session.clone();
+        handles.diff.session = session.clone();
+        handles.recovery.session = session.clone();
+        handles.merge.session = session.clone();
+        handles.changes.session = session.clone();
+        handles.changes.state.changelist_open = signal(false);
+        handles.commit.session = session.clone();
+        handles.commit.state = crate::features::commit::state::CommitState {
+            summary: signal(String::new()),
+            description: signal(String::new()),
+            rewrite: signal(None),
+        };
+        handles.agent.session = session.clone();
+        handles.agent.commit_summary = handles.commit.state.summary;
+        handles.agent.state.plan = signal(None);
+        handles.history.session = session.clone();
+        handles.history.diff = handles.diff.clone();
+        handles.history.commit = handles.commit.clone();
+        handles.history.recovery = handles.recovery.clone();
+        handles.history.mode = signal(crate::Mode::History);
+        let query = signal(handles.history.state.query.get_untracked());
+        let reference = signal(handles.history.state.reference.get_untracked());
+        let author = signal(handles.history.state.author.get_untracked());
+        let when = signal(handles.history.state.when.get_untracked());
+        let filter_now = store::now_unix();
+        let filter_query = query;
+        let filter_reference = reference;
+        let filter_author = author;
+        let filter_when = when;
+        let filter: Arc<dyn Fn() -> git::LogFilter> = Arc::new(move || {
+            return crate::filters::build(
+                filter_query.get_untracked().as_str(),
+                filter_reference.get_untracked().as_str(),
+                filter_author.get_untracked().as_str(),
+                crate::filters::When::from_key(filter_when.get_untracked().as_str()),
+                filter_now,
+            );
+        });
+        handles.history.state = crate::features::history::state::HistoryState {
+            query,
+            reference,
+            author,
+            when,
+            filter_open: signal(false),
+            compare_mode: signal(false),
+            filter,
+        };
+        handles.sync.session = session.clone();
+        handles.sync.state.dialog = signal(None);
+        handles.refs.session = session.clone();
+        handles.refs.history = handles.history.clone();
+        handles.refs.recovery = handles.recovery.clone();
+        handles.refs.sync = handles.sync.clone();
+        handles.refs.state.reflog_query = signal(String::new());
+        handles.refs.open_worktree_window = None;
+        handles.search.session = session.clone();
+        handles.search.history = handles.history.clone();
+        handles.search.commit = handles.commit.clone();
+        handles.search.settings = handles.settings.clone();
+        handles.search.sync = handles.sync.clone();
+        handles.search.state = crate::features::search::state::SearchState {
+            palette_open: signal(false),
+            palette_selected: signal(0),
+            palette_query: signal(String::new()),
+            mode: handles.history.mode,
+            form: signal(None),
+        };
+        handles.search.inspector_open = signal(false);
+        handles.settings.session = session;
+        handles.settings.diff = handles.diff.clone();
+        handles.search.settings = handles.settings.clone();
+        handles.refs.search = handles.search.clone();
+        handles.language = self.language;
+        return handles;
+    }
 }

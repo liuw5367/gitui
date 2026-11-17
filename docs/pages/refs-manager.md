@@ -53,6 +53,8 @@ Stashes 侧栏按摘要升序显示。组头的 `Stash Changes…` 打开全量�
 
 Submodules 侧栏按相对路径文字升序显示，每行展示路径与 `clean`、`changed`、`dirty` 或 `not initialized` 状态。Git 查询读取 `.gitmodules` 的路径、URL、可选跟踪分支，以及当前检出、父仓库 index 记录和子模块自身改动。组头右键提供确认后的 `Update All Submodules…`（按父仓库记录的提交逐个更新，继续尝试并报告失败路径）与组展开/收起。子模块行右键按 [菜单画板 22](menus.md) 顺序提供 `Update Submodule`（初始化或检出父仓库记录版本）、`Update to Latest`（仅配置跟踪分支时可用，更新后显示父仓库 gitlink 变更）、`Sync URL`、`Open in New Tab`（仅已初始化时可用）、`Commit Submodule Change`（仅 gitlink 有变化时可用）、`Remove Submodule…`、`Copy Path`。提交动作先暂存 gitlink，再列出所有当前暂存路径供用户确认，确认后切到该仓库的 Changes 提交面板；取消时已暂存的 gitlink 保留。移除操作先确认，若子模块有未提交改动或当前提交尚未记录在父仓库，则 Git 安全检查会拒绝删除。操作目标绑定发起菜单的仓库标签。
 
+Worktrees 侧栏按显示目录名升序排列，同名时按绝对路径排序；每行显示目录名与关联分支。组头菜单包含 `New Worktree…`、`Prune Worktrees` 与展开/收起。工作树行菜单按 [菜单画板 22](menus.md) 顺序提供 `Open in New Window`、`New Worktree…`、`Remove Worktree…`、`Prune Worktrees`、`Reveal in Finder`、`Copy Path`。新建表单选择目标路径与已有分支，或勾选从指定起点创建新分支；移除先确认，只允许移除干净且未锁定的关联工作树，主工作树和当前在应用窗口中打开的路径不能移除；清理先列出 Git 标记为失效的登记并二次确认，锁定及仍有效的工作树保留。新窗口只持有一个活动仓库，不显示仓库标签栏和加号；相同路径再次打开会聚焦现有辅助窗，辅助窗关闭不会更改主窗口的会话文件。
+
 中列 798 = 1390 − 232 − 360。Refs 条 32 + 表头 22 之后，表格区 **688** = 742 − 54；6 行只占 180，其余留白。第一列 364 = 798 − 20（左右内距）− 24（4 个 6 的列距）− 390（128 + 86 + 124 + 52）。
 
 ## 2. Refs 条与表头
