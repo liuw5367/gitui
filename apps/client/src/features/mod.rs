@@ -506,3 +506,101 @@ impl SessionHandle {
         }
     }
 }
+
+#[cfg(test)]
+mod session_tab_tests {
+    use super::*;
+
+    fn session_with_tabs(ids: &[u64], active_index: usize) -> SessionHandle {
+        let tabs = ids
+            .iter()
+            .map(|id| Tab {
+                id: *id,
+                path: format!("/repo-{id}"),
+                name: format!("repo-{id}"),
+                ..Tab::default()
+            })
+            .collect();
+        return SessionHandle {
+            tabs: signal(tabs),
+            active: signal(active_index),
+            welcome_open: signal(false),
+            settings_open: signal(false),
+            recent: signal(Vec::new()),
+            store_dir: std::path::PathBuf::new(),
+            filter: Arc::new(git::LogFilter::default),
+            notice: signal(None),
+            language: signal(SharedString::from("en")),
+            auxiliary: true,
+            persist_session: false,
+            window: signal(None),
+        };
+    }
+
+    #[test]
+    fn moving_repository_tabs_keeps_the_active_repository_by_identity() {
+        let runtime = nsh_core::element::reactive::Runtime::default();
+        let _entered = runtime.enter();
+        let (owner, session) =
+            nsh_core::element::reactive::create_root(|| session_with_tabs(&[1, 2, 3], 1));
+        session.move_tab(3, 0);
+
+        let ids = session
+            .tabs
+            .get_untracked()
+            .iter()
+            .map(|tab| tab.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec![3, 1, 2]);
+        assert_eq!(session.active.get_untracked(), 2);
+
+        session.move_tab(2, 0);
+        let list = session.tabs.get_untracked();
+        assert_eq!(
+            list.iter().map(|tab| tab.id).collect::<Vec<_>>(),
+            vec![2, 3, 1]
+        );
+        assert_eq!(session.active.get_untracked(), 0);
+        owner.dispose();
+    }
+
+    #[test]
+    fn closing_repository_tabs_keeps_or_selects_the_expected_neighbor() {
+        let runtime = nsh_core::element::reactive::Runtime::default();
+        let _entered = runtime.enter();
+        let (owner, session) =
+            nsh_core::element::reactive::create_root(|| session_with_tabs(&[1, 2, 3, 4], 1));
+        session.close_tab_id(1);
+        assert_eq!(
+            session
+                .tabs
+                .get_untracked()
+                .iter()
+                .map(|tab| tab.id)
+                .collect::<Vec<_>>(),
+            vec![2, 3, 4]
+        );
+        assert_eq!(session.active.get_untracked(), 0);
+
+        session.close_tab_id(2);
+        assert_eq!(
+            session
+                .tabs
+                .get_untracked()
+                .iter()
+                .map(|tab| tab.id)
+                .collect::<Vec<_>>(),
+            vec![3, 4]
+        );
+        assert_eq!(session.active.get_untracked(), 0);
+
+        session.close_tab_id(4);
+        assert_eq!(
+            session.tabs.get_untracked()[session.active.get_untracked()].id,
+            3
+        );
+        session.close_tab_id(3);
+        assert!(session.tabs.get_untracked().is_empty());
+        owner.dispose();
+    }
+}
