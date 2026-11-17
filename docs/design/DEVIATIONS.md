@@ -54,6 +54,8 @@
 | 31 | 设置窗口 Esc | `WindowKind::Dialog` 默认 Esc 关窗 | 不因 Esc 关窗；快捷键页录制中 Esc 只取消录制（`app/windows.rs` 的 `settings_window_attributes`） | 按反馈：设置窗口不应被 Esc 直接关闭；Esc 在快捷键页承担取消键 | 是（去掉 `close_on_escape: Some(false)`） |
 | 32 | 快捷键录制卡位置 | `.shortcut-recorder` 在工具栏与三段列表之间 | 插在正在录制的那一行下方；该行被搜索过滤掉时才回落到列表顶部（`features/settings/shortcuts.rs` 的 `body`） | 按反馈：录制区应贴在要改键的 item 下方，而不是页面最上方 | 是 |
 | 33 | 录制期间的菜单加速键 | 画板不含菜单栏，未覆盖 | 录制中临时移除应用菜单的加速键，录制结束后恢复（`app/menu.rs` 的 `shortcuts` 参数、`app/bootstrap.rs` 的菜单 effect） | 原生 NSMenu 的键等价物先于窗口按键表消费组合键；不摘掉就录不到 ⌘O / ⌘W / ⌘P / ⌘, 等菜单组合 | 是（删除 `shortcuts_enabled`） |
+| 34 | 设置页页脚 | 底边 44 高通栏：左「自动保存」说明、右 `Done` | 整行移除，关窗只用系统关闭按钮（`features/settings/view.rs`） | 按反馈：去掉这一整行 | 是（恢复 `FOOTER_H` 与页脚子视图） |
+| 35 | 录制卡的光标柱 | 画板里是静态竖条 | 录制中按 530ms 亮灭交替，录制结束恢复常亮（`features/settings/commands.rs` 的 `blink_cursor` + 卡片 `.bg(...)`） | 按反馈：录制过程中的光标应当闪烁，静态竖条看不出「正在等按键」 | 是（去掉 `blink_on`，恒为 accent） |
 
 ## 3. 已澄清：不算偏离
 

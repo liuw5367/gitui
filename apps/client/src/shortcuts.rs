@@ -411,6 +411,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn observable_combos_are_parseable_and_not_reserved() {
+        // 这些组合在设置窗口挂载时逐个 `on_key`：任何一个解析失败或是系统保留键
+        // 都会在打开设置页时 panic，所以在这里逐个过一遍。
+        let combos = observable();
+        assert!(
+            !combos.is_empty(),
+            "录制回显的组合不应该是空的"
+        );
+        for combo in &combos {
+            let parsed = nsh_core::keymap::Keystroke::parse_with(combo, true)
+                .unwrap_or_else(|error| panic!("{combo}: {error}"));
+            assert_eq!(
+                parsed.reserved(nsh_core::platform::Os::MacOs),
+                None,
+                "{combo} 是系统保留键，不能绑定"
+            );
+        }
+        assert!(
+            combos.iter().all(|combo| !catalog().contains(combo)),
+            "可绑定清单里的组合由 catalog 自己绑定，不该重复出现在回显集合里"
+        );
+    }
+
+    #[test]
     fn defaults_are_unique_and_bindable() {
         let registry = Registry::defaults();
         let mut seen: Vec<&str> = Vec::new();
@@ -502,6 +526,9 @@ mod tests {
         assert_eq!(keycaps("mod+enter"), vec!["⌘", "↵"]);
         assert_eq!(keycaps("mod+1"), vec!["⌘", "1"]);
         assert_eq!(keycaps(""), Vec::<String>::new());
+        // 录制中回显的是任意按法（不限于可绑定清单），⌥⇧ 这类组合也要画全。
+        assert_eq!(keycaps("alt+shift+k"), vec!["⌥", "⇧", "K"]);
+        assert_eq!(keycaps("ctrl+alt+j"), vec!["⌃", "⌥", "J"]);
     }
 
     #[test]

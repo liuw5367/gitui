@@ -153,6 +153,28 @@ pub(crate) fn install_settings_window(
             },
         );
     }
+    // 录制时回显按下的组合：可绑定清单之外的常见按法（⌥/⌃ 系列等）也要有反馈，
+    // 否则按下去像是录制没生效。这些绑定只用于回显与解释原因。
+    for combo in shortcuts::observable() {
+        let cmd = settings.clone();
+        let bound = combo.clone();
+        on_key_with(
+            combo.as_str(),
+            KeyOptions {
+                when: nsh_core::keymap::When::Always,
+                pass_through: true,
+                ..Default::default()
+            },
+            move |_| {
+                if restore_confirm.get_untracked() {
+                    return;
+                }
+                if let Some(id) = recording.get_untracked() {
+                    cmd.rebind_shortcut(id, bound.clone());
+                }
+            },
+        );
+    }
     // Esc 先关确认弹层，再取消录制；设置窗口本身不因 Esc 关闭
     // （见 windows.rs 的 close_on_escape）。
     on_key_with(

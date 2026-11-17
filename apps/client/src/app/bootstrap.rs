@@ -97,6 +97,8 @@ pub(crate) fn app() -> impl IntoElement {
     let shortcut_query = signal(String::new());
     let shortcut_error = signal(Option::<String>::None);
     let restore_confirm = signal(acceptance::flag("GITUI_RESTORE_CONFIRM"));
+    let blink_on = signal(true);
+    let blink_running = signal(false);
     let pending_keystroke = signal(
         acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()),
     );
@@ -431,6 +433,8 @@ pub(crate) fn app() -> impl IntoElement {
             shortcut_error,
             restore_confirm,
             pending_keystroke,
+            blink_on,
+            blink_running,
             identity_name: signal(String::new()),
             identity_email: signal(String::new()),
             identity_use_global: signal(true),
@@ -466,6 +470,11 @@ pub(crate) fn app() -> impl IntoElement {
             .map(|action| action.id);
         if let Some(id) = id {
             settings_commands.record_shortcut(id);
+            // `record_shortcut` 会清掉上一条回显；验收时把种子组合补回去，
+            // 好让截图能核对「按下的键」那一行。
+            if let Some(combo) = acceptance::value("GITUI_PENDING_KEY") {
+                settings_commands.state.pending_keystroke.set(Some(combo));
+            }
         }
     }
 

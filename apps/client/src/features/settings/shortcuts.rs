@@ -21,6 +21,8 @@ pub(super) fn shortcuts_page(
     query: Signal<String>,
     recording: Signal<Option<&'static str>>,
     error: Signal<Option<String>>,
+    pending: Signal<Option<String>>,
+    blink: Signal<bool>,
     record: Arc<dyn Fn(&'static str)>,
     restore: Arc<dyn Fn()>,
     clear: Arc<dyn Fn(&'static str)>,
@@ -55,6 +57,8 @@ pub(super) fn shortcuts_page(
             query,
             recording,
             error,
+            pending,
+            blink,
             record.clone(),
             clear.clone(),
             reset.clone(),
@@ -96,6 +100,8 @@ fn body(
     query: Signal<String>,
     recording: Signal<Option<&'static str>>,
     error: Signal<Option<String>>,
+    pending: Signal<Option<String>>,
+    blink: Signal<bool>,
     record: Arc<dyn Fn(&'static str)>,
     clear: Arc<dyn Fn(&'static str)>,
     reset: Arc<dyn Fn(&'static str)>,
@@ -105,10 +111,20 @@ fn body(
     let bindings = registry.get();
     let recording_id = recording.get();
     let error_text = error.get();
+    let pending = pending.get();
     // 录制卡默认插在正在录制的那一行下方；只有该行被搜索过滤掉时才退回到列表顶部，
     // 否则录制中会看不到取消入口。
     let mut recorder_card = recording_id
-        .map(|id| recorder(language, id, bindings.clone(), error_text.clone()));
+        .map(|id| {
+            recorder(
+                language,
+                id,
+                bindings.clone(),
+                pending.clone(),
+                blink,
+                error_text.clone(),
+            )
+        });
     let mut sections: Vec<AnyElement> = Vec::new();
     for scope in [Scope::Global, Scope::Repository] {
         let visible = shortcuts::ACTIONS
@@ -252,6 +268,8 @@ fn recorder(
     language: Signal<SharedString>,
     id: &'static str,
     bindings: shortcuts::Registry,
+    pending: Option<String>,
+    blink: Signal<bool>,
     error: Option<String>,
 ) -> AnyElement {
     let action = shortcuts::ACTIONS
@@ -259,7 +277,8 @@ fn recorder(
         .find(|action| action.id == id)
         .expect("recording action");
     let name = shortcuts::label(action, language.get_untracked().as_str());
-    let combo = bindings.combo(id).to_string();
+    // 优先显示刚按下的组合：录制中它是用户最需要确认的东西。
+    let combo = pending.unwrap_or_else(|| bindings.combo(id).to_string());
     let caps = shortcuts::keycaps(combo.as_str());
     let mut keys = view().flex_row().items_center().gap(px(2.0));
     if caps.is_empty() {
@@ -273,12 +292,19 @@ fn recorder(
             keys = keys.child(ui::badge::kbd(cap));
         }
     }
+    // 录制中闪一下，明示「正在等按键」；不录制时它不出现（卡片本身就是录制态）。
     keys = keys.child(
         view()
             .w(px(2.0))
             .h(px(16.0))
             .flex_shrink_0()
-            .bg(move || design::accent()),
+            .bg(move || {
+                if blink.get() {
+                    design::accent()
+                } else {
+                    AdaptiveColor::TRANSPARENT
+                }
+            }),
     );
     let mut card = view()
         .w_full()

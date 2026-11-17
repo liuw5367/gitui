@@ -15,8 +15,6 @@ use std::sync::Arc;
 
 /// 左侧导航宽度（设计板 `.settings-side` 208）。
 const SIDE_W: f32 = 208.0;
-/// 页脚高度（画板 `.settings-foot` 44）。
-const FOOTER_H: f32 = 44.0;
 
 pub(crate) fn settings(
     state: &SettingsState,
@@ -41,35 +39,6 @@ pub(crate) fn settings(
                     side(language, section).into_element()
                 }))
                 .child(main(state, cmd, tab)),
-        )
-        .child(
-            view()
-                .w_full()
-                .h(px(FOOTER_H))
-                .px(px(16.0))
-                .flex_row()
-                .items_center()
-                .gap(px(10.0))
-                .border_t_1()
-                .border_color(move || design::line())
-                .bg(move || design::bar())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "settings.savedAutomatically"))
-                        .text_size(px(ui::SECONDARY))
-                        .line_height(px(ui::SECONDARY_LINE))
-                        .text_color(move || design::text3()),
-                )
-                .child(view().flex_1())
-                .child(ui::button::button(
-                    move || i18n::t(language.get().as_str(), "common.done"),
-                    ui::button::ButtonVariant::Secondary,
-                    ui::button::ButtonSize::Regular,
-                    false,
-                    {
-                        let cmd = cmd.clone();
-                        move || cmd.session.close_settings()
-                    },
-                )),
         )
         .child(restore_confirm(state, cmd));
 }
@@ -297,6 +266,8 @@ fn main(
     let shortcut_query = state.shortcut_query;
     let recording_shortcut = state.recording_shortcut;
     let shortcut_error = state.shortcut_error;
+    let pending_keystroke = state.pending_keystroke;
+    let blink_on = state.blink_on;
     let diff = cmd.diff.clone();
     let set_file_tree: Arc<dyn Fn(bool)> = {
         let diff = diff.clone();
@@ -371,6 +342,8 @@ fn main(
                             shortcut_query,
                             recording_shortcut,
                             shortcut_error,
+                            pending_keystroke,
+                            blink_on,
                             api.record_shortcut.clone(),
                             api.ask_restore.clone(),
                             api.clear_shortcut.clone(),

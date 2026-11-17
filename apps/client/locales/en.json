@@ -163,7 +163,6 @@
   "common": {
     "cancel": "Cancel",
     "open": "Open",
-    "done": "Done",
     "search": "Search",
     "loading": "Loading…",
     "close": "Close",
@@ -497,7 +496,6 @@
     "checkNow": "Check Now",
     "updateCheckUnavailable": "Update checks need a published release feed; this build has none.",
     "identityNoRepo": "Open a repository to edit its commit identity.",
-    "savedAutomatically": "Changes are saved automatically",
     "subtitleGeneral": "Appearance, language, dates, and startup behavior.",
     "subtitleShortcuts": "Global, repository, and agent actions.",
     "subtitleAgent": "Model endpoint, credentials, and protocol for the gitui agent.",

@@ -150,11 +150,6 @@ impl SessionHandle {
         self.welcome_open.set(true);
     }
 
-    /// 关闭设置窗口（由 `settings_open` 驱动）。
-    pub(crate) fn close_settings(&self) {
-        self.settings_open.set(false);
-    }
-
     /// 打开仓库管理页（原 `Actions::go_repo_manager`）：入口就是欢迎窗口。
     pub(crate) fn go_repo_manager(&self) {
         self.go_welcome();

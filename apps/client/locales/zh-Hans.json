@@ -163,7 +163,6 @@
   "common": {
     "cancel": "取消",
     "open": "打开",
-    "done": "完成",
     "search": "搜索",
     "loading": "加载中…",
     "close": "关闭",
@@ -497,7 +496,6 @@
     "checkNow": "立即检查",
     "updateCheckUnavailable": "检查更新需要已发布的发布源；当前构建没有。",
     "identityNoRepo": "打开仓库后才能编辑它的提交身份。",
-    "savedAutomatically": "更改会自动保存",
     "subtitleGeneral": "外观、语言、日期与启动行为。",
     "subtitleShortcuts": "全局、仓库与 Agent 动作。",
     "subtitleAgent": "gitui Agent 的模型端点、凭据与协议。",

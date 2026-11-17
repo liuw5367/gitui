@@ -9,7 +9,7 @@
 因此窗口 **920×700**，不是主窗口的 1392×852；右栏切成「标题 + 副标题 + 七段」，换分区只替换这部分。
 
 实现用独立窗口（`WindowKind::Dialog`）承担这扇窗，标题栏用**系统原生**的而不是画板自绘的 38 高栏，
-标题 `Settings`；Done 关闭窗口。见 [DEVIATIONS #23](../design/DEVIATIONS.md)。
+标题 `Settings`；关窗用系统关闭按钮（页脚已移除，见 DEVIATIONS #34）。见 [DEVIATIONS #23](../design/DEVIATIONS.md)。
 
 ## 1. 骨架
 
@@ -32,8 +32,6 @@
 │  [i]      About gitui   │ Check for a new release at launch or on demand.                    │
 │                         │Check for updates [ Automatically at launch v ]                     │
 │                         │Status            gitui 0.9.2 (412) is up to date.  [Check Now]     │
-├──────────────────────────────────────────────────────────────────────────────────────────────┤
-│ ● Changes are saved automatically                                                   [ Done ] │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,7 +40,7 @@
 | 标题栏 | 顶部通栏 | 高 38；内距 0×13；间距 8 | 窗口灯 12×3、居中 `Settings` 12.5/600、右端 `gitui 0.9.2` 11 `text3` |
 | 左侧分区树 | 标题栏下左 | 宽 208（含右边框 1）；内距 12×8；行高 28 | 应用标识块 + 三组六项 |
 | 内容区 | 标题栏下右 | 宽 710；内距 24×28 → 内容列 654、可视高 568 | 标题、副标题、七段十三行表单 |
-| 页脚 | 底部通栏 | 高 44；内距 0×16；间距 8 | 6 状态点、自动保存说明、右端 `Done` |
+| ~~页脚~~ | — | — | 已移除（DEVIATIONS #34）：不再有「自动保存」说明与 `Done` |
 
 920 = `min(920, 1392)`，700 = `min(700, 900 − 48)`；正文 616 = 700 − 2 描边 − 38 − 44，右栏 710 = 920 − 2 − 208，
 内容列 654 = 710 − 28×2，可视高 568 = 616 − 24×2。本板 13 行按“行 57 / 段头 46 / 段距 37”累加约 1340，必然滚动。
@@ -62,7 +60,7 @@ Git（分支）、Credentials（锁）、About gitui（信息），分组依次�
 
 ## 3. 内容头与行网格
 
-右栏是一整块滚动容器，标题与副标题随内容滚走，页脚不动。`General` 17/700、字距 −.015em；副标题 11.5 `text3`、
+右栏是一整块滚动容器，标题与副标题随内容滚走。`General` 17/700、字距 −.015em；副标题 11.5 `text3`、
 上距 4。每段 `.settings-sec` 上距 20、上内距 16、上边框 1px `--line`，第一段被内联 `border-top:0`、
 `margin-top:14px`、`padding-top:0` 压掉（与 `:first-of-type` 同值）；段标题 12.5/600、下距 2，段说明 10.5 `text3`。
 行 `.set-row` 两列 flex：标签列 `flex:1`、控件列 `flex:none`、间距 14，行内距 `11px 0`，下边框 1px `--line-soft`，
@@ -92,7 +90,7 @@ Name/Email 仍是可编辑的实填值；`On launch` 右列三个 `.ref.branch` 
 1px `--field-border`、字号 11；样式表另有 `.set-select`（26 高、右内距 24 留给 chevron），六块板都没用。
 字段 `set-field` 26 高、内距 0×8、圆角 6，内层 input 11，本板写死宽 210。徽章 `.ref` 高 16、内距 0×5、圆角 4、
 9.5/600、行高 16，分支变体用 `--branch-bg` 蓝底 + `--branch-fg` 蓝字。按钮 `btn small` 22 高、内距 0×8、字号 11、
-圆角 5；页脚 `Done` 是标准 `btn`，24 高、字号 12。复选全是原生控件，样式表只给 `.scan-row input` 设了
+圆角 5。复选全是原生控件，样式表只给 `.scan-row input` 设了
 `accent-color`，画板没给尺寸。
 
 ## 6. 状态与切换
@@ -107,7 +105,7 @@ Name/Email 仍是可编辑的实填值；`On launch` 右列三个 `.ref.branch` 
 
 ```
 分区：General ⇄ Shortcuts ⇄ Agent ⇄ Git ⇄ Credentials ⇄ About gitui
-      只替换右栏内容与树的 on 项，窗口 920×700、页脚、Done 都不重建
+      只替换右栏内容与树的 on 项，窗口 920×700 不重建
 离开：Done → Workspace.dc.html
 ```
 
@@ -116,7 +114,6 @@ Name/Email 仍是可编辑的实填值；`On launch` 右列三个 `.ref.branch` 
 1. **深色**：`Theme` 有 Light/Dark 两项，六块板却全是浅色；深色下窗口底、边框、分段选中态都没画。
 2. **Custom pattern 的依赖**：说明写 `Only used when Date format is Custom pattern.`，选其它值时字段是禁用、隐藏还是留值没画。
 3. **输入校验与联动**：Name/Email 为空、邮箱非法、pattern 写错时错误放哪没有画；勾上 Use global config 之后两个字段是变灰还是回填 `~/.gitconfig` 也没画。
-4. **保存与检查**：页脚只写 `Changes are saved automatically`，保存中与失败没有画面；`Check Now` 的进行中、有新版本、失败也没画。
 5. **窄窗口**：`min(920px,100%)` 会缩，但内容列、右侧控件、分段是否换行没有画。
 
 ## 8. 按钮与链接清单

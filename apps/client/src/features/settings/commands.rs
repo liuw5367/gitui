@@ -427,6 +427,8 @@ impl SettingsCommands {
         let error = self.state.shortcut_error;
         let store_dir = self.store_dir.clone();
         let language = self.language;
+        // 回显按下的组合：成功时录制结束、卡片收起；失败时留在卡片里给用户看。
+        self.state.pending_keystroke.set(Some(combo.clone()));
         let mut next = registry.get_untracked();
         let outcome = next.rebind(id, combo.as_str());
         let lang = language.get_untracked();
@@ -436,6 +438,7 @@ impl SettingsCommands {
                 store::save_shortcuts(&store_dir, &next.overrides());
                 error.set(None);
                 recording.set(None);
+                self.state.pending_keystroke.set(None);
             }
             // 失败时保持录制状态，用户可以直接改按另一个组合。
             Err(crate::shortcuts::BindError::NotBindable) => {
@@ -466,18 +469,46 @@ impl SettingsCommands {
         store::save_shortcuts(&self.store_dir, &next.overrides());
         self.state.recording_shortcut.set(None);
         self.state.shortcut_error.set(None);
+        self.state.pending_keystroke.set(None);
     }
 
     /// 开始录制某个动作的新组合（原 `record_shortcut`）。
     pub(crate) fn record_shortcut(&self, id: &'static str) {
         self.state.shortcut_error.set(None);
+        self.state.pending_keystroke.set(None);
         self.state.recording_shortcut.set(Some(id));
+        self.blink_cursor();
+    }
+
+    /// 让录制卡里的光标柱闪烁：每 530ms 翻转一次，录制结束（成功或取消）时停下
+    /// 并恢复为常亮。只起一条循环，不会随录制卡的反复重建叠加。
+    fn blink_cursor(&self) {
+        if self.state.blink_running.get_untracked() {
+            return;
+        }
+        self.state.blink_running.set(true);
+        self.state.blink_on.set(true);
+        let blink_on = self.state.blink_on;
+        let blink_running = self.state.blink_running;
+        let recording = self.state.recording_shortcut;
+        spawn(async move {
+            while recording.get_untracked().is_some() {
+                timer(std::time::Duration::from_millis(530)).await;
+                if recording.get_untracked().is_none() {
+                    break;
+                }
+                blink_on.set(!blink_on.get_untracked());
+            }
+            blink_on.set(true);
+            blink_running.set(false);
+        });
     }
 
     /// 取消录制（Esc）：不改任何绑定，只退出录制态并清掉上一条冲突提示。
     pub(crate) fn cancel_recording(&self) {
         self.state.recording_shortcut.set(None);
         self.state.shortcut_error.set(None);
+        self.state.pending_keystroke.set(None);
     }
 
     pub(crate) fn reset_shortcut(&self, id: &'static str) {

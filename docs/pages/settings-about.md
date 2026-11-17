@@ -28,8 +28,6 @@
 │ About                   │ Credits                                                            │
 │* [i]      About gitui   │Built with Native Shell  AppKit views on macOS · Rust + TSX.        │
 │                         │                         © 2026 gitui contributors                  │
-├──────────────────────────────────────────────────────────────────────────────────────────────┤
-│ ● Changes are saved automatically                                                   [ Done ] │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,7 +36,7 @@
 | 标题栏 | 顶部通栏 | 高 38；内距 0×13 | 窗口灯 12×3、居中 `Settings` 12.5/600、右端 `gitui 0.9.2` 11 |
 | 左侧分区树 | 标题栏下左 | 宽 208；内距 12×8；行高 28 | 六项三组，`About gitui` 是当前项 |
 | 内容区 | 标题栏下右 | 宽 710；内距 24×28 → 内容列 654、可视高 568 | 标题、副标题、标识块、Links 与 Credits 两段 |
-| 页脚 | 底部通栏 | 高 44；内距 0×16 | 6 状态点、自动保存说明、右端 `Done` |
+| ~~页脚~~ | — | — | 已移除（DEVIATIONS #34）：不再有「自动保存」说明与 `Done` |
 
 正文 616 = 700 − 2 − 38 − 44，内容列 654 = 710 − 28×2，可视高 568 = 616 − 24×2。标识块 54（上距 18 + 36 图标）、
 Links 段约 260、Credits 段约 115，加上标题与副标题累计约 470，短于 568，右栏不滚动。
@@ -87,7 +85,7 @@ Credits 段上距 20、上内距 16、上边框 1px `--line`，段标题 `Credit
 右列 `.hint` `© 2026 gitui contributors`。这一行是段内末行，因此没有下边框。
 
 行网格与其它分区一致：`flex` 两列、间距 14、标签 12.5/500、说明 10.5/1.4；右列贴右、`gap:6`。按行高累加，整块
-内容约 470，比 568 的可视高少约 100，因此内容列底部留白、页脚仍在 44 的位置。
+内容约 470，比 568 的可视高少约 100，因此内容列底部留白。
 
 ## 6. 状态与切换
 
@@ -102,7 +100,7 @@ Credits 段上距 20、上内距 16、上边框 1px `--line`，段标题 `Credit
 
 ```
 分区：General ⇄ Shortcuts ⇄ Agent ⇄ Git ⇄ Credentials ⇄ About gitui（只替换右栏）
-离开：Done → Workspace.dc.html
+离开：关窗 → Workspace.dc.html
 ```
 
 ## 7. 画板没覆盖的组合（待补设计）
@@ -117,12 +115,11 @@ Credits 段上距 20、上内距 16、上边框 1px `--line`，段标题 `Credit
 
 | # | 位置 | 文案 | 形态 | 作用 | 随状态变化 |
 |---|---|---|---|---|---|
-| 1 | 页脚右端 | Done | `btn` 24 高、内距 0×10、字号 12 | 关设置回主窗口 | 常驻 |
-| 2 | 左侧树 | 六项 | 整行链接 28 高，图标 14 | 切分区，替换右栏 | 当前项 `--accent` 底 + 白字白图标 |
-| 3 | Links 四行右端 | Visit / GitHub / Issues / View | `.hint` 纯文本 10.5 | 板上没有链接目标 | 板上不随状态变化 |
+| 1 | 左侧树 | 六项 | 整行链接 28 高，图标 14 | 切分区，替换右栏 | 当前项 `--accent` 底 + 白字白图标 |
+| 2 | Links 四行右端 | Visit / GitHub / Issues / View | `.hint` 纯文本 10.5 | 板上没有链接目标 | 板上不随状态变化 |
 
 - `Visit`、`GitHub`、`Issues`、`View` 不是按钮：它们是 `.hint` 的 `<span>`，没有 `href`、`aria-label` 与 hover 态。
-  按可点元素计，本分区只有 `Done` 与六项导航。
+  按可点元素计，本分区只有六项导航与 Links / Credits 的文本行。
 
 ## 9. 输入与选项
 
@@ -142,7 +139,7 @@ Credits 段上距 20、上内距 16、上边框 1px `--line`，段标题 `Credit
 
 | 画板 | 关系 |
 |---|---|
-| 23 Settings | 版本号与更新状态来自 `Updates` 段；`Done` 与其它五板同指主窗口 |
+| 23 Settings | 版本号与更新状态来自 `Updates` 段；关窗回主窗口用系统关闭按钮（页脚已移除） |
 | 23b / 24 / 25 / 27 | 板内五个 `href`：`Settings.dc.html`、`SettingsShortcuts.dc.html`、`SettingsAgent.dc.html`、`SettingsGit.dc.html`、`SettingsCredentials.dc.html` |
-| 04 Commits（Workspace） | `Done` 指回主窗口，主窗口标题栏齿轮再指回 23 |
+| 04 Commits（Workspace） | 主窗口标题栏齿轮指回 23 |
 | 01 Welcome | 欢迎页底栏也显示 `gitui 0.9.2 (412)`，与本板标识块同源 |
