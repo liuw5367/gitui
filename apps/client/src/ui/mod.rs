@@ -53,6 +53,10 @@ pub(crate) const CODE: f32 = native::FONT_CODE;
 pub(crate) const CODE_LINE: f32 = native::LINE_CODE;
 /// 页面主标题（欢迎页英雄区）。
 pub(crate) const TITLE_LARGE: f32 = 26.0;
+/// 产品名等中型标题（About 的 20/700）。
+pub(crate) const TITLE_MEDIUM: f32 = 20.0;
+/// 中型标题行高。
+pub(crate) const TITLE_MEDIUM_LINE: f32 = 24.0;
 /// 设置页等表单页的主标题（画板 `.settings-head` 17/700）。
 pub(crate) const PAGE_TITLE: f32 = 17.0;
 /// 表单页主标题行高。

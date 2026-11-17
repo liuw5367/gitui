@@ -4,8 +4,10 @@
 pub(crate) mod about;
 pub(crate) mod agent;
 pub(crate) mod commands;
+pub(crate) mod credentials;
 pub(crate) mod general;
 pub(crate) mod git;
 pub(crate) mod shortcuts;
+pub(crate) mod ssh;
 pub(crate) mod state;
 pub(crate) mod view;

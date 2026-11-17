@@ -60,6 +60,11 @@ impl ThemeMode {
     }
 }
 
+/// 仓库地址；About 的 Website / Source code 与 Issues 都从这里派生。
+pub const REPOSITORY_URL: &str = "https://github.com/liuw5367/gitui";
+/// 问题跟踪地址。
+pub const ISSUES_URL: &str = "https://github.com/liuw5367/gitui/issues";
+
 /// 窗口标题里显示的完整标识：`名称 版本 (构建号)`。
 pub fn version_line() -> String {
     return format!("{} {} ({})", PRODUCT_NAME, VERSION, BUILD);

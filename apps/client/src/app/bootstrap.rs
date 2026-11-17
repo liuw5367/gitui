@@ -444,6 +444,7 @@ pub(crate) fn app() -> impl IntoElement {
                 settings_state.get_untracked().agent_max_tokens.to_string(),
             ),
             agent_app_key: signal(String::new()),
+            ssh_keys: signal(features::settings::ssh::read_keys()),
         },
         session: session.clone(),
         language,

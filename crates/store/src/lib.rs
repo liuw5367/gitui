@@ -167,6 +167,21 @@ pub struct Settings {
     pub agent_send_diffs: bool,
     /// 请求是否携带绝对仓库路径。
     pub agent_send_repository_path: bool,
+    /// 添加远端时优先使用 SSH URL。
+    pub ssh_for_new_remotes: bool,
+    /// 外部编辑器、diff/merge 工具与终端。
+    pub external_editor: String,
+    pub diff_tool: String,
+    pub merge_tool: String,
+    pub terminal: String,
+    /// 提交信息使用外部编辑器。
+    pub external_editor_for_messages: bool,
+    /// 代理方式：`system` / `none` / `manual`。
+    pub proxy_mode: String,
+    /// 校验 SSL 证书。
+    pub verify_ssl: bool,
+    /// 其余 Git 设置读取 `~/.gitconfig`。
+    pub use_system_git_config: bool,
 }
 
 impl Default for Settings {
@@ -188,6 +203,15 @@ impl Default for Settings {
             agent_max_tokens: 4096,
             agent_send_diffs: true,
             agent_send_repository_path: false,
+            ssh_for_new_remotes: true,
+            external_editor: "vscode".to_string(),
+            diff_tool: "builtin".to_string(),
+            merge_tool: "builtin".to_string(),
+            terminal: "terminal".to_string(),
+            external_editor_for_messages: false,
+            proxy_mode: "system".to_string(),
+            verify_ssl: true,
+            use_system_git_config: true,
         };
     }
 }
@@ -231,6 +255,19 @@ pub fn load_settings(dir: &Path) -> Settings {
             "agent_send_repository_path" => {
                 settings.agent_send_repository_path = value.trim() != "false"
             }
+            "ssh_for_new_remotes" => settings.ssh_for_new_remotes = value.trim() != "false",
+            "external_editor" => settings.external_editor = value.trim().to_string(),
+            "diff_tool" => settings.diff_tool = value.trim().to_string(),
+            "merge_tool" => settings.merge_tool = value.trim().to_string(),
+            "terminal" => settings.terminal = value.trim().to_string(),
+            "external_editor_for_messages" => {
+                settings.external_editor_for_messages = value.trim() != "false"
+            }
+            "proxy_mode" => settings.proxy_mode = value.trim().to_string(),
+            "verify_ssl" => settings.verify_ssl = value.trim() != "false",
+            "use_system_git_config" => {
+                settings.use_system_git_config = value.trim() != "false"
+            }
             _ => {}
         }
     }
@@ -256,6 +293,15 @@ pub fn save_settings(dir: &Path, settings: &Settings) {
         format!("agent_max_tokens={}", settings.agent_max_tokens),
         format!("agent_send_diffs={}", settings.agent_send_diffs),
         format!("agent_send_repository_path={}", settings.agent_send_repository_path),
+        format!("ssh_for_new_remotes={}", settings.ssh_for_new_remotes),
+        format!("external_editor={}", settings.external_editor),
+        format!("diff_tool={}", settings.diff_tool),
+        format!("merge_tool={}", settings.merge_tool),
+        format!("terminal={}", settings.terminal),
+        format!("external_editor_for_messages={}", settings.external_editor_for_messages),
+        format!("proxy_mode={}", settings.proxy_mode),
+        format!("verify_ssl={}", settings.verify_ssl),
+        format!("use_system_git_config={}", settings.use_system_git_config),
     ];
     let _ = write_lines(&settings_file(dir), &lines);
 }
@@ -680,6 +726,7 @@ mod tests {
                 agent_max_tokens: 8192,
                 agent_send_diffs: false,
                 agent_send_repository_path: true,
+                ..Settings::default()
             },
         );
         let loaded = load_settings(dir.path());

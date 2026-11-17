@@ -44,9 +44,17 @@ impl Section {
             Section::General => "settings.general",
             Section::Git => "settings.git",
             Section::Shortcuts => "settings.shortcuts",
-            Section::About => "settings.about",
+            Section::About => "settings.aboutGitui",
             Section::Credentials => "settings.credentials",
             Section::Agent => "settings.agent",
+        };
+    }
+
+    /// 页面标题；Credentials 在树里叫 Credentials，标题叫 Credentials & tools。
+    pub(crate) fn title_key(self) -> &'static str {
+        return match self {
+            Section::Credentials => "settings.credentialsTitle",
+            other => other.key(),
         };
     }
 }
@@ -95,4 +103,6 @@ pub(crate) struct SettingsState {
     pub(crate) agent_max_tokens: Signal<String>,
     /// App key 只保存在本次会话的内存信号里，不进入 Settings / 磁盘。
     pub(crate) agent_app_key: Signal<String>,
+    /// `~/.ssh` 里的私钥（文件名、路径、公钥指纹）；只读。
+    pub(crate) ssh_keys: Signal<Vec<(String, String, String)>>,
 }

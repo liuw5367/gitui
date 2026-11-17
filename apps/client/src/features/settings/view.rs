@@ -32,7 +32,6 @@ pub(crate) fn settings(
         .into_iter()
         .map(|entry| entry.path)
         .collect();
-    let git_info = cmd.git_info.clone();
     return view()
         .w_full()
         .h_full()
@@ -52,7 +51,6 @@ pub(crate) fn settings(
                     state,
                     cmd,
                     tab,
-                    git_info,
                     last_session,
                 )),
         )
@@ -244,7 +242,6 @@ fn main(
     state: &SettingsState,
     cmd: &SettingsCommands,
     tab: Option<Tab>,
-    git_info: (String, String, String),
     last_session: Vec<String>,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
@@ -260,7 +257,6 @@ fn main(
     let shortcut_query = state.shortcut_query;
     let recording_shortcut = state.recording_shortcut;
     let shortcut_error = state.shortcut_error;
-    let notice = cmd.notice;
     let diff = cmd.diff.clone();
     let set_file_tree: Arc<dyn Fn(bool)> = {
         let diff = diff.clone();
@@ -272,6 +268,7 @@ fn main(
     };
     let git_cmd = cmd.clone();
     let agent_cmd = cmd.clone();
+    let credentials_cmd = cmd.clone();
     let api = SettingsActions::new(cmd);
     return view().flex_1().min_w_0().h_full().child(
         scroll().w_full().h_full().child(
@@ -282,7 +279,7 @@ fn main(
                 .px(px(28.0))
                 .flex_col()
                 .child(ui::setting_row::page_header(
-                    move || i18n::t(language.get().as_str(), section.get().key()),
+                    move || i18n::t(language.get().as_str(), section.get().title_key()),
                     move || {
                         i18n::t(
                             language.get().as_str(),
@@ -329,13 +326,10 @@ fn main(
                             last_session.clone(),
                         )
                         .into_element(),
-                        Section::About => super::about::about(
-                            language,
-                            identity_name.get_untracked(),
-                            identity_email.get_untracked(),
-                            api.open_browser.clone(),
-                        )
-                        .into_element(),
+                        Section::About => {
+                            super::about::about(language, api.open_browser.clone())
+                                .into_element()
+                        }
                         Section::Git => super::git::git_page(git_cmd.clone()).into_element(),
                         Section::Shortcuts => super::shortcuts::shortcuts_page(
                             language,
@@ -348,7 +342,7 @@ fn main(
                         )
                         .into_element(),
                         Section::Credentials => {
-                            super::about::credentials_page(language, git_info.clone(), notice)
+                            super::credentials::credentials_page(credentials_cmd.clone())
                                 .into_element()
                         }
                         Section::Agent => {
