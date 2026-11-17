@@ -7,7 +7,7 @@
 - [README.md](README.md)：项目定位、当前能力、环境、运行、验证与已知限制。
 - [apps/client/README.md](apps/client/README.md)：客户端结构、`ui` 层规则、存储、测试与改名点。
 - crate README：[domain](crates/domain/README.md)、[git](crates/git/README.md)、[store](crates/store/README.md)、[agent](crates/agent/README.md)。
-- 文档在 [docs/](docs/README.md)，按主题分目录：[docs/design/](docs/design/README.md)（视觉语言、token 契约、组件层、偏离清单）、[docs/pages/](docs/pages/README.md)（逐页版式、状态与按钮）与 [docs/development/](docs/development/README.md)（页面开发规范与验收门槛）；[archive/2026-11-15-docs/](archive/2026-11-15-docs/) 已冻结，只作历史参考，不代表当前实现。
+- 文档在 [docs/](docs/README.md)，按主题分目录：[docs/design/](docs/design/README.md)（视觉语言、token 契约、组件层、偏离清单）、[docs/pages/](docs/pages/README.md)（逐页版式、状态与按钮）与 [docs/development/](docs/development/README.md)（页面分层、交互状态、生命周期与验收门槛）；[archive/2026-11-15-docs/](archive/2026-11-15-docs/) 已冻结，只作历史参考，不代表当前实现。
 
 ## 项目事实
 

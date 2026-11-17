@@ -6,8 +6,8 @@
 
 | 文档 | 回答什么 | 什么时候读 |
 |---|---|---|
-| [page-development.md](page-development.md) | 分层、状态、响应式、UI、文案与能力边界 | 写页面前、评审页面改动 |
-| [verification.md](verification.md) | 测试、检查、截图与完成定义 | 提交前、验收页面 |
+| [page-development.md](page-development.md) | 分层、响应式、交互与状态、数据生命周期、UI、文案与能力边界 | 写页面前、评审页面改动 |
+| [verification.md](verification.md) | 自动测试、截图、键盘与 VoiceOver 验收及完成定义 | 提交前、验收页面 |
 
 ## 与其它文档的分工
 
