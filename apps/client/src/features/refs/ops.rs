@@ -162,7 +162,101 @@ pub(crate) fn drop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     repo.stash_drop(reference).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
+    tab.stash_diff = None;
     return Ok(());
+}
+
+/// 按贮藏 OID 应用、弹出或删除，避免 `stash@{n}` 重排后指向另一条记录。
+pub(crate) fn apply_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    if !repo
+        .refs()
+        .map_err(|error| error.detail())?
+        .stashes
+        .iter()
+        .any(|stash| stash.oid == oid)
+    {
+        return Ok(false);
+    }
+    repo.stash_apply(oid).map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    tab.stash_diff = None;
+    return Ok(true);
+}
+
+pub(crate) fn pop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    if !repo
+        .refs()
+        .map_err(|error| error.detail())?
+        .stashes
+        .iter()
+        .any(|stash| stash.oid == oid)
+    {
+        return Ok(false);
+    }
+    repo.stash_apply(oid).map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    tab.stash_diff = None;
+    let reference = repo
+        .refs()
+        .map_err(|error| error.detail())?
+        .stashes
+        .into_iter()
+        .find(|stash| stash.oid == oid)
+        .map(|stash| stash.reference)
+        .ok_or_else(|| {
+            "The stash was applied, but its entry changed before it could be removed.".to_string()
+        })?;
+    repo.stash_drop(reference.as_str())
+        .map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    tab.stash_diff = None;
+    return Ok(true);
+}
+
+pub(crate) fn drop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let Some(reference) = repo
+        .refs()
+        .map_err(|error| error.detail())?
+        .stashes
+        .into_iter()
+        .find(|stash| stash.oid == oid)
+        .map(|stash| stash.reference)
+    else {
+        return Ok(false);
+    };
+    repo.stash_drop(reference.as_str())
+        .map_err(|error| error.detail())?;
+    refresh_refs(tab, &repo);
+    tab.stash_diff = None;
+    return Ok(true);
+}
+
+pub(crate) fn show_stash_diff(
+    tab: &Tab,
+    oid: &str,
+) -> Result<Option<(String, domain::diff::Patch)>, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let Some(stash) = repo
+        .refs()
+        .map_err(|error| error.detail())?
+        .stashes
+        .into_iter()
+        .find(|stash| stash.oid == oid)
+    else {
+        return Ok(None);
+    };
+    let patch = repo.stash_show(oid, true).map_err(|error| error.detail())?;
+    let patch = domain::diff::Patch::parse(String::from_utf8_lossy(&patch).as_ref());
+    return Ok(Some((
+        format!("{} · {}", stash.reference, stash.summary),
+        patch,
+    )));
 }
 
 /// 推送标签到首个远端。
@@ -197,6 +291,7 @@ pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> 
         .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
+    tab.stash_diff = None;
     return Ok(());
 }
 
@@ -209,6 +304,7 @@ pub(crate) fn pop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     repo.stash_drop(reference).map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
+    tab.stash_diff = None;
     return Ok(());
 }
 
@@ -367,6 +463,45 @@ mod tests {
                 .iter()
                 .any(|(_, url)| url == "git@example.com:b.git")
         );
+    }
+
+    #[test]
+    fn stash_actions_by_oid_keep_the_original_target_after_stack_reorders() {
+        let repo = TempRepo::new("stash-oid");
+        let path = repo.path.display().to_string();
+        let mut tab = load_tab(&path, &LogFilter::default());
+
+        std::fs::write(repo.path.join("a.txt"), "first stash\n").expect("first change");
+        stash_changes(&mut tab, "first", true).expect("first stash");
+        let first_oid = tab.refs.stashes[0].oid.clone();
+
+        std::fs::write(repo.path.join("a.txt"), "second stash\n").expect("second change");
+        stash_changes(&mut tab, "second", true).expect("second stash");
+        let second_oid = tab.refs.stashes[0].oid.clone();
+        assert_ne!(first_oid, second_oid);
+
+        let (label, patch) = show_stash_diff(&tab, first_oid.as_str())
+            .expect("stash diff query")
+            .expect("first stash still listed");
+        assert!(label.contains("first"));
+        assert!(patch.raw.contains("first stash"));
+
+        assert!(apply_stash_by_oid(&mut tab, first_oid.as_str()).expect("apply by oid"));
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("a.txt")).expect("read applied"),
+            "first stash\n"
+        );
+        std::fs::write(repo.path.join("a.txt"), "one\n").expect("restore base");
+
+        assert!(pop_stash_by_oid(&mut tab, first_oid.as_str()).expect("pop by oid"));
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("a.txt")).expect("read popped"),
+            "first stash\n"
+        );
+        assert!(tab.refs.stashes.iter().any(|stash| stash.oid == second_oid));
+        assert!(!tab.refs.stashes.iter().any(|stash| stash.oid == first_oid));
+        assert!(drop_stash_by_oid(&mut tab, second_oid.as_str()).expect("drop by oid"));
+        assert!(tab.refs.stashes.is_empty());
     }
 
     #[test]

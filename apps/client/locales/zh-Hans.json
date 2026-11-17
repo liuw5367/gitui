@@ -753,6 +753,27 @@
     "deleteTag": "删除标签…",
     "targetChanged": "菜单打开期间标签或远端已变化，请重新打开菜单后重试。"
   },
+  "stash": {
+    "stashChanges": "贮藏改动…",
+    "stashSelectedFiles": "贮藏选中文件…",
+    "selectedTitle": "贮藏选中文件",
+    "selectFiles": "选择改动文件（已选 %{count} 个）",
+    "untrackedFile": "%{path}（未跟踪）",
+    "noChangedFiles": "没有可贮藏的改动文件。",
+    "selectAll": "全选",
+    "clearSelection": "清除",
+    "selectFilesRequired": "请至少选择一个改动文件。",
+    "apply": "应用贮藏",
+    "pop": "弹出贮藏",
+    "drop": "丢弃贮藏…",
+    "dropTitle": "丢弃这条贮藏？",
+    "dropMessage": "%{name} 将从此仓库永久删除。",
+    "showDiff": "查看差异",
+    "copyName": "复制贮藏名称",
+    "targetChanged": "菜单打开期间贮藏已变化，请重新打开菜单后重试。",
+    "backToChanges": "返回改动",
+    "diffEmpty": "这条贮藏没有可显示的文件差异。"
+  },
   "shortcut": {
     "openRepo": "打开仓库",
     "palette": "命令面板",

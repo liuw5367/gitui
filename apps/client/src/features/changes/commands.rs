@@ -29,7 +29,16 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
+            tab.stash_diff = None;
             ops::load_change_diff(tab, index);
+            self.session.tabs.set(list);
+        }
+    }
+
+    pub(crate) fn clear_stash_diff_at(&self, tab_id: u64) {
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+            tab.stash_diff = None;
             self.session.tabs.set(list);
         }
     }

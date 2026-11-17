@@ -6,6 +6,7 @@
 use crate::design::{self, metrics};
 use crate::i18n;
 use nsh_core::prelude::*;
+use std::collections::BTreeSet;
 
 /// 对话框的种类，决定标题、字段与确认文案。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +15,7 @@ pub(crate) enum FormKind {
     NewTag,
     AddRemote,
     NewStash,
+    StashSelectedFiles,
     RenameBranch,
     EditRemote,
     Identity,
@@ -26,6 +28,7 @@ impl FormKind {
             FormKind::NewTag => "form.newTag",
             FormKind::AddRemote => "form.addRemote",
             FormKind::NewStash => "form.newStash",
+            FormKind::StashSelectedFiles => "stash.selectedTitle",
             FormKind::RenameBranch => "form.renameBranch",
             FormKind::EditRemote => "form.editRemote",
             FormKind::Identity => "form.identity",
@@ -37,7 +40,7 @@ impl FormKind {
         return match self {
             FormKind::NewBranch | FormKind::NewTag => "form.name",
             FormKind::AddRemote => "form.remoteName",
-            FormKind::NewStash => "form.message",
+            FormKind::NewStash | FormKind::StashSelectedFiles => "form.message",
             FormKind::RenameBranch => "form.newName",
             FormKind::EditRemote => "form.urlNew",
             FormKind::Identity => "form.authorName",
@@ -57,14 +60,14 @@ impl FormKind {
         return match self {
             FormKind::NewBranch => Some("form.checkoutAfter"),
             FormKind::NewTag => Some("form.annotated"),
-            FormKind::NewStash => Some("form.includeUntracked"),
+            FormKind::NewStash | FormKind::StashSelectedFiles => Some("form.includeUntracked"),
             _ => None,
         };
     }
 
     /// 复选的初始值：贮藏默认带上未跟踪文件，其它默认不勾。
     fn flag_default(self) -> bool {
-        return matches!(self, FormKind::NewStash);
+        return matches!(self, FormKind::NewStash | FormKind::StashSelectedFiles);
     }
 
     /// 第二个字段的标签；`None` 表示只有一个字段。
@@ -72,7 +75,7 @@ impl FormKind {
         return match self {
             FormKind::NewBranch | FormKind::NewTag => Some("form.from"),
             FormKind::AddRemote => Some("form.url"),
-            FormKind::NewStash => None,
+            FormKind::NewStash | FormKind::StashSelectedFiles => None,
             FormKind::RenameBranch | FormKind::EditRemote => None,
             FormKind::Identity => Some("form.authorEmail"),
         };
@@ -84,6 +87,7 @@ impl FormKind {
             FormKind::NewTag => "form.create",
             FormKind::AddRemote => "form.add",
             FormKind::NewStash => "form.stash",
+            FormKind::StashSelectedFiles => "stash.stashSelectedFiles",
             FormKind::RenameBranch => "form.rename",
             FormKind::EditRemote => "form.save",
             FormKind::Identity => "form.save",
@@ -104,6 +108,9 @@ pub(crate) struct FormState {
     pub flag: bool,
     /// 远端分支菜单要求建立上游跟踪关系。
     pub track_upstream: bool,
+    /// Paths shown by the selected-file stash picker and its selection state.
+    pub stash_paths: Vec<(String, bool)>,
+    pub stash_selected_paths: BTreeSet<String>,
     pub error: Option<String>,
 }
 
@@ -117,8 +124,21 @@ impl FormState {
             third: String::new(),
             flag: kind.flag_default(),
             track_upstream: false,
+            stash_paths: Vec::new(),
+            stash_selected_paths: BTreeSet::new(),
             error: None,
         };
+    }
+
+    pub(crate) fn selected_stash_paths(&self) -> Vec<String> {
+        return self
+            .stash_paths
+            .iter()
+            .filter(|(path, untracked)| {
+                self.stash_selected_paths.contains(path) && (!untracked || self.flag)
+            })
+            .map(|(path, _)| path.clone())
+            .collect();
     }
 }
 
@@ -155,6 +175,7 @@ pub(crate) fn form_dialog(
                 let form_for_field_two = form.clone();
                 let form_for_third = form.clone();
                 let form_for_flag = form.clone();
+                let form_for_stash_paths = form.clone();
                 return crate::ui::dialog::modality(
                     view()
                         .w(px(420.0))
@@ -204,6 +225,17 @@ pub(crate) fn form_dialog(
                                         state.set(Some(next));
                                     }
                                 },
+                            )
+                            .into_element();
+                        }))
+                        .child(dynamic(move || -> AnyElement {
+                            if form.kind != FormKind::StashSelectedFiles {
+                                return view().w_full().h(px(0.0)).into_element();
+                            }
+                            return stash_file_picker(
+                                language,
+                                form_for_stash_paths.clone(),
+                                state,
                             )
                             .into_element();
                         }))
@@ -286,7 +318,8 @@ pub(crate) fn form_dialog(
                                     move || i18n::t(language.get().as_str(), form.kind.confirm()),
                                     crate::ui::button::ButtonVariant::Primary,
                                     crate::ui::button::ButtonSize::Regular,
-                                    false,
+                                    form.kind == FormKind::StashSelectedFiles
+                                        && form.selected_stash_paths().is_empty(),
                                     {
                                         let on_submit = on_submit.clone();
                                         move || on_submit(submit_form.clone())
@@ -300,6 +333,124 @@ pub(crate) fn form_dialog(
         },
         move || dismiss(),
     );
+}
+
+fn stash_file_picker(
+    language: Signal<SharedString>,
+    form: FormState,
+    state: Signal<Option<FormState>>,
+) -> impl IntoElement {
+    let selected = form.selected_stash_paths();
+    let mut rows = Vec::new();
+    for (path, untracked) in form.stash_paths.iter() {
+        let path_for_action = path.clone();
+        let label = if *untracked {
+            i18n::with_arguments(
+                language.get_untracked().as_str(),
+                "stash.untrackedFile",
+                &[("path", path.clone())],
+            )
+        } else {
+            path.clone()
+        };
+        let checked = form.stash_selected_paths.contains(path);
+        let disabled = *untracked && !form.flag;
+        let form_for_toggle = form.clone();
+        rows.push(crate::ui::check::check_row(
+            move || label.clone(),
+            checked,
+            disabled,
+            move |next| {
+                let mut updated = form_for_toggle.clone();
+                if next {
+                    updated.stash_selected_paths.insert(path_for_action.clone());
+                } else {
+                    updated
+                        .stash_selected_paths
+                        .remove(path_for_action.as_str());
+                }
+                state.set(Some(updated));
+            },
+        ));
+    }
+    let form_for_all = form.clone();
+    let can_select_all = form
+        .stash_paths
+        .iter()
+        .any(|(_, untracked)| !*untracked || form.flag);
+    let select_all = crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), "stash.selectAll"),
+        crate::ui::button::ButtonVariant::Ghost,
+        crate::ui::button::ButtonSize::Small,
+        !can_select_all,
+        move || {
+            let mut updated = form_for_all.clone();
+            updated.stash_selected_paths = updated
+                .stash_paths
+                .iter()
+                .filter(|(_, untracked)| !*untracked || updated.flag)
+                .map(|(path, _)| path.clone())
+                .collect();
+            state.set(Some(updated));
+        },
+    );
+    let form_for_clear = form.clone();
+    let clear = crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), "stash.clearSelection"),
+        crate::ui::button::ButtonVariant::Ghost,
+        crate::ui::button::ButtonSize::Small,
+        selected.is_empty(),
+        move || {
+            let mut updated = form_for_clear.clone();
+            updated.stash_selected_paths.clear();
+            state.set(Some(updated));
+        },
+    );
+    let picker_content = if rows.is_empty() {
+        view()
+            .w_full()
+            .h(px(42.0))
+            .items_center()
+            .justify_center()
+            .child(
+                text(move || i18n::t(language.get().as_str(), "stash.noChangedFiles"))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+            )
+            .into_element()
+    } else {
+        scroll()
+            .w_full()
+            .max_h(px(220.0))
+            .child(view().w_full().flex_col().child(rows))
+            .into_element()
+    };
+    return view()
+        .w_full()
+        .flex_col()
+        .gap(px(4.0))
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(4.0))
+                .child(
+                    text(move || {
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "stash.selectFiles",
+                            &[("count", selected.len().to_string())],
+                        )
+                    })
+                    .flex_1()
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text2()),
+                )
+                .child(select_all)
+                .child(clear),
+        )
+        .child(picker_content);
 }
 
 /// 一行复选：走 `ui::check::check_inline`（原生 Checkbox + 统一指示器）。

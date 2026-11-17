@@ -111,6 +111,34 @@ pub(crate) fn stash_changes(
         .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
+    tab.stash_diff = None;
+    return Ok(());
+}
+
+/// 贮藏所选文件；写入前重新核对路径仍有变更，避免使用已过期的表单选择。
+pub(crate) fn stash_selected_files(
+    tab: &mut Tab,
+    message: &str,
+    paths: &[String],
+    include_untracked: bool,
+) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    if paths.is_empty() {
+        return Err("Select at least one changed file.".to_string());
+    }
+    let status = repo.status().map_err(|error| error.detail())?;
+    if paths
+        .iter()
+        .any(|path| !status.iter().any(|entry| entry.path == *path))
+    {
+        return Err("A selected file changed before the stash was created. Reopen the picker and try again.".to_string());
+    }
+    let path_refs = paths.iter().map(String::as_str).collect::<Vec<_>>();
+    repo.stash_push_selected(message, &path_refs, include_untracked)
+        .map_err(|error| error.detail())?;
+    crate::app::ops::refresh_refs(tab, &repo);
+    refresh_changes(tab);
+    tab.stash_diff = None;
     return Ok(());
 }
 
@@ -190,5 +218,28 @@ mod tests {
         let reference = tab.refs.stashes[0].reference.clone();
         drop_stash(&mut tab, reference.as_str()).expect("drop");
         assert!(tab.refs.stashes.is_empty());
+    }
+
+    #[test]
+    fn selected_file_stash_leaves_other_worktree_paths_unchanged() {
+        let repo = TempRepo::new("selected-stash");
+        std::fs::write(repo.path.join("a.txt"), "selected change\n").expect("modify tracked");
+        std::fs::write(repo.path.join("new.txt"), "leave untracked\n").expect("new file");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+
+        stash_selected_files(&mut tab, "selected", &["a.txt".to_string()], false)
+            .expect("stash selected path");
+
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("a.txt")).expect("read tracked"),
+            "one\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.path.join("new.txt")).expect("read untracked"),
+            "leave untracked\n"
+        );
+        assert_eq!(tab.changes.len(), 1);
+        assert_eq!(tab.changes[0].path, "new.txt");
+        assert_eq!(tab.refs.stashes.len(), 1);
     }
 }

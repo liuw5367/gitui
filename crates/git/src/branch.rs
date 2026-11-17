@@ -164,6 +164,46 @@ impl Repo {
         return Ok(());
     }
 
+    /// 贮藏明确选中的路径。路径通过 literal pathspec 传入，避免通配符或冒号被解释。
+    pub fn stash_push_selected(
+        &self,
+        message: &str,
+        paths: &[&str],
+        include_untracked: bool,
+    ) -> Result<(), GitError> {
+        if paths.is_empty() {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: "stash push -- <paths>".to_string(),
+                code: None,
+                detail: "至少要选择一个文件".to_string(),
+            });
+        }
+        let mut args = vec!["stash".to_string(), "push".to_string()];
+        if include_untracked {
+            args.push("-u".to_string());
+        }
+        if !message.trim().is_empty() {
+            args.push("-m".to_string());
+            args.push(message.trim().to_string());
+        }
+        args.push("--".to_string());
+        args.extend(paths.iter().map(|path| format!(":(literal){path}")));
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        run_git(&self.root, &args)?;
+        return Ok(());
+    }
+
+    /// 读取某条贮藏的补丁，可附带其未跟踪文件。
+    pub fn stash_show(&self, oid: &str, include_untracked: bool) -> Result<Vec<u8>, GitError> {
+        let mut args = vec!["stash", "show", "--patch"];
+        if include_untracked {
+            args.push("--include-untracked");
+        }
+        args.push(oid);
+        return run_git(&self.root, &args);
+    }
+
     /// 取出最近一条贮藏（`git stash pop`）。
     pub fn stash_pop(&self) -> Result<(), GitError> {
         run_git(&self.root, &["stash", "pop"])?;
@@ -208,6 +248,33 @@ mod tests {
         assert!(refs.tags.is_empty());
         assert!(refs.remotes.is_empty());
         assert!(refs.branches.iter().any(|branch| branch.name == "feature"));
+    }
+
+    #[test]
+    fn selected_stash_keeps_other_paths_and_show_includes_selected_untracked_files() {
+        let (_guard, path) = fixture(
+            "selected-stash",
+            &[("a.txt", "base a\n"), ("b.txt", "base b\n")],
+            "base",
+        );
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "changed a\n").expect("modify a");
+        std::fs::write(repo.root().join("b.txt"), "changed b\n").expect("modify b");
+        std::fs::write(repo.root().join("new.txt"), "untracked\n").expect("new file");
+
+        repo.stash_push_selected("selected files", &["a.txt", "new.txt"], true)
+            .expect("stash selected");
+
+        let status = repo.status().expect("status");
+        assert!(status.iter().any(|entry| entry.path == "b.txt"));
+        assert!(!status.iter().any(|entry| entry.path == "a.txt"));
+        assert!(!status.iter().any(|entry| entry.path == "new.txt"));
+        let stash = repo.refs().expect("refs").stashes.remove(0);
+        let patch = String::from_utf8(repo.stash_show(&stash.oid, true).expect("show stash"))
+            .expect("utf8 patch");
+        assert!(patch.contains("a.txt"));
+        assert!(patch.contains("new.txt"));
+        assert!(!patch.contains("b.txt"));
     }
 
     #[test]

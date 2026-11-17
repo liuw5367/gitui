@@ -219,6 +219,8 @@ impl RemoteBranch {
 pub struct Stash {
     /// `stash@{0}` 形式的引用。
     pub reference: String,
+    /// 贮藏提交的完整 OID，用于在序号变化后仍指向同一条记录。
+    pub oid: String,
     pub summary: String,
 }
 
@@ -386,7 +388,7 @@ impl Repo {
     }
 
     fn stashes(&self) -> Result<Vec<Stash>, GitError> {
-        let output = run_git(&self.root, &["stash", "list", "--format=%gd%x1f%s"])?;
+        let output = run_git(&self.root, &["stash", "list", "--format=%gd%x1f%H%x1f%s"])?;
         let mut stashes = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let mut fields = line.split('\u{1f}');
@@ -396,6 +398,7 @@ impl Repo {
             }
             stashes.push(Stash {
                 reference,
+                oid: fields.next().unwrap_or("").to_string(),
                 summary: fields.next().unwrap_or("").to_string(),
             });
         }
@@ -570,6 +573,7 @@ mod tests {
         assert_eq!(refs.tags, vec!["v1.0.0".to_string()]);
         assert_eq!(refs.stashes.len(), 1);
         assert!(refs.stashes[0].reference.starts_with("stash@{0}"));
+        assert!(!refs.stashes[0].oid.is_empty());
         assert!(refs.submodules.is_empty());
         assert!(refs.worktrees.is_empty());
         assert!(refs.remotes.is_empty());

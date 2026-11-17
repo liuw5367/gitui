@@ -85,6 +85,13 @@ impl SearchCommands {
         self.state.form.set(Some(state));
     }
 
+    pub(crate) fn open_stash_selected_from_tab(&self, tab_id: u64, paths: Vec<(String, bool)>) {
+        let mut state = FormState::new(FormKind::StashSelectedFiles);
+        state.target_tab_id = Some(tab_id);
+        state.stash_paths = paths;
+        self.state.form.set(Some(state));
+    }
+
     /// 以指定远端分支预填新建跟踪分支表单。
     pub(crate) fn open_tracking_branch_form(
         &self,
@@ -155,9 +162,19 @@ impl SearchCommands {
         };
         let first = form.first.trim().to_string();
         let second = form.second.trim().to_string();
-        if first.is_empty() {
+        let selected_stash_paths = form.selected_stash_paths();
+        if first.is_empty() && form.kind != FormKind::StashSelectedFiles {
             let mut next = form.clone();
             next.error = Some("名称不能为空".to_string());
+            form_state.set(Some(next));
+            return;
+        }
+        if form.kind == FormKind::StashSelectedFiles && selected_stash_paths.is_empty() {
+            let mut next = form.clone();
+            next.error = Some(crate::i18n::t(
+                self.language.get_untracked().as_str(),
+                "stash.selectFilesRequired",
+            ));
             form_state.set(Some(next));
             return;
         }
@@ -177,6 +194,12 @@ impl SearchCommands {
             ),
             FormKind::AddRemote => ops::add_remote(tab, first.as_str(), second.as_str()),
             FormKind::NewStash => ops::stash_changes(tab, first.as_str(), form.flag),
+            FormKind::StashSelectedFiles => ops::stash_selected_files(
+                tab,
+                first.as_str(),
+                selected_stash_paths.as_slice(),
+                form.flag,
+            ),
             // 重命名与改 URL：`second` 是被改对象的原名，`first` 是新值。
             FormKind::RenameBranch => ops::rename_branch(tab, second.as_str(), first.as_str()),
             FormKind::EditRemote => ops::edit_remote(tab, second.as_str(), first.as_str()),

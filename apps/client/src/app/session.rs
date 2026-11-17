@@ -66,6 +66,8 @@ pub(crate) struct Tab {
     pub(crate) comparing: bool,
     /// 工作区与暂存区的变更（设计板 10 的列表）。
     pub(crate) changes: Vec<ChangeEntry>,
+    /// 当前正在检查的贮藏补丁；仅用于 Refs 侧栏的 Show Diff。
+    pub(crate) stash_diff: Option<(String, domain::diff::Patch)>,
     /// 选中的变更下标。
     pub(crate) selected_change: Option<usize>,
     /// 选中变更的 diff（加载期解析好，渲染期不再解析）。

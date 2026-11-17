@@ -26,8 +26,11 @@ pub(crate) fn changes(
     tab: Tab,
     group_by_directory: bool,
     tree: crate::app::session::TreeOptions,
-) -> impl IntoElement + use<> {
+) -> AnyElement {
     let language = cmd.language;
+    if let Some((label, patch)) = tab.stash_diff.clone() {
+        return stash_diff_view(language, cmd, tab.id, label, patch);
+    }
     let total = tab.changes.len();
     let staged = tab.changes.iter().filter(|entry| entry.staged).count();
     let patch = tab.change_diff.clone();
@@ -170,7 +173,82 @@ pub(crate) fn changes(
                                 })),
                         ),
                 ),
-        );
+        )
+        .into_element();
+}
+
+fn stash_diff_view(
+    language: Signal<SharedString>,
+    cmd: &ChangesCommands,
+    tab_id: u64,
+    label: String,
+    patch: domain::diff::Patch,
+) -> AnyElement {
+    let rows = patch.lines.iter().map(diff_row).collect::<Vec<_>>();
+    let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
+    let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
+    let clear = cmd.clone();
+    return view()
+        .w_full()
+        .h_full()
+        .flex_col()
+        .child(
+            view()
+                .w_full()
+                .h(px(metrics::DIFFBAR_H))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .px(px(11.0))
+                .border_b_1()
+                .border_color(move || design::line())
+                .child(crate::ui::icon::icon_view(
+                    "archive",
+                    crate::ui::icon::IconSize::Button,
+                    design::text3,
+                ))
+                .child(
+                    text(label)
+                        .flex_1()
+                        .text_size(px(crate::ui::CODE))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(format!("+{} −{}", additions, deletions))
+                        .text_size(px(crate::ui::CODE))
+                        .text_color(move || design::text3()),
+                )
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "stash.backToChanges"),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || clear.clear_stash_diff_at(tab_id),
+                )),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .child(scroll().w_full().h_full().child(if rows.is_empty() {
+                    view()
+                        .w_full()
+                        .h(px(48.0))
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "stash.diffEmpty"))
+                                .text_size(px(crate::ui::BODY))
+                                .text_color(move || design::text3()),
+                        )
+                        .into_element()
+                } else {
+                    view().w_full().flex_col().child(rows).into_element()
+                })),
+        )
+        .into_element();
 }
 
 #[allow(clippy::too_many_arguments)]

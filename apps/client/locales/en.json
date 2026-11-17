@@ -753,6 +753,27 @@
     "deleteTag": "Delete Tag…",
     "targetChanged": "The tag or remote changed while the menu was open. Reopen it and try again."
   },
+  "stash": {
+    "stashChanges": "Stash Changes…",
+    "stashSelectedFiles": "Stash Selected Files…",
+    "selectedTitle": "Stash Selected Files",
+    "selectFiles": "Select changed files (%{count} selected)",
+    "untrackedFile": "%{path} (untracked)",
+    "noChangedFiles": "There are no changed files to stash.",
+    "selectAll": "Select All",
+    "clearSelection": "Clear",
+    "selectFilesRequired": "Select at least one changed file.",
+    "apply": "Apply Stash",
+    "pop": "Pop Stash",
+    "drop": "Drop Stash…",
+    "dropTitle": "Drop this stash?",
+    "dropMessage": "%{name} will be permanently removed from this repository.",
+    "showDiff": "Show Diff",
+    "copyName": "Copy Stash Name",
+    "targetChanged": "This stash changed while the menu was open. Reopen it and try again.",
+    "backToChanges": "Back to Changes",
+    "diffEmpty": "This stash has no file diff to show."
+  },
   "shortcut": {
     "openRepo": "Open repository",
     "palette": "Command palette",

@@ -64,7 +64,7 @@ pub(crate) fn refs_sidebar(
         refs.branches.len(),
         collapsed.contains("group:branches"),
         branch_rows,
-        Some(("form.newBranch", new_branch_from_current)),
+        vec![("form.newBranch", true, new_branch_from_current)],
     ));
 
     let remote_infos = if refs.remote_info.is_empty() {
@@ -117,7 +117,7 @@ pub(crate) fn refs_sidebar(
         remote_infos.len(),
         collapsed.contains("group:remotes"),
         remote_rows,
-        Some(("remote.addRemote", add_remote)),
+        vec![("remote.addRemote", true, add_remote)],
     ));
 
     let mut tags = refs.tags.clone();
@@ -158,14 +158,41 @@ pub(crate) fn refs_sidebar(
         refs.tags.len(),
         collapsed.contains("group:tags"),
         tag_rows,
-        Some(("tag.newTag", new_tag)),
+        vec![("tag.newTag", true, new_tag)],
     ));
 
-    let stash_rows: Vec<AnyElement> = refs
-        .stashes
+    let mut stashes = refs.stashes.clone();
+    stashes.sort_by(|left, right| {
+        left.summary
+            .to_lowercase()
+            .cmp(&right.summary.to_lowercase())
+            .then_with(|| left.summary.cmp(&right.summary))
+            .then_with(|| left.oid.cmp(&right.oid))
+    });
+    let stash_rows: Vec<AnyElement> = stashes
         .iter()
-        .map(|stash| plain_row(stash.summary.clone(), "archive", design::text2))
+        .cloned()
+        .map(|stash| stash_row(language, cmd, tab_id, stash))
         .collect();
+    let stash_changes: std::sync::Arc<dyn Fn()> = {
+        let search = cmd.search.clone();
+        std::sync::Arc::new(move || {
+            search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::NewStash,
+                String::new(),
+            )
+        })
+    };
+    let stash_selected_files: std::sync::Arc<dyn Fn()> = {
+        let search = cmd.search.clone();
+        let paths = tab
+            .changes
+            .iter()
+            .map(|change| (change.path.clone(), change.untracked))
+            .collect::<Vec<_>>();
+        std::sync::Arc::new(move || search.open_stash_selected_from_tab(tab_id, paths.clone()))
+    };
     groups.push(group(
         language,
         cmd,
@@ -175,7 +202,14 @@ pub(crate) fn refs_sidebar(
         refs.stashes.len(),
         collapsed.contains("group:stashes"),
         stash_rows,
-        None,
+        vec![
+            ("stash.stashChanges", !tab.changes.is_empty(), stash_changes),
+            (
+                "stash.stashSelectedFiles",
+                !tab.changes.is_empty(),
+                stash_selected_files,
+            ),
+        ],
     ));
 
     let submodule_rows: Vec<AnyElement> = refs
@@ -192,7 +226,7 @@ pub(crate) fn refs_sidebar(
         refs.submodules.len(),
         collapsed.contains("group:submodules"),
         submodule_rows,
-        None,
+        Vec::new(),
     ));
 
     let worktree_rows: Vec<AnyElement> = refs
@@ -209,7 +243,7 @@ pub(crate) fn refs_sidebar(
         refs.worktrees.len(),
         collapsed.contains("group:worktrees"),
         worktree_rows,
-        None,
+        Vec::new(),
     ));
 
     return view()
@@ -243,7 +277,7 @@ fn group(
     count: usize,
     collapsed: bool,
     rows: Vec<AnyElement>,
-    extra: Option<(&'static str, std::sync::Arc<dyn Fn()>)>,
+    extra: Vec<(&'static str, bool, std::sync::Arc<dyn Fn()>)>,
 ) -> AnyElement {
     let click_cmd = cmd.clone();
     let click_key = fold_key.to_string();
@@ -273,13 +307,15 @@ fn group(
         .mt(px(8.0))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
             let mut items = Vec::new();
-            if let Some((label_key, action)) = menu_extra.as_ref() {
+            for (label_key, enabled, action) in menu_extra.iter() {
                 let action = action.clone();
                 items.push(ui::menu::action(
                     i18n::t(language.get().as_str(), label_key),
-                    true,
+                    *enabled,
                     move || action(),
                 ));
+            }
+            if !menu_extra.is_empty() {
                 items.push(ui::menu::divider());
             }
             let action_cmd = menu_cmd.clone();
@@ -1408,6 +1444,92 @@ fn tag_row(
         ))
         .child(
             text(name)
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || design::text2())
+                .flex_1()
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .into_element();
+}
+
+fn stash_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    stash: git::Stash,
+) -> AnyElement {
+    let reference = stash.reference.clone();
+    let oid = stash.oid.clone();
+    let name = stash.summary.clone();
+    let row_name = name.clone();
+    let menu_cmd = cmd.clone();
+    let menu_oid = oid.clone();
+    let menu_reference = reference.clone();
+    return view()
+        .w_full()
+        .h(px(metrics::SIDE_ROW_H))
+        .px(px(7.0))
+        .flex_row()
+        .items_center()
+        .gap(px(7.0))
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .hover(|style| style.bg(move || design::hover()))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let apply_cmd = menu_cmd.clone();
+            let apply_oid = menu_oid.clone();
+            let mut items = vec![ui::menu::action(
+                i18n::t(language.get().as_str(), "stash.apply"),
+                true,
+                move || apply_cmd.apply_stash_at(tab_id, apply_oid.clone()),
+            )];
+            let pop_cmd = menu_cmd.clone();
+            let pop_oid = menu_oid.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "stash.pop"),
+                true,
+                move || pop_cmd.pop_stash_at(tab_id, pop_oid.clone()),
+            ));
+            items.push(ui::menu::divider());
+            let drop_cmd = menu_cmd.clone();
+            let drop_oid = menu_oid.clone();
+            let drop_reference = menu_reference.clone();
+            let drop_summary = name.clone();
+            items.push(ui::menu::danger(
+                i18n::t(language.get().as_str(), "stash.drop"),
+                true,
+                move || {
+                    drop_cmd.drop_stash_at(
+                        tab_id,
+                        drop_oid.clone(),
+                        drop_reference.clone(),
+                        drop_summary.clone(),
+                    )
+                },
+            ));
+            items.push(ui::menu::divider());
+            let diff_cmd = menu_cmd.clone();
+            let diff_oid = menu_oid.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "stash.showDiff"),
+                true,
+                move || diff_cmd.show_stash_diff_at(tab_id, diff_oid.clone()),
+            ));
+            let copy_notice = menu_cmd.notice;
+            let copy_reference = menu_reference.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "stash.copyName"),
+                true,
+                move || crate::shared::os::copy_text(copy_notice, language, copy_reference.clone()),
+            ));
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::icon::icon_view(
+            "archive",
+            crate::ui::icon::IconSize::Compact,
+            design::text2,
+        ))
+        .child(
+            text(row_name)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
                 .flex_1()

@@ -281,6 +281,66 @@ impl RefsCommands {
         self.stash_action("pop", reference);
     }
 
+    fn stash_action_at(&self, kind: &'static str, tab_id: u64, oid: String) {
+        let tabs = self.session.tabs;
+        let language = self.language;
+        let notice = self.notice;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let result = if kind == "apply" {
+            ops::apply_stash_by_oid(tab, oid.as_str())
+        } else {
+            ops::pop_stash_by_oid(tab, oid.as_str())
+        };
+        tabs.set(list);
+        match result {
+            Ok(true) => crate::interactions::notify(
+                notice,
+                crate::i18n::t(language.get_untracked().as_str(), "toast.stashDone"),
+            ),
+            Ok(false) => crate::interactions::notify(
+                notice,
+                crate::i18n::t(language.get_untracked().as_str(), "stash.targetChanged"),
+            ),
+            Err(detail) => crate::interactions::notify(notice, detail),
+        }
+    }
+
+    pub(crate) fn apply_stash_at(&self, tab_id: u64, oid: String) {
+        self.stash_action_at("apply", tab_id, oid);
+    }
+
+    pub(crate) fn pop_stash_at(&self, tab_id: u64, oid: String) {
+        self.stash_action_at("pop", tab_id, oid);
+    }
+
+    pub(crate) fn show_stash_diff_at(&self, tab_id: u64, oid: String) {
+        let tabs = self.session.tabs;
+        let notice = self.notice;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        match ops::show_stash_diff(tab, oid.as_str()) {
+            Ok(Some(diff)) => {
+                tab.stash_diff = Some(diff);
+                tabs.set(list);
+                self.session.activate_tab_id(tab_id);
+                self.search.state.mode.set(crate::Mode::Changes);
+            }
+            Ok(None) => crate::interactions::notify(
+                notice,
+                crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "stash.targetChanged",
+                ),
+            ),
+            Err(detail) => crate::interactions::notify(notice, detail),
+        }
+    }
+
     /// 丢弃贮藏（原 `drop_stash`）：先确认。
     pub(crate) fn drop_stash(&self, reference: String) {
         let tabs = self.session.tabs;
@@ -309,6 +369,54 @@ impl RefsCommands {
                 let _ = ops::drop_stash(tab, reference.as_str());
                 tabs.set(list);
             }
+        });
+    }
+
+    pub(crate) fn drop_stash_at(
+        &self,
+        tab_id: u64,
+        oid: String,
+        reference: String,
+        summary: String,
+    ) {
+        let tabs = self.session.tabs;
+        let language = self.language;
+        let notice = self.notice;
+        let short_oid = oid.chars().take(8).collect::<String>();
+        let display_name = format!("{reference} · {summary} ({short_oid})");
+        let language_now = language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "stash.dropTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "stash.dropMessage",
+                &[("name", display_name)],
+            ),
+            "drop",
+            crate::i18n::t(language_now.as_str(), "stash.drop"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            true,
+        );
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            match ops::drop_stash_by_oid(tab, oid.as_str()) {
+                Ok(true) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "toast.stashDone"),
+                ),
+                Ok(false) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "stash.targetChanged"),
+                ),
+                Err(detail) => crate::interactions::notify(notice, detail),
+            }
+            tabs.set(list);
         });
     }
 
