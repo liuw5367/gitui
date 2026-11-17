@@ -166,6 +166,22 @@ impl Repo {
         }
         return Ok(pairs);
     }
+
+    /// 各远端的实际取回与推送 URL；一项远端可以配置多个推送 URL。
+    pub fn remote_info(&self) -> Result<Vec<RemoteInfo>, GitError> {
+        let names = self.lines(&["remote"])?;
+        let mut remotes = Vec::new();
+        for name in names {
+            let fetch_urls = self.lines(&["remote", "get-url", "--all", name.as_str()])?;
+            let push_urls = self.lines(&["remote", "get-url", "--push", "--all", name.as_str()])?;
+            remotes.push(RemoteInfo {
+                name,
+                fetch_urls,
+                push_urls,
+            });
+        }
+        return Ok(remotes);
+    }
 }
 
 /// 一个本地分支。
@@ -175,6 +191,27 @@ pub struct Branch {
     pub current: bool,
     pub ahead: u32,
     pub behind: u32,
+}
+
+/// 一个远端及其真实配置的取回、推送地址。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RemoteInfo {
+    pub name: String,
+    pub fetch_urls: Vec<String>,
+    pub push_urls: Vec<String>,
+}
+
+/// 一条远程跟踪分支。`name` 不含远端名前缀。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RemoteBranch {
+    pub remote: String,
+    pub name: String,
+}
+
+impl RemoteBranch {
+    pub fn full_name(&self) -> String {
+        return format!("{}/{}", self.remote, self.name);
+    }
 }
 
 /// 一个贮藏项。
@@ -190,6 +227,8 @@ pub struct Stash {
 pub struct Refs {
     pub branches: Vec<Branch>,
     pub remotes: Vec<String>,
+    pub remote_info: Vec<RemoteInfo>,
+    pub remote_branches: Vec<RemoteBranch>,
     pub tags: Vec<String>,
     pub stashes: Vec<Stash>,
     pub submodules: Vec<String>,
@@ -246,7 +285,12 @@ impl Repo {
     /// 贮藏、子模块与工作树。
     pub fn refs(&self) -> Result<Refs, GitError> {
         let branches = self.branches()?;
-        let remotes = self.lines(&["remote"])?;
+        let remote_info = self.remote_info()?;
+        let remotes = remote_info
+            .iter()
+            .map(|remote| remote.name.clone())
+            .collect::<Vec<_>>();
+        let remote_branches = self.remote_branches(&remotes)?;
         let tags = self.lines(&[
             "for-each-ref",
             "--sort=-creatordate",
@@ -259,6 +303,8 @@ impl Repo {
         return Ok(Refs {
             branches,
             remotes,
+            remote_info,
+            remote_branches,
             tags,
             stashes,
             submodules,
@@ -297,6 +343,45 @@ impl Repo {
                 .cmp(&left.current)
                 .then_with(|| left.name.cmp(&right.name))
         });
+        return Ok(branches);
+    }
+
+    fn remote_branches(&self, remotes: &[String]) -> Result<Vec<RemoteBranch>, GitError> {
+        let output = run_git(
+            &self.root,
+            &[
+                "for-each-ref",
+                "--format=%(refname)%1f%(symref)",
+                "refs/remotes",
+            ],
+        )?;
+        let mut branches = Vec::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let mut fields = line.split('\u{1f}');
+            let reference = fields.next().unwrap_or("");
+            let symref = fields.next().unwrap_or("");
+            let Some(short_name) = reference.strip_prefix("refs/remotes/") else {
+                continue;
+            };
+            if !symref.is_empty() {
+                continue;
+            }
+            let Some(remote) = remotes
+                .iter()
+                .filter(|remote| short_name.starts_with(&format!("{remote}/")))
+                .max_by_key(|remote| remote.len())
+            else {
+                continue;
+            };
+            let name = short_name[remote.len() + 1..].to_string();
+            if name.is_empty() {
+                continue;
+            }
+            branches.push(RemoteBranch {
+                remote: remote.clone(),
+                name,
+            });
+        }
         return Ok(branches);
     }
 
@@ -488,6 +573,49 @@ mod tests {
         assert!(refs.submodules.is_empty());
         assert!(refs.worktrees.is_empty());
         assert!(refs.remotes.is_empty());
+    }
+
+    #[test]
+    fn refs_include_remote_urls_and_tracking_branches_without_head_aliases() {
+        let (_guard, path, _remote_guard, remote_path) = with_remote("remote-refs");
+        let repo = Repo::open(&path).expect("open");
+        repo.create_branch("feature/nested", Some("main"))
+            .expect("branch");
+        repo.create_branch("origin/feature/nested", Some("main"))
+            .expect("local branch with ambiguous short ref");
+        repo.push_branch("origin", "feature/nested")
+            .expect("push branch");
+        repo.fetch("origin").expect("fetch");
+        run_git(
+            repo.root(),
+            &[
+                "config",
+                "remote.origin.pushurl",
+                "https://push.example.com/repo.git",
+            ],
+        )
+        .expect("push URL");
+        run_git(repo.root(), &["remote", "set-head", "origin", "main"]).expect("set head");
+
+        let refs = repo.refs().expect("refs");
+        assert_eq!(refs.remote_info.len(), 1);
+        assert_eq!(refs.remote_info[0].name, "origin");
+        assert_eq!(refs.remote_info[0].fetch_urls, vec![remote_path.clone()]);
+        assert_eq!(
+            refs.remote_info[0].push_urls,
+            vec!["https://push.example.com/repo.git".to_string()]
+        );
+        assert!(
+            refs.remote_branches
+                .iter()
+                .any(|branch| branch.full_name() == "origin/feature/nested")
+        );
+        assert!(
+            !refs
+                .remote_branches
+                .iter()
+                .any(|branch| branch.full_name() == "origin/HEAD")
+        );
     }
 
     #[test]

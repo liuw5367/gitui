@@ -318,9 +318,16 @@ impl RefsCommands {
 
     /// 移除远程（原 `drop_remote`）：先确认。
     pub(crate) fn drop_remote(&self, name: String) {
+        let Some(tab_id) = self.active_tab_id() else {
+            return;
+        };
+        self.drop_remote_at(tab_id, name);
+    }
+
+    pub(crate) fn drop_remote_at(&self, tab_id: u64, name: String) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
         let language = self.language;
+        let notice = self.notice;
         let language_now = language.get_untracked();
         let pending = crate::interactions::confirm(
             crate::i18n::t(language_now.as_str(), "confirm.dropRemoteTitle"),
@@ -338,11 +345,20 @@ impl RefsCommands {
             if !pending.await {
                 return;
             }
-            let current = active.get_untracked();
             let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let _ = ops::drop_remote(tab, name.as_str());
+            if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+                if !tab.refs.remotes.iter().any(|remote| remote == &name) {
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(language.get_untracked().as_str(), "remote.targetChanged"),
+                    );
+                    return;
+                }
+                let result = ops::drop_remote(tab, name.as_str());
                 tabs.set(list);
+                if let Err(detail) = result {
+                    crate::interactions::notify(notice, detail);
+                }
             }
         });
     }
@@ -410,11 +426,16 @@ impl RefsCommands {
                 return;
             };
             if tab.branch != current_branch
-                || !tab
+                || !(tab
                     .refs
                     .branches
                     .iter()
                     .any(|branch| branch.name == target_branch)
+                    || tab
+                        .refs
+                        .remote_branches
+                        .iter()
+                        .any(|branch| branch.full_name() == target_branch))
             {
                 crate::interactions::notify(
                     notice,
@@ -471,6 +492,143 @@ impl RefsCommands {
                 crate::interactions::notify(self.notice, detail);
             }
         }
+    }
+
+    pub(crate) fn pull_remote_branch_at(&self, tab_id: u64, remote: String, branch: String) {
+        let tabs = self.session.tabs;
+        let language = self.language;
+        let notice = self.notice;
+        let Some(tab) = tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+        else {
+            return;
+        };
+        if ops::is_dirty(&tab) || tab.operation != git::Operation::None {
+            crate::interactions::notify(
+                notice,
+                crate::i18n::t(
+                    language.get_untracked().as_str(),
+                    "remote.pullRequiresClean",
+                ),
+            );
+            return;
+        }
+        let current_branch = tab.branch.clone();
+        let full_name = format!("{remote}/{branch}");
+        let language_now = language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "remote.pullTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "remote.pullMessage",
+                &[
+                    ("source", full_name.clone()),
+                    ("target", current_branch.clone()),
+                ],
+            ),
+            "pull",
+            crate::i18n::t(language_now.as_str(), "remote.pullAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            false,
+        );
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            if tab.branch != current_branch
+                || !tab.refs.remotes.iter().any(|item| item == &remote)
+                || !tab
+                    .refs
+                    .remote_branches
+                    .iter()
+                    .any(|item| item.remote == remote && item.name == branch)
+            {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "remote.targetChanged"),
+                );
+                return;
+            }
+            if ops::is_dirty(tab) || tab.operation != git::Operation::None {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(
+                        language.get_untracked().as_str(),
+                        "remote.pullRequiresClean",
+                    ),
+                );
+                return;
+            }
+            let result = ops::pull_remote_branch(tab, remote.as_str(), branch.as_str());
+            tabs.set(list);
+            match result {
+                Ok(_) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
+                ),
+                Err(detail) => crate::interactions::notify(notice, detail),
+            }
+        });
+    }
+
+    pub(crate) fn delete_remote_branch_at(&self, tab_id: u64, remote: String, branch: String) {
+        let tabs = self.session.tabs;
+        let language = self.language;
+        let notice = self.notice;
+        let full_name = format!("{remote}/{branch}");
+        let language_now = language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "remote.deleteBranchTitle",
+                &[("name", full_name.clone())],
+            ),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "remote.deleteBranchMessage",
+                &[("name", full_name.clone())],
+            ),
+            "delete",
+            crate::i18n::t(language_now.as_str(), "branch.deleteAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            true,
+        );
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            if !tab.refs.remotes.iter().any(|item| item == &remote)
+                || !tab
+                    .refs
+                    .remote_branches
+                    .iter()
+                    .any(|item| item.remote == remote && item.name == branch)
+            {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "remote.targetChanged"),
+                );
+                return;
+            }
+            match ops::delete_remote_branch(tab, remote.as_str(), branch.as_str()) {
+                Ok(()) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
+                ),
+                Err(detail) => crate::interactions::notify(notice, detail),
+            }
+            tabs.set(list);
+        });
     }
 
     /// 切到某个提交（原 `checkout_commit`，detached，先确认）。

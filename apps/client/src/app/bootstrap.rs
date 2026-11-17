@@ -100,9 +100,8 @@ pub(crate) fn app() -> impl IntoElement {
     let restore_confirm = signal(acceptance::flag("GITUI_RESTORE_CONFIRM"));
     let blink_on = signal(true);
     let blink_running = signal(false);
-    let pending_keystroke = signal(
-        acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()),
-    );
+    let pending_keystroke =
+        signal(acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()));
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
     // 冲突视图：可编辑的结果区与 base 显隐。
@@ -113,6 +112,8 @@ pub(crate) fn app() -> impl IntoElement {
     let sync_state = signal(if acceptance::flag("GITUI_SYNC") {
         Some(features::sync::state::SyncDialogState::new(
             crate::app::session::Sync::Fetch,
+            None,
+            None,
         ))
     } else {
         None
@@ -678,6 +679,7 @@ pub(crate) fn app() -> impl IntoElement {
             &handles.sync.state,
             &handles.sync,
             language_value,
+            tabs,
             current_tab,
         ))
         // 表单浮层只在一扇窗口里画：设置窗口开着时归它（身份编辑从设置页进入）。

@@ -18,6 +18,7 @@ pub(crate) fn sync_dialog(
     state: &SyncState,
     cmd: &SyncCommands,
     language: Signal<SharedString>,
+    tabs: Signal<Vec<Tab>>,
     tab: Memo<Option<Tab>>,
 ) -> impl IntoElement + use<> {
     let state = state.dialog;
@@ -56,6 +57,7 @@ pub(crate) fn sync_dialog(
         move || {
             let state = state;
             let tab = tab;
+            let tabs = tabs;
             let language = language;
             let on_run = on_run.clone();
             let on_close = on_close.clone();
@@ -65,7 +67,10 @@ pub(crate) fn sync_dialog(
                 let Some(dialog) = state.get() else {
                     return view().w(px(0.0)).h(px(0.0)).into_element();
                 };
-                let current = tab.get();
+                let current = match dialog.target_tab_id {
+                    Some(tab_id) => tabs.get().into_iter().find(|tab| tab.id == tab_id),
+                    None => tab.get(),
+                };
                 let repo_name = current.as_ref().map(|tab| tab.label()).unwrap_or_default();
                 let branch = current
                     .as_ref()
@@ -73,10 +78,12 @@ pub(crate) fn sync_dialog(
                     .unwrap_or_default();
                 let ahead = current.as_ref().map(|tab| tab.ahead).unwrap_or(0);
                 let behind = current.as_ref().map(|tab| tab.behind).unwrap_or(0);
-                let remote = current
-                    .as_ref()
-                    .and_then(|tab| tab.refs.remotes.first().cloned())
-                    .unwrap_or_else(|| "origin".to_string());
+                let remote = dialog.remote.clone().unwrap_or_else(|| {
+                    current
+                        .as_ref()
+                        .and_then(|tab| tab.refs.remotes.first().cloned())
+                        .unwrap_or_else(|| "origin".to_string())
+                });
                 let kind = dialog.kind;
                 let running = dialog.running;
                 let has_result = dialog.result.is_some();

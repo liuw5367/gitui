@@ -45,6 +45,8 @@
 
 当前实现的 Branches 侧栏按 `/` 把名字组织为可折叠前缀树，同级文字升序。组头与前缀均可点按折叠；前缀右键菜单可单独展开/收起，也可一次展开或收起全部下级前缀。Branch 右键菜单完整包含 `Checkout`、`New Branch from '<name>'…`、`Compare with Current Branch`、`Rebase Current onto '<name>'`、`Merge '<name>' into Current`、`New Tag…`、`Rename…`、`Delete…`、`Copy Branch Name`、`Push '<name>' to origin`；当前分支不允许 Checkout、Rebase、Merge、Delete，Rebase 只在干净工作区且没有正在执行的 Git 操作时可用，Push 只在配置了 `origin` 时可用。六组标题的基础折叠交互共用此侧栏结构。
 
+Remotes 侧栏按远端名称升序显示配置节点，即使远端还没有跟踪分支也保留节点。展开后列出配置的全部 Fetch URL、Push URL 和远端跟踪分支；`origin/HEAD` 等符号别名不作为分支展示。分支名按 `/` 分成多级折叠树，每层按文字升序。组头右键有 `Add Remote…` 与组展开/收起；远端节点菜单含 `Fetch…`（打开并预选此远端的同步面板）、`Edit Remote URL…`、`Copy Remote Name`、`Copy URL`（默认复制 Fetch URL）与 `Remove Remote…`；URL 行菜单有 `Copy URL`。远端分支叶菜单依序提供 `Checkout as New Local Branch`（预填本地名称和远端起点，创建跟踪分支并检出）、`Compare with Current`、`Merge into Current`、`Rebase Current onto`、`Pull into Current…`（确认框显示源与当前分支，要求干净工作区）、`Delete Remote Branch…`（确认后从服务器删除并剪枝刷新本地跟踪引用）、`Copy Name`（复制含远端前缀的全名）。远端分支变基和合并仅在仓库 HEAD 位于分支、工作区干净且没有其它 Git 操作时启用；确认期间菜单目标仍绑定发起操作的仓库标签。
+
 中列 798 = 1390 − 232 − 360。Refs 条 32 + 表头 22 之后，表格区 **688** = 742 − 54；6 行只占 180，其余留白。第一列 364 = 798 − 20（左右内距）− 24（4 个 6 的列距）− 390（128 + 86 + 124 + 52）。
 
 ## 2. Refs 条与表头

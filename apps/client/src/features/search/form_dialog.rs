@@ -102,6 +102,8 @@ pub(crate) struct FormState {
     pub third: String,
     /// 复选项的值；含义由 [`FormKind::flag_label`] 决定。
     pub flag: bool,
+    /// 远端分支菜单要求建立上游跟踪关系。
+    pub track_upstream: bool,
     pub error: Option<String>,
 }
 
@@ -114,6 +116,7 @@ impl FormState {
             second: String::new(),
             third: String::new(),
             flag: kind.flag_default(),
+            track_upstream: false,
             error: None,
         };
     }
@@ -230,6 +233,9 @@ pub(crate) fn form_dialog(
                             let Some(label_key) = form.kind.flag_label() else {
                                 return view().w_full().h(px(0.0)).into_element();
                             };
+                            if form.track_upstream {
+                                return view().w_full().h(px(0.0)).into_element();
+                            }
                             let form_for_flag = form_for_flag.clone();
                             return flag_row(language, label_key, form_for_flag, state)
                                 .into_element();

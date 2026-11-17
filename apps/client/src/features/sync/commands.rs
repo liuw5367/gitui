@@ -20,13 +20,36 @@ pub(crate) struct SyncCommands {
 }
 
 impl SyncCommands {
+    fn active_tab_id(&self) -> Option<u64> {
+        return self
+            .session
+            .tabs
+            .get_untracked()
+            .get(self.session.active.get_untracked())
+            .map(|tab| tab.id);
+    }
+
     /// 打开同步面板；已经打开时只切 tab，保留当前选项（原 `open_sync`）。
     pub(crate) fn open_sync(&self, kind: Sync) {
         let sync_state = self.state.dialog;
         let mut state = sync_state
             .get_untracked()
-            .unwrap_or_else(|| SyncDialogState::new(kind));
+            .unwrap_or_else(|| SyncDialogState::new(kind, self.active_tab_id(), None));
         state.kind = kind;
+        state.result = None;
+        sync_state.set(Some(state));
+    }
+
+    /// 从远端节点打开同步面板，并锁定仓库与远端目标。
+    pub(crate) fn open_sync_for_remote(&self, tab_id: u64, kind: Sync, remote: String) {
+        let sync_state = self.state.dialog;
+        let mut state = sync_state
+            .get_untracked()
+            .unwrap_or_else(|| SyncDialogState::new(kind, Some(tab_id), Some(remote.clone())));
+        state.kind = kind;
+        state.target_tab_id = Some(tab_id);
+        state.remote = Some(remote);
+        state.options.fetch.all_remotes = false;
         state.result = None;
         sync_state.set(Some(state));
     }
@@ -59,16 +82,28 @@ impl SyncCommands {
     /// 推送被远端拒绝（非快进）时不自动强推，而是弹「拉取变基 / 拉取合并 / 取消」。
     pub(crate) fn run_sync(&self, kind: Sync) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
         let sync_state = self.state.dialog;
         let Some(state) = sync_state.get_untracked() else {
             return;
         };
         let options = state.options.clone();
-        let current = active.get_untracked();
+        let target_tab_id = state.target_tab_id.or_else(|| self.active_tab_id());
+        let remote = state.remote.clone();
         let mut list = tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            ops::sync_with(tab, kind, &options);
+        let Some(target_tab_id) = target_tab_id else {
+            return;
+        };
+        let Some(tab_index) = list.iter().position(|tab| tab.id == target_tab_id) else {
+            let mut next = state;
+            next.result = Some(Err(crate::i18n::t(
+                self.language.get_untracked().as_str(),
+                "form.targetClosed",
+            )));
+            sync_state.set(Some(next));
+            return;
+        };
+        if let Some(tab) = list.get_mut(tab_index) {
+            ops::sync_with_remote(tab, kind, &options, remote.as_deref());
             let result = match (&tab.sync_message, tab.sync_failed) {
                 (Some(message), false) => Ok(message.clone()),
                 (Some(message), true) => Err(message.clone()),
@@ -80,6 +115,8 @@ impl SyncCommands {
             tabs.set(list);
             sync_state.set(Some(SyncDialogState {
                 kind,
+                target_tab_id: Some(target_tab_id),
+                remote: remote.clone(),
                 options: options.clone(),
                 result: Some(result),
                 running: false,
@@ -126,12 +163,12 @@ impl SyncCommands {
                     ..options.clone()
                 };
                 let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(active.get_untracked()) {
-                    ops::sync_with(tab, Sync::Pull, &pull_options);
+                if let Some(tab) = list.iter_mut().find(|tab| tab.id == target_tab_id) {
+                    ops::sync_with_remote(tab, Sync::Pull, &pull_options, remote.as_deref());
                     let pulled = !tab.sync_failed;
                     // 拉取成功后再推一次；失败就只报拉取结果，不再连环弹框。
                     if pulled {
-                        ops::sync_with(tab, Sync::Push, &options);
+                        ops::sync_with_remote(tab, Sync::Push, &options, remote.as_deref());
                     }
                     let outcome = match (&tab.sync_message, tab.sync_failed) {
                         (Some(message), false) => Some((message.clone(), false)),

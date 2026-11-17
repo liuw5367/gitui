@@ -73,9 +73,9 @@ cargo test -p nsh-app        # 等价于在本目录运行 cargo test
 nsh check
 ```
 
-仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 93 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
+仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 96 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
 
-- `features/*/ops`（连同 `app/session.rs`、`app/ops.rs`）：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步、改写、reflog、引用操作、分支斜杠树排序与后缀折叠键、变更清单、冲突解决、过滤与对比、树形选项。
+- `features/*/ops`（连同 `app/session.rs`、`app/ops.rs`）：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步及其稳定仓库目标、改写、reflog、引用操作、分支和远端跟踪分支斜杠树排序与折叠键、变更清单、冲突解决、过滤与对比、树形选项。
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。
 - `i18n`：两种语言的键集合一致、占位符替换、缺键回退、相对时间与日期格式。
 - `ui`：守卫测试、图标 sprite、表格列宽、树节点、组件尺寸、diff 布局。

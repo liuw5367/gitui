@@ -138,6 +138,21 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    /// 从指定远端分支拉取并合并到当前分支。
+    pub fn pull_remote_branch(&self, remote: &str, branch: &str) -> Result<String, GitError> {
+        let output = run_git_combined(
+            &self.root,
+            &["pull", "--no-rebase", "--no-edit", remote, branch],
+        )?;
+        return Ok(summarise(&output));
+    }
+
+    /// 从服务器删除一条分支，不使用强制推送。
+    pub fn delete_remote_branch(&self, remote: &str, branch: &str) -> Result<String, GitError> {
+        let output = run_git_combined(&self.root, &["push", remote, "--delete", branch])?;
+        return Ok(summarise(&output));
+    }
+
     /// 推送当前分支到上游；没有上游时用 `-u <remote> <branch>` 建立。
     pub fn push(&self, remote: Option<&str>) -> Result<String, GitError> {
         return self.push_with(remote, &PushOptions::default());
@@ -687,6 +702,69 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(repo.root().join("b.txt")).expect("read"),
             "b\n"
+        );
+    }
+
+    #[test]
+    fn pull_remote_branch_uses_the_requested_remote_ref() {
+        let (_guard, path, _remote_guard, remote) = with_remote("pull-specific");
+        let other_dir = TempDir::new("pull-specific-other");
+        let other = other_dir.path().display().to_string();
+        run_git(
+            Path::new("."),
+            &["clone", "-q", remote.as_str(), other.as_str()],
+        )
+        .expect("clone");
+        run_git(Path::new(other.as_str()), &["config", "user.name", "Other"]).expect("name");
+        run_git(
+            Path::new(other.as_str()),
+            &["config", "user.email", "other@example.com"],
+        )
+        .expect("email");
+        std::fs::write(
+            Path::new(other.as_str()).join("remote.txt"),
+            "from server\n",
+        )
+        .expect("write");
+        run_git(Path::new(other.as_str()), &["add", "-A"]).expect("add");
+        run_git(
+            Path::new(other.as_str()),
+            &["commit", "-q", "-m", "remote update"],
+        )
+        .expect("commit");
+        run_git(Path::new(other.as_str()), &["push", "-q", "origin", "main"]).expect("push");
+
+        let repo = Repo::open(&path).expect("open");
+        repo.pull_remote_branch("origin", "main")
+            .expect("pull requested branch");
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("remote.txt")).expect("read"),
+            "from server\n"
+        );
+    }
+
+    #[test]
+    fn delete_remote_branch_removes_server_ref_without_force() {
+        let (_guard, path, _remote_guard, remote) = with_remote("delete-remote-branch");
+        let repo = Repo::open(&path).expect("open");
+        repo.create_branch("topic/remove", Some("main"))
+            .expect("branch");
+        repo.push_branch("origin", "topic/remove")
+            .expect("push branch");
+
+        repo.delete_remote_branch("origin", "topic/remove")
+            .expect("delete remote branch");
+        let result = run_git(
+            Path::new(remote.as_str()),
+            &["show-ref", "--verify", "--quiet", "refs/heads/topic/remove"],
+        );
+        assert!(result.is_err(), "远端分支应已删除");
+        assert!(
+            repo.refs()
+                .expect("refs")
+                .branches
+                .iter()
+                .any(|branch| branch.name == "topic/remove")
         );
     }
 

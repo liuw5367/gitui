@@ -85,10 +85,40 @@ impl SearchCommands {
         self.state.form.set(Some(state));
     }
 
+    /// 以指定远端分支预填新建跟踪分支表单。
+    pub(crate) fn open_tracking_branch_form(
+        &self,
+        tab_id: u64,
+        name: String,
+        remote_branch: String,
+    ) {
+        let mut state = FormState::new(FormKind::NewBranch);
+        state.target_tab_id = Some(tab_id);
+        state.first = name;
+        state.second = remote_branch;
+        state.flag = true;
+        state.track_upstream = true;
+        self.state.form.set(Some(state));
+    }
+
     /// 打开表单并同时预填前两个字段（身份编辑：姓名与邮箱）。
     pub(crate) fn open_form_prefilled(&self, kind: FormKind, first: String, second: String) {
         let mut state = FormState::new(kind);
         state.target_tab_id = self.active_tab_id();
+        state.first = first;
+        state.second = second;
+        self.state.form.set(Some(state));
+    }
+
+    pub(crate) fn open_form_prefilled_from_tab(
+        &self,
+        tab_id: u64,
+        kind: FormKind,
+        first: String,
+        second: String,
+    ) {
+        let mut state = FormState::new(kind);
+        state.target_tab_id = Some(tab_id);
         state.first = first;
         state.second = second;
         self.state.form.set(Some(state));
@@ -132,6 +162,9 @@ impl SearchCommands {
             return;
         }
         let result = match form.kind {
+            FormKind::NewBranch if form.track_upstream => {
+                ops::checkout_tracking_branch(tab, first.as_str(), second.as_str())
+            }
             FormKind::NewBranch => {
                 ops::create_branch(tab, first.as_str(), second.as_str(), form.flag)
             }

@@ -10,6 +10,8 @@ use nsh_core::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SyncDialogState {
     pub kind: Sync,
+    pub target_tab_id: Option<u64>,
+    pub remote: Option<String>,
     pub options: SyncOptions,
     /// 执行结果；`None` 表示还没执行。
     pub result: Option<Result<String, String>>,
@@ -18,9 +20,11 @@ pub(crate) struct SyncDialogState {
 }
 
 impl SyncDialogState {
-    pub fn new(kind: Sync) -> SyncDialogState {
+    pub fn new(kind: Sync, target_tab_id: Option<u64>, remote: Option<String>) -> SyncDialogState {
         return SyncDialogState {
             kind,
+            target_tab_id,
+            remote,
             options: SyncOptions::default(),
             result: None,
             running: false,

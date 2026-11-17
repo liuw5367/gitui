@@ -45,6 +45,33 @@ pub(crate) fn create_branch(
     return Ok(());
 }
 
+/// 从远端跟踪引用创建并检出本地跟踪分支。
+pub(crate) fn checkout_tracking_branch(
+    tab: &mut Tab,
+    name: &str,
+    remote_branch: &str,
+) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.checkout_tracking_branch(name, remote_branch)
+        .map_err(|error| error.detail())?;
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.branch = refreshed.branch;
+    tab.ahead = refreshed.ahead;
+    tab.behind = refreshed.behind;
+    tab.commits = refreshed.commits;
+    tab.refs = refreshed.refs;
+    tab.remote_urls = refreshed.remote_urls;
+    tab.status = refreshed.status;
+    tab.changes = refreshed.changes;
+    tab.conflicts = refreshed.conflicts;
+    tab.operation = refreshed.operation;
+    tab.head = refreshed.head;
+    tab.reflog = refreshed.reflog;
+    tab.error = None;
+    return Ok(());
+}
+
 /// 新建标签。
 pub(crate) fn create_tag(
     tab: &mut Tab,

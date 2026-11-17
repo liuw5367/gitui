@@ -10,6 +10,15 @@ pub(crate) fn clear_sync_fault(tab: &mut Tab) {
 }
 
 pub(crate) fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
+    sync_with_remote(tab, kind, options, None);
+}
+
+pub(crate) fn sync_with_remote(
+    tab: &mut Tab,
+    kind: Sync,
+    options: &SyncOptions,
+    remote_override: Option<&str>,
+) {
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
@@ -17,11 +26,12 @@ pub(crate) fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
             return;
         }
     };
-    let remote = repo
-        .refs()
-        .ok()
-        .and_then(|refs| refs.remotes.first().cloned())
-        .unwrap_or_else(|| "origin".to_string());
+    let remote = remote_override.map(str::to_string).unwrap_or_else(|| {
+        repo.refs()
+            .ok()
+            .and_then(|refs| refs.remotes.first().cloned())
+            .unwrap_or_else(|| "origin".to_string())
+    });
     let result = match kind {
         Sync::Fetch => repo.fetch_with(remote.as_str(), &options.fetch),
         Sync::Pull => repo.pull_with(&options.pull),
@@ -45,6 +55,7 @@ pub(crate) fn sync_with(tab: &mut Tab, kind: Sync, options: &SyncOptions) {
             tab.behind = refreshed.behind;
             tab.commits = refreshed.commits;
             tab.refs = refreshed.refs;
+            tab.remote_urls = refreshed.remote_urls;
             tab.changelists = refreshed.changelists;
         }
         Err(error) => {
@@ -139,5 +150,37 @@ mod tests {
         assert!(!tab.sync_failed);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn fetch_uses_the_remote_selected_from_its_sidebar_node() {
+        let repo = crate::test_support::TempRepo::new("selected-remote");
+        let bare = repo.path.join("selected.git");
+        let status = std::process::Command::new("git")
+            .arg("init")
+            .arg("-q")
+            .arg("--bare")
+            .arg(&bare)
+            .status()
+            .expect("git init bare");
+        assert!(status.success());
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["remote", "add", "selected", bare.to_str().expect("utf8")])
+            .status()
+            .expect("git remote add");
+        assert!(status.success());
+
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        sync_with_remote(
+            &mut tab,
+            Sync::Fetch,
+            &SyncOptions::default(),
+            Some("selected"),
+        );
+        assert!(!tab.sync_failed, "{:?}", tab.sync_message);
+        assert!(tab.sync_message.is_some());
+        assert!(tab.refs.remotes.iter().any(|name| name == "selected"));
     }
 }

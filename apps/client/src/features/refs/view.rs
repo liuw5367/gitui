@@ -67,21 +67,57 @@ pub(crate) fn refs_sidebar(
         Some(("form.newBranch", new_branch_from_current)),
     ));
 
-    let remote_rows: Vec<AnyElement> = refs
-        .remotes
-        .iter()
-        .map(|remote| plain_row(remote.clone(), "globe", design::text2))
-        .collect();
+    let remote_infos = if refs.remote_info.is_empty() {
+        refs.remotes
+            .iter()
+            .map(|name| {
+                let url = tab
+                    .remote_urls
+                    .iter()
+                    .find(|(remote, _)| remote == name)
+                    .map(|(_, url)| url.clone())
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                git::RemoteInfo {
+                    name: name.clone(),
+                    fetch_urls: url.clone(),
+                    push_urls: url,
+                }
+            })
+            .collect::<Vec<_>>()
+    } else {
+        refs.remote_info.clone()
+    };
+    let remote_rows = remote_node_rows(
+        &remote_infos,
+        &refs.remote_branches,
+        language,
+        cmd,
+        tab_id,
+        tab.branch.as_str(),
+        can_rebase,
+        &collapsed,
+    );
+    let add_remote: std::sync::Arc<dyn Fn()> = {
+        let search = cmd.search.clone();
+        std::sync::Arc::new(move || {
+            search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::AddRemote,
+                String::new(),
+            )
+        })
+    };
     groups.push(group(
         language,
         cmd,
         tab_id,
         "group:remotes",
         "sidebar.remotes",
-        refs.remotes.len(),
+        remote_infos.len(),
         collapsed.contains("group:remotes"),
         remote_rows,
-        None,
+        Some(("remote.addRemote", add_remote)),
     ));
 
     let tag_rows: Vec<AnyElement> = refs
@@ -306,6 +342,632 @@ fn sort_branch_nodes(nodes: &mut [BranchNode]) {
     for node in nodes {
         sort_branch_nodes(&mut node.children);
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RemoteBranchNode {
+    segment: String,
+    prefix: String,
+    branch: Option<git::RemoteBranch>,
+    children: Vec<RemoteBranchNode>,
+}
+
+fn remote_node_rows(
+    remotes: &[git::RemoteInfo],
+    branches: &[git::RemoteBranch],
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    current_branch: &str,
+    can_rebase: bool,
+    collapsed: &std::collections::BTreeSet<String>,
+) -> Vec<AnyElement> {
+    let mut remotes = remotes.to_vec();
+    remotes.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    let mut rows = Vec::new();
+    for remote in remotes {
+        let remote_branches = branches
+            .iter()
+            .filter(|branch| branch.remote == remote.name)
+            .cloned()
+            .collect::<Vec<_>>();
+        let key = format!("remote:{}", remote.name);
+        let is_collapsed = collapsed.contains(key.as_str());
+        let mut children = Vec::new();
+        for url in &remote.fetch_urls {
+            children.push(remote_url_row(language, cmd, "remote.fetchUrl", url));
+        }
+        for url in &remote.push_urls {
+            children.push(remote_url_row(language, cmd, "remote.pushUrl", url));
+        }
+        let tree = build_remote_branch_tree(&remote_branches);
+        children.extend(remote_branch_tree_rows(
+            &tree,
+            &remote.name,
+            language,
+            cmd,
+            tab_id,
+            current_branch,
+            can_rebase,
+            collapsed,
+            1,
+        ));
+        rows.push(remote_row(
+            language,
+            cmd,
+            tab_id,
+            &remote,
+            remote_branches.len(),
+            is_collapsed,
+            children,
+        ));
+    }
+    return rows;
+}
+
+fn remote_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    remote: &git::RemoteInfo,
+    branch_count: usize,
+    collapsed: bool,
+    children: Vec<AnyElement>,
+) -> AnyElement {
+    let name = remote.name.clone();
+    let fetch_url = remote.fetch_urls.first().cloned().unwrap_or_default();
+    let fold_key = format!("remote:{name}");
+    let click_cmd = cmd.clone();
+    let click_key = fold_key.clone();
+    let menu_cmd = cmd.clone();
+    let menu_name = name.clone();
+    let menu_url = fetch_url.clone();
+    let menu_row = view()
+        .w_full()
+        .pl(px(7.0))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let mut items = Vec::new();
+            let sync = menu_cmd.sync.clone();
+            let sync_name = menu_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.fetch"),
+                true,
+                move || {
+                    sync.open_sync_for_remote(
+                        tab_id,
+                        crate::app::session::Sync::Fetch,
+                        sync_name.clone(),
+                    )
+                },
+            ));
+            let search = menu_cmd.search.clone();
+            let edit_name = menu_name.clone();
+            let edit_url = menu_url.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.editUrl"),
+                true,
+                move || {
+                    search.open_form_prefilled_from_tab(
+                        tab_id,
+                        crate::features::search::FormKind::EditRemote,
+                        edit_url.clone(),
+                        edit_name.clone(),
+                    )
+                },
+            ));
+            items.push(ui::menu::divider());
+            let copy_notice = menu_cmd.notice;
+            let copy_name = menu_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.copyName"),
+                true,
+                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
+            ));
+            let copy_notice = menu_cmd.notice;
+            let copy_url = menu_url.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.copyUrl"),
+                !copy_url.is_empty(),
+                move || crate::shared::os::copy_text(copy_notice, language, copy_url.clone()),
+            ));
+            items.push(ui::menu::divider());
+            let drop_cmd = menu_cmd.clone();
+            let drop_name = menu_name.clone();
+            items.push(ui::menu::danger(
+                i18n::t(language.get().as_str(), "remote.remove"),
+                true,
+                move || drop_cmd.drop_remote_at(tab_id, drop_name.clone()),
+            ));
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::row::row_sized(
+            move || name.clone(),
+            None,
+            Some(
+                crate::ui::icon::icon_view(
+                    if collapsed { "chev-right" } else { "chev-down" },
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                )
+                .into_element(),
+            ),
+            vec![
+                crate::ui::icon::icon_view(
+                    "globe",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                )
+                .into_element(),
+                text(branch_count.to_string())
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3())
+                    .into_element(),
+            ],
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            move || click_cmd.toggle_sidebar_fold(tab_id, click_key.clone()),
+        ));
+    let mut row = view().w_full().flex_col().child(menu_row);
+    if !collapsed {
+        row = row.child(children);
+    }
+    return row.into_element();
+}
+
+fn remote_url_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    label_key: &'static str,
+    url: &str,
+) -> AnyElement {
+    let url = url.to_string();
+    let row_url = url.clone();
+    let menu_notice = cmd.notice;
+    return view()
+        .w_full()
+        .pl(px(19.0))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let copy_notice = menu_notice;
+            let copy_url = row_url.clone();
+            ui::menu::popup_at(
+                vec![ui::menu::action(
+                    i18n::t(language.get().as_str(), "remote.copyUrl"),
+                    true,
+                    move || crate::shared::os::copy_text(copy_notice, language, copy_url.clone()),
+                )],
+                event.page_position,
+            );
+        })
+        .child(crate::ui::row::row_sized(
+            move || i18n::t(language.get().as_str(), label_key),
+            None,
+            Some(
+                crate::ui::icon::icon_view(
+                    "external",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                )
+                .into_element(),
+            ),
+            vec![
+                text(url.clone())
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3())
+                    .text_overflow(nsh_core::EllipsizeMode::Head)
+                    .into_element(),
+            ],
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            || {},
+        ))
+        .into_element();
+}
+
+fn build_remote_branch_tree(branches: &[git::RemoteBranch]) -> Vec<RemoteBranchNode> {
+    let mut roots = Vec::new();
+    for branch in branches {
+        let segments = branch.name.split('/').collect::<Vec<_>>();
+        insert_remote_branch(&mut roots, &segments, branch, "");
+    }
+    sort_remote_branch_nodes(&mut roots);
+    return roots;
+}
+
+fn insert_remote_branch(
+    nodes: &mut Vec<RemoteBranchNode>,
+    segments: &[&str],
+    branch: &git::RemoteBranch,
+    parent: &str,
+) {
+    let Some(segment) = segments.first() else {
+        return;
+    };
+    let prefix = if parent.is_empty() {
+        (*segment).to_string()
+    } else {
+        format!("{parent}/{segment}")
+    };
+    let index = nodes
+        .iter()
+        .position(|node| node.segment == *segment)
+        .unwrap_or_else(|| {
+            nodes.push(RemoteBranchNode {
+                segment: (*segment).to_string(),
+                prefix: prefix.clone(),
+                branch: None,
+                children: Vec::new(),
+            });
+            nodes.len() - 1
+        });
+    let node = &mut nodes[index];
+    if segments.len() == 1 {
+        node.branch = Some(branch.clone());
+    } else {
+        insert_remote_branch(&mut node.children, &segments[1..], branch, prefix.as_str());
+    }
+}
+
+fn sort_remote_branch_nodes(nodes: &mut [RemoteBranchNode]) {
+    nodes.sort_by(|left, right| {
+        left.segment
+            .to_lowercase()
+            .cmp(&right.segment.to_lowercase())
+            .then_with(|| left.segment.cmp(&right.segment))
+            .then_with(|| left.prefix.cmp(&right.prefix))
+    });
+    for node in nodes {
+        sort_remote_branch_nodes(&mut node.children);
+    }
+}
+
+fn remote_branch_tree_rows(
+    nodes: &[RemoteBranchNode],
+    remote: &str,
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    current_branch: &str,
+    can_rebase: bool,
+    collapsed: &std::collections::BTreeSet<String>,
+    depth: usize,
+) -> Vec<AnyElement> {
+    let mut rows = Vec::new();
+    for node in nodes {
+        let key = format!("remote-prefix:{remote}:{}", node.prefix);
+        let is_collapsed = collapsed.contains(key.as_str());
+        if let Some(branch) = node.branch.as_ref() {
+            rows.push(remote_branch_row(
+                language,
+                cmd,
+                tab_id,
+                branch,
+                current_branch,
+                can_rebase,
+                !node.children.is_empty(),
+                key.clone(),
+                is_collapsed,
+                remote_branch_descendant_fold_keys(remote, node),
+                depth,
+            ));
+        } else {
+            rows.push(remote_branch_folder_row(
+                language, cmd, tab_id, remote, node, depth, collapsed,
+            ));
+        }
+        if !node.children.is_empty() && !is_collapsed {
+            rows.extend(remote_branch_tree_rows(
+                &node.children,
+                remote,
+                language,
+                cmd,
+                tab_id,
+                current_branch,
+                can_rebase,
+                collapsed,
+                depth + 1,
+            ));
+        }
+    }
+    return rows;
+}
+
+fn remote_branch_folder_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    remote: &str,
+    node: &RemoteBranchNode,
+    depth: usize,
+    collapsed: &std::collections::BTreeSet<String>,
+) -> AnyElement {
+    let key = format!("remote-prefix:{remote}:{}", node.prefix);
+    let is_collapsed = collapsed.contains(key.as_str());
+    let click_cmd = cmd.clone();
+    let click_key = key.clone();
+    let menu_cmd = cmd.clone();
+    let menu_key = key;
+    let descendants = remote_branch_descendant_fold_keys(remote, node);
+    let menu_descendants = descendants.clone();
+    let label = node.segment.clone();
+    let menu_label = label.clone();
+    let row = view()
+        .w_full()
+        .pl(px(19.0 + depth as f32 * 12.0))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let action_cmd = menu_cmd.clone();
+            let action_key = menu_key.clone();
+            let expand_label = if is_collapsed {
+                "sidebar.expandGroup"
+            } else {
+                "sidebar.collapseGroup"
+            };
+            let mut items = vec![ui::menu::action(
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    expand_label,
+                    &[("group", menu_label.clone())],
+                ),
+                true,
+                move || {
+                    action_cmd.set_sidebar_folds(tab_id, vec![action_key.clone()], !is_collapsed)
+                },
+            )];
+            if !menu_descendants.is_empty() {
+                items.push(ui::menu::divider());
+                let expand_cmd = menu_cmd.clone();
+                let expand_keys = menu_descendants.clone();
+                items.push(ui::menu::action(
+                    i18n::t(language.get().as_str(), "sidebar.expandAllDescendants"),
+                    true,
+                    move || expand_cmd.set_sidebar_folds(tab_id, expand_keys.clone(), false),
+                ));
+                let collapse_cmd = menu_cmd.clone();
+                let collapse_keys = menu_descendants.clone();
+                items.push(ui::menu::action(
+                    i18n::t(language.get().as_str(), "sidebar.collapseAllDescendants"),
+                    true,
+                    move || collapse_cmd.set_sidebar_folds(tab_id, collapse_keys.clone(), true),
+                ));
+            }
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::row::row_sized(
+            move || label.clone(),
+            None,
+            Some(
+                crate::ui::icon::icon_view(
+                    if is_collapsed {
+                        "chev-right"
+                    } else {
+                        "chev-down"
+                    },
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                )
+                .into_element(),
+            ),
+            Vec::new(),
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            move || click_cmd.toggle_sidebar_fold(tab_id, click_key.clone()),
+        ));
+    return row.into_element();
+}
+
+fn remote_branch_descendant_fold_keys(remote: &str, node: &RemoteBranchNode) -> Vec<String> {
+    let mut keys = Vec::new();
+    for child in &node.children {
+        if !child.children.is_empty() {
+            keys.push(format!("remote-prefix:{remote}:{}", child.prefix));
+        }
+        keys.extend(remote_branch_descendant_fold_keys(remote, child));
+    }
+    return keys;
+}
+
+fn remote_branch_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    branch: &git::RemoteBranch,
+    current_branch: &str,
+    can_rebase: bool,
+    has_children: bool,
+    prefix_key: String,
+    prefix_collapsed: bool,
+    prefix_descendants: Vec<String>,
+    depth: usize,
+) -> AnyElement {
+    let full_name = branch.full_name();
+    let remote = branch.remote.clone();
+    let branch_name = branch.name.clone();
+    let menu_cmd = cmd.clone();
+    let menu_full_name = full_name.clone();
+    let menu_remote = remote.clone();
+    let menu_branch = branch_name.clone();
+    let menu_current = current_branch.to_string();
+    let prefix_cmd = cmd.clone();
+    let prefix_menu_key = prefix_key.clone();
+    let prefix_menu_descendants = prefix_descendants.clone();
+    let click_cmd = cmd.clone();
+    let label = branch_name.clone();
+    let row = view()
+        .w_full()
+        .pl(px(19.0 + depth as f32 * 12.0))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let mut items = Vec::new();
+            let search = menu_cmd.search.clone();
+            let local_name = menu_branch.clone();
+            let remote_name = menu_full_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.checkoutAsNew"),
+                true,
+                move || {
+                    search.open_tracking_branch_form(
+                        tab_id,
+                        local_name.clone(),
+                        remote_name.clone(),
+                    )
+                },
+            ));
+            items.push(ui::menu::divider());
+            let compare_history = menu_cmd.history.clone();
+            let compare_base = menu_current.clone();
+            let compare_target = menu_full_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.compareCurrent"),
+                !compare_base.is_empty(),
+                move || {
+                    compare_history.set_compare_refs_at(
+                        tab_id,
+                        Some(compare_base.clone()),
+                        Some(compare_target.clone()),
+                    )
+                },
+            ));
+            let merge_cmd = menu_cmd.clone();
+            let merge_ref = menu_full_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.mergeInto"),
+                can_rebase,
+                move || merge_cmd.merge_reference_at(tab_id, merge_ref.clone()),
+            ));
+            let rebase_cmd = menu_cmd.clone();
+            let rebase_target = menu_full_name.clone();
+            let rebase_current = menu_current.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.rebaseCurrent"),
+                can_rebase && !rebase_current.is_empty(),
+                move || {
+                    rebase_cmd.rebase_current_on(
+                        tab_id,
+                        rebase_current.clone(),
+                        rebase_target.clone(),
+                    )
+                },
+            ));
+            let pull_cmd = menu_cmd.clone();
+            let pull_remote = menu_remote.clone();
+            let pull_branch = menu_branch.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.pullIntoCurrent"),
+                can_rebase,
+                move || {
+                    pull_cmd.pull_remote_branch_at(tab_id, pull_remote.clone(), pull_branch.clone())
+                },
+            ));
+            items.push(ui::menu::divider());
+            let delete_cmd = menu_cmd.clone();
+            let delete_remote = menu_remote.clone();
+            let delete_branch = menu_branch.clone();
+            items.push(ui::menu::danger(
+                i18n::t(language.get().as_str(), "remote.deleteBranch"),
+                true,
+                move || {
+                    delete_cmd.delete_remote_branch_at(
+                        tab_id,
+                        delete_remote.clone(),
+                        delete_branch.clone(),
+                    )
+                },
+            ));
+            let copy_notice = menu_cmd.notice;
+            let copy_name = menu_full_name.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "remote.copyName"),
+                true,
+                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
+            ));
+            if has_children {
+                items.push(ui::menu::divider());
+                let fold_cmd = prefix_cmd.clone();
+                let fold_key = prefix_menu_key.clone();
+                let label_key = if prefix_collapsed {
+                    "sidebar.expandGroup"
+                } else {
+                    "sidebar.collapseGroup"
+                };
+                items.push(ui::menu::action(
+                    i18n::with_arguments(
+                        language.get().as_str(),
+                        label_key,
+                        &[("group", menu_branch.clone())],
+                    ),
+                    true,
+                    move || {
+                        fold_cmd.set_sidebar_folds(
+                            tab_id,
+                            vec![fold_key.clone()],
+                            !prefix_collapsed,
+                        )
+                    },
+                ));
+                if !prefix_menu_descendants.is_empty() {
+                    let expand_cmd = prefix_cmd.clone();
+                    let expand_keys = prefix_menu_descendants.clone();
+                    items.push(ui::menu::action(
+                        i18n::t(language.get().as_str(), "sidebar.expandAllDescendants"),
+                        true,
+                        move || expand_cmd.set_sidebar_folds(tab_id, expand_keys.clone(), false),
+                    ));
+                    let collapse_cmd = prefix_cmd.clone();
+                    let collapse_keys = prefix_menu_descendants.clone();
+                    items.push(ui::menu::action(
+                        i18n::t(language.get().as_str(), "sidebar.collapseAllDescendants"),
+                        true,
+                        move || collapse_cmd.set_sidebar_folds(tab_id, collapse_keys.clone(), true),
+                    ));
+                }
+            }
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::row::row_sized(
+            move || label.clone(),
+            None,
+            Some(
+                crate::ui::icon::icon_view(
+                    if has_children && prefix_collapsed {
+                        "chev-right"
+                    } else if has_children {
+                        "chev-down"
+                    } else {
+                        "branch"
+                    },
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                )
+                .into_element(),
+            ),
+            if has_children {
+                vec![
+                    crate::ui::icon::icon_view(
+                        "branch",
+                        crate::ui::icon::IconSize::Compact,
+                        design::text3,
+                    )
+                    .into_element(),
+                ]
+            } else {
+                Vec::new()
+            },
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            move || {
+                if has_children {
+                    click_cmd.toggle_sidebar_fold(tab_id, prefix_key.clone());
+                }
+            },
+        ));
+    return row.into_element();
 }
 
 fn branch_tree_rows(
@@ -1545,5 +2207,56 @@ mod sidebar_tests {
                 "branch-prefix:feature/nested/second".to_string(),
             ]
         );
+    }
+
+    fn remote_branch(name: &str) -> git::RemoteBranch {
+        return git::RemoteBranch {
+            remote: "origin".to_string(),
+            name: name.to_string(),
+        };
+    }
+
+    #[test]
+    fn remote_branch_tree_groups_slashes_and_sorts_each_level() {
+        let tree = build_remote_branch_tree(&[
+            remote_branch("zeta/fix"),
+            remote_branch("feature/z"),
+            remote_branch("Release/2.0"),
+            remote_branch("develop"),
+            remote_branch("feature/a"),
+            remote_branch("feature/deep/one"),
+        ]);
+
+        assert_eq!(
+            tree.iter()
+                .map(|node| node.segment.as_str())
+                .collect::<Vec<_>>(),
+            vec!["develop", "feature", "Release", "zeta"]
+        );
+        let feature = tree.iter().find(|node| node.segment == "feature").unwrap();
+        assert_eq!(
+            feature
+                .children
+                .iter()
+                .map(|node| node.segment.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "deep", "z"]
+        );
+        assert_eq!(
+            remote_branch_descendant_fold_keys("origin", feature),
+            vec!["remote-prefix:origin:feature/deep".to_string()]
+        );
+    }
+
+    #[test]
+    fn remote_branch_that_is_also_a_prefix_keeps_its_children_foldable() {
+        let tree =
+            build_remote_branch_tree(&[remote_branch("feature"), remote_branch("feature/child")]);
+        let feature = tree.first().expect("feature prefix");
+        assert_eq!(
+            feature.branch.as_ref().map(|branch| branch.full_name()),
+            Some("origin/feature".to_string())
+        );
+        assert_eq!(feature.children[0].prefix, "feature/child");
     }
 }

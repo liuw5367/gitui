@@ -12,6 +12,19 @@ impl Repo {
         return Ok(());
     }
 
+    /// 从远端跟踪分支创建本地跟踪分支并检出。
+    pub fn checkout_tracking_branch(
+        &self,
+        name: &str,
+        remote_branch: &str,
+    ) -> Result<(), GitError> {
+        run_git(
+            &self.root,
+            &["checkout", "--track", "-b", name, remote_branch],
+        )?;
+        return Ok(());
+    }
+
     /// 新建分支（`git branch <name> <from>`）；`from` 为空时基于当前 HEAD。
     pub fn create_branch(&self, name: &str, from: Option<&str>) -> Result<(), GitError> {
         let args: Vec<&str> = match from {
@@ -235,6 +248,34 @@ mod tests {
                 .branches
                 .iter()
                 .any(|branch| branch.name == "topic/one" && branch.current)
+        );
+    }
+
+    #[test]
+    fn checkout_tracking_branch_sets_the_remote_upstream() {
+        let (_guard, path, _remote_guard, _remote) = with_remote("checkout-tracking");
+        let repo = Repo::open(&path).expect("open");
+        repo.create_branch("topic/one", Some("main"))
+            .expect("branch");
+        repo.push_branch("origin", "topic/one").expect("push");
+        repo.fetch("origin").expect("fetch");
+
+        repo.checkout_tracking_branch("local/topic", "origin/topic/one")
+            .expect("checkout tracking branch");
+        assert_eq!(repo.abbrev_branch().expect("branch"), "local/topic");
+        let upstream = run_git(
+            repo.root(),
+            &[
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{upstream}",
+            ],
+        )
+        .expect("upstream");
+        assert_eq!(
+            String::from_utf8_lossy(&upstream).trim(),
+            "origin/topic/one"
         );
     }
 

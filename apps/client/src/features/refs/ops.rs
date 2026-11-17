@@ -226,6 +226,46 @@ pub(crate) fn drop_remote(tab: &mut Tab, name: &str) -> Result<(), String> {
     return Ok(());
 }
 
+pub(crate) fn pull_remote_branch(
+    tab: &mut Tab,
+    remote: &str,
+    branch: &str,
+) -> Result<String, String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let result = repo
+        .pull_remote_branch(remote, branch)
+        .map_err(|error| error.detail());
+    refresh_changes(tab);
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.branch = refreshed.branch;
+    tab.ahead = refreshed.ahead;
+    tab.behind = refreshed.behind;
+    tab.commits = refreshed.commits;
+    tab.refs = refreshed.refs;
+    tab.remote_urls = refreshed.remote_urls;
+    tab.status = refreshed.status;
+    tab.conflicts = refreshed.conflicts;
+    tab.operation = refreshed.operation;
+    tab.head = refreshed.head;
+    tab.reflog = refreshed.reflog;
+    tab.error = None;
+    return result;
+}
+
+pub(crate) fn delete_remote_branch(
+    tab: &mut Tab,
+    remote: &str,
+    branch: &str,
+) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.delete_remote_branch(remote, branch)
+        .map_err(|error| error.detail())?;
+    let fetch_result = repo.fetch(remote).map_err(|error| error.detail());
+    refresh_refs(tab, &repo);
+    fetch_result.map(|_| ())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
