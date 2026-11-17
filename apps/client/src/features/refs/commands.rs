@@ -111,7 +111,11 @@ impl RefsCommands {
         let safe = self
             .worktree_info(tab_id, path.as_str())
             .is_some_and(|worktree| {
-                worktree.exists && !worktree.prunable && !worktree.locked && !worktree.dirty
+                worktree.exists
+                    && !worktree.main
+                    && !worktree.prunable
+                    && !worktree.locked
+                    && !worktree.dirty
             });
         if !safe {
             self.notify_worktree("worktree.cannotRemove");
@@ -147,7 +151,11 @@ impl RefsCommands {
             let still_safe = commands
                 .fresh_worktree(tab.path.as_str(), path.as_str())
                 .is_some_and(|worktree| {
-                    worktree.exists && !worktree.prunable && !worktree.locked && !worktree.dirty
+                    worktree.exists
+                        && !worktree.main
+                        && !worktree.prunable
+                        && !worktree.locked
+                        && !worktree.dirty
                 });
             if !still_safe {
                 commands.notify_worktree("worktree.cannotRemove");

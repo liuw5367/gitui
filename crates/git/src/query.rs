@@ -246,6 +246,8 @@ pub struct SubmoduleInfo {
 pub struct WorktreeInfo {
     pub path: String,
     pub branch: Option<String>,
+    /// Whether this is the repository's primary worktree.
+    pub main: bool,
     pub locked: bool,
     pub prunable: bool,
     pub exists: bool,
@@ -569,11 +571,15 @@ impl Repo {
         if let Some(worktree) = current {
             worktrees.push(worktree);
         }
+        // Git porcelain lists the primary worktree first, regardless of which linked
+        // worktree opened the repository. Keep that identity for safe remove menus.
+        let main_path = worktrees.first().map(|worktree| worktree.path.clone());
         let root = self
             .root
             .canonicalize()
             .unwrap_or_else(|_| self.root.clone());
         for worktree in &mut worktrees {
+            worktree.main = main_path.as_deref() == Some(worktree.path.as_str());
             let path = Path::new(&worktree.path);
             worktree.exists = path.is_dir();
             if worktree.exists {

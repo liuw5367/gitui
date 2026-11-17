@@ -34,6 +34,9 @@ impl Repo {
         if !worktree.exists || worktree.prunable {
             return Err(worktree_error("The worktree path no longer exists."));
         }
+        if worktree.main {
+            return Err(worktree_error("The primary worktree cannot be removed."));
+        }
         if worktree.locked {
             return Err(worktree_error("The worktree is locked."));
         }
@@ -116,8 +119,34 @@ mod tests {
         assert_eq!(worktrees[0].branch.as_deref(), Some("feature/worktree"));
         assert!(worktrees[0].exists);
         assert!(!worktrees[0].dirty);
+        assert!(!worktrees[0].main);
         repo.remove_worktree(target.to_string_lossy().as_ref())
             .expect("remove linked worktree");
+    }
+
+    #[test]
+    fn linked_worktree_marks_and_refuses_removal_of_primary_worktree() {
+        let (_guard, root) = fixture("worktree-primary", &[("a.txt", "one\n")], "base");
+        let target_guard = TempDir::new("worktree-primary-target");
+        let target = target_guard.path().join("linked");
+        let repo = Repo::open(root.as_str()).expect("primary repo");
+        repo.add_worktree(
+            target.to_string_lossy().as_ref(),
+            "feature/primary-check",
+            Some("HEAD"),
+        )
+        .expect("add linked worktree");
+
+        let linked = Repo::open(target.to_string_lossy().as_ref()).expect("linked repo");
+        let main = linked
+            .refs()
+            .expect("linked refs")
+            .worktrees
+            .into_iter()
+            .find(|worktree| same_worktree_path(worktree.path.as_str(), root.as_str()))
+            .expect("primary worktree appears as a sibling");
+        assert!(main.main);
+        assert!(linked.remove_worktree(root.as_str()).is_err());
     }
 
     #[test]

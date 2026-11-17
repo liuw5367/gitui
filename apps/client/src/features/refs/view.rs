@@ -1416,7 +1416,11 @@ fn worktree_row(
         .clone()
         .unwrap_or_else(|| i18n::t(language.get_untracked().as_str(), "worktree.detached"));
     let group_exists = worktree.exists && !worktree.prunable;
-    let can_remove = worktree.exists && !worktree.prunable && !worktree.locked && !worktree.dirty;
+    let can_remove = worktree.exists
+        && !worktree.main
+        && !worktree.prunable
+        && !worktree.locked
+        && !worktree.dirty;
     let can_reveal = worktree.exists;
     let group_prune = cmd
         .session
