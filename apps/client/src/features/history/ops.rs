@@ -151,6 +151,7 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
 pub(crate) fn reload_with_filter(tab: &Tab, filter: &LogFilter) -> Tab {
     let mut next = load_tab(tab.path.as_str(), filter);
     next.comparing = tab.comparing;
+    next.sidebar_collapsed = tab.sidebar_collapsed.clone();
     return next;
 }
 

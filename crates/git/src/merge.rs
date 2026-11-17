@@ -40,6 +40,16 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    /// 把当前分支变基到指定引用；冲突保留给 `operation()` 与冲突流程处理。
+    pub fn rebase_onto(&self, reference: &str) -> Result<String, GitError> {
+        let output = run_git_combined_with_env(
+            &self.root,
+            &["rebase", reference],
+            &[("GIT_EDITOR", "true"), ("GIT_TERMINAL_PROMPT", "0")],
+        )?;
+        return Ok(summarise(&output));
+    }
+
     /// 拣选一个提交到当前分支（`git cherry-pick <sha>`）。
     ///
     /// 冲突时命令失败，但仓库已经进入冲突状态；调用方据 [`Repo::operation`]
@@ -224,6 +234,57 @@ mod tests {
         assert_eq!(repo.operation(), Operation::None);
         assert!(repo.root().join("b.txt").exists());
         assert_eq!(repo.ahead_behind(), (0, 0));
+    }
+
+    #[test]
+    fn rebase_moves_current_branch_onto_named_branch() {
+        let (_guard, path) = fixture("rebase", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let base = repo.log(1, "").expect("log")[0].sha.clone();
+
+        std::fs::write(repo.root().join("main.txt"), "main\n").expect("write main");
+        repo.stage_all().expect("stage main");
+        repo.commit("main work", "").expect("commit main");
+        let main_head = run_git(repo.root(), &["rev-parse", "refs/heads/main"]).expect("main head");
+
+        repo.checkout_new_branch("feature/rebase", base.as_str())
+            .expect("feature branch");
+        std::fs::write(repo.root().join("feature.txt"), "feature\n").expect("write feature");
+        repo.stage_all().expect("stage feature");
+        repo.commit("feature work", "").expect("commit feature");
+
+        repo.rebase_onto("main").expect("rebase");
+        assert_eq!(repo.abbrev_branch().expect("branch"), "feature/rebase");
+        assert_eq!(repo.operation(), Operation::None);
+        let parent = run_git(repo.root(), &["rev-parse", "HEAD^"]).expect("rebased parent");
+        assert_eq!(parent, main_head);
+    }
+
+    #[test]
+    fn rebase_keeps_conflicts_open_for_resolution() {
+        let (_guard, path) = fixture("rebase-conflict", &[("a.txt", "base\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let base = repo.log(1, "").expect("log")[0].sha.clone();
+
+        repo.checkout_new_branch("feature/rebase-conflict", base.as_str())
+            .expect("feature branch");
+        std::fs::write(repo.root().join("a.txt"), "feature\n").expect("write feature");
+        repo.stage_all().expect("stage feature");
+        repo.commit("feature edit", "").expect("commit feature");
+
+        run_git(repo.root(), &["checkout", "-q", "main"]).expect("checkout main");
+        std::fs::write(repo.root().join("a.txt"), "main\n").expect("write main");
+        repo.stage_all().expect("stage main");
+        repo.commit("main edit", "").expect("commit main");
+        run_git(repo.root(), &["checkout", "-q", "feature/rebase-conflict"])
+            .expect("checkout feature");
+
+        assert!(repo.rebase_onto("main").is_err());
+        assert_eq!(repo.operation(), Operation::Rebase);
+        assert_eq!(repo.conflicts().expect("conflicts"), vec!["a.txt"]);
+        repo.abort_operation(Operation::Rebase)
+            .expect("abort rebase");
+        assert_eq!(repo.operation(), Operation::None);
     }
 
     #[test]

@@ -43,6 +43,8 @@
 | 检查器 | 主体右 | 宽 360（含左边框 1）；头内距 12/14/10 | 分支头、三页签、4 行键值、Actions、一段说明 |
 | 状态栏 | 底部通栏 | 高 24；内距 0×12；11 | 与 04 一字不差 |
 
+当前实现的 Branches 侧栏按 `/` 把名字组织为可折叠前缀树，同级文字升序。组头与前缀均可点按折叠；前缀右键菜单可单独展开/收起，也可一次展开或收起全部下级前缀。Branch 右键菜单完整包含 `Checkout`、`New Branch from '<name>'…`、`Compare with Current Branch`、`Rebase Current onto '<name>'`、`Merge '<name>' into Current`、`New Tag…`、`Rename…`、`Delete…`、`Copy Branch Name`、`Push '<name>' to origin`；当前分支不允许 Checkout、Rebase、Merge、Delete，Rebase 只在干净工作区且没有正在执行的 Git 操作时可用，Push 只在配置了 `origin` 时可用。六组标题的基础折叠交互共用此侧栏结构。
+
 中列 798 = 1390 − 232 − 360。Refs 条 32 + 表头 22 之后，表格区 **688** = 742 − 54；6 行只占 180，其余留白。第一列 364 = 798 − 20（左右内距）− 24（4 个 6 的列距）− 390（128 + 86 + 124 + 52）。
 
 ## 2. Refs 条与表头

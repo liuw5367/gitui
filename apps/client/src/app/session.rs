@@ -4,6 +4,7 @@ use crate::features::changes::ops::{load_changes, refresh_changes};
 use crate::features::history::ops::select_commit;
 use domain::{Commit, DiffStat, StatusEntry};
 use git::{LogFilter, Refs, Repo};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(1);
@@ -40,6 +41,8 @@ pub(crate) struct Tab {
     pub(crate) behind: u32,
     pub(crate) commits: Vec<Commit>,
     pub(crate) refs: Refs,
+    /// 侧栏分组与引用树的折叠键，只在对应仓库标签的运行期保存。
+    pub(crate) sidebar_collapsed: BTreeSet<String>,
     pub(crate) status: Vec<StatusEntry>,
     /// 历史里出现过的作者（按最近提交顺序）。
     pub(crate) authors: Vec<String>,
@@ -364,11 +367,13 @@ pub(crate) fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
 pub(crate) fn reload(tab: &mut Tab) {
     let id = tab.id;
     let load_id = next_tab_id();
+    let sidebar_collapsed = tab.sidebar_collapsed.clone();
     let path = tab.path.clone();
     let filter = tab.filter.clone();
     *tab = load_tab(path.as_str(), &filter);
     tab.id = id;
     tab.load_id = load_id;
+    tab.sidebar_collapsed = sidebar_collapsed;
 }
 
 /// 在标签页指向的目录里初始化仓库（设计板 16 的「不是仓库」动作）。

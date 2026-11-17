@@ -1,7 +1,7 @@
 //! 引用的操作：分支/标签/远程/贮藏的写路径与工作区是否干净的判断。
 
 use crate::app::ops::refresh_refs;
-use crate::app::session::{Tab, load_tab};
+use crate::app::session::{Tab, load_tab, reload_after_history_change};
 use crate::features::changes::ops::refresh_changes;
 use git::Repo;
 
@@ -132,6 +132,29 @@ pub(crate) fn merge_reference(tab: &mut Tab, reference: &str) -> Result<String, 
     tab.operation = refreshed.operation;
     tab.conflicts = refreshed.conflicts;
     return Ok(summary);
+}
+
+/// 把当前分支变基到指定本地分支；冲突时保留 Git 的 rebase 状态供冲突面板继续处理。
+pub(crate) fn rebase_reference(tab: &mut Tab, reference: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let result = repo.rebase_onto(reference).map_err(|error| error.detail());
+    reload_after_history_change(tab)?;
+    match result {
+        Ok(_) => Ok(()),
+        Err(_) if tab.operation == git::Operation::Rebase => {
+            tab.error = None;
+            Ok(())
+        }
+        Err(detail) => Err(detail),
+    }
+}
+
+/// 推送指定本地分支，不依赖当前检出的分支。
+pub(crate) fn push_branch(tab: &mut Tab, branch: &str, remote: &str) -> Result<(), String> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    repo.push_branch(remote, branch)
+        .map_err(|error| error.detail())?;
+    return Ok(());
 }
 
 /// 丢弃一条贮藏。

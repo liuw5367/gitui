@@ -24,48 +24,47 @@ pub(crate) fn refs_sidebar(
     language: Signal<SharedString>,
     tab: Tab,
 ) -> impl IntoElement + use<> {
-    let refs = tab.refs;
+    let refs = tab.refs.clone();
+    let tab_id = tab.id;
+    let collapsed = tab.sidebar_collapsed.clone();
     let mut groups: Vec<AnyElement> = Vec::new();
-
-    // 右键菜单的回调要 `Arc<dyn Fn>`，这里把本功能的用例包一层。
-    let checkout: std::sync::Arc<dyn Fn(String)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |name: String| cmd.checkout_branch(name))
-    };
-    let delete: std::sync::Arc<dyn Fn(String)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |name: String| cmd.delete_branch(name))
-    };
-    let new_branch: std::sync::Arc<dyn Fn(String, String)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |name: String, from: String| cmd.checkout_new_branch(name, from))
-    };
-    let merge: std::sync::Arc<dyn Fn(String)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |name: String| cmd.merge_reference(name))
-    };
-    let branch_rows: Vec<AnyElement> = refs
-        .branches
-        .iter()
-        .map(|branch| {
-            branch_row(
-                language,
-                branch.name.clone(),
-                branch.current,
-                branch.ahead,
-                branch.behind,
-                checkout.clone(),
-                delete.clone(),
-                new_branch.clone(),
-                merge.clone(),
+    let branch_tree = build_branch_tree(&refs.branches);
+    let can_rebase = matches!(&tab.head, git::HeadState::Branch(_))
+        && tab.operation == git::Operation::None
+        && tab.status.is_empty();
+    let has_origin = tab.remote_urls.iter().any(|(remote, _)| remote == "origin");
+    let branch_rows = branch_tree_rows(
+        &branch_tree,
+        language,
+        cmd,
+        tab_id,
+        tab.branch.as_str(),
+        can_rebase,
+        has_origin,
+        &collapsed,
+        0,
+    );
+    let new_branch_from_current: std::sync::Arc<dyn Fn()> = {
+        let search = cmd.search.clone();
+        let from = tab.branch.clone();
+        std::sync::Arc::new(move || {
+            search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::NewBranch,
+                from.clone(),
             )
         })
-        .collect();
+    };
     groups.push(group(
         language,
+        cmd,
+        tab_id,
+        "group:branches",
         "sidebar.branches",
         refs.branches.len(),
+        collapsed.contains("group:branches"),
         branch_rows,
+        Some(("form.newBranch", new_branch_from_current)),
     ));
 
     let remote_rows: Vec<AnyElement> = refs
@@ -75,9 +74,14 @@ pub(crate) fn refs_sidebar(
         .collect();
     groups.push(group(
         language,
+        cmd,
+        tab_id,
+        "group:remotes",
         "sidebar.remotes",
         refs.remotes.len(),
+        collapsed.contains("group:remotes"),
         remote_rows,
+        None,
     ));
 
     let tag_rows: Vec<AnyElement> = refs
@@ -85,7 +89,17 @@ pub(crate) fn refs_sidebar(
         .iter()
         .map(|tag| plain_row(tag.clone(), "tag", design::text2))
         .collect();
-    groups.push(group(language, "sidebar.tags", refs.tags.len(), tag_rows));
+    groups.push(group(
+        language,
+        cmd,
+        tab_id,
+        "group:tags",
+        "sidebar.tags",
+        refs.tags.len(),
+        collapsed.contains("group:tags"),
+        tag_rows,
+        None,
+    ));
 
     let stash_rows: Vec<AnyElement> = refs
         .stashes
@@ -94,9 +108,14 @@ pub(crate) fn refs_sidebar(
         .collect();
     groups.push(group(
         language,
+        cmd,
+        tab_id,
+        "group:stashes",
         "sidebar.stashes",
         refs.stashes.len(),
+        collapsed.contains("group:stashes"),
         stash_rows,
+        None,
     ));
 
     let submodule_rows: Vec<AnyElement> = refs
@@ -106,9 +125,14 @@ pub(crate) fn refs_sidebar(
         .collect();
     groups.push(group(
         language,
+        cmd,
+        tab_id,
+        "group:submodules",
         "sidebar.submodules",
         refs.submodules.len(),
+        collapsed.contains("group:submodules"),
         submodule_rows,
+        None,
     ));
 
     let worktree_rows: Vec<AnyElement> = refs
@@ -118,9 +142,14 @@ pub(crate) fn refs_sidebar(
         .collect();
     groups.push(group(
         language,
+        cmd,
+        tab_id,
+        "group:worktrees",
         "sidebar.worktrees",
         refs.worktrees.len(),
+        collapsed.contains("group:worktrees"),
         worktree_rows,
+        None,
     ));
 
     return view()
@@ -144,146 +173,472 @@ pub(crate) fn refs_sidebar(
         );
 }
 
-/// 分组：标题行（箭头、名称、计数）加该组的行。
+/// 分组标题与折叠控制。右键提供组级新增入口（如有）和展开/收起动作。
 fn group(
     language: Signal<SharedString>,
-    key: &'static str,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    fold_key: &'static str,
+    title_key: &'static str,
     count: usize,
+    collapsed: bool,
     rows: Vec<AnyElement>,
+    extra: Option<(&'static str, std::sync::Arc<dyn Fn()>)>,
 ) -> AnyElement {
-    return view()
+    let click_cmd = cmd.clone();
+    let click_key = fold_key.to_string();
+    let header = crate::ui::row::section_header(
+        move || i18n::t(language.get().as_str(), title_key),
+        crate::ui::icon::icon_view(
+            if collapsed { "chev-right" } else { "chev-down" },
+            crate::ui::icon::IconSize::Compact,
+            design::text3,
+        )
+        .into_element(),
+        vec![
+            text(count.to_string())
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::text3())
+                .into_element(),
+        ],
+        metrics::SIDE_HEAD_H,
+        move || click_cmd.toggle_sidebar_fold(tab_id, click_key.clone()),
+    );
+    let menu_cmd = cmd.clone();
+    let menu_key = fold_key.to_string();
+    let menu_extra = extra.clone();
+    let mut content = view()
         .w_full()
         .flex_col()
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::SIDE_HEAD_H))
-                .mt(px(8.0))
-                .px(px(6.0))
-                .flex_row()
-                .items_center()
-                .gap(px(5.0))
-                .child(crate::ui::icon::icon_view(
-                    "chev-down",
+        .mt(px(8.0))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let mut items = Vec::new();
+            if let Some((label_key, action)) = menu_extra.as_ref() {
+                let action = action.clone();
+                items.push(ui::menu::action(
+                    i18n::t(language.get().as_str(), label_key),
+                    true,
+                    move || action(),
+                ));
+                items.push(ui::menu::divider());
+            }
+            let action_cmd = menu_cmd.clone();
+            let action_key = menu_key.clone();
+            let group_name = i18n::t(language.get().as_str(), title_key);
+            let label_key = if collapsed {
+                "sidebar.expandGroup"
+            } else {
+                "sidebar.collapseGroup"
+            };
+            items.push(ui::menu::action(
+                i18n::with_arguments(language.get().as_str(), label_key, &[("group", group_name)]),
+                true,
+                move || action_cmd.toggle_sidebar_fold(tab_id, action_key.clone()),
+            ));
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(header);
+    if !collapsed {
+        content = content.child(rows);
+    }
+    return content.into_element();
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BranchNode {
+    segment: String,
+    prefix: String,
+    branch: Option<git::Branch>,
+    children: Vec<BranchNode>,
+}
+
+fn build_branch_tree(branches: &[git::Branch]) -> Vec<BranchNode> {
+    let mut roots = Vec::new();
+    for branch in branches {
+        let segments = branch.name.split('/').collect::<Vec<_>>();
+        insert_branch(&mut roots, &segments, branch, "");
+    }
+    sort_branch_nodes(&mut roots);
+    return roots;
+}
+
+fn insert_branch(
+    nodes: &mut Vec<BranchNode>,
+    segments: &[&str],
+    branch: &git::Branch,
+    parent: &str,
+) {
+    let Some(segment) = segments.first() else {
+        return;
+    };
+    let prefix = if parent.is_empty() {
+        (*segment).to_string()
+    } else {
+        format!("{parent}/{segment}")
+    };
+    let index = nodes
+        .iter()
+        .position(|node| node.segment == *segment)
+        .unwrap_or_else(|| {
+            nodes.push(BranchNode {
+                segment: (*segment).to_string(),
+                prefix: prefix.clone(),
+                branch: None,
+                children: Vec::new(),
+            });
+            nodes.len() - 1
+        });
+    let node = &mut nodes[index];
+    if segments.len() == 1 {
+        node.branch = Some(branch.clone());
+    } else {
+        insert_branch(&mut node.children, &segments[1..], branch, prefix.as_str());
+    }
+}
+
+fn sort_branch_nodes(nodes: &mut [BranchNode]) {
+    nodes.sort_by(|left, right| {
+        left.segment
+            .to_lowercase()
+            .cmp(&right.segment.to_lowercase())
+            .then_with(|| left.segment.cmp(&right.segment))
+    });
+    for node in nodes {
+        sort_branch_nodes(&mut node.children);
+    }
+}
+
+fn branch_tree_rows(
+    nodes: &[BranchNode],
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    current_branch: &str,
+    can_rebase: bool,
+    has_origin: bool,
+    collapsed: &std::collections::BTreeSet<String>,
+    depth: usize,
+) -> Vec<AnyElement> {
+    let mut rows = Vec::new();
+    for node in nodes {
+        if let Some(branch) = node.branch.as_ref() {
+            rows.push(branch_row(
+                language,
+                cmd,
+                tab_id,
+                branch,
+                current_branch,
+                can_rebase,
+                has_origin,
+                depth,
+            ));
+        } else {
+            rows.push(branch_folder_row(
+                language, cmd, tab_id, node, depth, collapsed,
+            ));
+        }
+        let key = format!("branch-prefix:{}", node.prefix);
+        if !node.children.is_empty() && !collapsed.contains(key.as_str()) {
+            rows.extend(branch_tree_rows(
+                &node.children,
+                language,
+                cmd,
+                tab_id,
+                current_branch,
+                can_rebase,
+                has_origin,
+                collapsed,
+                depth + 1,
+            ));
+        }
+    }
+    return rows;
+}
+
+fn branch_folder_row(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    node: &BranchNode,
+    depth: usize,
+    collapsed: &std::collections::BTreeSet<String>,
+) -> AnyElement {
+    let key = format!("branch-prefix:{}", node.prefix);
+    let is_collapsed = collapsed.contains(key.as_str());
+    let click_cmd = cmd.clone();
+    let click_key = key.clone();
+    let menu_cmd = cmd.clone();
+    let menu_key = key;
+    let descendants = branch_descendant_fold_keys(node);
+    let menu_descendants = descendants.clone();
+    let label = node.segment.clone();
+    let menu_label = label.clone();
+    let row = view()
+        .w_full()
+        .pl(px(7.0 + depth as f32 * 12.0))
+        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let action_cmd = menu_cmd.clone();
+            let action_key = menu_key.clone();
+            let expand_label = if is_collapsed {
+                "sidebar.expandGroup"
+            } else {
+                "sidebar.collapseGroup"
+            };
+            let mut items = vec![ui::menu::action(
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    expand_label,
+                    &[("group", menu_label.clone())],
+                ),
+                true,
+                move || {
+                    action_cmd.set_sidebar_folds(tab_id, vec![action_key.clone()], !is_collapsed)
+                },
+            )];
+            if !menu_descendants.is_empty() {
+                items.push(ui::menu::divider());
+                let expand_cmd = menu_cmd.clone();
+                let expand_keys = menu_descendants.clone();
+                items.push(ui::menu::action(
+                    i18n::t(language.get().as_str(), "sidebar.expandAllDescendants"),
+                    true,
+                    move || expand_cmd.set_sidebar_folds(tab_id, expand_keys.clone(), false),
+                ));
+                let collapse_cmd = menu_cmd.clone();
+                let collapse_keys = menu_descendants.clone();
+                items.push(ui::menu::action(
+                    i18n::t(language.get().as_str(), "sidebar.collapseAllDescendants"),
+                    true,
+                    move || collapse_cmd.set_sidebar_folds(tab_id, collapse_keys.clone(), true),
+                ));
+            }
+            ui::menu::popup_at(items, event.page_position);
+        })
+        .child(crate::ui::row::row_sized(
+            move || label.clone(),
+            None,
+            Some(
+                crate::ui::icon::icon_view(
+                    if is_collapsed {
+                        "chev-right"
+                    } else {
+                        "chev-down"
+                    },
                     crate::ui::icon::IconSize::Compact,
                     design::text3,
-                ))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), key))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .font_weight(FontWeight(600))
-                        .text_color(move || design::text3()),
                 )
-                .child(view().flex_1())
-                .child(
-                    text(count.to_string())
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3()),
-                ),
-        )
-        .child(rows)
-        .into_element();
+                .into_element(),
+            ),
+            Vec::new(),
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            move || click_cmd.toggle_sidebar_fold(tab_id, click_key.clone()),
+        ));
+    return row.into_element();
+}
+
+fn branch_descendant_fold_keys(node: &BranchNode) -> Vec<String> {
+    let mut keys = Vec::new();
+    for child in &node.children {
+        if !child.children.is_empty() {
+            keys.push(format!("branch-prefix:{}", child.prefix));
+        }
+        keys.extend(branch_descendant_fold_keys(child));
+    }
+    return keys;
 }
 
 fn branch_row(
     language: Signal<SharedString>,
-    name: String,
-    current: bool,
-    ahead: u32,
-    behind: u32,
-    checkout: std::sync::Arc<dyn Fn(String)>,
-    delete: std::sync::Arc<dyn Fn(String)>,
-    new_branch: std::sync::Arc<dyn Fn(String, String)>,
-    merge: std::sync::Arc<dyn Fn(String)>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    branch: &git::Branch,
+    current_branch: &str,
+    can_rebase: bool,
+    has_origin: bool,
+    depth: usize,
 ) -> AnyElement {
-    let checkout_name = name.clone();
-    let delete_name = name.clone();
-    let new_branch_name = name.clone();
-    let merge_name = name.clone();
-    let is_current = current;
-    return view()
+    let name = branch.name.clone();
+    let current = branch.current;
+    let branch_checkout = branch.name.clone();
+    let branch_new = branch.name.clone();
+    let branch_compare = branch.name.clone();
+    let branch_rebase = branch.name.clone();
+    let branch_merge = branch.name.clone();
+    let branch_new_tag = branch.name.clone();
+    let branch_rename = branch.name.clone();
+    let branch_delete = branch.name.clone();
+    let branch_copy = branch.name.clone();
+    let branch_push = branch.name.clone();
+    let can_compare = !current && !current_branch.is_empty();
+    let menu_cmd = cmd.clone();
+    let menu_current_branch = current_branch.to_string();
+    let mut tracking = String::new();
+    if branch.ahead > 0 {
+        tracking.push_str(&format!("↑{}", branch.ahead));
+    }
+    if branch.behind > 0 {
+        tracking.push_str(&format!("↓{}", branch.behind));
+    }
+    let row = view()
         .w_full()
-        .h(px(metrics::SIDE_ROW_H))
-        .px(px(7.0))
-        .flex_row()
-        .items_center()
-        .gap(px(7.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .bg(move || {
-            if current {
-                design::selected()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .hover(|style| style.bg(move || design::hover()))
-        // 右键：切换分支 / 删除分支（当前分支的两项都禁用）。
+        .pl(px(7.0 + depth as f32 * 12.0))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let checkout = checkout.clone();
-            let delete = delete.clone();
-            let new_branch = new_branch.clone();
-            let merge = merge.clone();
-            let checkout_name = checkout_name.clone();
-            let delete_name = delete_name.clone();
-            let new_branch_name = new_branch_name.clone();
-            let merge_name = merge_name.clone();
-            let items = vec![
-                ui::menu::action(
-                    i18n::t(language.get().as_str(), "branch.checkout"),
-                    !is_current,
-                    move || checkout(checkout_name.clone()),
+            let mut items = Vec::with_capacity(12);
+            let checkout_cmd = menu_cmd.clone();
+            let checkout_name = branch_checkout.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "branch.menuCheckout"),
+                !current,
+                move || checkout_cmd.checkout_branch_at(tab_id, checkout_name.clone()),
+            ));
+            let new_search = menu_cmd.search.clone();
+            let new_name = branch_new.clone();
+            items.push(ui::menu::action(
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "branch.newFrom",
+                    &[("name", new_name.clone())],
                 ),
-                ui::menu::action(
-                    i18n::t(language.get().as_str(), "branch.checkoutAsNew"),
-                    true,
-                    move || new_branch(new_branch_name.clone(), new_branch_name.clone()),
+                true,
+                move || {
+                    new_search.open_form_from_tab(
+                        tab_id,
+                        crate::features::search::FormKind::NewBranch,
+                        new_name.clone(),
+                    )
+                },
+            ));
+            items.push(ui::menu::divider());
+            let compare_history = menu_cmd.history.clone();
+            let current_for_compare = menu_current_branch.clone();
+            let compare_name = branch_compare.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "branch.compareCurrent"),
+                can_compare,
+                move || {
+                    compare_history.set_compare_refs_at(
+                        tab_id,
+                        Some(current_for_compare.clone()),
+                        Some(compare_name.clone()),
+                    )
+                },
+            ));
+            let rebase_cmd = menu_cmd.clone();
+            let current_for_rebase = menu_current_branch.clone();
+            let rebase_name = branch_rebase.clone();
+            items.push(ui::menu::action(
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "branch.rebaseCurrentOnto",
+                    &[("name", rebase_name.clone())],
                 ),
-                ui::menu::divider(),
-                ui::menu::action(
-                    i18n::t(language.get().as_str(), "branch.mergeInto"),
-                    !is_current,
-                    move || merge(merge_name.clone()),
+                !current && can_rebase,
+                move || {
+                    rebase_cmd.rebase_current_on(
+                        tab_id,
+                        current_for_rebase.clone(),
+                        rebase_name.clone(),
+                    )
+                },
+            ));
+            let merge_cmd = menu_cmd.clone();
+            let merge_name = branch_merge.clone();
+            items.push(ui::menu::action(
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "branch.mergeNamedIntoCurrent",
+                    &[("name", merge_name.clone())],
                 ),
-                ui::menu::divider(),
-                ui::menu::danger(
-                    i18n::t(language.get().as_str(), "branch.delete"),
-                    !is_current,
-                    move || delete(delete_name.clone()),
+                !current,
+                move || merge_cmd.merge_reference_at(tab_id, merge_name.clone()),
+            ));
+            items.push(ui::menu::divider());
+            let new_tag_search = menu_cmd.search.clone();
+            let new_tag_name = branch_new_tag.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "branch.newTag"),
+                true,
+                move || {
+                    new_tag_search.open_form_from_tab(
+                        tab_id,
+                        crate::features::search::FormKind::NewTag,
+                        new_tag_name.clone(),
+                    )
+                },
+            ));
+            let rename_search = menu_cmd.search.clone();
+            let rename_name = branch_rename.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "branch.rename"),
+                true,
+                move || {
+                    rename_search.open_form_from_tab(
+                        tab_id,
+                        crate::features::search::FormKind::RenameBranch,
+                        rename_name.clone(),
+                    )
+                },
+            ));
+            let delete_cmd = menu_cmd.clone();
+            let delete_name = branch_delete.clone();
+            items.push(ui::menu::danger(
+                i18n::t(language.get().as_str(), "branch.deleteMenu"),
+                !current,
+                move || delete_cmd.delete_branch_at(tab_id, delete_name.clone()),
+            ));
+            let copy_notice = menu_cmd.notice;
+            let copy_name = branch_copy.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "branch.copyName"),
+                true,
+                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
+            ));
+            let push_cmd = menu_cmd.clone();
+            let push_name = branch_push.clone();
+            items.push(ui::menu::action(
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "branch.pushOrigin",
+                    &[("name", push_name.clone())],
                 ),
-            ];
-            crate::ui::menu::popup_at(items, event.page_position);
+                has_origin,
+                move || push_cmd.push_branch_at(tab_id, push_name.clone()),
+            ));
+            ui::menu::popup_at(items, event.page_position);
         })
-        .child(crate::ui::icon::icon_view(
-            "branch",
-            crate::ui::icon::IconSize::Button,
-            if current {
-                design::accent
+        .child(crate::ui::row::row_sized(
+            move || name.clone(),
+            None,
+            Some(
+                crate::ui::icon::icon_view(
+                    "branch",
+                    crate::ui::icon::IconSize::Button,
+                    if current {
+                        design::accent
+                    } else {
+                        design::text3
+                    },
+                )
+                .into_element(),
+            ),
+            if tracking.is_empty() {
+                Vec::new()
             } else {
-                design::text3
+                vec![
+                    text(tracking)
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3())
+                        .into_element(),
+                ]
             },
-        ))
-        .child(
-            text(name)
-                .text_size(px(crate::ui::BODY))
-                .text_color(move || design::text())
-                .flex_1()
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .child(
-            text(move || {
-                let mut track = String::new();
-                if ahead > 0 {
-                    track.push_str(&format!("↑{}", ahead));
-                }
-                if behind > 0 {
-                    track.push_str(&format!("↓{}", behind));
-                }
-                return track;
-            })
-            .text_size(px(crate::ui::SECONDARY))
-            .text_color(move || design::text3()),
-        )
-        .into_element();
+            current,
+            false,
+            metrics::SIDE_ROW_H,
+            || {},
+        ));
+    return row.into_element();
 }
 
 fn plain_row(label: String, icon: &'static str, color: fn() -> AdaptiveColor) -> AnyElement {
@@ -1130,4 +1485,65 @@ fn menu_row(
                 .text_color(move || design::text3()),
         )
         .into_element();
+}
+
+#[cfg(test)]
+mod sidebar_tests {
+    use super::*;
+
+    fn branch(name: &str) -> git::Branch {
+        return git::Branch {
+            name: name.to_string(),
+            ..git::Branch::default()
+        };
+    }
+
+    #[test]
+    fn branch_tree_groups_slashes_and_sorts_each_level() {
+        let tree = build_branch_tree(&[
+            branch("zeta/fix"),
+            branch("feature/z"),
+            branch("Release/2.0"),
+            branch("develop"),
+            branch("feature/a"),
+            branch("feature/deep/one"),
+        ]);
+
+        assert_eq!(
+            tree.iter()
+                .map(|node| node.segment.as_str())
+                .collect::<Vec<_>>(),
+            vec!["develop", "feature", "Release", "zeta"]
+        );
+        let feature = tree.iter().find(|node| node.segment == "feature").unwrap();
+        assert!(feature.branch.is_none());
+        assert_eq!(
+            feature
+                .children
+                .iter()
+                .map(|node| node.segment.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "deep", "z"]
+        );
+        assert_eq!(feature.children[1].prefix, "feature/deep");
+        assert!(feature.children[1].branch.is_none());
+        assert_eq!(feature.children[1].children[0].prefix, "feature/deep/one");
+    }
+
+    #[test]
+    fn branch_prefix_menu_collects_nested_folds() {
+        let tree = build_branch_tree(&[
+            branch("feature/deep/one"),
+            branch("feature/nested/second/leaf"),
+        ]);
+        let feature = tree.iter().find(|node| node.segment == "feature").unwrap();
+        assert_eq!(
+            branch_descendant_fold_keys(feature),
+            vec![
+                "branch-prefix:feature/deep".to_string(),
+                "branch-prefix:feature/nested".to_string(),
+                "branch-prefix:feature/nested/second".to_string(),
+            ]
+        );
+    }
 }

@@ -93,7 +93,11 @@
     "stashes": "Stashes",
     "submodules": "Submodules",
     "worktrees": "Worktrees",
-    "empty": "None"
+    "empty": "None",
+    "expandGroup": "Expand %{group}",
+    "collapseGroup": "Collapse %{group}",
+    "expandAllDescendants": "Expand All Descendants",
+    "collapseAllDescendants": "Collapse All Descendants"
   },
   "history": {
     "commits": "%{count} commits",
@@ -340,6 +344,9 @@
     "dirtyCheckoutMessage": "%{branch} would carry your uncommitted changes. Stash them first, or take them with you.",
     "dirtyCheckoutStash": "Stash and Switch",
     "dirtyCheckoutCarry": "Carry Changes",
+    "rebaseBranchTitle": "Rebase %{current} onto %{target}?",
+    "rebaseBranchMessage": "Commits on %{current} will be replayed on %{target}. Conflicts may need to be resolved before the rebase can finish.",
+    "rebaseBranchAction": "Rebase",
     "nonFastForwardTitle": "The remote has commits you don't have",
     "nonFastForwardMessage": "Pull to integrate the remote commits, then push again. Nothing is forced.",
     "nonFastForwardRebase": "Pull (Rebase)",
@@ -703,7 +710,18 @@
     "resetMessage": "The branch will move to %{short}. Uncommitted changes are lost.",
     "resetAction": "Reset",
     "resetSoft": "Reset Current Branch to Here (Soft)",
-    "rename": "Rename…"
+    "rename": "Rename…",
+    "menuCheckout": "Checkout",
+    "newFrom": "New Branch from '%{name}'…",
+    "compareCurrent": "Compare with Current Branch",
+    "rebaseCurrentOnto": "Rebase Current onto '%{name}'",
+    "mergeNamedIntoCurrent": "Merge '%{name}' into Current",
+    "newTag": "New Tag…",
+    "deleteMenu": "Delete…",
+    "copyName": "Copy Branch Name",
+    "pushOrigin": "Push '%{name}' to origin",
+    "targetChanged": "The branch changed while the menu was open. Reopen it and try again.",
+    "rebaseRequiresClean": "Rebase requires a clean working tree and no operation in progress."
   },
   "shortcut": {
     "openRepo": "Open repository",
@@ -783,6 +801,7 @@
     "identity": "Commit Identity",
     "authorName": "Name",
     "authorEmail": "Email",
+    "targetClosed": "The repository was closed before this form was submitted.",
     "checkoutAfter": "Checkout after create",
     "annotated": "Annotated tag",
     "includeUntracked": "Include untracked files"

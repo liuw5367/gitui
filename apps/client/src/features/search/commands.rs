@@ -37,6 +37,15 @@ pub(crate) struct SearchCommands {
 }
 
 impl SearchCommands {
+    fn active_tab_id(&self) -> Option<u64> {
+        return self
+            .session
+            .tabs
+            .get_untracked()
+            .get(self.session.active.get_untracked())
+            .map(|tab| tab.id);
+    }
+
     /// 切换工作区主区模式（原 `set_mode`）。
     pub(crate) fn set_mode(&self, mode: crate::Mode) {
         self.state.mode.set(mode);
@@ -54,13 +63,24 @@ impl SearchCommands {
 
     /// 打开表单浮层（原 `open_form`）。
     pub(crate) fn open_form(&self, kind: FormKind) {
-        self.state.form.set(Some(FormState::new(kind)));
+        let mut state = FormState::new(kind);
+        state.target_tab_id = self.active_tab_id();
+        self.state.form.set(Some(state));
     }
 
     /// 打开表单并把第二个字段预填（原 `open_form_from`）：从某个提交新建分支/标签、
     /// 重命名分支或改远程 URL 时用。
     pub(crate) fn open_form_from(&self, kind: FormKind, from: String) {
         let mut state = FormState::new(kind);
+        state.target_tab_id = self.active_tab_id();
+        state.second = from;
+        self.state.form.set(Some(state));
+    }
+
+    /// 打开由某个仓库侧栏发起的表单，并固定后续提交目标。
+    pub(crate) fn open_form_from_tab(&self, tab_id: u64, kind: FormKind, from: String) {
+        let mut state = FormState::new(kind);
+        state.target_tab_id = Some(tab_id);
         state.second = from;
         self.state.form.set(Some(state));
     }
@@ -68,6 +88,7 @@ impl SearchCommands {
     /// 打开表单并同时预填前两个字段（身份编辑：姓名与邮箱）。
     pub(crate) fn open_form_prefilled(&self, kind: FormKind, first: String, second: String) {
         let mut state = FormState::new(kind);
+        state.target_tab_id = self.active_tab_id();
         state.first = first;
         state.second = second;
         self.state.form.set(Some(state));
@@ -83,8 +104,22 @@ impl SearchCommands {
         let tabs = self.session.tabs;
         let active = self.session.active;
         let form_state = self.state.form;
-        let current = active.get_untracked();
         let mut list = tabs.get_untracked();
+        let current = match form.target_tab_id {
+            Some(tab_id) => match list.iter().position(|tab| tab.id == tab_id) {
+                Some(index) => index,
+                None => {
+                    let mut next = form.clone();
+                    next.error = Some(crate::i18n::t(
+                        self.language.get_untracked().as_str(),
+                        "form.targetClosed",
+                    ));
+                    form_state.set(Some(next));
+                    return;
+                }
+            },
+            None => active.get_untracked(),
+        };
         let Some(tab) = list.get_mut(current) else {
             return;
         };

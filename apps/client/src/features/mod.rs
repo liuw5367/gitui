@@ -77,23 +77,21 @@ impl SessionHandle {
         let current_filter = self.filter.clone();
         let filter = current_filter();
         let mut list = tabs.get_untracked();
-        let existing = list
+        if let Some(index) = list
             .iter()
-            .position(|candidate| candidate.path == path.as_str());
-        let tab_id = match existing {
-            Some(index) => {
-                let id = list[index].id;
-                list[index] = crate::app::session::placeholder_tab(path.as_str(), &filter);
-                list[index].id = id;
-                active.set(index);
-                id
-            }
-            None => {
-                list.push(crate::app::session::placeholder_tab(path.as_str(), &filter));
-                active.set(list.len() - 1);
-                list.last().map(|tab| tab.id).unwrap_or_default()
-            }
-        };
+            .position(|candidate| candidate.path == path.as_str())
+        {
+            active.set(index);
+            tabs.set(list);
+            welcome_open.set(false);
+            nsh_core::element::desktop::main_window().show();
+            nsh_core::element::desktop::main_window().focus();
+            crate::persist(&store_dir, active, tabs);
+            return;
+        }
+        list.push(crate::app::session::placeholder_tab(path.as_str(), &filter));
+        active.set(list.len() - 1);
+        let tab_id = list.last().map(|tab| tab.id).unwrap_or_default();
         let load_id = list
             .iter()
             .find(|tab| tab.id == tab_id)

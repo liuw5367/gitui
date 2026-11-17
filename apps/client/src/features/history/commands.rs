@@ -76,11 +76,30 @@ impl HistoryCommands {
 
     /// 设置对比区间的两端（原 `set_compare_refs`）。
     pub(crate) fn set_compare_refs(&self, base: Option<String>, target: Option<String>) {
-        let current = self.session.active.get_untracked();
+        let Some(tab_id) = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(self.session.active.get_untracked())
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
+        self.set_compare_refs_at(tab_id, base, target);
+    }
+
+    /// 按仓库标签的稳定 ID 设置对比区间。
+    pub(crate) fn set_compare_refs_at(
+        &self,
+        tab_id: u64,
+        base: Option<String>,
+        target: Option<String>,
+    ) {
         let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
+        if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
             ops::set_compare_refs(tab, base, target);
             self.session.tabs.set(list);
+            self.mode.set(crate::Mode::History);
         }
     }
 

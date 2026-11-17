@@ -34,17 +34,61 @@ pub(crate) struct RefsCommands {
 }
 
 impl RefsCommands {
+    fn active_tab_id(&self) -> Option<u64> {
+        return self
+            .session
+            .tabs
+            .get_untracked()
+            .get(self.session.active.get_untracked())
+            .map(|tab| tab.id);
+    }
+
+    pub(crate) fn toggle_sidebar_fold(&self, tab_id: u64, key: String) {
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if !tab.sidebar_collapsed.remove(key.as_str()) {
+            tab.sidebar_collapsed.insert(key);
+        }
+        self.session.tabs.set(list);
+    }
+
+    pub(crate) fn set_sidebar_folds(&self, tab_id: u64, keys: Vec<String>, collapsed: bool) {
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        for key in keys {
+            if collapsed {
+                tab.sidebar_collapsed.insert(key);
+            } else {
+                tab.sidebar_collapsed.remove(key.as_str());
+            }
+        }
+        self.session.tabs.set(list);
+    }
+
     /// 检出分支（原 `checkout_branch`）：有改动时先问贮藏后切、带过去还是取消。
     pub(crate) fn checkout_branch(&self, branch: String) {
+        let Some(tab_id) = self.active_tab_id() else {
+            return;
+        };
+        self.checkout_branch_at(tab_id, branch);
+    }
+
+    pub(crate) fn checkout_branch_at(&self, tab_id: u64, branch: String) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
         let language = self.language;
         let notice = self.notice;
-        let current = active.get_untracked();
-        let dirty = tabs.get_untracked().get(current).is_some_and(ops::is_dirty);
+        let dirty = tabs
+            .get_untracked()
+            .iter()
+            .find(|tab| tab.id == tab_id)
+            .is_some_and(ops::is_dirty);
         if !dirty {
             let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
+            if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
                 ops::checkout_branch(tab, branch.as_str());
                 tabs.set(list);
             }
@@ -82,7 +126,7 @@ impl RefsCommands {
             }
             let stash = action.as_str() == "stash";
             let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
+            if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
                 ops::checkout_branch_with(tab, branch.as_str(), stash);
                 let failed = tab.error.clone();
                 tabs.set(list);
@@ -115,8 +159,14 @@ impl RefsCommands {
 
     /// 删除分支（原 `delete_branch`）：不可撤销，先确认。
     pub(crate) fn delete_branch(&self, branch: String) {
+        let Some(tab_id) = self.active_tab_id() else {
+            return;
+        };
+        self.delete_branch_at(tab_id, branch);
+    }
+
+    pub(crate) fn delete_branch_at(&self, tab_id: u64, branch: String) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
         let language = self.language;
         let language_now = language.get_untracked();
         let pending = crate::ui::dialog::confirm_destructive(
@@ -129,16 +179,13 @@ impl RefsCommands {
             crate::i18n::t(language_now.as_str(), "branch.deleteAction"),
             crate::i18n::t(language_now.as_str(), "common.cancel"),
         );
-        let tabs = tabs;
-        let active = active;
         spawn(async move {
             if let Ok(result) = pending.await {
                 if result.action.as_deref() != Some("delete") {
                     return;
                 }
-                let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
+                if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
                     ops::delete_branch(tab, branch.as_str());
                     tabs.set(list);
                 }
@@ -302,15 +349,127 @@ impl RefsCommands {
 
     /// 把某个引用合并进当前分支（原 `merge_reference`）。
     pub(crate) fn merge_reference(&self, reference: String) {
+        let Some(tab_id) = self.active_tab_id() else {
+            return;
+        };
+        self.merge_reference_at(tab_id, reference);
+    }
+
+    pub(crate) fn merge_reference_at(&self, tab_id: u64, reference: String) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
-        let current = active.get_untracked();
         let mut list = tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
+        if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
             if let Err(detail) = ops::merge_reference(tab, reference.as_str()) {
                 tab.error = Some(detail);
             }
             tabs.set(list);
+        }
+    }
+
+    pub(crate) fn rebase_current_on(
+        &self,
+        tab_id: u64,
+        current_branch: String,
+        target_branch: String,
+    ) {
+        let tabs = self.session.tabs;
+        let Some(tab) = tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+        else {
+            return;
+        };
+        if ops::is_dirty(&tab) || tab.operation != git::Operation::None {
+            return;
+        }
+        let language_now = self.language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language_now.as_str(), "confirm.rebaseBranchTitle"),
+            crate::i18n::with_arguments(
+                language_now.as_str(),
+                "confirm.rebaseBranchMessage",
+                &[
+                    ("current", current_branch.clone()),
+                    ("target", target_branch.clone()),
+                ],
+            ),
+            "rebase-branch",
+            crate::i18n::t(language_now.as_str(), "confirm.rebaseBranchAction"),
+            crate::i18n::t(language_now.as_str(), "common.cancel"),
+            true,
+        );
+        let language = self.language;
+        let notice = self.notice;
+        spawn(async move {
+            if !pending.await {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            if tab.branch != current_branch
+                || !tab
+                    .refs
+                    .branches
+                    .iter()
+                    .any(|branch| branch.name == target_branch)
+            {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), "branch.targetChanged"),
+                );
+                return;
+            }
+            if ops::is_dirty(tab) || tab.operation != git::Operation::None {
+                crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(
+                        language.get_untracked().as_str(),
+                        "branch.rebaseRequiresClean",
+                    ),
+                );
+                return;
+            }
+            match ops::rebase_reference(tab, target_branch.as_str()) {
+                Ok(()) => {
+                    let rebase_conflict = tab.operation == git::Operation::Rebase;
+                    tabs.set(list);
+                    if !rebase_conflict {
+                        crate::interactions::notify(
+                            notice,
+                            crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
+                        );
+                    }
+                }
+                Err(detail) => {
+                    tab.error = Some(detail.clone());
+                    tabs.set(list);
+                    crate::interactions::notify(notice, detail);
+                }
+            }
+        });
+    }
+
+    pub(crate) fn push_branch_at(&self, tab_id: u64, branch: String) {
+        let tabs = self.session.tabs;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        match ops::push_branch(tab, branch.as_str(), "origin") {
+            Ok(()) => {
+                tabs.set(list);
+                crate::interactions::notify(
+                    self.notice,
+                    crate::i18n::t(self.language.get_untracked().as_str(), "toast.pushed"),
+                );
+            }
+            Err(detail) => {
+                tabs.set(list);
+                crate::interactions::notify(self.notice, detail);
+            }
         }
     }
 

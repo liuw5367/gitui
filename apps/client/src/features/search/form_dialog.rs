@@ -95,6 +95,7 @@ impl FormKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FormState {
     pub kind: FormKind,
+    pub target_tab_id: Option<u64>,
     pub first: String,
     pub second: String,
     /// 第三个字段（目前只有附注标签的说明用）。
@@ -108,6 +109,7 @@ impl FormState {
     pub fn new(kind: FormKind) -> FormState {
         return FormState {
             kind,
+            target_tab_id: None,
             first: String::new(),
             second: String::new(),
             third: String::new(),

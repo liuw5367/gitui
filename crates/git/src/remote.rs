@@ -198,6 +198,13 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    /// 把指定本地分支推送到远端的同名分支，不要求它当前已检出。
+    pub fn push_branch(&self, remote: &str, branch: &str) -> Result<String, GitError> {
+        let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
+        let output = run_git_combined(&self.root, &["push", remote, refspec.as_str()])?;
+        return Ok(summarise(&output));
+    }
+
     /// 把一段补丁应用到暂存区（`git apply --cached`），用于 hunk / 行级暂存。
     ///
     /// `reverse` 为真时反向应用，即「取消暂存」。补丁不合法时 `git apply` 会拒绝，
@@ -624,6 +631,26 @@ mod tests {
         repo.fetch("origin").expect("fetch");
         assert_eq!(repo.summary().expect("summary").ahead, 0);
         drop(guard);
+    }
+
+    #[test]
+    fn pushes_a_named_branch_without_checking_it_out_again() {
+        let (_guard, path, _remote_guard, remote) = with_remote("push-branch");
+        let repo = Repo::open(&path).expect("open");
+        repo.create_branch("topic/one", Some("main"))
+            .expect("branch");
+        repo.push_branch("origin", "topic/one")
+            .expect("push branch");
+
+        let remote_head = run_git(
+            Path::new(remote.as_str()),
+            &["rev-parse", "refs/heads/topic/one"],
+        )
+        .expect("remote branch");
+        let local_head =
+            run_git(repo.root(), &["rev-parse", "refs/heads/topic/one"]).expect("local branch");
+        assert_eq!(remote_head, local_head);
+        assert_eq!(repo.abbrev_branch().expect("current branch"), "main");
     }
 
     #[test]

@@ -93,7 +93,11 @@
     "stashes": "贮藏",
     "submodules": "子模块",
     "worktrees": "工作树",
-    "empty": "无"
+    "empty": "无",
+    "expandGroup": "展开%{group}",
+    "collapseGroup": "收起%{group}",
+    "expandAllDescendants": "展开所有下级分组",
+    "collapseAllDescendants": "收起所有下级分组"
   },
   "history": {
     "commits": "%{count} 次提交",
@@ -340,6 +344,9 @@
     "dirtyCheckoutMessage": "切到 %{branch} 会带上未提交的改动：可以先贮藏，也可以直接带过去。",
     "dirtyCheckoutStash": "贮藏并切换",
     "dirtyCheckoutCarry": "带过去",
+    "rebaseBranchTitle": "将 %{current} 变基到 %{target}？",
+    "rebaseBranchMessage": "会把 %{current} 上的提交重放到 %{target} 之后。若发生冲突，需要先解决才能完成变基。",
+    "rebaseBranchAction": "变基",
     "nonFastForwardTitle": "远端有你没有的提交",
     "nonFastForwardMessage": "先拉取整合远端提交，再重新推送。不会做任何强制推送。",
     "nonFastForwardRebase": "拉取（变基）",
@@ -703,7 +710,18 @@
     "resetMessage": "分支会移到 %{short}，未提交的改动会丢失。",
     "resetAction": "重置",
     "resetSoft": "把当前分支重置到这里（soft）",
-    "rename": "重命名…"
+    "rename": "重命名…",
+    "menuCheckout": "切换到此分支",
+    "newFrom": "从“%{name}”新建分支…",
+    "compareCurrent": "与当前分支比较",
+    "rebaseCurrentOnto": "将当前分支变基到“%{name}”",
+    "mergeNamedIntoCurrent": "将“%{name}”合并到当前分支",
+    "newTag": "新建标签…",
+    "deleteMenu": "删除…",
+    "copyName": "复制分支名",
+    "pushOrigin": "将“%{name}”推送到 origin",
+    "targetChanged": "菜单打开期间分支状态已变化，请重新打开菜单后重试。",
+    "rebaseRequiresClean": "变基要求工作区干净，且当前没有进行中的操作。"
   },
   "shortcut": {
     "openRepo": "打开仓库",
@@ -783,6 +801,7 @@
     "identity": "提交身份",
     "authorName": "姓名",
     "authorEmail": "邮箱",
+    "targetClosed": "提交表单前，该仓库已关闭。",
     "checkoutAfter": "创建后检出",
     "annotated": "附注标签",
     "includeUntracked": "包含未跟踪文件"

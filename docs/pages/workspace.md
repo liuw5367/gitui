@@ -58,6 +58,10 @@
 
 Remotes 父行是地球 14 + 名 + 计数，每个 remote 下先挂一行 URL（内联 10.5、右端 `fetch`/`push`），再挂三条分支行（内联左内距 38），末行 `5 more branches…`（`text3`）。Tags 用 7×7 方块点（`warn` .65）+ 右端 `latest`/`Oct 28`/`Sep 30`；Stashes 用归档图标 + 消息；Submodules 右端 `clean`（`ok`）/`1 ahead`（`warn`）；Worktrees 用紫色文件夹 + 名 + 分支名。
 
+实现中的六组标题都可点按折叠，并在组标题的右键菜单中展开或收起；折叠状态按仓库标签保留。Branches 按分支名分层显示斜杠前缀（例如 `feature/ui` 收在 `feature` 下），同级按文字升序排列。前缀右键菜单提供「展开 / 收起」和「展开所有下级分组 / 收起所有下级分组」。
+
+Branch 行右键菜单依画板 22 的顺序包含：`Checkout`、`New Branch from '<name>'…`、`Compare with Current Branch`、`Rebase Current onto '<name>'`、`Merge '<name>' into Current`、`New Tag…`、`Rename…`、`Delete…`、`Copy Branch Name`、`Push '<name>' to origin`。当前分支的 Checkout、Rebase、Merge、Delete 禁用；Rebase 还要求当前 HEAD 位于分支上、工作区干净且没有其它 Git 操作；Push 在没有 `origin` 时禁用。会改写历史的 Rebase 会二次确认，冲突交给现有冲突面板处理。Branches 组头右键菜单另有 `New Branch…` 与组折叠操作。
+
 ## 4. 历史区
 
 过滤条高 32、内距 0×10、间距 7：`History` 11.5/600 → 分支 chip `main 2` → `128 commits` 10.5 → 时间 chip `Any time` → 弹性空隙 → `Compare` chip → `All authors` chip → 漏斗图标按钮。chip 一律 22 高、内距 0×7、圆角 5、1px `line` 描边、`panel` 底、11，内部图标 10、chevron 9。列头高 23、内距 0×8、10.5/500 `text3`，与行同网格；`Description / Author / Date` 句首大写，`Date` 右对齐。

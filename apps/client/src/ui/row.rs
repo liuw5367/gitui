@@ -189,6 +189,45 @@ pub(crate) fn row_sized(
     return element;
 }
 
+/// 可折叠分组标题：左侧状态图标、标题、计数等右侧内容与键盘可达的按压行为。
+pub(crate) fn section_header(
+    caption: impl Fn() -> String + 'static,
+    leading: AnyElement,
+    trailing: Vec<AnyElement>,
+    height: f32,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let mut element = nsh_base::button()
+        .w_full()
+        .h(px(height))
+        .px(px(6.0))
+        .flex_row()
+        .items_center()
+        .gap(px(5.0))
+        .rounded(px(6.0))
+        .bg(AdaptiveColor::TRANSPARENT)
+        .hover(|style| style.bg(move || design::hover()))
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .on_press(move |_: &()| on_press())
+        .child(leading)
+        .child(
+            text(move || caption())
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(height))
+                .font_weight(FontWeight(600))
+                .text_color(move || design::text3()),
+        )
+        .child(view().flex_1());
+    for item in trailing {
+        element = element.child(item);
+    }
+    return element;
+}
+
 /// 设置页左树的导航行：28 高、强调底 + 白色文字/图标。
 pub(crate) fn nav_row(
     label: impl Fn() -> String + 'static,
