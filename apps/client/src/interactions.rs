@@ -4,6 +4,7 @@
 //! `destructive` 时用红色。复制与外部打开都用 0.5.0 的 prelude API，失败落到
 //! 状态栏提示而不是静默。
 
+use crate::ui;
 use nsh_core::prelude::*;
 use std::time::Duration;
 
@@ -28,16 +29,13 @@ pub(crate) fn confirm(
     cancel_label: String,
     destructive: bool,
 ) -> impl std::future::Future<Output = bool> + 'static {
-    let dialog = nsh_base::alert_dialog()
-        .title(title)
-        .description(message)
-        .cancel("cancel", cancel_label);
-    let dialog = if destructive {
-        dialog.destructive(action_id, action_label)
-    } else {
-        dialog.action(action_id, action_label)
-    };
-    let pending = dialog.show();
+    let pending = ui::dialog::alert_with_actions(
+        title,
+        message,
+        vec![(action_id, action_label)],
+        if destructive { Some(action_id) } else { None },
+        cancel_label,
+    );
     return async move {
         return match pending.await {
             Ok(result) => confirmed(result.action.as_deref(), action_id),
@@ -49,12 +47,7 @@ pub(crate) fn confirm(
 /// 弹一次说明框；只有一个关闭按钮，用于能力尚未接通时的真实状态说明。
 pub(crate) fn alert(title: String, message: String, close_label: String) {
     spawn(async move {
-        let _ = nsh_base::alert_dialog()
-            .title(title)
-            .description(message)
-            .cancel("close", close_label)
-            .show()
-            .await;
+        let _ = ui::dialog::notice(title, message, close_label).await;
     });
 }
 

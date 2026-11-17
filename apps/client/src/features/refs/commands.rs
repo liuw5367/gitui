@@ -61,13 +61,13 @@ impl RefsCommands {
         let stash_label = crate::i18n::t(lang.as_str(), "confirm.dirtyCheckoutStash");
         let carry_label = crate::i18n::t(lang.as_str(), "confirm.dirtyCheckoutCarry");
         let cancel_label = crate::i18n::t(lang.as_str(), "common.cancel");
-        let pending = nsh_base::alert_dialog()
-            .title(title)
-            .description(message)
-            .action("stash", stash_label)
-            .action("carry", carry_label)
-            .cancel("cancel", cancel_label)
-            .show();
+        let pending = crate::ui::dialog::alert_with_actions(
+            title,
+            message,
+            vec![("stash", stash_label), ("carry", carry_label)],
+            None,
+            cancel_label,
+        );
         let language = language;
         let notice = notice;
         spawn(async move {

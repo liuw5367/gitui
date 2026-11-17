@@ -224,7 +224,7 @@ fn body(
                         ui::text_input::text_area(
                             area_value,
                             move || "Description".to_string(),
-                            88.0,
+                            Some(88.0),
                             false,
                             |_text| {},
                         ),

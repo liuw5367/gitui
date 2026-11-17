@@ -12,11 +12,18 @@
 //!     ui::menu::divider(),
 //!     ui::menu::danger(label, is_enabled, move || delete()),
 //! ];
-//! nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+//! crate::ui::menu::popup_at(items, event.page_position);
 //! ```
 
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
+
+/// 在给定页面坐标弹出原生菜单。
+///
+/// 页面只组装 [`MenuItem`]，NSH 的原生菜单入口由 UI 层统一持有。
+pub(crate) fn popup_at(items: Vec<MenuItem>, position: nsh_core::Point<Points>) {
+    let _ = nsh_core::element::desktop::popup_menu_at(items, position);
+}
 
 /// 一个普通动作项。`enabled` 为 false 时置灰且不可选。
 pub(crate) fn action(

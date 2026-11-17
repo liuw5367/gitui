@@ -8,7 +8,6 @@ use crate::app::session::{RepoProblem, Sync, Tab};
 use crate::design::{self, metrics};
 use crate::features::search::commands::SearchCommands;
 use crate::i18n;
-use nsh_base::input;
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -263,29 +262,12 @@ pub(crate) fn toolbar(
         .child(
             view()
                 .w(px(metrics::SEARCH_W))
-                .h(px(metrics::SEARCH_H))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .rounded(px(metrics::RADIUS_CONTROL))
-                .border_1()
-                .border_color(move || design::field_border())
-                .bg(move || design::field())
-                .child(crate::ui::icon::icon_view(
-                    "search",
-                    crate::ui::icon::IconSize::Button,
-                    design::text3,
-                ))
-                .child(
-                    input()
-                        .value(history_query)
-                        .on_change(move |value: &str| history_query.set(value.to_string()))
-                        .placeholder(move || i18n::t(language.get().as_str(), "history.filter"))
-                        .text_size(px(crate::ui::BODY))
-                        .flex_1(),
-                )
-                .child(crate::ui::badge::kbd("⌘F")),
+                .child(crate::ui::text_input::search_field(
+                    history_query,
+                    move || i18n::t(language.get().as_str(), "history.filter"),
+                    Some("⌘F"),
+                    move |value| history_query.set(value.to_string()),
+                )),
         )
         .child(crate::ui::v_separator())
         .child(

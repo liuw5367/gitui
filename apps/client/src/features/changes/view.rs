@@ -485,7 +485,7 @@ fn changes_list(
                                         reveal_path.clone(),
                                         move_to_changelist.clone(),
                                     );
-                                    let _ = nsh_core::element::desktop::popup_menu_at(
+                                    crate::ui::menu::popup_at(
                                         items,
                                         nsh_core::Point {
                                             x: Points(x),

@@ -1,0 +1,7 @@
+# 已禁止直接调用 nsh_base 基础组件的交互文件（相对 apps/client/src/）。
+# 完整迁移页面另列于 ui-migrated.txt，该清单只执行基础组件边界检查。
+
+features/sync/commands.rs
+features/refs/commands.rs
+interactions.rs
+shell/mod.rs

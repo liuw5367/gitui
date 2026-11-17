@@ -13,6 +13,7 @@ root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 client="$root/apps/client"
 ui_dir="$client/src/ui"
 migrated_list="$root/tools/ui-migrated.txt"
+base_only_list="$root/tools/ui-base-only.txt"
 
 [ -d "$ui_dir" ] || { echo "找不到 $ui_dir" >&2; exit 2; }
 
@@ -44,8 +45,8 @@ if [ -f "$migrated_list" ]; then
       report B "$file" "清单里的文件不存在"
       continue
     fi
-    if grep -q 'use nsh_base::' "$file"; then
-      report B "$file" "直接引用 nsh_base，应改用 crate::ui"
+    if sed 's|//.*||' "$file" | grep -q 'nsh_base::'; then
+      report B "$file" "直接引用或调用 nsh_base，应改用 crate::ui"
     fi
     if grep -q '\.on_press(' "$file"; then
       report B "$file" "裸 on_press，应改用 ui::row 或 ui 按钮"
@@ -62,6 +63,22 @@ if [ -f "$migrated_list" ]; then
   done < "$migrated_list"
 else
   echo "  （没有 $migrated_list，跳过）"
+fi
+
+echo "== C. 已收口基础组件调用的交互文件"
+
+if [ -f "$base_only_list" ]; then
+  while IFS= read -r relative; do
+    case "$relative" in ''|'#'*) continue ;; esac
+    file="$client/src/$relative"
+    if [ ! -f "$file" ]; then
+      report C "$file" "清单里的文件不存在"
+      continue
+    fi
+    if sed 's|//.*||' "$file" | grep -q 'nsh_base::'; then
+      report C "$file" "直接引用或调用 nsh_base，应改用 crate::ui"
+    fi
+  done < "$base_only_list"
 fi
 
 if [ "$status" -eq 0 ]; then

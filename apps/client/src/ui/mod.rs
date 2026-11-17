@@ -190,6 +190,14 @@ mod guard_tests {
         "app/workspace.rs",
     ];
 
+    /// 尚未完成页面层迁移、但已禁止直接调用 NSH 基础组件的交互文件。
+    const BASE_ONLY: &[&str] = &[
+        "features/sync/commands.rs",
+        "features/refs/commands.rs",
+        "interactions.rs",
+        "shell/mod.rs",
+    ];
+
     fn src_root() -> PathBuf {
         return PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     }
@@ -243,6 +251,14 @@ mod guard_tests {
         return false;
     }
 
+    /// 已迁移文件不能导入或完全限定调用 nsh_base。
+    fn has_nsh_base_reference(source: &str) -> bool {
+        return source.lines().any(|line| {
+            let code = line.split("//").next().unwrap_or_default();
+            code.contains("nsh_base::")
+        });
+    }
+
     fn read(path: &Path) -> String {
         return fs::read_to_string(path)
             .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", path.display()));
@@ -268,14 +284,14 @@ mod guard_tests {
     }
 
     #[test]
-    fn migrated_pages_do_not_reach_base_or_write_literals() {
+    fn migrated_files_do_not_reach_base_or_write_literals() {
         for relative in MIGRATED {
             let path = src_root().join(relative);
             assert!(path.exists(), "MIGRATED 里的 {relative} 不存在");
             let source = read(&path);
             assert!(
-                !source.contains("use nsh_base::"),
-                "{relative} 直接引用了 nsh_base，改用 crate::ui"
+                !has_nsh_base_reference(&source),
+                "{relative} 直接引用或调用了 nsh_base，改用 crate::ui"
             );
             assert!(
                 !source.contains(".on_press("),
@@ -286,6 +302,19 @@ mod guard_tests {
                 "{relative} 仍使用字号字面量"
             );
             assert!(!has_hex_color(&source), "{relative} 仍自带十六进制颜色");
+        }
+    }
+
+    #[test]
+    fn base_only_files_do_not_reach_nsh_base() {
+        for relative in BASE_ONLY {
+            let path = src_root().join(relative);
+            assert!(path.exists(), "BASE_ONLY 里的 {relative} 不存在");
+            let source = read(&path);
+            assert!(
+                !has_nsh_base_reference(&source),
+                "{relative} 直接引用或调用了 nsh_base，改用 crate::ui"
+            );
         }
     }
 }

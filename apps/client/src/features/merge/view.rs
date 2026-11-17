@@ -375,14 +375,10 @@ pub(crate) fn conflict_view(
                                 .child(
                                     view().w_full().flex_1().min_h_0().p(px(7.0)).child(
                                         scroll().w_full().h_full().child(
-                                            nsh_base::input()
-                                                .value(result)
-                                                .on_change(move |value: &str| {
-                                                    result.set(value.to_string())
-                                                })
-                                                .text_size(px(crate::ui::CODE))
-                                                .line_height(px(crate::ui::CODE_LINE))
-                                                .flex_1(),
+                                            crate::ui::text_input::code_text_area(
+                                                result,
+                                                move |value| result.set(value.to_string()),
+                                            ),
                                         ),
                                     ),
                                 ),

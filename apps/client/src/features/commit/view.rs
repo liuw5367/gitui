@@ -148,63 +148,31 @@ pub(crate) fn commit_panel(
                                 .text_color(move || design::text3()),
                             )
                             .child(field_label(language, "commit.summary", "commit.required"))
-                            .child(
-                                view()
-                                    .w_full()
-                                    .h(px(29.0))
-                                    .flex_row()
-                                    .items_center()
-                                    .px(px(8.0))
-                                    .rounded(px(metrics::RADIUS_CONTROL))
-                                    .border_1()
-                                    .border_color(move || design::field_border())
-                                    .bg(move || design::field())
-                                    .child(
-                                        nsh_base::input()
-                                            .value(summary)
-                                            .on_change(move |text: &str| {
-                                                summary.set(text.to_string())
-                                            })
-                                            .placeholder(move || {
-                                                i18n::t(
-                                                    language.get().as_str(),
-                                                    "commit.summaryPlaceholder",
-                                                )
-                                            })
-                                            .text_size(px(crate::ui::BODY))
-                                            .flex_1(),
-                                    ),
-                            )
+                            .child(crate::ui::text_input::text_input(
+                                summary,
+                                move || {
+                                    i18n::t(language.get().as_str(), "commit.summaryPlaceholder")
+                                },
+                                false,
+                                move |text| summary.set(text.to_string()),
+                            ))
                             .child(field_label(
                                 language,
                                 "commit.description",
                                 "commit.markdown",
                             ))
-                            .child(
-                                view()
-                                    .w_full()
-                                    .min_h(px(76.0))
-                                    .p(px(6.0))
-                                    .rounded(px(metrics::RADIUS_CONTROL))
-                                    .border_1()
-                                    .border_color(move || design::field_border())
-                                    .bg(move || design::field())
-                                    .child(
-                                        nsh_base::input()
-                                            .value(description)
-                                            .on_change(move |text: &str| {
-                                                description.set(text.to_string())
-                                            })
-                                            .placeholder(move || {
-                                                i18n::t(
-                                                    language.get().as_str(),
-                                                    "commit.descriptionPlaceholder",
-                                                )
-                                            })
-                                            .text_size(px(crate::ui::BODY))
-                                            .flex_1(),
-                                    ),
-                            )
+                            .child(crate::ui::text_input::text_area(
+                                description,
+                                move || {
+                                    i18n::t(
+                                        language.get().as_str(),
+                                        "commit.descriptionPlaceholder",
+                                    )
+                                },
+                                Some(76.0),
+                                false,
+                                move |text| description.set(text.to_string()),
+                            ))
                             .child(crate::ui::button::button(
                                 move || i18n::t(language.get().as_str(), "commit.askAgent"),
                                 crate::ui::button::ButtonVariant::Ghost,

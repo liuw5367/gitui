@@ -24,7 +24,9 @@ pub(crate) fn text_input(
             .placeholder(placeholder)
             .on_change(move |text: &str| on_change(text)),
         invalid,
-        ui::CONTROL,
+        Some(ui::CONTROL),
+        ui::BODY,
+        None,
     );
 }
 
@@ -32,7 +34,7 @@ pub(crate) fn text_input(
 pub(crate) fn text_area(
     value: Signal<String>,
     placeholder: impl Fn() -> String + 'static,
-    height: f32,
+    height: Option<f32>,
     invalid: bool,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
@@ -44,6 +46,25 @@ pub(crate) fn text_area(
             .on_change(move |text: &str| on_change(text)),
         invalid,
         height,
+        ui::BODY,
+        None,
+    );
+}
+
+/// 用等宽字号编辑冲突文件结果，内部布局由父容器决定高度。
+pub(crate) fn code_text_area(
+    value: Signal<String>,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    return style_input(
+        nsh_base::input()
+            .multiline(true)
+            .value(value)
+            .on_change(move |text: &str| on_change(text)),
+        false,
+        None,
+        ui::CODE,
+        Some(ui::CODE_LINE),
     );
 }
 
@@ -60,7 +81,9 @@ pub(crate) fn text_input_bound(
             .placeholder(placeholder)
             .on_change(move |text: &str| set(text.to_string())),
         invalid,
-        ui::CONTROL,
+        Some(ui::CONTROL),
+        ui::BODY,
+        None,
     );
 }
 
@@ -88,7 +111,9 @@ pub(crate) fn text_input_bound_commit(
             .on_blur(move || blur())
             .on_submit(move |_: &str| submit()),
         invalid,
-        ui::CONTROL,
+        Some(ui::CONTROL),
+        ui::BODY,
+        None,
     );
     let mut wrapper = view().w_full();
     if disabled {
@@ -110,7 +135,9 @@ pub(crate) fn masked_input(
             .placeholder(placeholder)
             .on_change(move |text: &str| on_change(text.to_string())),
         false,
-        ui::CONTROL,
+        Some(ui::CONTROL),
+        ui::BODY,
+        None,
     );
 }
 
@@ -236,11 +263,20 @@ fn field_frame(children: Vec<AnyElement>) -> impl IntoElement {
 }
 
 /// 共用外观：描边、底色与 13pt 文字；聚焦换描边色，错误换危险色。
-fn style_input(input: nsh_core::element::Input, invalid: bool, height: f32) -> impl IntoElement {
-    return input
-        .w_full()
-        .h(px(height))
-        .min_h(px(height))
+fn style_input(
+    input: nsh_core::element::Input,
+    invalid: bool,
+    height: Option<f32>,
+    text_size: f32,
+    line_height: Option<f32>,
+) -> impl IntoElement {
+    let mut input = input.w_full();
+    if let Some(height) = height {
+        input = input.h(px(height)).min_h(px(height));
+    } else {
+        input = input.flex_1().min_h(px(0.0));
+    }
+    let input = input
         .px(px(ui::GAP))
         .py(px(ui::GAP_XS))
         .rounded(px(metrics::RADIUS_CONTROL))
@@ -253,7 +289,12 @@ fn style_input(input: nsh_core::element::Input, invalid: bool, height: f32) -> i
             }
         })
         .bg(move || design::field())
-        .text_size(px(ui::BODY))
-        .text_color(move || design::text())
-        .focus(move |style| style.border_color(move || design::accent()));
+        .text_size(px(text_size))
+        .text_color(move || design::text());
+    if let Some(line_height) = line_height {
+        return input
+            .line_height(px(line_height))
+            .focus(move |style| style.border_color(move || design::accent()));
+    }
+    return input.focus(move |style| style.border_color(move || design::accent()));
 }

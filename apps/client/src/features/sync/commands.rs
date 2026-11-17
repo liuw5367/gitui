@@ -94,13 +94,13 @@ impl SyncCommands {
             let rebase_label = crate::i18n::t(lang.as_str(), "confirm.nonFastForwardRebase");
             let merge_label = crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMerge");
             let cancel_label = crate::i18n::t(lang.as_str(), "common.cancel");
-            let pending = nsh_base::alert_dialog()
-                .title(title)
-                .description(message)
-                .action("rebase", rebase_label)
-                .action("merge", merge_label)
-                .cancel("cancel", cancel_label)
-                .show();
+            let pending = crate::ui::dialog::alert_with_actions(
+                title,
+                message,
+                vec![("rebase", rebase_label), ("merge", merge_label)],
+                None,
+                cancel_label,
+            );
             let language = self.language;
             let notice = self.notice;
             spawn(async move {

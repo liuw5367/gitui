@@ -11,6 +11,27 @@ use crate::ui;
 use nsh_base::AlertDialogResult;
 use nsh_core::prelude::*;
 
+/// 使用 NSH AlertDialog 显示一组动作。页面与命令通过此入口统一调用基础对话框。
+pub(crate) fn alert_with_actions(
+    title: String,
+    description: String,
+    actions: Vec<(&'static str, String)>,
+    destructive_action: Option<&'static str>,
+    cancel_label: String,
+) -> impl Future<Output = Result<AlertDialogResult, String>> + 'static {
+    let mut dialog = nsh_base::alert_dialog()
+        .title(title)
+        .description(description);
+    for (id, label) in actions {
+        dialog = if destructive_action == Some(id) {
+            dialog.destructive(id, label)
+        } else {
+            dialog.action(id, label)
+        };
+    }
+    return dialog.cancel("cancel", cancel_label).show();
+}
+
 /// 一个「危险操作」确认框：系统原生 alert，标题 + 说明 + 一个破坏性动作 + 取消。
 ///
 /// 返回的 future 解析为动作 id（取消时为 `None`）。这个包装存在的意义是让页面
@@ -22,12 +43,13 @@ pub(crate) fn confirm_destructive(
     action_label: String,
     cancel_label: String,
 ) -> impl Future<Output = Result<AlertDialogResult, String>> + 'static {
-    return nsh_base::alert_dialog()
-        .title(title)
-        .description(description)
-        .destructive("confirm", action_label)
-        .cancel("cancel", cancel_label)
-        .show();
+    return alert_with_actions(
+        title,
+        description,
+        vec![("confirm", action_label)],
+        Some("confirm"),
+        cancel_label,
+    );
 }
 
 /// 一个只有「知道了」的提示框。
@@ -36,11 +58,7 @@ pub(crate) fn notice(
     description: String,
     cancel_label: String,
 ) -> impl Future<Output = Result<AlertDialogResult, String>> + 'static {
-    return nsh_base::alert_dialog()
-        .title(title)
-        .description(description)
-        .cancel("cancel", cancel_label)
-        .show();
+    return alert_with_actions(title, description, Vec::new(), None, cancel_label);
 }
 
 /// 一层遮罩：铺满父容器、居中内容、点遮罩关闭。

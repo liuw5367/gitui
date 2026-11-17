@@ -251,7 +251,7 @@ fn branch_row(
                     move || delete(delete_name.clone()),
                 ),
             ];
-            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+            crate::ui::menu::popup_at(items, event.page_position);
         })
         .child(crate::ui::icon::icon_view(
             "branch",
@@ -1022,8 +1022,7 @@ fn reflog_list(
                                 move || copy_text(short.clone())
                             }),
                         ];
-                        let _ =
-                            nsh_core::element::desktop::popup_menu_at(items, event.page_position);
+                        crate::ui::menu::popup_at(items, event.page_position);
                     }
                 })
                 .into_element(),
@@ -1052,23 +1051,12 @@ fn reflog_list(
                         .child(
                             view()
                                 .w(px(180.0))
-                                .h(px(metrics::SEARCH_H))
-                                .px(px(7.0))
-                                .items_center()
-                                .rounded(px(5.0))
-                                .border_1()
-                                .border_color(move || design::field_border())
-                                .bg(move || design::field())
-                                .child(
-                                    nsh_base::input()
-                                        .value(query)
-                                        .on_change(move |text: &str| query.set(text.to_string()))
-                                        .placeholder(move || {
-                                            i18n::t(language.get().as_str(), "reflog.filterHint")
-                                        })
-                                        .text_size(px(crate::ui::SECONDARY))
-                                        .flex_1(),
-                                ),
+                                .child(crate::ui::text_input::search_field(
+                                    query,
+                                    move || i18n::t(language.get().as_str(), "reflog.filterHint"),
+                                    None,
+                                    move |text| query.set(text.to_string()),
+                                )),
                         ),
                 )
                 .child(view().w_full().h(px(1.0)).bg(move || design::line()))
@@ -1112,7 +1100,7 @@ fn menu_row(
         .rounded(px(4.0))
         .hover(|style| style.bg(move || design::hover()))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let _ = nsh_core::element::desktop::popup_menu_at(items.clone(), event.page_position);
+            crate::ui::menu::popup_at(items.clone(), event.page_position);
         })
         .child(
             text(name)

@@ -384,7 +384,7 @@ pub(crate) fn history(
                                             &menu_refs,
                                             &menu_commit,
                                         );
-                                        let _ = nsh_core::element::desktop::popup_menu_at(
+                                        crate::ui::menu::popup_at(
                                             items,
                                             nsh_core::Point {
                                                 x: Points(x),
