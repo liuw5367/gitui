@@ -145,7 +145,7 @@ pub(crate) fn separator() -> impl IntoElement {
         .bg(move || design::line());
 }
 
-/// 键盘焦点环的颜色。用 `outline` 而不是 `border`，避免改变布局尺寸。
+/// 主题焦点 outline 的颜色。用 `outline` 而不是 `border`，避免改变布局尺寸。
 pub(crate) fn focus_color() -> AdaptiveColor {
     return design::token("focus");
 }

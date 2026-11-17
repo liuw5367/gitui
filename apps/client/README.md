@@ -46,6 +46,7 @@ APP_HOME=/tmp/app-home nsh run
 页面与 `workspace` 以 NSH 原生组件为基础；键盘、焦点与无障碍行为由组件提供，`src/ui` 统一尺寸、颜色与必要外观，优先保留平台原生样式。规则如下：
 
 - 字号取 `src/ui/mod.rs` 的刻度常量，颜色取 `src/design`；`src/ui` 内不写字号字面量与十六进制颜色。
+- 输入框获得焦点时显示 2pt `focus` 主题 outline，颜色由 `ui::focus_color()` 提供；页面不单独覆盖。
 - 已迁移的页面文件登记在 `tools/ui-migrated.txt`，不得直接引用 `nsh_base`、不得给裸 `view()` 挂 `.on_press`、不得自带色板或字体族。
 - `tools/check-ui.sh` 与 `src/ui` 的守卫测试检查同一组约束，两者都通过才算满足。
 

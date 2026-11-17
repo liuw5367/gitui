@@ -51,7 +51,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | `button_icon` | `ui/button.rs` | 同上 | 同 `button` | 同上 |
 | `icon_button` / `icon_button_tuned` | `ui/button.rs` | 同上 | 同上 | 同上；`label` 必填 |
 | `icon_view` | `ui/icon.rs` | `svg` | `Compact` 11 / `Button` 12 / `Inline` 13 / `Toolbar` 16 | — |
-| `text_input` / `text_area` / `text_input_bound` / `search_field` | `ui/text_input.rs` | `nsh_base::input` | 单行 28；多行高度自定 | focus、invalid |
+| `text_input` / `text_area` / `text_input_bound` / `search_field` | `ui/text_input.rs` | `nsh_base::input` | 单行 28；多行高度自定 | focus 时描边强调色 + 2pt 主题 outline、invalid |
 | `select` | `ui/select.rs` | `nsh_base::select` + 自定义触发器 | 高 28；弹出选项列表 | 选中、键盘导航、focus、disabled |
 | `field` / `label` / `help` / `error` | `ui/field.rs` | `view` + `text` | 标签 13 + 控件 + 说明/错误 11 | invalid |
 | `check_row` / `check_inline` / `check_group` | `ui/check.rs` | `nsh_base::checkbox` | 行 28；指示器 14（inline 12–14） | checked、disabled |
@@ -137,7 +137,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | hover | 底色换 `design::hover()`；Ghost 按钮用透明度 0.9 |
 | pressed | 实心按钮透明度 0.8；描边与 Ghost 按钮换 `line-soft` 底色 |
 | selected | `design::selected()` 底色；页签与分段同时加字重 |
-| focus-visible | 2pt `focus` 轮廓（`outline`，不改布局） |
+| focus / focus-visible | 2pt `focus` 轮廓（`outline`，不改布局）；输入框焦点持续显示，其他控件按键盘焦点显示 |
 | disabled | 透明度 0.45，且不再接收按压 |
 | invalid | 描边换危险色 + 一行 11pt 错误文案 |
 

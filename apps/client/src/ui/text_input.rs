@@ -1,8 +1,8 @@
 //! 文本输入：`nsh_core` 的原生输入框（NSTextField / NSTextView），这里统一外观。
 //!
 //! 全部输入框走同一套外观：高 28、左右内距 8、圆角 6、1px 描边；聚焦时描边换成
-//! 主题色（不靠外发光，也不改尺寸），错误态换成危险色，并在调用方补一行 11pt 的
-//! 错误文案（不只靠颜色表达）。
+//! 强调色并显示主题 `focus` token 的 2pt outline（不改布局），错误态换成危险色，并在
+//! 调用方补一行 11pt 的错误文案（不只靠颜色表达）。
 //!
 //! "容器 + 内部输入框"的字段（路径、URL、搜索）用 [`field_frame`]：焦点落在内部
 //! 输入框上，所以外框必须用 `focus_within`，写在容器上的 `focus_visible` 不会触发。
@@ -190,7 +190,7 @@ pub(crate) fn url_input(
 
 /// 搜索框：左侧放大镜、右侧可选键帽，整体一个描边容器。
 ///
-/// 输入框自身不画边框，避免容器与输入框两道描边；聚焦时由外框换描边色。
+/// 输入框自身不画边框，避免容器与输入框两道描边；聚焦时由外框换描边色并显示主题 outline。
 pub(crate) fn search_field(
     value: Signal<String>,
     placeholder: impl Fn() -> String + 'static,
@@ -241,8 +241,8 @@ fn search_field_inner(
 
 /// 输入框外框：所有"容器 + 内部输入框"的字段共用同一套高度、内距、圆角与描边。
 ///
-/// 焦点落在内部输入框上，所以边框用 `focus_within` 变主题色；写在容器上的
-/// `focus_visible` 永远不会触发（此前"聚焦时边框不变色"就是它）。
+/// 焦点落在内部输入框上，所以外框用 `focus_within` 变强调色并显示主题 outline；
+/// 写在容器上的 `focus_visible` 不会触发。
 fn field_frame(children: Vec<AnyElement>) -> impl IntoElement {
     let mut frame = view()
         .w_full()
@@ -255,14 +255,19 @@ fn field_frame(children: Vec<AnyElement>) -> impl IntoElement {
         .border_1()
         .border_color(move || design::field_border())
         .bg(move || design::field())
-        .focus_within(move |style| style.border_color(move || design::accent()));
+        .focus_within(move |style| {
+            style
+                .border_color(move || design::accent())
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        });
     for child in children {
         frame = frame.child(child);
     }
     return frame;
 }
 
-/// 共用外观：描边、底色与 13pt 文字；聚焦换描边色，错误换危险色。
+/// 共用外观：描边、底色与文字；聚焦换描边色并显示主题 outline，错误换危险色。
 fn style_input(
     input: nsh_core::element::Input,
     invalid: bool,
@@ -292,9 +297,17 @@ fn style_input(
         .text_size(px(text_size))
         .text_color(move || design::text());
     if let Some(line_height) = line_height {
-        return input
-            .line_height(px(line_height))
-            .focus(move |style| style.border_color(move || design::accent()));
+        return input.line_height(px(line_height)).focus(move |style| {
+            style
+                .border_color(move || design::accent())
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        });
     }
-    return input.focus(move |style| style.border_color(move || design::accent()));
+    return input.focus(move |style| {
+        style
+            .border_color(move || design::accent())
+            .outline(px(ui::FOCUS_WIDTH))
+            .outline_color(move || ui::focus_color())
+    });
 }

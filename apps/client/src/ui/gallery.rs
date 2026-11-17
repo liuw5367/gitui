@@ -178,14 +178,16 @@ fn body(
                     .flex_col()
                     .gap(px(ui::GAP_LG))
                     .child(ui::field::field(
-                        move || "Normal field".to_string(),
+                        move || "Text field focus outline".to_string(),
                         ui::text_input::text_input(
                             input_value,
                             move || "Type here".to_string(),
                             false,
                             |_text| {},
                         ),
-                        Some(Box::new(move || "11pt help text".to_string())),
+                        Some(Box::new(move || {
+                            "Tab here to inspect the 2pt theme focus ring.".to_string()
+                        })),
                         None,
                     ))
                     .child(ui::field::field(
@@ -223,7 +225,20 @@ fn body(
                         None,
                     ))
                     .child(ui::field::field(
-                        move || "Multiline".to_string(),
+                        move || "Search focus outline".to_string(),
+                        ui::text_input::search_field(
+                            input_value,
+                            move || "Search repositories".to_string(),
+                            Some("⌘F"),
+                            |_text| {},
+                        ),
+                        Some(Box::new(move || {
+                            "The outer frame follows the focused search input.".to_string()
+                        })),
+                        None,
+                    ))
+                    .child(ui::field::field(
+                        move || "Multiline focus outline".to_string(),
                         ui::text_input::text_area(
                             area_value,
                             move || "Description".to_string(),
@@ -231,7 +246,9 @@ fn body(
                             false,
                             |_text| {},
                         ),
-                        None,
+                        Some(Box::new(move || {
+                            "Focus the editor to inspect the theme ring.".to_string()
+                        })),
                         None,
                     )),
             ))
