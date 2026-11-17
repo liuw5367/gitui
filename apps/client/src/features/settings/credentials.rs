@@ -396,8 +396,10 @@ fn select_control(
             })
         })
         .collect();
-    return ui::select::select(options, selected, Some(210.0), move |id| on_select(id))
-        .into_element();
+    return ui::select::select(options, selected, Some(210.0), false, move |id| {
+        on_select(id)
+    })
+    .into_element();
 }
 
 fn setting_row(

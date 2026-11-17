@@ -1,13 +1,8 @@
-//! 下拉选择：28 高描边字段 + 当前值 + chevron，点按弹出系统菜单。
-//!
-//! 设计板的 `.set-select` 是原生 select；NSH 0.5.0 没有可从 Rust 直接套皮的
-//! select trigger，因此这里用 `nsh_base::button` 提供焦点 / 无障碍 / 禁用态，
-//! 用系统 `NSMenu` 提供真正的原生弹出列表。外观与 26 高的字段一致，高度按
-//! `DEVIATIONS #4` 取系统控件刻度 28。
+//! 下拉选择：行为来自 NSH Select，触发器与选项样式由应用统一提供。
 
 use crate::design;
 use crate::ui;
-use nsh_core::element::desktop::MenuItem;
+use nsh_base::{SelectEntry, SelectItem};
 use nsh_core::prelude::*;
 use std::rc::Rc;
 
@@ -31,6 +26,7 @@ pub(crate) fn select(
     options: Vec<SelectOption>,
     selected: impl Into<SharedString>,
     width: Option<f32>,
+    disabled: bool,
     on_select: impl Fn(&'static str) + 'static,
 ) -> impl IntoElement {
     let options = Rc::new(options);
@@ -42,11 +38,17 @@ pub(crate) fn select(
         .find(|option| option.id == selected.as_ref())
         .map(|option| (option.label)())
         .unwrap_or_default();
-    let accessibility = current.clone();
-    let for_menu = options.clone();
+    let accessibility = SharedString::from(current);
+    let items = options
+        .iter()
+        .map(|option| SelectItem::new(option.id, (option.label)()))
+        .collect::<Vec<_>>();
+    let trigger_options = options.clone();
+    let trigger_selected = selected.clone();
+    let change_options = options.clone();
     let choose = on_select.clone();
-    let mut field = nsh_base::button()
-        .accessibility_label(Some(SharedString::from(accessibility)))
+
+    let mut trigger = view()
         .h(px(ui::CONTROL))
         .px(px(8.0))
         .flex_row()
@@ -62,31 +64,12 @@ pub(crate) fn select(
                 .outline(px(ui::FOCUS_WIDTH))
                 .outline_color(move || ui::focus_color())
         })
-        .on_press(move |_: &()| {
-            let items: Vec<MenuItem> = for_menu
-                .iter()
-                .map(|option| {
-                    let label = (option.label)();
-                    let id = option.id;
-                    let choose = choose.clone();
-                    return MenuItem::new(label)
-                        .checked(id == selected_id.as_ref())
-                        .on_select(move || choose(id));
-                })
-                .collect();
-            let _ = nsh_core::element::desktop::popup_menu(items);
-        });
-    if let Some(width) = width {
-        field = field.w(px(width)).flex_shrink_0();
-    } else {
-        field = field.w_full();
-    }
-    return field
+        .style_when(move || disabled, |style| style.opacity(0.45))
         .child(
             text(move || {
-                options
+                trigger_options
                     .iter()
-                    .find(|option| option.id == selected.as_ref())
+                    .find(|option| option.id == trigger_selected.as_ref())
                     .map(|option| (option.label)())
                     .unwrap_or_default()
             })
@@ -102,4 +85,47 @@ pub(crate) fn select(
             ui::icon::IconSize::Compact,
             design::text3,
         ));
+    if let Some(width) = width {
+        trigger = trigger.w(px(width)).flex_shrink_0();
+    } else {
+        trigger = trigger.w_full();
+    }
+
+    return nsh_base::select()
+        .items(items)
+        .value(move || Some(selected_id.clone()))
+        .on_change(move |value: &Option<SharedString>| {
+            let Some(value) = value else {
+                return;
+            };
+            if let Some(option) = change_options
+                .iter()
+                .find(|option| option.id == value.as_ref())
+            {
+                choose(option.id);
+            }
+        })
+        .disabled(disabled)
+        .accessibility_label(accessibility)
+        .offset(px(4.0))
+        .popup_style(|style| {
+            style
+                .p(px(4.0))
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(move || design::line())
+                .bg(move || design::token("popover"))
+                .text_color(move || design::text())
+                .shadow_md()
+        })
+        .item_class("rounded-md focus:bg-accent selected:font-medium disabled:opacity-50")
+        .render_item(|item: &SelectEntry| {
+            view().h(px(ui::CONTROL)).px(px(8.0)).items_center().child(
+                text(item.title.clone())
+                    .text_size(px(ui::SECONDARY))
+                    .line_height(px(ui::CONTROL))
+                    .text_color(move || design::text()),
+            )
+        })
+        .trigger(trigger);
 }

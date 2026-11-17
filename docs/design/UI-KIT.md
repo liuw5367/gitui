@@ -52,6 +52,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | `icon_button` / `icon_button_tuned` | `ui/button.rs` | 同上 | 同上 | 同上；`label` 必填 |
 | `icon_view` | `ui/icon.rs` | `svg` | `Compact` 11 / `Button` 12 / `Inline` 13 / `Toolbar` 16 | — |
 | `text_input` / `text_area` / `text_input_bound` / `search_field` | `ui/text_input.rs` | `nsh_base::input` | 单行 28；多行高度自定 | focus、invalid |
+| `select` | `ui/select.rs` | `nsh_base::select` + 自定义触发器 | 高 28；弹出选项列表 | 选中、键盘导航、focus、disabled |
 | `field` / `label` / `help` / `error` | `ui/field.rs` | `view` + `text` | 标签 13 + 控件 + 说明/错误 11 | invalid |
 | `check_row` / `check_inline` / `check_group` | `ui/check.rs` | `nsh_base::checkbox` | 行 28；指示器 14（inline 12–14） | checked、disabled |
 | `check_row_button` | `ui/check.rs` | `nsh_base::button` + 自绘方框 | 行 28 | 按压切换；用于会被 `dynamic` 重建的表单（避开 `Prop` 销毁） |
@@ -67,7 +68,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | `settings_section` / `settings_section_titled` | `ui/setting_row.rs` | `view` + `text` | 段标题 15/600；分段线到上一行 9、到标题 16（上一行自带 11 底内距） | 首段无分段线；标题右侧可带分段计数 |
 | `pane_header` / `section_label` / `empty` / `skeleton_row` | `ui/section.rs` | `view` + `text` | 28 / 24 | — |
 | `banner` / `banner_sized` / `progress` / `card` | `ui/feedback.rs` | `nsh_base::progress` | `BannerTone` 六档：Info / Warning / Danger / Accent / Neutral / Highlight | 确定与不确定进度 |
-| `dialog` / `scrim` / `modality` / `confirm_destructive` / `notice` | `ui/dialog.rs` | `view` + 遮罩 | 页头 44、页脚 48、正文内距 16，最大高 760 | — |
+| `dialog` / `modal` / `confirm_destructive` / `notice` | `ui/dialog.rs` | `nsh_base::dialog` + 应用遮罩 | 页头 44、页脚 48、正文内距 16，最大高 760 | Esc、取消回调、遮罩点击 |
 | `diff_surface` | `ui/diff_surface.rs` | `nsh_base::DiffView` | 分栏 / 统一；软换行、折叠 | hunk 动作回调 |
 | `split` / `Pane` | `ui/split.rs` | `h_resizable` / `v_resizable` | 横向 / 纵向；`fixed` / `flex`，`.min()` / `.max()` | 拖拽、把手焦点 |
 | `menu` / `menu_button` | `ui/menu.rs` | 系统 `NSMenu` | `action` / `checkable` / `danger` / `divider` / `section` | 启用、勾选 |
@@ -96,6 +97,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | 行级点击 | `ui::row::row(caption, subtitle, leading, trailing, selected, disabled, on_press)` |
 | 面板内切视图 | `ui::tabs::tabs(items, selected, on_select)` |
 | 表单里 2–4 选一 | `ui::segmented::segmented(items, selected, on_select)` |
+| 下拉单选 | `ui::select::select(options, selected, width, disabled, on_select)` |
 
 ### 输入
 
@@ -139,8 +141,10 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | disabled | 透明度 0.45，且不再接收按压 |
 | invalid | 描边换危险色 + 一行 11pt 错误文案 |
 
-无障碍 role、选中与禁用状态来自 `nsh_base`；图标按钮由 `icon_button` 传
-`accessibility_label`；表格、树、页签的 role 由各自的 `nsh_base` 组件提供。
+Select 的 combobox/listbox/option role、键盘导航、选中与禁用状态来自
+`nsh_base::select`；对话框的呈现、Escape 与取消语义来自 `nsh_base::dialog`。
+其余无障碍 role、选中与禁用状态也来自 `nsh_base`；图标按钮由 `icon_button` 传
+`accessibility_label`，表格、树、页签的 role 由各自的 NSH 组件提供。
 
 选中行使用 `sel` 底色 + 正文色 `text`，保证对比度；`sel-strong` 不再被页面引用。
 

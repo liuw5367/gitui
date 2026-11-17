@@ -258,6 +258,7 @@ pub(super) fn general(
                         update_options,
                         settings.update_mode.clone(),
                         Some(210.0),
+                        false,
                         {
                             let set_update_mode = set_update_mode.clone();
                             move |id| set_update_mode(id.to_string())
@@ -335,7 +336,7 @@ pub(super) fn general(
                 language,
                 "settings.language",
                 None,
-                ui::select::select(language_options, language_selected, Some(210.0), {
+                ui::select::select(language_options, language_selected, Some(210.0), false, {
                     let set_language = set_language.clone();
                     move |id| set_language(id)
                 })
@@ -353,20 +354,17 @@ pub(super) fn general(
                 let language = language;
                 move || i18n::t(language.get().as_str(), "settings.onLaunchHint")
             })),
-            view()
-                .w_full()
-                .flex_col()
-                .child(setting_row(
-                    language,
-                    "settings.launchBehavior",
-                    None,
-                    ui::select::select(launch_options, launch_selected, Some(210.0), {
-                        let set_launch = set_launch_restore.clone();
-                        move |id| set_launch(id == "restore")
-                    })
-                    .into_element(),
-                    false,
-                )),
+            view().w_full().flex_col().child(setting_row(
+                language,
+                "settings.launchBehavior",
+                None,
+                ui::select::select(launch_options, launch_selected, Some(210.0), false, {
+                    let set_launch = set_launch_restore.clone();
+                    move |id| set_launch(id == "restore")
+                })
+                .into_element(),
+                false,
+            )),
         ))
         .child(ui::setting_row::settings_section(
             false,
@@ -385,10 +383,16 @@ pub(super) fn general(
                     language,
                     "settings.dateFormat",
                     Some("settings.dateFormatHint"),
-                    ui::select::select(date_options, settings.date_format.clone(), Some(210.0), {
-                        let set_style = set_date_style.clone();
-                        move |id| set_style(crate::i18n::DateStyle::from_id(id))
-                    })
+                    ui::select::select(
+                        date_options,
+                        settings.date_format.clone(),
+                        Some(210.0),
+                        false,
+                        {
+                            let set_style = set_date_style.clone();
+                            move |id| set_style(crate::i18n::DateStyle::from_id(id))
+                        },
+                    )
                     .into_element(),
                     true,
                 ))

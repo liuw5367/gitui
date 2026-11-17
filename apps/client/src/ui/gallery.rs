@@ -19,6 +19,7 @@ pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
     let checked = signal(true);
     let switched = signal(false);
     let segment = signal(SharedString::from("history"));
+    let select_value = signal(SharedString::from("history"));
     let dialog_open = signal(false);
     return view()
         .absolute()
@@ -36,6 +37,7 @@ pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
                 checked,
                 switched,
                 segment,
+                select_value,
                 dialog_open,
             )
             .into_element();
@@ -48,6 +50,7 @@ fn body(
     checked: Signal<bool>,
     switched: Signal<bool>,
     segment: Signal<SharedString>,
+    select_value: Signal<SharedString>,
     dialog_open: Signal<bool>,
 ) -> impl IntoElement {
     let close = move || segment.set(SharedString::from("history"));
@@ -361,7 +364,43 @@ fn body(
                             move |id| segment.set(SharedString::from(id)),
                         )
                         .into_element();
-                    })),
+                    }))
+                    .child(
+                        view()
+                            .w_full()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(ui::GAP))
+                            .child(dynamic(move || {
+                                return ui::select::select(
+                                    vec![
+                                        ui::select::SelectOption::new("history", || {
+                                            "History".to_string()
+                                        }),
+                                        ui::select::SelectOption::new("changes", || {
+                                            "Changes".to_string()
+                                        }),
+                                        ui::select::SelectOption::new("refs", || {
+                                            "References".to_string()
+                                        }),
+                                    ],
+                                    select_value.get(),
+                                    Some(210.0),
+                                    false,
+                                    move |id| select_value.set(SharedString::from(id)),
+                                )
+                                .into_element();
+                            }))
+                            .child(ui::select::select(
+                                vec![ui::select::SelectOption::new("disabled", || {
+                                    "Disabled select".to_string()
+                                })],
+                                "disabled",
+                                Some(210.0),
+                                true,
+                                |_| {},
+                            )),
+                    ),
             ))
             .child(section(
                 "Badges & keys",

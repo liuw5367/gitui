@@ -153,11 +153,16 @@ pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
             })
         })
         .collect::<Vec<SelectOption>>();
-    let model_select =
-        ui::select::select(model_options, settings.agent_model.clone(), Some(210.0), {
+    let model_select = ui::select::select(
+        model_options,
+        settings.agent_model.clone(),
+        Some(210.0),
+        false,
+        {
             let cmd = cmd.clone();
             move |id| cmd.update_settings(|settings| settings.agent_model = id.to_string())
-        });
+        },
+    );
     let send_diffs = ui::check::check_control(
         move || i18n::t(language.get().as_str(), "settings.agentSendDiffs"),
         settings.agent_send_diffs,

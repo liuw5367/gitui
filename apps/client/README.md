@@ -30,7 +30,7 @@ APP_HOME=/tmp/app-home nsh run
 | `src/shell/` | 标题栏（仓库标签页）、工具栏、状态栏与状态横幅 |
 | `src/features/` | 功能切片：`state`（信号集合）、`commands`（用例）、`view`（渲染）与 `ops`（对 `Tab` 的写操作）；欢迎、历史、变更、提交、引用、同步、冲突、恢复、Agent、设置与搜索各一目录 |
 | `src/shared/` | 跨功能件：diff 视图与显示开关（`diff.rs`）、平台查询（`os.rs`） |
-| `src/ui/` | 应用自有的组件层：按钮、输入、表格、树、分段、菜单、弹层与反馈 |
+| `src/ui/` | 应用自有的组件层：按钮、输入、选择、表格、树、分段、菜单、弹层与反馈 |
 | `src/app/` | 应用组装层：引导与首屏（`bootstrap.rs`）、主窗口版式（`workspace.rs`）、菜单（`menu.rs`）、快捷键（`hotkeys.rs`）、窗口与会话持久化（`windows.rs`）、标签页壳（`session.rs`）、句柄集合（`handles.rs`）与跨功能写操作（`ops.rs`） |
 | `src/i18n.rs` | 读取 `locales/*.json`，按当前语言取文案 |
 | `src/shortcuts.rs` | 快捷键注册表：默认值、改键与显示 |
