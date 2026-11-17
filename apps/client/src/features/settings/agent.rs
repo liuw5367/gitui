@@ -1,228 +1,461 @@
-//! 设置页的 Agent 分区（设计板 13）：逐动作的 Ask / Allow / Deny、自动化程度、
-//! 预览时长与受保护分支。
+//! Agent 分区（设计板 23b）：Provider protocol / Endpoint / Model / Privacy 四段十二行。
+//!
+//! 本构建没有 Agent provider 运行时；App key 只保存在本次会话的内存信号里，
+//! 协议、端点、模型与隐私偏好写入 `store::Settings`，不发起网络请求。
 
-use super::view::{option_chip, section_block};
+use super::commands::SettingsCommands;
 use crate::design;
-use crate::features::agent::commands::AgentCommands;
-use crate::features::agent::state::AgentState;
 use crate::i18n;
+use crate::ui;
+use crate::ui::select::SelectOption;
 use nsh_core::prelude::*;
 
-/// Agent 权限分区（设计板 13）：逐动作的 Ask / Allow / Deny，并说明边界。
-///
-/// 状态与用例都来自 `features::agent`（面板用同一份）：设置页只读状态、调用其
-/// 用例，agent 不反向依赖设置页。
-pub(super) fn agent_page(
-    language: Signal<SharedString>,
-    state: &AgentState,
-    cmd: &AgentCommands,
-    branches: Vec<String>,
-) -> AnyElement {
-    let policies = state.policies;
-    let settings = state.settings;
-    // `dynamic` 与按钮回调都是 `'static`，用例先克隆一份。
-    let page_cmd = cmd.clone();
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for action in [
-        agent::Action::StageAll,
-        agent::Action::Commit,
-        agent::Action::UnstageAll,
-        agent::Action::Fetch,
-        agent::Action::Pull,
-        agent::Action::Push,
-        agent::Action::Discard,
-        agent::Action::ReadFiles,
-        agent::Action::ForcePush,
-    ] {
-        let set_permission = page_cmd.clone();
-        rows.push(
-            view()
-                .w_full()
-                .h(px(28.0))
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .child(
-                    text(move || i18n::t(language.get().as_str(), agent_action_key(action)))
-                        .flex_1()
-                        .text_size(px(crate::ui::BODY))
-                        .line_height(px(15.0))
-                        .text_color(move || design::text()),
-                )
-                .child(
-                    text(move || {
-                        if action.is_destructive() {
-                            i18n::t(language.get().as_str(), "agentPage.destructive")
-                        } else {
-                            String::new()
-                        }
-                    })
-                    .text_size(px(crate::ui::META))
-                    .text_color(move || design::danger()),
-                )
-                .child(crate::ui::button::button(
-                    move || {
-                        i18n::t(
-                            language.get().as_str(),
-                            match policies.get().permission(action) {
-                                agent::Permission::Ask => "agent.ask",
-                                agent::Permission::Allow => "agent.allow",
-                                agent::Permission::Deny => "agent.deny",
-                            },
-                        )
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    {
-                        let set_permission = set_permission.clone();
-                        move || {
-                            let next = match policies.get_untracked().permission(action) {
-                                agent::Permission::Ask => agent::Permission::Allow,
-                                agent::Permission::Allow => agent::Permission::Deny,
-                                agent::Permission::Deny => agent::Permission::Ask,
-                            };
-                            set_permission.set_agent_permission(action, next);
-                        }
-                    },
-                ))
-                .into_element(),
-        );
-    }
-    // 自动化程度：Off / Commit / Commit & Push。
-    let automation_rows: Vec<AnyElement> = [
-        agent::Automation::Off,
-        agent::Automation::Commit,
-        agent::Automation::CommitAndPush,
-    ]
-    .iter()
-    .map(|mode| {
-        let mode = *mode;
-        let active = settings.get_untracked().automation == mode;
-        let set_automation = page_cmd.clone();
-        let language = language;
-        return option_chip(
-            move || i18n::t(language.get().as_str(), automation_key(mode)),
-            active,
-            move || set_automation.set_automation(mode),
-        )
-        .into_element();
-    })
-    .collect();
+const OPENAI_MODELS: [&str; 3] = ["gpt-4.1", "gpt-4o-mini", "o4-mini"];
+const ANTHROPIC_MODELS: [&str; 3] = [
+    "claude-sonnet-4-5",
+    "claude-opus-4-1",
+    "claude-haiku-4-5",
+];
 
-    // 预览时长：0 / 3 / 5 / 8 秒。
-    let review_rows: Vec<AnyElement> = agent::Settings::REVIEW_CHOICES
+pub(super) fn agent_page(cmd: SettingsCommands) -> AnyElement {
+    let language = cmd.language;
+    let settings = cmd.state.settings_state.get_untracked();
+    let base_url = cmd.state.agent_base_url;
+    let app_key = cmd.state.agent_app_key;
+    let temperature = cmd.state.agent_temperature;
+    let max_tokens = cmd.state.agent_max_tokens;
+    let protocol = settings.agent_protocol.clone();
+    let resolved = resolved_endpoint(settings.agent_base_url.as_str(), protocol.as_str());
+    let wire = wire_format(protocol.as_str()).to_string();
+    let models = model_ids(protocol.as_str());
+    let protocol_options = ui::segmented::segmented(
+        vec![
+            ui::segmented::Segment {
+                id: "openai",
+                label: Box::new({
+                    let language = language;
+                    move || i18n::t(language.get().as_str(), "settings.agentOpenAI")
+                }),
+            },
+            ui::segmented::Segment {
+                id: "anthropic",
+                label: Box::new({
+                    let language = language;
+                    move || i18n::t(language.get().as_str(), "settings.agentAnthropic")
+                }),
+            },
+        ],
+        protocol.clone(),
+        {
+            let cmd = cmd.clone();
+            move |id| {
+                let models = model_ids(id);
+                cmd.update_settings(|settings| {
+                    settings.agent_protocol = id.to_string();
+                    if !models.contains(&settings.agent_model.as_str()) {
+                        settings.agent_model = models[0].to_string();
+                    }
+                });
+            }
+        },
+    );
+    let base_field = ui::text_input::text_input_bound_commit(
+        move || base_url.get(),
+        move || i18n::t(language.get().as_str(), "settings.agentBaseUrlPlaceholder"),
+        false,
+        false,
+        {
+            let base_url = base_url;
+            move |text: String| base_url.set(text)
+        },
+        {
+            let cmd = cmd.clone();
+            let base_url = base_url;
+            move || {
+                let value = base_url.get_untracked().trim().trim_end_matches('/').to_string();
+                cmd.update_settings(|settings| settings.agent_base_url = value.clone());
+                base_url.set(value);
+            }
+        },
+    );
+    let key_field = ui::text_input::masked_input(
+        app_key,
+        move || i18n::t(language.get().as_str(), "settings.agentAppKeyPlaceholder"),
+        move |text: String| app_key.set(text),
+    );
+    let temperature_field = ui::text_input::text_input_bound_commit(
+        move || temperature.get(),
+        move || "0.2".to_string(),
+        false,
+        false,
+        {
+            let temperature = temperature;
+            move |text: String| temperature.set(text)
+        },
+        {
+            let cmd = cmd.clone();
+            let temperature = temperature;
+            move || {
+                let raw = temperature.get_untracked();
+                let Ok(value) = raw.trim().parse::<f32>() else {
+                    let fallback = cmd
+                        .state
+                        .settings_state
+                        .get_untracked()
+                        .agent_temperature
+                        .to_string();
+                    temperature.set(fallback);
+                    return;
+                };
+                let value = value.clamp(0.0, 2.0);
+                cmd.update_settings(|settings| settings.agent_temperature = value);
+                temperature.set(value.to_string());
+            }
+        },
+    );
+    let max_tokens_field = ui::text_input::text_input_bound_commit(
+        move || max_tokens.get(),
+        move || "4096".to_string(),
+        false,
+        false,
+        {
+            let max_tokens = max_tokens;
+            move |text: String| max_tokens.set(text)
+        },
+        {
+            let cmd = cmd.clone();
+            let max_tokens = max_tokens;
+            move || {
+                let raw = max_tokens.get_untracked();
+                let Ok(value) = raw.trim().parse::<u32>() else {
+                    let fallback = cmd
+                        .state
+                        .settings_state
+                        .get_untracked()
+                        .agent_max_tokens
+                        .to_string();
+                    max_tokens.set(fallback);
+                    return;
+                };
+                let value = value.clamp(1, 32_768);
+                cmd.update_settings(|settings| settings.agent_max_tokens = value);
+                max_tokens.set(value.to_string());
+            }
+        },
+    );
+    let model_options = models
         .iter()
-        .map(|millis| {
-            let millis = *millis;
-            let active = settings.get_untracked().review_millis == millis;
-            let set_review = page_cmd.clone();
-            let language = language;
-            let label = if millis == 0 {
-                i18n::t(language.get_untracked().as_str(), "agentPage.reviewNone")
-            } else {
-                format!("{}s", millis / 1000)
-            };
-            return option_chip(move || label.clone(), active, move || {
-                set_review.set_review_millis(millis)
+        .map(|id| {
+            let id = *id;
+            SelectOption::new(id, {
+                let language = language;
+                move || model_label(language, id)
             })
-            .into_element();
         })
-        .collect();
-
-    // 受保护分支：列出本地分支，点一下切换保护状态。
-    let protected_rows: Vec<AnyElement> = branches
-        .iter()
-        .map(|branch| {
-            let name = branch.clone();
-            let checked = settings.get_untracked().is_protected(name.as_str());
-            let toggle = page_cmd.clone();
-            let language = language;
-            let label = name.clone();
-            let _ = language;
-            return crate::ui::check::check_row(move || label.clone(), checked, false, {
-                let name = name.clone();
-                move |_next: bool| toggle.toggle_protected_branch(name.clone())
-            })
-            .into_element();
-        })
-        .collect();
-
-    let mut block = view()
+        .collect::<Vec<SelectOption>>();
+    let model_select = ui::select::select(
+        model_options,
+        settings.agent_model.clone(),
+        Some(210.0),
+        {
+            let cmd = cmd.clone();
+            move |id| cmd.update_settings(|settings| settings.agent_model = id.to_string())
+        },
+    );
+    let send_diffs = ui::check::check_control(
+        move || i18n::t(language.get().as_str(), "settings.agentSendDiffs"),
+        settings.agent_send_diffs,
+        false,
+        {
+            let cmd = cmd.clone();
+            let value = settings.agent_send_diffs;
+            move |_next: bool| {
+                cmd.update_settings(|settings| settings.agent_send_diffs = !value)
+            }
+        },
+    );
+    let send_path = ui::check::check_control(
+        move || i18n::t(language.get().as_str(), "settings.agentSendRepositoryPath"),
+        settings.agent_send_repository_path,
+        false,
+        {
+            let cmd = cmd.clone();
+            let value = settings.agent_send_repository_path;
+            move |_next: bool| {
+                cmd.update_settings(|settings| settings.agent_send_repository_path = !value)
+            }
+        },
+    );
+    return view()
         .w_full()
         .flex_col()
-        .gap(px(10.0))
-        .child(
-            text(move || i18n::t(language.get().as_str(), "agentPage.hint"))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(rows)
-        .child(section_block(
-            language,
-            "agentPage.automation",
-            "agentPage.automationHint",
-            view()
-                .w_full()
-                .flex_row()
-                .gap(px(2.0))
-                .child(automation_rows)
-                .into_element(),
-        ))
-        .child(section_block(
-            language,
-            "agentPage.review",
-            "agentPage.reviewHint",
-            view()
-                .w_full()
-                .flex_row()
-                .gap(px(2.0))
-                .child(review_rows)
-                .into_element(),
-        ));
-    if !protected_rows.is_empty() {
-        block = block.child(section_block(
-            language,
-            "agentPage.protected",
-            "agentPage.protectedHint",
+        .child(ui::setting_row::settings_section(
+            true,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentProvider")
+            },
+            Some(Box::new({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentProviderHint")
+            })),
             view()
                 .w_full()
                 .flex_col()
-                .gap(px(2.0))
-                .child(protected_rows)
-                .into_element(),
-        ));
-    }
-    return block
-        .child(
-            text(move || i18n::t(language.get().as_str(), "agentPage.boundary"))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text3()),
-        )
+                .child(setting_row(
+                    language,
+                    "settings.agentProtocol",
+                    Some("settings.agentProtocolHint"),
+                    protocol_options.into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentWire",
+                    Some("settings.agentWireHint"),
+                    mono(wire, language),
+                    false,
+                )),
+        ))
+        .child(ui::setting_row::settings_section(
+            false,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentEndpoint")
+            },
+            Some(Box::new({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentEndpointHint")
+            })),
+            view()
+                .w_full()
+                .flex_col()
+                .child(setting_row(
+                    language,
+                    "settings.agentBaseUrl",
+                    Some("settings.agentBaseUrlHint"),
+                    view().w(px(280.0)).flex_shrink_0().child(base_field).into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentResolved",
+                    Some("settings.agentResolvedHint"),
+                    mono(resolved, language),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentAppKey",
+                    Some("settings.agentAppKeyHint"),
+                    view().w(px(280.0)).flex_shrink_0().child(key_field).into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentConnection",
+                    Some("settings.agentConnectionHint"),
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(ui::button::button(
+                            move || i18n::t(language.get().as_str(), "settings.agentTest"),
+                            ui::button::ButtonVariant::Secondary,
+                            ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let cmd = cmd.clone();
+                                move || cmd.test_agent_connection()
+                            },
+                        ))
+                        .child(
+                            text(move || {
+                                i18n::t(language.get().as_str(), "settings.agentNotTested")
+                            })
+                            .text_size(px(ui::SECONDARY))
+                            .text_color(move || design::text3()),
+                        )
+                        .into_element(),
+                    false,
+                )),
+        ))
+        .child(ui::setting_row::settings_section(
+            false,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentModelSection")
+            },
+            Some(Box::new({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentModelSectionHint")
+            })),
+            view()
+                .w_full()
+                .flex_col()
+                .child(setting_row(
+                    language,
+                    "settings.agentModel",
+                    Some("settings.agentModelHint"),
+                    model_select.into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentTemperature",
+                    Some("settings.agentTemperatureHint"),
+                    view()
+                        .w(px(80.0))
+                        .flex_shrink_0()
+                        .child(temperature_field)
+                        .into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentMaxTokens",
+                    Some("settings.agentMaxTokensHint"),
+                    view()
+                        .w(px(90.0))
+                        .flex_shrink_0()
+                        .child(max_tokens_field)
+                        .into_element(),
+                    false,
+                )),
+        ))
+        .child(ui::setting_row::settings_section(
+            false,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentPrivacy")
+            },
+            Some(Box::new({
+                let language = language;
+                move || i18n::t(language.get().as_str(), "settings.agentPrivacyHint")
+            })),
+            view()
+                .w_full()
+                .flex_col()
+                .child(setting_row(
+                    language,
+                    "settings.agentSendDiffs",
+                    Some("settings.agentSendDiffsHint"),
+                    send_diffs.into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentSendRepositoryPath",
+                    Some("settings.agentSendRepositoryPathHint"),
+                    send_path.into_element(),
+                    true,
+                ))
+                .child(setting_row(
+                    language,
+                    "settings.agentLocalLog",
+                    Some("settings.agentLocalLogHint"),
+                    ui::button::button(
+                        move || i18n::t(language.get().as_str(), "settings.agentOpenLog"),
+                        ui::button::ButtonVariant::Secondary,
+                        ui::button::ButtonSize::Small,
+                        false,
+                        {
+                            let cmd = cmd.clone();
+                            move || cmd.open_agent_log()
+                        },
+                    )
+                    .into_element(),
+                    false,
+                )),
+        ))
         .into_element();
 }
 
-/// 自动化程度的文案键。
-fn automation_key(mode: agent::Automation) -> &'static str {
-    return match mode {
-        agent::Automation::Off => "agentPage.autoOff",
-        agent::Automation::Commit => "agentPage.autoCommit",
-        agent::Automation::CommitAndPush => "agentPage.autoCommitPush",
+fn setting_row(
+    language: Signal<SharedString>,
+    title_key: &'static str,
+    hint_key: Option<&'static str>,
+    control: AnyElement,
+    divider: bool,
+) -> AnyElement {
+    let hint = hint_key.map(|key| {
+        Box::new(move || i18n::t(language.get().as_str(), key)) as Box<dyn Fn() -> String>
+    });
+    return ui::setting_row::setting_row(
+        move || i18n::t(language.get().as_str(), title_key),
+        hint,
+        control,
+        divider,
+    )
+    .into_element();
+}
+
+fn mono(text_value: String, language: Signal<SharedString>) -> AnyElement {
+    return text(move || {
+        if text_value.is_empty() {
+            i18n::t(language.get().as_str(), "settings.agentResolvedEmpty")
+        } else {
+            text_value.clone()
+        }
+    })
+    .text_size(px(ui::SECONDARY))
+    .line_height(px(ui::SECONDARY_LINE))
+    .font_family(ui::MONO)
+    .text_color(move || design::text2())
+    .into_element();
+}
+
+fn wire_format(protocol: &str) -> &'static str {
+    return match protocol {
+        "anthropic" => "POST /v1/messages",
+        _ => "POST /v1/chat/completions",
     };
 }
 
-fn agent_action_key(action: agent::Action) -> &'static str {
-    return match action {
-        agent::Action::StageAll => "agent.action.stageAll",
-        agent::Action::Commit => "agent.action.commit",
-        agent::Action::UnstageAll => "agent.action.unstageAll",
-        agent::Action::Fetch => "agent.action.fetch",
-        agent::Action::Pull => "agent.action.pull",
-        agent::Action::Push => "agent.action.push",
-        agent::Action::Discard => "agent.action.discard",
-        agent::Action::ReadFiles => "agent.action.readFiles",
-        agent::Action::ForcePush => "agent.action.forcePush",
+fn resolved_endpoint(base: &str, protocol: &str) -> String {
+    let base = base.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return String::new();
+    }
+    return format!("{base}{}", wire_format(protocol).trim_start_matches("POST "));
+}
+
+fn model_ids(protocol: &str) -> &'static [&'static str] {
+    return match protocol {
+        "anthropic" => &ANTHROPIC_MODELS,
+        _ => &OPENAI_MODELS,
     };
+}
+
+fn model_label(language: Signal<SharedString>, id: &'static str) -> String {
+    let key = match id {
+        "gpt-4.1" => "settings.modelGpt41",
+        "gpt-4o-mini" => "settings.modelGpt4oMini",
+        "o4-mini" => "settings.modelO4Mini",
+        "claude-sonnet-4-5" => "settings.modelClaudeSonnet",
+        "claude-opus-4-1" => "settings.modelClaudeOpus",
+        "claude-haiku-4-5" => "settings.modelClaudeHaiku",
+        _ => return id.to_string(),
+    };
+    return i18n::t(language.get().as_str(), key);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn endpoint_and_wire_follow_protocol() {
+        assert_eq!(
+            resolved_endpoint("https://api.openai.com/", "openai"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            resolved_endpoint("https://gateway.example/llm", "anthropic"),
+            "https://gateway.example/llm/v1/messages"
+        );
+        assert_eq!(resolved_endpoint("", "openai"), "");
+        assert_eq!(wire_format("openai"), "POST /v1/chat/completions");
+        assert_eq!(wire_format("anthropic"), "POST /v1/messages");
+    }
 }

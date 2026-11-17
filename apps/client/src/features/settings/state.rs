@@ -89,4 +89,10 @@ pub(crate) struct SettingsState {
     pub(crate) scan_found: Signal<Vec<String>>,
     pub(crate) scan_selected: Signal<Vec<String>>,
     pub(crate) scan_last_at: Signal<Option<i64>>,
+    /// Agent 端点 / 数值字段的编辑值；提交时才写设置。
+    pub(crate) agent_base_url: Signal<String>,
+    pub(crate) agent_temperature: Signal<String>,
+    pub(crate) agent_max_tokens: Signal<String>,
+    /// App key 只保存在本次会话的内存信号里，不进入 Settings / 磁盘。
+    pub(crate) agent_app_key: Signal<String>,
 }

@@ -140,7 +140,7 @@ fn body(
             continue;
         }
         let count = rows.len();
-        let mut section = view()
+        let section = view()
             .w_full()
             .flex_col()
             .mt(px(18.0))

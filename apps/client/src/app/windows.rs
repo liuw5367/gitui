@@ -24,7 +24,6 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     let welcome_open = welcome.session.welcome_open;
     let settings = handles.settings.clone();
     let settings_open = settings.session.settings_open;
-    let agent = handles.agent.clone();
     let tabs = handles.session.tabs;
     let active = handles.session.active;
     let language = handles.language;
@@ -81,7 +80,6 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
                     &settings.state,
                     &settings,
                     tab,
-                    &agent,
                 ));
         });
 

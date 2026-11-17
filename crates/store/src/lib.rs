@@ -133,7 +133,7 @@ pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
 }
 
 /// 应用设置（除语言与外观外的偏好）。
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     /// 变更列表按目录分组（关闭时为平铺路径）。
     pub file_tree: bool,
@@ -153,6 +153,20 @@ pub struct Settings {
     pub date_format: String,
     /// `date_format` 为 `custom` 时使用的 pattern（`%Y-%m-%d` 风格）。
     pub date_pattern: String,
+    /// Agent 的线格式：`openai` / `anthropic`。
+    pub agent_protocol: String,
+    /// Agent 端点的基础 URL（不带尾斜杠）。
+    pub agent_base_url: String,
+    /// Agent 模型 id。
+    pub agent_model: String,
+    /// 采样温度。
+    pub agent_temperature: f32,
+    /// 单次回复上限。
+    pub agent_max_tokens: u32,
+    /// 请求是否携带 diff hunk。
+    pub agent_send_diffs: bool,
+    /// 请求是否携带绝对仓库路径。
+    pub agent_send_repository_path: bool,
 }
 
 impl Default for Settings {
@@ -162,11 +176,18 @@ impl Default for Settings {
             merge_empty_dirs: true,
             compact_single_child: true,
             restore_session: true,
-            update_mode: "manual".to_string(),
+            update_mode: "auto".to_string(),
             use_system_git: true,
             git_path: String::new(),
             date_format: "relative".to_string(),
             date_pattern: "%b %d, %Y".to_string(),
+            agent_protocol: "openai".to_string(),
+            agent_base_url: "https://api.openai.com".to_string(),
+            agent_model: "gpt-4.1".to_string(),
+            agent_temperature: 0.2,
+            agent_max_tokens: 4096,
+            agent_send_diffs: true,
+            agent_send_repository_path: false,
         };
     }
 }
@@ -197,6 +218,19 @@ pub fn load_settings(dir: &Path) -> Settings {
             "git_path" => settings.git_path = value.trim().to_string(),
             "date_format" => settings.date_format = value.trim().to_string(),
             "date_pattern" => settings.date_pattern = value.trim().to_string(),
+            "agent_protocol" => settings.agent_protocol = value.trim().to_string(),
+            "agent_base_url" => settings.agent_base_url = value.trim().to_string(),
+            "agent_model" => settings.agent_model = value.trim().to_string(),
+            "agent_temperature" => {
+                settings.agent_temperature = value.trim().parse().unwrap_or(0.2)
+            }
+            "agent_max_tokens" => {
+                settings.agent_max_tokens = value.trim().parse().unwrap_or(4096)
+            }
+            "agent_send_diffs" => settings.agent_send_diffs = value.trim() != "false",
+            "agent_send_repository_path" => {
+                settings.agent_send_repository_path = value.trim() != "false"
+            }
             _ => {}
         }
     }
@@ -215,6 +249,13 @@ pub fn save_settings(dir: &Path, settings: &Settings) {
         format!("git_path={}", settings.git_path),
         format!("date_format={}", settings.date_format),
         format!("date_pattern={}", settings.date_pattern),
+        format!("agent_protocol={}", settings.agent_protocol),
+        format!("agent_base_url={}", settings.agent_base_url),
+        format!("agent_model={}", settings.agent_model),
+        format!("agent_temperature={}", settings.agent_temperature),
+        format!("agent_max_tokens={}", settings.agent_max_tokens),
+        format!("agent_send_diffs={}", settings.agent_send_diffs),
+        format!("agent_send_repository_path={}", settings.agent_send_repository_path),
     ];
     let _ = write_lines(&settings_file(dir), &lines);
 }
@@ -632,6 +673,13 @@ mod tests {
                 git_path: "/opt/homebrew/bin/git".to_string(),
                 date_format: "custom".to_string(),
                 date_pattern: "%Y/%m/%d".to_string(),
+                agent_protocol: "anthropic".to_string(),
+                agent_base_url: "https://gateway.example".to_string(),
+                agent_model: "claude-sonnet-4-5".to_string(),
+                agent_temperature: 0.7,
+                agent_max_tokens: 8192,
+                agent_send_diffs: false,
+                agent_send_repository_path: true,
             },
         );
         let loaded = load_settings(dir.path());
@@ -645,7 +693,14 @@ mod tests {
         assert!(!loaded.use_system_git);
         assert_eq!(loaded.git_path, "/opt/homebrew/bin/git");
         assert_eq!(loaded.date_pattern, "%Y/%m/%d");
-        assert_eq!(Settings::default().update_mode, "manual");
+        assert_eq!(loaded.agent_protocol, "anthropic");
+        assert_eq!(loaded.agent_base_url, "https://gateway.example");
+        assert_eq!(loaded.agent_model, "claude-sonnet-4-5");
+        assert_eq!(loaded.agent_temperature, 0.7);
+        assert_eq!(loaded.agent_max_tokens, 8192);
+        assert!(!loaded.agent_send_diffs);
+        assert!(loaded.agent_send_repository_path);
+        assert_eq!(Settings::default().update_mode, "auto");
     }
 
     #[test]

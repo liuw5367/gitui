@@ -436,6 +436,14 @@ pub(crate) fn app() -> impl IntoElement {
             scan_found: signal(git_found),
             scan_selected: signal(git_selected),
             scan_last_at: signal(git_last),
+            agent_base_url: signal(settings_state.get_untracked().agent_base_url),
+            agent_temperature: signal(
+                settings_state.get_untracked().agent_temperature.to_string(),
+            ),
+            agent_max_tokens: signal(
+                settings_state.get_untracked().agent_max_tokens.to_string(),
+            ),
+            agent_app_key: signal(String::new()),
         },
         session: session.clone(),
         language,

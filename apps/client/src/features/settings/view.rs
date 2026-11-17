@@ -8,7 +8,6 @@ use super::state::{self, Section, SettingsState};
 use crate::app::session::Tab;
 use crate::brand::{self, ThemeMode};
 use crate::design;
-use crate::features::agent::commands::AgentCommands;
 use crate::i18n;
 use crate::ui;
 use nsh_core::prelude::*;
@@ -23,7 +22,6 @@ pub(crate) fn settings(
     state: &SettingsState,
     cmd: &SettingsCommands,
     tab: Option<Tab>,
-    agent: &AgentCommands,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let section = state.settings_section;
@@ -54,7 +52,6 @@ pub(crate) fn settings(
                     state,
                     cmd,
                     tab,
-                    agent,
                     git_info,
                     last_session,
                 )),
@@ -247,7 +244,6 @@ fn main(
     state: &SettingsState,
     cmd: &SettingsCommands,
     tab: Option<Tab>,
-    agent: &AgentCommands,
     git_info: (String, String, String),
     last_session: Vec<String>,
 ) -> impl IntoElement + use<> {
@@ -260,8 +256,6 @@ fn main(
     let identity_use_global = state.identity_use_global;
     let date_pattern = state.date_pattern;
     let has_repo = tab.is_some();
-    let branches_for_agent = branches(tab.as_ref());
-    let agent_for_page = agent.clone();
     let shortcut_registry = state.shortcut_registry;
     let shortcut_query = state.shortcut_query;
     let recording_shortcut = state.recording_shortcut;
@@ -277,6 +271,7 @@ fn main(
         Arc::new(move |which: &'static str, value: bool| diff.set_tree_flag(which, value))
     };
     let git_cmd = cmd.clone();
+    let agent_cmd = cmd.clone();
     let api = SettingsActions::new(cmd);
     return view().flex_1().min_w_0().h_full().child(
         scroll().w_full().h_full().child(
@@ -297,7 +292,6 @@ fn main(
                 ))
                 .child(dynamic(move || -> AnyElement {
                     let _ = settings_state.get();
-                    let _ = agent_for_page.state.settings.get();
                     let _ = identity_name.get();
                     let _ = identity_email.get();
                     let _ = identity_use_global.get();
@@ -357,13 +351,9 @@ fn main(
                             super::about::credentials_page(language, git_info.clone(), notice)
                                 .into_element()
                         }
-                        Section::Agent => super::agent::agent_page(
-                            language,
-                            &agent_for_page.state,
-                            &agent_for_page,
-                            branches_for_agent.clone(),
-                        )
-                        .into_element(),
+                        Section::Agent => {
+                            super::agent::agent_page(agent_cmd.clone()).into_element()
+                        }
                     }
                 })),
         ),
@@ -379,63 +369,4 @@ fn section_subtitle_key(section: Section) -> &'static str {
         Section::Credentials => "settings.subtitleCredentials",
         Section::About => "settings.subtitleAbout",
     };
-}
-
-/// 设置页的受保护分支列表：取当前仓库的本地分支名。
-fn branches(tab: Option<&Tab>) -> Vec<String> {
-    return tab
-        .map(|tab| {
-            tab.refs
-                .branches
-                .iter()
-                .map(|branch| branch.name.clone())
-                .collect::<Vec<String>>()
-        })
-        .unwrap_or_default();
-}
-
-/// 一组互斥选项里的一个：选中用 Secondary（描边 + 卡片底色），未选中用 Ghost。
-pub(super) fn option_chip(
-    label: impl Fn() -> String + 'static,
-    active: bool,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    let variant = if active {
-        ui::button::ButtonVariant::Secondary
-    } else {
-        ui::button::ButtonVariant::Ghost
-    };
-    return ui::button::button(
-        label,
-        variant,
-        ui::button::ButtonSize::Small,
-        false,
-        on_press,
-    );
-}
-
-pub(super) fn section_block(
-    language: Signal<SharedString>,
-    title_key: &'static str,
-    hint_key: &'static str,
-    body: AnyElement,
-) -> impl IntoElement {
-    return view()
-        .w_full()
-        .flex_col()
-        .gap(px(ui::GAP_SM))
-        .child(
-            text(move || i18n::t(language.get().as_str(), title_key))
-                .text_size(px(ui::BODY))
-                .line_height(px(ui::BODY_LINE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(move || design::text()),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), hint_key))
-                .text_size(px(ui::SECONDARY))
-                .line_height(px(ui::SECONDARY_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(body);
 }

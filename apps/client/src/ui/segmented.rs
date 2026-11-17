@@ -16,10 +16,11 @@ pub(crate) struct Segment {
 /// 分段控件。`selected` 是当前选中段的 `id`。
 pub(crate) fn segmented(
     segments: Vec<Segment>,
-    selected: &'static str,
+    selected: impl Into<SharedString>,
     on_select: impl Fn(&'static str) + 'static,
 ) -> impl IntoElement {
     let on_select = std::rc::Rc::new(on_select);
+    let selected = selected.into();
     let mut tabs = nsh_base::tabs()
         .h(px(ui::CONTROL))
         .flex_row()
@@ -33,7 +34,7 @@ pub(crate) fn segmented(
     for segment in segments {
         let id = segment.id;
         let label = segment.label;
-        let is_selected = id == selected;
+        let is_selected = id == selected.as_ref();
         let press = on_select.clone();
         tabs = tabs.child(
             nsh_base::tab()

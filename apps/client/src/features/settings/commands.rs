@@ -154,6 +154,37 @@ impl SettingsCommands {
         store::save_language(&self.store_dir, next);
     }
 
+    /// 修改任意设置字段并持久化；设置页的通用写入口。
+    pub(crate) fn update_settings(&self, update: impl FnOnce(&mut store::Settings)) {
+        let settings_state = self.state.settings_state;
+        let mut next = settings_state.get_untracked();
+        update(&mut next);
+        settings_state.set(next.clone());
+        store::save_settings(&self.store_dir, &next);
+    }
+
+    /// 测试 Agent 连接：没有 provider 运行时，给出事实性说明。
+    pub(crate) fn test_agent_connection(&self) {
+        crate::interactions::notify(
+            self.notice,
+            i18n::t(
+                self.language.get_untracked().as_str(),
+                "settings.agentTestUnavailable",
+            ),
+        );
+    }
+
+    /// 打开 Agent 日志：当前构建没有 Agent 运行时日志。
+    pub(crate) fn open_agent_log(&self) {
+        crate::interactions::notify(
+            self.notice,
+            i18n::t(
+                self.language.get_untracked().as_str(),
+                "settings.agentLogUnavailable",
+            ),
+        );
+    }
+
     /// 选择 Git 可执行文件；选完写设置并用它探测一次。
     pub(crate) fn choose_git(&self) {
         let pending = pick_paths(nsh_core::file_dialog::OpenDialog::files());
