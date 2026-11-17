@@ -1722,6 +1722,23 @@ fn stash_row(
     let menu_cmd = cmd.clone();
     let menu_oid = oid.clone();
     let menu_reference = reference.clone();
+    let changed_paths = cmd
+        .session
+        .tabs
+        .get_untracked()
+        .iter()
+        .find(|tab| tab.id == tab_id)
+        .map(|tab| {
+            tab.changes
+                .iter()
+                .map(|change| (change.path.clone(), change.untracked))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let can_stash = !changed_paths.is_empty();
+    let menu_stash = cmd.search.clone();
+    let menu_stash_selected = cmd.search.clone();
+    let selected_paths = changed_paths;
     return view()
         .w_full()
         .h(px(metrics::SIDE_ROW_H))
@@ -1732,13 +1749,33 @@ fn stash_row(
         .rounded(px(metrics::RADIUS_CONTROL))
         .hover(|style| style.bg(move || design::hover()))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+            let stash_cmd = menu_stash.clone();
+            let mut items = vec![ui::menu::action(
+                i18n::t(language.get().as_str(), "stash.stashChanges"),
+                can_stash,
+                move || {
+                    stash_cmd.open_form_from_tab(
+                        tab_id,
+                        crate::features::search::FormKind::NewStash,
+                        String::new(),
+                    )
+                },
+            )];
+            let selected_cmd = menu_stash_selected.clone();
+            let selected_paths = selected_paths.clone();
+            items.push(ui::menu::action(
+                i18n::t(language.get().as_str(), "stash.stashSelectedFiles"),
+                can_stash,
+                move || selected_cmd.open_stash_selected_from_tab(tab_id, selected_paths.clone()),
+            ));
+            items.push(ui::menu::divider());
             let apply_cmd = menu_cmd.clone();
             let apply_oid = menu_oid.clone();
-            let mut items = vec![ui::menu::action(
+            items.push(ui::menu::action(
                 i18n::t(language.get().as_str(), "stash.apply"),
                 true,
                 move || apply_cmd.apply_stash_at(tab_id, apply_oid.clone()),
-            )];
+            ));
             let pop_cmd = menu_cmd.clone();
             let pop_oid = menu_oid.clone();
             items.push(ui::menu::action(
