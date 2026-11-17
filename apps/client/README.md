@@ -17,6 +17,7 @@ APP_HOME=/tmp/app-home nsh run
 
 - 应用数据目录默认是 `~/.config/gitui`，由 `src/brand.rs` 的 `STORAGE_DIR` 决定；`APP_HOME` 可以直接覆盖。解析规则见 [store README](../../crates/store/README.md)。
 - 窗口初始内容区 1392×852，与设计板的内容区一致；最小尺寸为 1100×700。
+- 启动行为由设置的 `Launch behavior` 决定：恢复上次会话时按保存顺序打开主窗口标签且不打开欢迎页；空会话或 `Show Welcome` 只显示欢迎窗口。主窗口 `+` 打开欢迎窗口，关闭最后一个标签会清空会话并返回欢迎页；应用退出会保存当前标签顺序和活动仓库。
 - 打包用 `scripts/release-macos.sh`：脚本调用 `nsh package --target macos`，设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 
 ## 结构
@@ -72,7 +73,7 @@ cargo test -p nsh-app        # 等价于在本目录运行 cargo test
 nsh check
 ```
 
-仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 87 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
+仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 91 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
 
 - `features/*/ops`（连同 `app/session.rs`、`app/ops.rs`）：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步、改写、reflog、引用操作、变更清单、冲突解决、过滤与对比、树形选项。
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。

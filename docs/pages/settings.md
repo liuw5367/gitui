@@ -141,6 +141,8 @@ Name/Email 仍是可编辑的实填值；`On launch` 右列三个 `.ref.branch` 
 | Check for updates | 原生 select 26 高 | `Automatically at launch` | Manually / Never |
 | Last session | 三个只读徽章 | `gitui` / `docs-site` / `atlas-web` | 非输入，随会话变化 |
 
+`Launch behavior` 的实际启动规则：选择 `Restore last session` 且有已保存仓库时，按保存顺序恢复标签并恢复原活动仓库，不同时打开欢迎页；没有已保存仓库时只打开欢迎页。选择 `Show Welcome` 会跳过恢复，只打开欢迎页。关闭最后一个仓库后立即保存空会话，因此下一次启动仍进入欢迎页。
+
 ## 10. 与其它画板的关系
 
 | 画板 | 关系 |

@@ -132,6 +132,14 @@ impl WelcomeCommands {
         }
     }
 
+    /// 从最近仓库列表打开，失败时留在欢迎页并把错误放回 Open 表单。
+    pub(crate) fn open_recent(&self, path: String) {
+        self.state.form.set(RepoForm::Open);
+        self.state.open_path.set(path);
+        self.state.open_error.set(None);
+        self.open_repository();
+    }
+
     /// 开始克隆（原 `clone_repository`）：逐 100ms 轮询子进程，可取消。
     pub(crate) fn clone_repository(&self) {
         // 按钮在克隆中会被禁用；这里再拦一次，避免键盘重复触发。

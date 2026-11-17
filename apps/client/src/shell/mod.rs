@@ -20,8 +20,6 @@ pub(crate) fn titlebar(
     settings: crate::features::settings::commands::SettingsCommands,
 ) -> impl IntoElement {
     let (left, right) = crate::window_insets();
-    let activate = session.clone();
-    let close = session.clone();
     let open = session;
     return view()
         .w_full()
@@ -43,67 +41,11 @@ pub(crate) fn titlebar(
                 .flex_row()
                 .items_center()
                 .gap(px(4.0))
-                .child(each(
+                .child(crate::ui::tabs::repository_tabs(
                     tabs,
-                    |tab: &Tab| tab.path.clone(),
-                    move |tab, index| {
-                        let activate = activate.clone();
-                        let close = close.clone();
-                        let is_active = move || active.get() == index.get();
-                        view()
-                            .h(px(metrics::RTAB_H))
-                            .px(px(9.0))
-                            .flex_row()
-                            .items_center()
-                            .gap(px(7.0))
-                            .rounded(px(metrics::RADIUS_CONTROL))
-                            .border_1()
-                            .border_color(move || {
-                                if is_active() {
-                                    design::line()
-                                } else {
-                                    AdaptiveColor::TRANSPARENT
-                                }
-                            })
-                            .bg(move || {
-                                if is_active() {
-                                    design::content()
-                                } else {
-                                    AdaptiveColor::TRANSPARENT
-                                }
-                            })
-                            .hover(|style| style.bg(move || design::hover()))
-                            .on_press(move || activate.activate_tab(index.get()))
-                            .child(
-                                text(move || tab.get().label())
-                                    .text_size(px(crate::ui::BODY))
-                                    .line_height(px(crate::ui::BODY_LINE))
-                                    .text_color(move || {
-                                        if is_active() {
-                                            design::text()
-                                        } else {
-                                            design::text2()
-                                        }
-                                    })
-                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
-                            )
-                            .child(
-                                view()
-                                    .w(px(14.0))
-                                    .h(px(14.0))
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded(px(4.0))
-                                    .hover(|style| style.bg(move || design::line_soft()))
-                                    .on_press(move || close.close_tab(index.get()))
-                                    .child(
-                                        text("×")
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                            .text_color(move || design::text3()),
-                                    ),
-                            )
-                    },
+                    active,
+                    open.clone(),
+                    language,
                 ))
                 .child(
                     view()
@@ -113,6 +55,10 @@ pub(crate) fn titlebar(
                         .justify_center()
                         .rounded(px(metrics::RADIUS_CONTROL))
                         .hover(|style| style.bg(move || design::hover()))
+                        .label(SharedString::from(i18n::t(
+                            language.get_untracked().as_str(),
+                            "shell.addTab",
+                        )))
                         .on_press({
                             let open = open.clone();
                             move || open.go_repo_manager()

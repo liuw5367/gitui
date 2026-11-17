@@ -4,6 +4,13 @@ use crate::features::changes::ops::{load_changes, refresh_changes};
 use crate::features::history::ops::select_commit;
 use domain::{Commit, DiffStat, StatusEntry};
 use git::{LogFilter, Refs, Repo};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_tab_id() -> u64 {
+    return NEXT_TAB_ID.fetch_add(1, Ordering::Relaxed);
+}
 
 /// 仓库打不开的原因（决定横幅给哪几个动作）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -20,6 +27,10 @@ pub(crate) enum RepoProblem {
 /// 一个仓库标签页的全部界面状态。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Tab {
+    /// 运行期标签身份。重排和关闭确认使用它，不依赖可变位置或路径。
+    pub(crate) id: u64,
+    /// 每次装载请求的身份。关闭后同路径重开时，旧任务不能覆盖新标签。
+    pub(crate) load_id: u64,
     pub(crate) path: String,
     pub(crate) name: String,
     /// 仓库打不开的原因；正常时为 `None`。
@@ -279,6 +290,8 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
                 _ => RepoProblem::None,
             };
             return Tab {
+                id: next_tab_id(),
+                load_id: next_tab_id(),
                 path: path.to_string(),
                 name: last_segment(path),
                 filter: filter.clone(),
@@ -306,6 +319,8 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         repo.root().display().to_string().as_str(),
     );
     let mut tab = Tab {
+        id: next_tab_id(),
+        load_id: next_tab_id(),
         path: repo.root().display().to_string(),
         name: summary.name,
         branch: summary.branch,
@@ -334,6 +349,8 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
 /// 生成一个「正在加载」的占位标签页：只有路径与名称，列表都是空的。
 pub(crate) fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
     return Tab {
+        id: next_tab_id(),
+        load_id: next_tab_id(),
         path: path.to_string(),
         name: last_segment(path),
         loading: true,
@@ -345,9 +362,13 @@ pub(crate) fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
 
 /// 重新读一遍同一个仓库（初始化后、从别处改过仓库后用）。
 pub(crate) fn reload(tab: &mut Tab) {
+    let id = tab.id;
+    let load_id = next_tab_id();
     let path = tab.path.clone();
     let filter = tab.filter.clone();
     *tab = load_tab(path.as_str(), &filter);
+    tab.id = id;
+    tab.load_id = load_id;
 }
 
 /// 在标签页指向的目录里初始化仓库（设计板 16 的「不是仓库」动作）。

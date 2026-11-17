@@ -10,7 +10,7 @@ use crate::filters::When;
 use crate::{Mode, acceptance, brand, design, features, filters, i18n, shortcuts, ui};
 use git::LogFilter;
 use nsh_base::theme_overrides;
-use nsh_core::desktop::{TitleBarOptions, TitleBarStyle, WindowAttributes};
+use nsh_core::desktop::{CloseReason, TitleBarOptions, TitleBarStyle, WindowAttributes};
 use nsh_core::element::desktop::main_window;
 use nsh_core::element::set_tokens;
 use nsh_core::prelude::*;
@@ -31,6 +31,7 @@ pub(crate) fn app() -> impl IntoElement {
     window.title = Some(brand::PRODUCT_NAME.to_string());
     window.title_bar = Some(title_bar);
     window.min_size = Some(Some(size(Points(1100.0), Points(700.0))));
+    window.close_on_press = Some(false);
     main_window().set(window);
 
     let store_dir = store::default_dir(brand::STORAGE_DIR);
@@ -180,17 +181,15 @@ pub(crate) fn app() -> impl IntoElement {
     let session = store::load_session(&store_dir);
     let initial_settings = settings_state.get_untracked();
     let initial_filter = LogFilter::default();
-    let mut initial_tabs: Vec<Tab> = session
-        .paths
-        .iter()
-        .map(|path| crate::app::session::load_tab(path, &initial_filter))
-        // 打不开的仓库仍保留标签页：横幅给出「重新定位 / 在此初始化」，而不是
-        // 让它在启动时悄悄消失（手册 TC-01）。
-        .filter(|tab| tab.error.is_none() || tab.problem != crate::app::session::RepoProblem::None)
-        .collect();
-    if !initial_settings.restore_session {
-        initial_tabs.clear();
-    }
+    let mut initial_tabs: Vec<Tab> = if initial_settings.restore_session {
+        session
+            .paths
+            .iter()
+            .map(|path| crate::app::session::load_tab(path, &initial_filter))
+            .collect()
+    } else {
+        Vec::new()
+    };
     // 验收与命令行入口：`GITUI_REPO=/path/to/repo` 直接打开指定仓库，
     // 优先于会话恢复。截图验收需要它——没有打开的仓库，历史表与变更页
     // 根本不会渲染，截图只能看到欢迎页。
@@ -210,6 +209,13 @@ pub(crate) fn app() -> impl IntoElement {
         initial_tabs.clear();
     }
     let tabs = signal(initial_tabs);
+    let quit_tabs = tabs;
+    let quit_active = active;
+    let quit_store_dir = store_dir.clone();
+    nsh_core::element::desktop::on_app_quit(move || {
+        crate::persist(&quit_store_dir, quit_active, quit_tabs);
+        async {}
+    });
     // 验收开关：欢迎页的表单与状态；只影响 debug 构建。
     let welcome_state = acceptance::value("GITUI_WELCOME_STATE");
     let welcome_form = acceptance::value("GITUI_WELCOME_FORM");
@@ -300,6 +306,27 @@ pub(crate) fn app() -> impl IntoElement {
         notice,
         language,
     };
+    let close_session = session.clone();
+    main_window().on_close_press(move |reason| {
+        if reason == CloseReason::System {
+            nsh_core::element::desktop::quit();
+        } else {
+            close_session.close_workspace();
+        }
+    });
+    let reopen_session = session.clone();
+    main_window().on_focus_change(move |focused| {
+        if !focused || suppress_welcome || !reopen_session.tabs.get_untracked().is_empty() {
+            return;
+        }
+        main_window().hide();
+        if !reopen_session.welcome_open.get_untracked() && !suppress_welcome {
+            reopen_session.go_welcome();
+        }
+    });
+    if !session.welcome_open.get_untracked() {
+        main_window().show();
+    }
     // 首屏直接落在欢迎页时，列表里的分支 tag 要先按仓库当前 HEAD 刷新一次。
     if session.welcome_open.get_untracked() {
         session.refresh_recent_branches();
@@ -619,13 +646,15 @@ pub(crate) fn app() -> impl IntoElement {
         .overflow_hidden()
         .bg(move || design::content())
         .text_color(move || design::text())
-        .child(
-            view()
-                .w_full()
-                .h_full()
-                .flex_col()
-                .child(crate::app::workspace::workspace(&handles_for_screen)),
-        )
+        .child(dynamic({
+            let tabs = handles_for_screen.session.tabs;
+            move || -> AnyElement {
+                if tabs.get().is_empty() {
+                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                }
+                return crate::app::workspace::workspace(&handles_for_screen).into_element();
+            }
+        }))
         // 两个独立窗口（欢迎、设置）。它们的内容渲染在各自的窗口里。
         .child(crate::app::windows::windows(&handles))
         .child(features::commit::rewrite_dialog::rewrite_dialog(

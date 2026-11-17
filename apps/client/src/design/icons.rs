@@ -17,6 +17,9 @@ pub fn icon(name: &str) -> Option<ImageSrc> {
         "diff" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 2.8v10.4"></path><path d="M2.6 6h3.6"></path><path d="M9.2 9.9h4.4"></path><path d="M4.4 4.4h.01"></path></g></svg>"#
         }
+        "space" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 2.4h4a3.4 3.4 0 0 1 0 6.8h-4a3.4 3.4 0 0 1 0-6.8zM9 2.5v11"></path></g></svg>"#
+        }
         "tag" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 2.6h4.5l6.3 6.3-4.5 4.5-6.3-6.3z"></path><circle cx="5.3" cy="5.3" r=".9" fill="currentColor" stroke="none"></circle></g></svg>"#
         }

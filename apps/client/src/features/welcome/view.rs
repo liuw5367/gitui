@@ -363,7 +363,7 @@ fn repo_row(
     let language_for_menu = language;
     let notice = session.notice;
     let remove = cmd.clone();
-    let open = session;
+    let open = cmd.clone();
     let leading = view()
         .w(px(27.0))
         .h(px(27.0))
@@ -451,7 +451,7 @@ fn repo_row(
         selected,
         false,
         47.0,
-        move || open.open_path(path_for_press.clone()),
+        move || open.open_recent(path_for_press.clone()),
     );
 }
 

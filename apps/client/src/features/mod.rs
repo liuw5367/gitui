@@ -55,6 +55,20 @@ impl SessionHandle {
     /// 先插入一个「加载中」的占位标签页，再在后台读仓库：大仓库的
     /// `git log`/`status` 不再卡住界面，用户也能看到骨架。
     pub(crate) fn open_path(&self, path: String) {
+        let repo = match git::Repo::open(path.trim()) {
+            Ok(repo) => repo,
+            Err(error) => {
+                self.go_welcome();
+                let language = self.language.get_untracked();
+                crate::interactions::alert(
+                    crate::i18n::t(language.as_str(), "welcome.openAction"),
+                    crate::features::welcome::commands::localized_error(language.as_str(), &error),
+                    crate::i18n::t(language.as_str(), "common.close"),
+                );
+                return;
+            }
+        };
+        let path = repo.root().display().to_string();
         let welcome_open = self.welcome_open;
         let tabs = self.tabs;
         let active = self.active;
@@ -66,21 +80,31 @@ impl SessionHandle {
         let existing = list
             .iter()
             .position(|candidate| candidate.path == path.as_str());
-        match existing {
+        let tab_id = match existing {
             Some(index) => {
-                list[index].loading = true;
+                let id = list[index].id;
+                list[index] = crate::app::session::placeholder_tab(path.as_str(), &filter);
+                list[index].id = id;
                 active.set(index);
+                id
             }
             None => {
                 list.push(crate::app::session::placeholder_tab(path.as_str(), &filter));
                 active.set(list.len() - 1);
+                list.last().map(|tab| tab.id).unwrap_or_default()
             }
-        }
+        };
+        let load_id = list
+            .iter()
+            .find(|tab| tab.id == tab_id)
+            .map(|tab| tab.load_id)
+            .unwrap_or_default();
         tabs.set(list);
         store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
         recent.set(store::load_recent(&store_dir));
         // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
         welcome_open.set(false);
+        nsh_core::element::desktop::main_window().show();
         nsh_core::element::desktop::main_window().focus();
         crate::persist(&store_dir, active, tabs);
 
@@ -96,13 +120,16 @@ impl SessionHandle {
             };
             let loaded_path = loaded.path.clone();
             let mut list = tabs.get_untracked();
-            // 加载期间用户可能关掉了这个标签页，找不到就丢弃结果。
+            // 关闭后同路径重开会得到新 load_id，旧任务不能写回新标签。
             let Some(index) = list
                 .iter()
-                .position(|candidate| candidate.path == loaded.path)
+                .position(|candidate| candidate.id == tab_id && candidate.load_id == load_id)
             else {
                 return;
             };
+            let mut loaded = loaded;
+            loaded.id = tab_id;
+            loaded.load_id = load_id;
             list[index] = loaded;
             tabs.set(list);
             if let Some(branch) = branch {
@@ -158,7 +185,14 @@ impl SessionHandle {
     /// 重新定位缺失的仓库（原 `Actions::locate_repo`）：选一个新目录打开，
     /// 然后关掉这个打不开的标签页。
     pub(crate) fn locate_repo(&self) {
-        let index = self.active.get_untracked();
+        let Some((old_tab_id, old_path)) = self
+            .tabs
+            .get_untracked()
+            .get(self.active.get_untracked())
+            .map(|tab| (tab.id, tab.path.clone()))
+        else {
+            return;
+        };
         let session = self.clone();
         let answer = pick_paths(nsh_core::file_dialog::OpenDialog::folders());
         spawn(async move {
@@ -168,9 +202,17 @@ impl SessionHandle {
             let Some(path) = paths.first() else {
                 return;
             };
-            session.open_path(path.display().to_string());
+            let chosen = path.display().to_string();
+            let Ok(repo) = git::Repo::open(chosen.as_str()) else {
+                return;
+            };
+            let chosen_path = repo.root().display().to_string();
+            session.open_path(chosen_path.clone());
+            if chosen_path == old_path {
+                return;
+            }
             // 先打开再关旧的：关掉会让下标前移。
-            session.close_tab(index);
+            session.close_tab_id(old_tab_id);
         });
     }
 
@@ -208,44 +250,58 @@ impl SessionHandle {
 
     /// 关闭指定标签页（原 `Actions::close_tab`）：有未提交改动时先确认。
     pub(crate) fn close_tab(&self, index: usize) {
-        let welcome_open = self.welcome_open;
+        let Some(tab) = self.tabs.get_untracked().get(index).cloned() else {
+            return;
+        };
+        self.close_tab_id(tab.id);
+    }
+
+    /// 按运行期身份关闭标签，确认期间顺序变化也不会关闭另一家仓库。
+    pub(crate) fn close_tab_id(&self, tab_id: u64) {
         let tabs = self.tabs;
         let active = self.active;
         let store_dir = self.store_dir.clone();
+        let session = self.clone();
         let language = self.language;
-        // 关闭动作本身；有未提交改动时先确认再走这里。
-        let perform: Arc<dyn Fn(usize)> = {
-            let welcome_open = welcome_open;
+        let perform: Arc<dyn Fn(u64)> = {
             let tabs = tabs;
             let active = active;
             let store_dir = store_dir.clone();
-            Arc::new(move |index: usize| {
+            let session = session.clone();
+            Arc::new(move |tab_id: u64| {
                 let mut list = tabs.get_untracked();
-                if index >= list.len() {
+                let Some(index) = list.iter().position(|tab| tab.id == tab_id) else {
                     return;
-                }
+                };
+                let old_active = active.get_untracked().min(list.len().saturating_sub(1));
+                let removed_active = old_active == index;
                 list.remove(index);
-                let next_active = if list.is_empty() {
-                    0
+                let next_active = if list.is_empty() || removed_active {
+                    index.min(list.len().saturating_sub(1))
+                } else if index < old_active {
+                    old_active - 1
                 } else {
-                    active.get_untracked().min(list.len() - 1)
+                    old_active
                 };
                 tabs.set(list.clone());
                 active.set(next_active);
                 if list.is_empty() {
-                    welcome_open.set(true);
+                    crate::persist(&store_dir, active, tabs);
+                    nsh_core::element::desktop::main_window().hide();
+                    session.go_welcome();
+                } else {
+                    crate::persist(&store_dir, active, tabs);
                 }
-                crate::persist(&store_dir, active, tabs);
             })
         };
         let list = tabs.get_untracked();
-        let Some(tab) = list.get(index) else {
+        let Some(tab) = list.iter().find(|tab| tab.id == tab_id) else {
             return;
         };
         let changes = tab.status.len();
         let name = tab.label();
         if changes == 0 {
-            perform(index);
+            perform(tab_id);
             return;
         }
         let language_now = language.get_untracked();
@@ -268,9 +324,96 @@ impl SessionHandle {
         let perform = perform.clone();
         spawn(async move {
             if pending.await {
-                perform(index);
+                perform(tab_id);
             }
         });
+    }
+
+    /// 关闭主窗口时把当前标签组一次性关闭，脏仓库共用一次确认。
+    pub(crate) fn close_workspace(&self) {
+        let snapshot = self.tabs.get_untracked();
+        let tab_ids: Vec<u64> = snapshot.iter().map(|tab| tab.id).collect();
+        let dirty_paths: Vec<String> = snapshot
+            .iter()
+            .filter(|tab| !tab.status.is_empty())
+            .map(|tab| tab.label())
+            .collect();
+        if dirty_paths.is_empty() {
+            self.finish_close_workspace(&tab_ids);
+            return;
+        }
+        let language = self.language.get_untracked();
+        let pending = crate::interactions::confirm(
+            crate::i18n::t(language.as_str(), "confirm.closeWorkspaceTitle"),
+            crate::i18n::with_arguments(
+                language.as_str(),
+                "confirm.closeWorkspaceMessage",
+                &[("repositories", dirty_paths.join(", "))],
+            ),
+            "close-workspace",
+            crate::i18n::t(language.as_str(), "confirm.closeWorkspaceAction"),
+            crate::i18n::t(language.as_str(), "common.cancel"),
+            false,
+        );
+        let session = self.clone();
+        spawn(async move {
+            if pending.await {
+                session.finish_close_workspace(&tab_ids);
+            }
+        });
+    }
+
+    fn finish_close_workspace(&self, closing_ids: &[u64]) {
+        let current = self.tabs.get_untracked();
+        let active_id = current.get(self.active.get_untracked()).map(|tab| tab.id);
+        let remaining: Vec<Tab> = current
+            .into_iter()
+            .filter(|tab| !closing_ids.contains(&tab.id))
+            .collect();
+        let next_active = if let Some(active_id) = active_id {
+            remaining
+                .iter()
+                .position(|tab| tab.id == active_id)
+                .unwrap_or_else(|| {
+                    self.active
+                        .get_untracked()
+                        .min(remaining.len().saturating_sub(1))
+                })
+        } else {
+            0
+        };
+        self.tabs.set(remaining);
+        self.active.set(next_active);
+        crate::persist(&self.store_dir, self.active, self.tabs);
+        if self.tabs.get_untracked().is_empty() {
+            nsh_core::element::desktop::main_window().hide();
+            self.go_welcome();
+        }
+    }
+
+    /// 将指定标签放到新位置，并保持原活动仓库不变。
+    pub(crate) fn move_tab(&self, tab_id: u64, destination: usize) {
+        let mut list = self.tabs.get_untracked();
+        let Some(source) = list.iter().position(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if list.is_empty() {
+            return;
+        }
+        let destination = destination.min(list.len() - 1);
+        if source == destination {
+            return;
+        }
+        let active_id = list.get(self.active.get_untracked()).map(|tab| tab.id);
+        let tab = list.remove(source);
+        list.insert(destination, tab);
+        self.tabs.set(list.clone());
+        if let Some(active_id) = active_id {
+            if let Some(index) = list.iter().position(|tab| tab.id == active_id) {
+                self.active.set(index);
+            }
+        }
+        crate::persist(&self.store_dir, self.active, self.tabs);
     }
 
     /// 切到第 `index` 个标签页并写回会话（原 `Actions::activate_tab`）。
@@ -282,6 +425,18 @@ impl SessionHandle {
             active.set(index);
             crate::persist(&store_dir, active, tabs);
         }
+    }
+
+    pub(crate) fn activate_tab_id(&self, tab_id: u64) {
+        let Some(index) = self
+            .tabs
+            .get_untracked()
+            .iter()
+            .position(|tab| tab.id == tab_id)
+        else {
+            return;
+        };
+        self.activate_tab(index);
     }
 
     /// 前/后切标签页，到头回绕（符合 macOS 习惯）；不足两个标签时不动。
@@ -299,6 +454,7 @@ impl SessionHandle {
             (current + count - 1) % count
         };
         active.set(next);
+        crate::persist(&self.store_dir, active, tabs);
     }
 
     /// 切到第 `slot` 个标签页；越界不动（不把用户送到空标签）。
@@ -307,6 +463,7 @@ impl SessionHandle {
         let active = self.active;
         if slot < tabs.get_untracked().len() {
             active.set(slot);
+            crate::persist(&self.store_dir, active, tabs);
         }
     }
 }
