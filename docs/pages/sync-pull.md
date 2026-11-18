@@ -93,6 +93,12 @@
 离开：× / Close → 04；Cancel 只中止本次 pull（提示句承诺分支不动，结果未画）
 ```
 
+### 当前实现行为
+
+Merge、Rebase 与 FF only 分别映射到 Git 的 `--no-rebase`、`--rebase` 与 `--ff-only`；Autostash 按勾选传入，Rebase all local commits 只在 Rebase 策略下可用，并映射到 `--rebase-merges`。Pull 运行期间选项锁定，右侧显示真实 Git 输出和不定进度。
+
+完成、失败或取消后会刷新目标标签的分支、领先/落后数、变更、引用与 Git 操作状态。取消只停止当前 Git 子进程，不自动 abort 已开始的 merge/rebase；若产生冲突，主窗口继续交给现有冲突流程处理。关闭面板不会取消 Pull，重新打开可查看任务结果。
+
 ## 7. 画板没覆盖的组合（待补设计）
 
 1. **进行中与完成**：没有 `Pulling…`、没有进度条、没有 fetch→integrate 的分阶段输出；成功后面板是否自动关、左列目标行的 `2 behind` 是否归零都没画。

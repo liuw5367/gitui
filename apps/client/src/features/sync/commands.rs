@@ -4,10 +4,22 @@
 //! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
 use super::ops;
-use super::state::{SyncDialogState, SyncState};
+use super::state::{SyncDialogState, SyncState, SyncTaskState};
 use crate::app::session::{Sync, SyncOptions};
 use crate::features::SessionHandle;
 use nsh_core::prelude::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
+
+enum SyncWorkerEvent {
+    Progress(String),
+    Finished {
+        result: Option<Result<String, domain::GitError>>,
+        output: String,
+        cancelled: bool,
+    },
+}
 
 #[derive(Clone)]
 pub(crate) struct SyncCommands {
@@ -32,9 +44,36 @@ impl SyncCommands {
     /// 打开同步面板；已经打开时只切 tab，保留当前选项（原 `open_sync`）。
     pub(crate) fn open_sync(&self, kind: Sync) {
         let sync_state = self.state.dialog;
-        let mut state = sync_state
-            .get_untracked()
-            .unwrap_or_else(|| SyncDialogState::new(kind, self.active_tab_id(), None));
+        let active_tab_id = self.active_tab_id();
+        if let Some(task) = self.state.task.get_untracked()
+            && (task.result.is_none()
+                || (Some(task.target_tab_id) == active_tab_id && task.kind == kind))
+        {
+            let running = task.result.is_none();
+            sync_state.set(Some(SyncDialogState {
+                kind: task.kind,
+                target_tab_id: Some(task.target_tab_id),
+                target_path: Some(task.path),
+                remote: task.remote,
+                options: task.options,
+                result: task.result,
+                running,
+            }));
+            return;
+        }
+        let Some(mut state) = sync_state.get_untracked() else {
+            let mut state = SyncDialogState::new(kind, active_tab_id, None);
+            state.target_path = active_tab_id.and_then(|id| {
+                self.session
+                    .tabs
+                    .get_untracked()
+                    .into_iter()
+                    .find(|tab| tab.id == id)
+                    .map(|tab| tab.path)
+            });
+            sync_state.set(Some(state));
+            return;
+        };
         state.kind = kind;
         state.result = None;
         sync_state.set(Some(state));
@@ -43,11 +82,36 @@ impl SyncCommands {
     /// 从远端节点打开同步面板，并锁定仓库与远端目标。
     pub(crate) fn open_sync_for_remote(&self, tab_id: u64, kind: Sync, remote: String) {
         let sync_state = self.state.dialog;
+        if let Some(task) = self.state.task.get_untracked()
+            && (task.result.is_none()
+                || (task.target_tab_id == tab_id
+                    && task.kind == kind
+                    && task.remote.as_deref() == Some(remote.as_str())))
+        {
+            let running = task.result.is_none();
+            sync_state.set(Some(SyncDialogState {
+                kind: task.kind,
+                target_tab_id: Some(task.target_tab_id),
+                target_path: Some(task.path),
+                remote: task.remote,
+                options: task.options,
+                result: task.result,
+                running,
+            }));
+            return;
+        }
         let mut state = sync_state
             .get_untracked()
             .unwrap_or_else(|| SyncDialogState::new(kind, Some(tab_id), Some(remote.clone())));
         state.kind = kind;
         state.target_tab_id = Some(tab_id);
+        state.target_path = self
+            .session
+            .tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+            .map(|tab| tab.path);
         state.remote = Some(remote);
         state.options.fetch.all_remotes = false;
         state.result = None;
@@ -60,6 +124,9 @@ impl SyncCommands {
         let Some(mut state) = sync_state.get_untracked() else {
             return;
         };
+        if state.running {
+            return;
+        }
         match key {
             "prune" => state.options.fetch.prune = value,
             "fetchTags" => state.options.fetch.tags = value,
@@ -81,114 +148,334 @@ impl SyncCommands {
     ///
     /// 推送被远端拒绝（非快进）时不自动强推，而是弹「拉取变基 / 拉取合并 / 取消」。
     pub(crate) fn run_sync(&self, kind: Sync) {
+        let Some(state) = self.state.dialog.get_untracked() else {
+            return;
+        };
+        let Some(target_tab_id) = state.target_tab_id.or_else(|| self.active_tab_id()) else {
+            return;
+        };
+        self.start_sync_with(
+            kind,
+            target_tab_id,
+            state.remote,
+            state.options,
+            None,
+            false,
+        );
+    }
+
+    fn start_sync_with(
+        &self,
+        kind: Sync,
+        target_tab_id: u64,
+        remote: Option<String>,
+        options: SyncOptions,
+        follow_up_push: Option<SyncOptions>,
+        retry_push: bool,
+    ) {
+        if self
+            .state
+            .task
+            .get_untracked()
+            .is_some_and(|task| task.result.is_none())
+        {
+            return;
+        }
+
         let tabs = self.session.tabs;
-        let sync_state = self.state.dialog;
-        let Some(state) = sync_state.get_untracked() else {
-            return;
-        };
-        let options = state.options.clone();
-        let target_tab_id = state.target_tab_id.or_else(|| self.active_tab_id());
-        let remote = state.remote.clone();
-        let mut list = tabs.get_untracked();
-        let Some(target_tab_id) = target_tab_id else {
-            return;
-        };
-        let Some(tab_index) = list.iter().position(|tab| tab.id == target_tab_id) else {
-            let mut next = state;
-            next.result = Some(Err(crate::i18n::t(
-                self.language.get_untracked().as_str(),
-                "form.targetClosed",
-            )));
-            sync_state.set(Some(next));
-            return;
-        };
-        if let Some(tab) = list.get_mut(tab_index) {
-            ops::sync_with_remote(tab, kind, &options, remote.as_deref());
-            let result = match (&tab.sync_message, tab.sync_failed) {
-                (Some(message), false) => Ok(message.clone()),
-                (Some(message), true) => Err(message.clone()),
-                (None, _) => Ok(String::new()),
-            };
-            let rejected = kind == Sync::Push
-                && tab.sync_failed
-                && tab.sync_fault == Some(domain::NetworkFault::Rejected);
-            tabs.set(list);
-            sync_state.set(Some(SyncDialogState {
-                kind,
-                target_tab_id: Some(target_tab_id),
-                remote: remote.clone(),
-                options: options.clone(),
-                result: Some(result),
-                running: false,
-            }));
-            if !rejected {
-                return;
+        let Some(target) = tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == target_tab_id)
+        else {
+            if let Some(mut dialog) = self.state.dialog.get_untracked() {
+                dialog.result = Some(Err(crate::i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "form.targetClosed",
+                )));
+                dialog.running = false;
+                self.state.dialog.set(Some(dialog));
             }
-            // 远端已前进：不自动强推，让用户在「拉取变基 / 拉取合并 / 取消」里选。
-            let lang = self.language.get_untracked();
-            let title = crate::i18n::t(lang.as_str(), "confirm.nonFastForwardTitle");
-            let message = crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMessage");
-            let rebase_label = crate::i18n::t(lang.as_str(), "confirm.nonFastForwardRebase");
-            let merge_label = crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMerge");
-            let cancel_label = crate::i18n::t(lang.as_str(), "common.cancel");
-            let pending = crate::ui::dialog::alert_with_actions(
-                title,
-                message,
-                vec![("rebase", rebase_label), ("merge", merge_label)],
-                None,
-                cancel_label,
-            );
-            let language = self.language;
-            let notice = self.notice;
-            spawn(async move {
-                let Ok(result) = pending.await else {
-                    return;
-                };
-                let Some(action) = result.action else {
-                    return;
-                };
-                if action.as_str() == "cancel" {
+            return;
+        };
+
+        let path = target.path.clone();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.state.dialog.set(Some(SyncDialogState {
+            kind,
+            target_tab_id: Some(target_tab_id),
+            target_path: Some(path.clone()),
+            remote: remote.clone(),
+            options: options.clone(),
+            result: None,
+            running: true,
+        }));
+        self.state.task.set(Some(SyncTaskState {
+            kind,
+            target_tab_id,
+            path: path.clone(),
+            remote: remote.clone(),
+            options: options.clone(),
+            progress: String::new(),
+            result: None,
+            cancelled: false,
+            follow_up_push: follow_up_push.clone(),
+            retry_push,
+            cancel: cancel.clone(),
+        }));
+
+        let (sender, receiver) = mpsc::channel();
+        let worker_cancel = cancel;
+        let worker_path = path.clone();
+        let worker_remote = remote.clone();
+        let worker_options = options.clone();
+        std::thread::spawn(move || {
+            let repo = match git::Repo::open(worker_path.as_str()) {
+                Ok(repo) => repo,
+                Err(error) => {
+                    let _ = sender.send(SyncWorkerEvent::Finished {
+                        output: error.detail(),
+                        result: Some(Err(error)),
+                        cancelled: false,
+                    });
                     return;
                 }
-                let strategy = if action.as_str() == "rebase" {
-                    git::PullStrategy::Rebase
-                } else {
-                    git::PullStrategy::Merge
-                };
-                let pull_options = SyncOptions {
-                    pull: git::PullOptions {
-                        strategy,
-                        ..options.pull.clone()
-                    },
-                    ..options.clone()
-                };
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.iter_mut().find(|tab| tab.id == target_tab_id) {
-                    ops::sync_with_remote(tab, Sync::Pull, &pull_options, remote.as_deref());
-                    let pulled = !tab.sync_failed;
-                    // 拉取成功后再推一次；失败就只报拉取结果，不再连环弹框。
-                    if pulled {
-                        ops::sync_with_remote(tab, Sync::Push, &options, remote.as_deref());
-                    }
-                    let outcome = match (&tab.sync_message, tab.sync_failed) {
-                        (Some(message), false) => Some((message.clone(), false)),
-                        (Some(message), true) => Some((message.clone(), true)),
-                        (None, _) => None,
-                    };
-                    tabs.set(list);
-                    if let Some((message, failed)) = outcome {
-                        if failed {
-                            crate::interactions::notify(notice, message);
-                        } else {
-                            let lang = language.get_untracked();
-                            crate::interactions::notify(
-                                notice,
-                                crate::i18n::t(lang.as_str(), "toast.pushed"),
-                            );
+            };
+            let remote_name = worker_remote
+                .clone()
+                .or_else(|| {
+                    repo.refs()
+                        .ok()
+                        .and_then(|refs| refs.remotes.first().cloned())
+                })
+                .unwrap_or_else(|| "origin".to_string());
+            let started = match kind {
+                Sync::Fetch => repo.start_fetch_with(remote_name.as_str(), &worker_options.fetch),
+                Sync::Pull => repo.start_pull_with(&worker_options.pull),
+                Sync::Push => {
+                    repo.start_push_with(Some(remote_name.as_str()), &worker_options.push)
+                }
+            };
+            let mut run = match started {
+                Ok(run) => run,
+                Err(error) => {
+                    let _ = sender.send(SyncWorkerEvent::Finished {
+                        output: error.detail(),
+                        result: Some(Err(error)),
+                        cancelled: false,
+                    });
+                    return;
+                }
+            };
+            let mut last = String::new();
+            loop {
+                if let Some(result) = run.try_finish() {
+                    let output = run.progress();
+                    let _ = sender.send(SyncWorkerEvent::Finished {
+                        result: Some(result),
+                        output,
+                        cancelled: false,
+                    });
+                    return;
+                }
+                if worker_cancel.load(Ordering::Acquire) {
+                    let output = run.cancel();
+                    let _ = sender.send(SyncWorkerEvent::Finished {
+                        result: None,
+                        output,
+                        cancelled: true,
+                    });
+                    return;
+                }
+                let progress = run.progress();
+                if progress != last {
+                    last = progress.clone();
+                    let _ = sender.send(SyncWorkerEvent::Progress(progress));
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+
+        let task_signal = self.state.task;
+        let dialog_signal = self.state.dialog;
+        let language = self.language;
+        let notice = self.notice;
+        let commands = self.clone();
+        spawn(async move {
+            loop {
+                match receiver.try_recv() {
+                    Ok(SyncWorkerEvent::Progress(progress)) => {
+                        if let Some(mut task) = task_signal.get_untracked() {
+                            if task.target_tab_id == target_tab_id && task.path == path {
+                                task.progress = progress;
+                                task_signal.set(Some(task));
+                            }
                         }
                     }
+                    Ok(SyncWorkerEvent::Finished {
+                        result,
+                        output,
+                        cancelled,
+                    }) => {
+                        let language_now = language.get_untracked();
+                        let cancelled_key = match kind {
+                            Sync::Fetch => "sync.cancelledFetch",
+                            Sync::Pull => "sync.cancelledPull",
+                            Sync::Push => "sync.cancelledPush",
+                        };
+                        let cancelled_text = crate::i18n::t(language_now.as_str(), cancelled_key);
+                        let localized_failure = result.as_ref().and_then(|result| {
+                            result.as_ref().err().map(|error| {
+                                crate::features::welcome::commands::localized_error(
+                                    language_now.as_str(),
+                                    error,
+                                )
+                            })
+                        });
+                        let mut tabs_now = tabs.get_untracked();
+                        let target = tabs_now
+                            .iter_mut()
+                            .find(|tab| tab.id == target_tab_id && tab.path == path);
+                        let mut rejected = false;
+                        let outcome = if let Some(target) = target {
+                            if cancelled {
+                                ops::finish_sync_cancelled(target, cancelled_text.clone());
+                            } else if let Some(result) = result {
+                                ops::finish_sync_result(target, kind, result);
+                            }
+                            if let Some(message) = localized_failure.as_ref() {
+                                target.sync_message = Some(message.clone());
+                            }
+                            rejected = kind == Sync::Push
+                                && target.sync_failed
+                                && target.sync_fault == Some(domain::NetworkFault::Rejected);
+                            match (&target.sync_message, target.sync_failed, cancelled) {
+                                (_, _, true) => Err(cancelled_text.clone()),
+                                (Some(message), true, false) => Err(message.clone()),
+                                (Some(message), false, false) => Ok(message.clone()),
+                                (None, _, false) => Ok(String::new()),
+                            }
+                        } else if cancelled {
+                            Err(cancelled_text.clone())
+                        } else if let Some(message) = localized_failure {
+                            Err(message)
+                        } else {
+                            match result {
+                                Some(Ok(message)) => Ok(message),
+                                Some(Err(error)) => Err(error.detail()),
+                                None => Ok(String::new()),
+                            }
+                        };
+                        tabs.set(tabs_now);
+
+                        if let Some(mut task) = task_signal.get_untracked() {
+                            if task.target_tab_id == target_tab_id && task.path == path {
+                                task.progress = if output.trim().is_empty() {
+                                    task.progress
+                                } else {
+                                    output
+                                };
+                                task.result = Some(outcome.clone());
+                                task.cancelled = cancelled;
+                                task_signal.set(Some(task));
+                            }
+                        }
+                        if let Some(mut dialog) = dialog_signal.get_untracked()
+                            && dialog.target_tab_id == Some(target_tab_id)
+                        {
+                            dialog.running = false;
+                            dialog.result = Some(outcome.clone());
+                            dialog_signal.set(Some(dialog));
+                        }
+
+                        if let Some(push_options) = follow_up_push {
+                            if !cancelled && outcome.is_ok() {
+                                commands.start_sync_with(
+                                    Sync::Push,
+                                    target_tab_id,
+                                    remote,
+                                    push_options,
+                                    None,
+                                    true,
+                                );
+                            } else if let Err(message) = outcome {
+                                crate::interactions::notify(notice, message);
+                            }
+                            return;
+                        }
+                        if retry_push {
+                            if let Err(message) = outcome {
+                                crate::interactions::notify(notice, message);
+                            } else {
+                                crate::interactions::notify(
+                                    notice,
+                                    crate::i18n::t(
+                                        language.get_untracked().as_str(),
+                                        "toast.pushed",
+                                    ),
+                                );
+                            }
+                            return;
+                        }
+                        if !rejected {
+                            return;
+                        }
+
+                        let lang = language.get_untracked();
+                        let pending = crate::ui::dialog::alert_with_actions(
+                            crate::i18n::t(lang.as_str(), "confirm.nonFastForwardTitle"),
+                            crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMessage"),
+                            vec![
+                                (
+                                    "rebase",
+                                    crate::i18n::t(lang.as_str(), "confirm.nonFastForwardRebase"),
+                                ),
+                                (
+                                    "merge",
+                                    crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMerge"),
+                                ),
+                            ],
+                            None,
+                            crate::i18n::t(lang.as_str(), "common.cancel"),
+                        );
+                        let Ok(answer) = pending.await else {
+                            return;
+                        };
+                        let Some(action) = answer.action else {
+                            return;
+                        };
+                        if action.as_str() == "cancel" {
+                            return;
+                        }
+                        let strategy = if action.as_str() == "rebase" {
+                            git::PullStrategy::Rebase
+                        } else {
+                            git::PullStrategy::Merge
+                        };
+                        let mut pull_options = options.clone();
+                        pull_options.pull.strategy = strategy;
+                        commands.start_sync_with(
+                            Sync::Pull,
+                            target_tab_id,
+                            remote,
+                            pull_options,
+                            Some(options),
+                            false,
+                        );
+                        return;
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => return,
+                    Err(mpsc::TryRecvError::Empty) => timer(Duration::from_millis(100)).await,
                 }
-            });
+            }
+        });
+    }
+
+    pub(crate) fn cancel_sync(&self) {
+        if let Some(task) = self.state.task.get_untracked()
+            && task.result.is_none()
+        {
+            task.cancel.store(true, Ordering::Release);
         }
     }
 

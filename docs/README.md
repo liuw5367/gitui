@@ -6,7 +6,9 @@
 
 仓库窗口与左侧引用面板的开发需求包括启动时恢复会话或显示欢迎页、仓库标签的打开与关闭及排序，以及引用分组的折叠与右键动作。设计入口见[欢迎页](pages/welcome.md)、[常规设置](pages/settings.md)、[工作区](pages/workspace.md)与[菜单和对话框](pages/menus.md)。
 
-欢迎页历史仅记录成功打开过的仓库；Git 设置中的扫描复选框控制扫描结果能否进入命令面板搜索，扫描发现不自动加入打开历史。命令面板空查询显示最近打开仓库和常用命令，输入查询后也搜索已启用的扫描结果。页面背景见[欢迎页](pages/welcome.md)、[Git 设置](pages/settings-git.md)与[命令面板](pages/command-palette.md)，实现差异见[DEVIATIONS](design/DEVIATIONS.md)。
+欢迎页历史仅记录成功打开过的仓库；空查询显示历史，输入后同时搜索历史与全部已扫描仓库，扫描独占项不能从历史移除。Git 设置中的扫描复选框只控制扫描结果能否进入命令面板搜索。命令面板默认把常用命令放在仓库之前，输入后仍按命令、打开仓库、最近仓库、已启用扫描仓库分组。页面背景见[欢迎页](pages/welcome.md)、[Git 设置](pages/settings-git.md)与[命令面板](pages/command-palette.md)，实现差异见[DEVIATIONS](design/DEVIATIONS.md)。
+
+Fetch、Pull、Push 共用 800×520 同步面板，以后台 Git 子进程运行并显示实际输出。关闭面板会保留任务，Cancel 才终止它。Welcome 与 Settings 的已开窗口可由重复入口重新聚焦；macOS 应用菜单提供 Settings 与 ⌘,。对应页面见[同步](pages/sync.md)、[同步 Fetch](pages/sync-fetch.md)、[同步 Pull](pages/sync-pull.md)、[工作区](pages/workspace.md)、[常规设置](pages/settings.md)与[菜单和对话框](pages/menus.md)。
 
 应用偏好统一保存在 `settings.toml`；会话、最近仓库、变更清单与 Agent 审计仍使用独立文本记录。旧版设置 `.txt` 不迁移、不删除；格式与失败行为见 [store 持久化说明](../crates/store/README.md)。
 

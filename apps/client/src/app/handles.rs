@@ -60,6 +60,8 @@ impl AppHandles {
             auxiliary: true,
             persist_session: false,
             window: signal(None),
+            welcome_window: signal(None),
+            settings_window: signal(None),
         };
 
         let mut handles = self.clone();

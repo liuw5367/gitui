@@ -19,6 +19,8 @@ use crate::i18n;
 use crate::ui;
 use crate::ui::button::{ButtonSize, ButtonVariant, button, icon_button_tip};
 use nsh_core::prelude::*;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use store::RecentRepo;
 
 /// 欢迎页左栏宽度（设计板 01 的 `.wside`）。
@@ -41,7 +43,14 @@ pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoE
         .h_full()
         .flex_row()
         .bg(move || design::content())
-        .child(sidebar(language, recent, query, state.now, cmd.clone()))
+        .child(sidebar(
+            language,
+            recent,
+            cmd.settings.state.scan_found,
+            query,
+            state.now,
+            cmd.clone(),
+        ))
         .child(
             view()
                 .flex_1()
@@ -131,6 +140,7 @@ fn cloning_indicator(
 fn sidebar(
     language: Signal<SharedString>,
     recent: Signal<Vec<RecentRepo>>,
+    scanned: Signal<Vec<String>>,
     query: Signal<String>,
     now: Signal<i64>,
     cmd: WelcomeCommands,
@@ -210,16 +220,18 @@ fn sidebar(
                 &search_ref,
             ),
         ))
-        // 最近仓库：分组、搜索过滤与空态都在同一个 dynamic 里，输入即更新。
+        // 最近记录与扫描结果都参与有查询的结果；扫描资格只影响命令面板。
         .child(
             view().w_full().flex_1().min_h_0().px(px(ui::GAP_SM)).child(
                 scroll().w_full().h_full().child(
                     view().w_full().py(px(ui::GAP_XS)).flex_col().child(dynamic(
                         move || -> AnyElement {
                             let all = recent.get();
+                            let scanned_all = scanned.get();
                             let now_value = now.get();
                             let query_value = query.get();
-                            if all.is_empty() {
+                            let query_empty = query_value.trim().is_empty();
+                            if all.is_empty() && query_empty {
                                 let scan = scan.clone();
                                 return view()
                                     .w_full()
@@ -252,7 +264,20 @@ fn sidebar(
                                 .into_iter()
                                 .filter(|repo| matches_query(&repo.path, &query_value))
                                 .collect();
-                            if visible.is_empty() {
+                            let mut seen: HashSet<PathBuf> = visible
+                                .iter()
+                                .map(|repo| repository_identity(&repo.path))
+                                .collect();
+                            let visible_scanned: Vec<String> = if query_empty {
+                                Vec::new()
+                            } else {
+                                scanned_all
+                                    .into_iter()
+                                    .filter(|path| matches_query(path, &query_value))
+                                    .filter(|path| seen.insert(repository_identity(path)))
+                                    .collect()
+                            };
+                            if visible.is_empty() && visible_scanned.is_empty() {
                                 return ui::section::empty(
                                     move || i18n::t(language.get().as_str(), "welcome.noMatch"),
                                     Some(Box::new(move || {
@@ -263,10 +288,10 @@ fn sidebar(
                                 .into_element();
                             }
                             // 已打开的仓库同时读取标签页，标签变化后选中态跟着更新。
-                            let open_paths: Vec<String> = count_open
+                            let open_paths: HashSet<PathBuf> = count_open
                                 .get()
                                 .iter()
-                                .map(|tab| tab.path.clone())
+                                .map(|tab| repository_identity(&tab.path))
                                 .collect();
                             // 画板只有 Today / Previous 7 days；超过 7 天的记录
                             // 单独放进 Earlier，否则会从 12 条上限里消失。
@@ -289,11 +314,33 @@ fn sidebar(
                                 }));
                                 let mut rows = view().w_full().flex_col().gap(px(ui::GAP_XS));
                                 for repo in items {
-                                    let selected = open_paths.iter().any(|path| path == &repo.path);
+                                    let selected =
+                                        open_paths.contains(&repository_identity(&repo.path));
                                     rows = rows.child(repo_row(
                                         language,
-                                        repo,
+                                        repo.path,
+                                        repo.branch,
                                         selected,
+                                        true,
+                                        session.clone(),
+                                        forget.clone(),
+                                    ));
+                                }
+                                list = list.child(rows);
+                            }
+                            if !visible_scanned.is_empty() {
+                                list = list.child(ui::section::section_label_upper(move || {
+                                    i18n::t(language.get().as_str(), "welcome.groupScanned")
+                                }));
+                                let mut rows = view().w_full().flex_col().gap(px(ui::GAP_XS));
+                                for path in visible_scanned {
+                                    let selected = open_paths.contains(&repository_identity(&path));
+                                    rows = rows.child(repo_row(
+                                        language,
+                                        path,
+                                        String::new(),
+                                        selected,
+                                        false,
                                         session.clone(),
                                         forget.clone(),
                                     ));
@@ -351,15 +398,15 @@ fn sidebar(
 
 fn repo_row(
     language: Signal<SharedString>,
-    repo: RecentRepo,
+    path: String,
+    branch: String,
     selected: bool,
+    remove_allowed: bool,
     session: SessionHandle,
     cmd: WelcomeCommands,
 ) -> impl IntoElement {
-    let path = repo.path.clone();
     let name = last_segment(&path);
     let subtitle = home_path(&path);
-    let branch = repo.branch.clone();
     let path_for_press = path.clone();
     let path_for_menu = path.clone();
     let language_for_menu = language;
@@ -399,7 +446,7 @@ fn repo_row(
     if !branch.is_empty() {
         aside.push(ui::badge::branch_chip(move || branch.clone()).into_element());
     }
-    // 行尾只有一个「更多」菜单：显示在 Finder、复制路径、从列表移除。
+    // 扫描独占项可以显示/复制路径，但只从打开历史里移除记录。
     let mut trailing: Vec<AnyElement> = Vec::new();
     trailing.push(
         ui::menu::menu_icon_button(
@@ -409,9 +456,8 @@ fn repo_row(
                 let lang = language_for_menu.get_untracked();
                 let reveal = path_for_menu.clone();
                 let copy = path_for_menu.clone();
-                let forget_path = path_for_menu.clone();
                 let remove = remove.clone();
-                return vec![
+                let mut actions = vec![
                     ui::menu::action(
                         i18n::t(lang.as_str(), "files.revealInFinder"),
                         true,
@@ -432,13 +478,17 @@ fn repo_row(
                             i18n::t(lang.as_str(), "toast.copyFailed"),
                         )
                     }),
-                    ui::menu::divider(),
-                    ui::menu::action(
+                ];
+                if remove_allowed {
+                    let forget_path = path_for_menu.clone();
+                    actions.push(ui::menu::divider());
+                    actions.push(ui::menu::action(
                         i18n::t(lang.as_str(), "welcome.removeFromList"),
                         true,
                         move || remove.forget_recent(forget_path.clone()),
-                    ),
-                ];
+                    ));
+                }
+                return actions;
             },
         )
         .into_element(),
@@ -1153,6 +1203,11 @@ fn matches_query(path: &str, query: &str) -> bool {
         return true;
     }
     return path.to_lowercase().contains(&query.to_lowercase());
+}
+
+fn repository_identity(path: &str) -> PathBuf {
+    let path = PathBuf::from(path);
+    return path.canonicalize().unwrap_or(path);
 }
 
 fn last_segment(path: &str) -> String {

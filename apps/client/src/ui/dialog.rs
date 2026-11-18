@@ -93,8 +93,22 @@ pub(crate) fn modal_open(
         content,
         move || cancel(),
         move || backdrop(),
+        None,
     )
     .into_element();
+}
+
+pub(crate) fn modal_open_with_blur(
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl IntoElement,
+    on_dismiss: impl Fn() + 'static,
+    blur: f32,
+) -> AnyElement {
+    let on_dismiss = std::rc::Rc::new(on_dismiss);
+    let cancel = on_dismiss.clone();
+    return modal_element(title, z_index, content, move || cancel(), || {}, Some(blur))
+        .into_element();
 }
 
 fn modal_element(
@@ -103,8 +117,22 @@ fn modal_element(
     content: impl IntoElement,
     on_cancel: impl Fn() + 'static,
     on_backdrop: impl Fn() + 'static,
+    blur: Option<f32>,
 ) -> impl IntoElement {
     let title = std::rc::Rc::new(title);
+    let mut layer = view()
+        .w_full()
+        .h_full()
+        .flex_1()
+        .min_w_0()
+        .min_h_0()
+        .z_index(z_index)
+        .items_center()
+        .justify_center()
+        .bg(move || crate::design::token("overlay"));
+    if let Some(blur) = blur {
+        layer = layer.backdrop_blur(px(blur));
+    }
     return nsh_base::dialog()
         .animation(ModalAnimation::Fade)
         .close_on_escape(true)
@@ -112,20 +140,7 @@ fn modal_element(
         .close_on_backdrop_press(false)
         .label(move || SharedString::from(title()))
         .on_cancel(move || on_cancel())
-        .child(
-            view()
-                .w_full()
-                .h_full()
-                .flex_1()
-                .min_w_0()
-                .min_h_0()
-                .z_index(z_index)
-                .items_center()
-                .justify_center()
-                .bg(move || crate::design::token("overlay"))
-                .on_press(move || on_backdrop())
-                .child(content),
-        );
+        .child(layer.on_press(move || on_backdrop()).child(content));
 }
 
 /// 让内容区截获按压、不再上浮到遮罩。

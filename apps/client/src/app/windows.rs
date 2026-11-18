@@ -23,8 +23,10 @@ use nsh_core::prelude::*;
 pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     let welcome = handles.welcome.clone();
     let welcome_open = welcome.session.welcome_open;
+    let welcome_window_ref = welcome.session.welcome_window;
     let settings = handles.settings.clone();
     let settings_open = settings.session.settings_open;
+    let settings_window_ref = settings.session.settings_window;
     let tabs = handles.session.tabs;
     let active = handles.session.active;
     let language = handles.language;
@@ -46,10 +48,12 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
         .on_open_change(move |event| {
             if !event.open {
                 welcome_open.set(false);
+                welcome_window_ref.set(None);
             }
         })
         .content(move || {
             center_this_window();
+            welcome_window_ref.set(Some(nsh_core::element::desktop::current_window()));
             // 快捷键按窗口绑定：`on_key` 属于 `current_window`，主窗口的 ⌘F 不会
             // 在欢迎窗口触发（反之亦然）。
             let focus = welcome.clone();
@@ -73,10 +77,12 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
         .on_open_change(move |event| {
             if !event.open {
                 settings_open.set(false);
+                settings_window_ref.set(None);
             }
         })
         .content(move || {
             center_this_window();
+            settings_window_ref.set(Some(nsh_core::element::desktop::current_window()));
             // 设置窗口的按键在这里挂一次：录制改键、Esc 取消录制、⌫ 清空绑定。
             crate::app::hotkeys::install_settings_window(&settings);
             let window = nsh_core::element::desktop::current_window();

@@ -2,7 +2,9 @@
 
 use domain::GitError;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 
 use crate::exec::{MAX_DETAIL, run_git, run_git_combined, truncate};
 use crate::parse::summarise;
@@ -78,6 +80,119 @@ pub struct PushOptions {
     pub all_branches: bool,
 }
 
+const MAX_SYNC_OUTPUT: usize = 256 * 1024;
+
+pub struct SyncRun {
+    child: Child,
+    args: String,
+    output: Arc<Mutex<String>>,
+    readers: Vec<JoinHandle<()>>,
+}
+
+impl SyncRun {
+    fn start(directory: &Path, args: &[String]) -> Result<SyncRun, GitError> {
+        let mut child = Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| GitError::Spawn {
+                program: "git".to_string(),
+                reason: error.to_string(),
+            })?;
+        let output = Arc::new(Mutex::new(String::new()));
+        let mut readers = Vec::new();
+        if let Some(stdout) = child.stdout.take() {
+            readers.push(read_sync_output(stdout, output.clone()));
+        }
+        if let Some(stderr) = child.stderr.take() {
+            readers.push(read_sync_output(stderr, output.clone()));
+        }
+        return Ok(SyncRun {
+            child,
+            args: args.join(" "),
+            output,
+            readers,
+        });
+    }
+
+    pub fn progress(&self) -> String {
+        return self
+            .output
+            .lock()
+            .map(|output| output.clone())
+            .unwrap_or_default();
+    }
+
+    pub fn try_finish(&mut self) -> Option<Result<String, GitError>> {
+        let status = match self.child.try_wait() {
+            Ok(status) => status,
+            Err(error) => {
+                return Some(Err(GitError::Spawn {
+                    program: "git".to_string(),
+                    reason: error.to_string(),
+                }));
+            }
+        }?;
+        self.join_readers();
+        let output = self.progress();
+        if status.success() {
+            return Some(Ok(summarise(&output)));
+        }
+        return Some(Err(GitError::CommandFailed {
+            program: "git".to_string(),
+            args: self.args.clone(),
+            code: status.code(),
+            detail: crate::exec::truncate(output.trim(), MAX_DETAIL),
+        }));
+    }
+
+    pub fn cancel(&mut self) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.join_readers();
+        return self.progress();
+    }
+
+    fn join_readers(&mut self) {
+        for reader in self.readers.drain(..) {
+            let _ = reader.join();
+        }
+    }
+}
+
+fn read_sync_output<R>(pipe: R, output: Arc<Mutex<String>>) -> JoinHandle<()>
+where
+    R: std::io::Read + Send + 'static,
+{
+    return std::thread::spawn(move || {
+        let mut reader = std::io::BufReader::new(pipe);
+        let mut chunk = [0u8; 1024];
+        loop {
+            let read = match std::io::Read::read(&mut reader, &mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => read,
+            };
+            let text = String::from_utf8_lossy(&chunk[..read]).replace('\r', "\n");
+            if let Ok(mut output) = output.lock() {
+                output.push_str(&text);
+                if output.len() > MAX_SYNC_OUTPUT {
+                    let excess = output.len() - MAX_SYNC_OUTPUT;
+                    let boundary = output
+                        .char_indices()
+                        .find(|(index, _)| *index >= excess)
+                        .map(|(index, _)| index)
+                        .unwrap_or(output.len());
+                    output.drain(..boundary);
+                }
+            }
+        }
+    });
+}
+
 impl Repo {
     /// 从远程取回引用（`git fetch --prune <remote>`）。
     pub fn fetch(&self, remote: &str) -> Result<String, GitError> {
@@ -108,6 +223,26 @@ impl Repo {
         return Ok(summarise(&output));
     }
 
+    pub fn start_fetch_with(
+        &self,
+        remote: &str,
+        options: &FetchOptions,
+    ) -> Result<SyncRun, GitError> {
+        let mut args = vec!["fetch".to_string(), "--progress".to_string()];
+        if options.prune {
+            args.push("--prune".to_string());
+        }
+        if options.tags {
+            args.push("--tags".to_string());
+        }
+        if options.all_remotes {
+            args.push("--all".to_string());
+        } else {
+            args.push(remote.to_string());
+        }
+        return SyncRun::start(&self.root, &args);
+    }
+
     /// 上游新增的提交数（`HEAD..@{u}`）；没有上游时为 0。
     pub fn upstream_incoming(&self) -> u32 {
         let output = match run_git(&self.root, &["rev-list", "--count", "HEAD..@{upstream}"]) {
@@ -127,15 +262,31 @@ impl Repo {
 
     /// 带选项的拉取：整合方式、自动贮藏、整体变基。
     pub fn pull_with(&self, options: &PullOptions) -> Result<String, GitError> {
-        let mut args: Vec<&str> = vec!["pull", options.strategy.flag()];
+        let mut args: Vec<&str> = vec!["pull", options.strategy.flag(), "--no-edit"];
         if options.autostash {
             args.push("--autostash");
         }
-        if options.rebase_local {
+        if options.rebase_local && options.strategy == PullStrategy::Rebase {
             args.push("--rebase-merges");
         }
         let output = run_git_combined(&self.root, &args)?;
         return Ok(summarise(&output));
+    }
+
+    pub fn start_pull_with(&self, options: &PullOptions) -> Result<SyncRun, GitError> {
+        let mut args = vec![
+            "pull".to_string(),
+            "--progress".to_string(),
+            "--no-edit".to_string(),
+        ];
+        args.push(options.strategy.flag().to_string());
+        if options.autostash {
+            args.push("--autostash".to_string());
+        }
+        if options.rebase_local && options.strategy == PullStrategy::Rebase {
+            args.push("--rebase-merges".to_string());
+        }
+        return SyncRun::start(&self.root, &args);
     }
 
     /// 从指定远端分支拉取并合并到当前分支。
@@ -164,6 +315,27 @@ impl Repo {
         remote: Option<&str>,
         options: &PushOptions,
     ) -> Result<String, GitError> {
+        let args = self.push_args(remote, options)?;
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = run_git_combined(&self.root, &refs)?;
+        return Ok(summarise(&output));
+    }
+
+    pub fn start_push_with(
+        &self,
+        remote: Option<&str>,
+        options: &PushOptions,
+    ) -> Result<SyncRun, GitError> {
+        let mut args = self.push_args(remote, options)?;
+        args.insert(1, "--progress".to_string());
+        return SyncRun::start(&self.root, &args);
+    }
+
+    fn push_args(
+        &self,
+        remote: Option<&str>,
+        options: &PushOptions,
+    ) -> Result<Vec<String>, GitError> {
         let branch = self.abbrev_branch()?;
         let has_upstream = run_git(
             &self.root,
@@ -175,15 +347,15 @@ impl Repo {
             ],
         )
         .is_ok();
-        let mut args: Vec<&str> = vec!["push"];
+        let mut args: Vec<String> = vec!["push".to_string()];
         if options.force_with_lease {
-            args.push("--force-with-lease");
+            args.push("--force-with-lease".to_string());
         }
         if options.tags {
-            args.push("--tags");
+            args.push("--tags".to_string());
         }
         if options.all_branches {
-            args.push("--all");
+            args.push("--all".to_string());
         }
         if options.all_branches || options.tags {
             // 已经指定了范围，不再追加分支名。
@@ -191,19 +363,18 @@ impl Repo {
             match (has_upstream, remote) {
                 (true, _) => {}
                 (false, Some(remote)) => {
-                    args.push("-u");
-                    args.push(remote);
-                    args.push(branch.as_str());
+                    args.push("-u".to_string());
+                    args.push(remote.to_string());
+                    args.push(branch);
                 }
                 (false, None) => {
-                    args.push("-u");
-                    args.push("origin");
-                    args.push(branch.as_str());
+                    args.push("-u".to_string());
+                    args.push("origin".to_string());
+                    args.push(branch);
                 }
             }
         }
-        let output = run_git_combined(&self.root, &args)?;
-        return Ok(summarise(&output));
+        return Ok(args);
     }
 
     /// 推送一个标签（`git push <remote> <tag>`）。

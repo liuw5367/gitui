@@ -29,7 +29,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_pop`、`stash_apply`、`stash_drop` |
 | 子模块 | `SubmoduleInfo`、`update_submodule`、`sync_submodule`、`remove_submodule` |
 | 工作树 | `WorktreeInfo`、`add_worktree`、`remove_worktree`、`prune_worktrees` |
-| 同步 | `fetch`、`fetch_with`、`pull`、`pull_with`、`pull_remote_branch`、`push`、`push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming` |
+| 同步 | `fetch`、`fetch_with`、`start_fetch_with`、`pull`、`pull_with`、`start_pull_with`、`pull_remote_branch`、`push`、`push_with`、`start_push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming`、`SyncRun` |
 | 冲突与多步操作 | `operation`、`conflict_content`、`conflicts`、`resolve_conflict`、`resolve_with`、`continue_operation`、`abort_operation` |
 | 克隆与初始化 | `clone`、`clone_with`、`start_clone`、`init_repository`、`init_with` |
 | 本机信息与底层执行 | `info`、`credential_helper`、`run_git` |
@@ -63,6 +63,17 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 - `cancel()` 结束子进程，并删除本次创建的目录。
 
 目标目录非空时直接报错，不覆盖已有内容。`clone_with` 是同步版本，返回 `Result<(), GitError>`。
+
+## 后台同步
+
+`start_fetch_with`、`start_pull_with` 与 `start_push_with` 返回 `SyncRun`，供界面在后台运行 Git 同步命令：
+
+- 子进程启用 Git 的 `--progress`，分别捕获 stdout 与 stderr；`progress()` 返回当前合并输出，最多保留约 256 KiB。
+- `try_finish()` 非阻塞地检查进程；运行中返回 `None`，结束后返回 `Some(Result<String, GitError>)`。成功值是 Git 输出摘要，失败保留命令与输出详情。
+- `cancel()` 终止 Git 子进程、等待退出，并返回已捕获的输出；已完成的远端或工作区变更不会由执行层回滚。
+- 命令关闭终端交互提示，认证仍由系统 Git 与已配置的 credential helper 处理。
+
+旧的 `fetch_with`、`pull_with` 与 `push_with` 同步方法继续供非交互调用使用。
 
 ## 初始化
 

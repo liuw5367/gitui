@@ -18,7 +18,7 @@ APP_HOME=/tmp/app-home nsh run
 - 应用数据目录默认是 `~/.config/gitui`，由 `src/brand.rs` 的 `STORAGE_DIR` 决定；`APP_HOME` 可以直接覆盖。解析规则见 [store README](../../crates/store/README.md)。
 - 窗口初始内容区 1392×852，与设计板的内容区一致；最小尺寸为 1100×700。
 - 启动行为由设置的 `Launch behavior` 决定：恢复上次会话时按保存顺序打开主窗口标签且不打开欢迎页；空会话或 `Show Welcome` 只显示欢迎窗口。主窗口 `+` 打开欢迎窗口，关闭最后一个标签会清空会话并返回欢迎页；应用退出会保存当前标签顺序和活动仓库。
-- 主窗口默认进入 Changes，中栏显示变更列表、右栏显示 Commit，左侧引用栏也默认打开。左右栏与弹性中栏都可拖拽调整宽度；工具栏按钮可分别隐藏或恢复左右栏，宽度保留到当前窗口关闭。Settings 是独立普通窗口，支持系统最小化、缩放和关闭；⌘W 在 Settings、Welcome 与关联工作树窗口关闭当前窗口，在主窗口关闭活动仓库标签页。
+- 主窗口默认进入 Changes，中栏显示变更列表、右栏显示 Commit，左侧引用栏也默认打开。左右栏与弹性中栏都可拖拽调整宽度；工具栏按钮可分别隐藏或恢复左右栏，宽度保留到当前窗口关闭。Settings 是独立普通窗口，支持系统最小化、缩放和关闭；欢迎页、主窗口和 macOS 应用菜单（⌘,）均可打开 Settings，重复调用会聚焦已有设置窗口。⌘W 在 Settings、Welcome 与关联工作树窗口关闭当前窗口，在主窗口关闭活动仓库标签页。
 - Worktrees 侧栏的 `Open in New Window` 为关联工作树打开独立单仓库窗口，不显示仓库标签栏或加号；重复打开同一路径会聚焦已有工作树窗口，关闭辅助窗口不会改动主窗口会话。
 - 打包用 `scripts/release-macos.sh`：脚本调用 `nsh package --target macos`，设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 
@@ -65,7 +65,7 @@ APP_HOME=/tmp/app-home nsh run
 
 - 语言：`src/i18n.rs` 用进程内信号保存当前语言，设置页切换后立即生效；缺键时回退英文，再缺失则返回键名。`locales` 两边的键集合由测试保证一致。
 - 主题：`theme.json` 提供 light/dark token，经 `theme_overrides` 注入；深色模式与浅色模式各有一组值，`theme_tests` 与设计 CSS 逐键比对。
-- 存储：会话、成功打开过的最近仓库、扫描仓库的命令面板搜索资格、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；扫描仓库和最近打开历史分开保存。文件格式见 [crates/store/README.md](../../crates/store/README.md)。
+- 存储：会话、成功打开过的最近仓库、Git 扫描发现结果及命令面板的扫描搜索资格、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；扫描结果与最近打开历史分开保存。欢迎页查询全部扫描结果，命令面板查询由 Git 设置启用的扫描结果。文件格式见 [crates/store/README.md](../../crates/store/README.md)。
 - 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；产物写入 `files.local/shots/`（已被 `.gitignore` 排除，不提交）。`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME`、`GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT` 可以直接进入指定页面或浮层，完整列表见脚本头注释。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
 
 ## 测试

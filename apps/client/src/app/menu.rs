@@ -37,6 +37,13 @@ pub(crate) fn build_menu(
     };
     return vec![
         MenuItem::submenu(
+            crate::brand::PRODUCT_NAME,
+            vec![
+                shortcut_item(MenuItem::new(menu("menu.settings")), "settings")
+                    .on_select(menu_run("settings")),
+            ],
+        ),
+        MenuItem::submenu(
             menu("menu.app.file"),
             vec![
                 shortcut_item(MenuItem::new(menu("menu.openRepo")), "open").on_select({
@@ -86,9 +93,6 @@ pub(crate) fn build_menu(
                 shortcut_item(MenuItem::new(menu("menu.refresh")), "refresh")
                     .on_select(menu_run("refresh")),
                 MenuItem::new(menu("menu.repoManager")).on_select(menu_run("repoManager")),
-                MenuItem::separator(),
-                shortcut_item(MenuItem::new(menu("menu.settings")), "settings")
-                    .on_select(menu_run("settings")),
             ],
         ),
         MenuItem::submenu(

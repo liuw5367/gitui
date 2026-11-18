@@ -30,6 +30,25 @@ pub(crate) fn text_input(
     );
 }
 
+pub(crate) fn text_input_sized(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    invalid: bool,
+    height: f32,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    return style_input(
+        nsh_base::input()
+            .value(value)
+            .placeholder(placeholder)
+            .on_change(move |text: &str| on_change(text)),
+        invalid,
+        Some(height),
+        ui::BODY,
+        None,
+    );
+}
+
 /// 多行输入框（提交说明、附注、冲突结果）。
 pub(crate) fn text_area(
     value: Signal<String>,

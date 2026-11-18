@@ -52,6 +52,10 @@ pub(crate) struct SessionHandle {
     pub(crate) auxiliary: bool,
     pub(crate) persist_session: bool,
     pub(crate) window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+    /// Welcome 窗口的原生引用；关闭时清空，重复入口用它置前。
+    pub(crate) welcome_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+    /// Settings 窗口的原生引用；关闭时清空，重复入口用它置前。
+    pub(crate) settings_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
 }
 
 impl SessionHandle {
@@ -194,6 +198,11 @@ impl SessionHandle {
 
     /// 打开欢迎窗口（独立窗口，由 `welcome_open` 驱动）。
     pub(crate) fn go_welcome(&self) {
+        if let Some(window) = self.welcome_window.get_untracked() {
+            self.welcome_open.set(true);
+            window.focus();
+            return;
+        }
         // 列表要显示当前分支，而不是上次打开时的快照。
         self.refresh_recent_branches();
         self.welcome_open.set(true);
@@ -542,6 +551,8 @@ mod session_tab_tests {
             auxiliary: true,
             persist_session: false,
             window: signal(None),
+            welcome_window: signal(None),
+            settings_window: signal(None),
         };
     }
 

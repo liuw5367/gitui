@@ -112,7 +112,7 @@ body 内距 10/10/12：统计行（`7 files changed` 10.5/600 + `+162` + `−62`
 | # | 位置 | 文案 | 形态 | 作用 | 随状态变化 |
 |---|---|---|---|---|---|
 | 1 | 标题栏页签右 | `+`（`aria-label=Open repository`） | 图标 27×27 | 打开 01 | 常驻 |
-| 2 | 标题栏右 | 齿轮（`aria-label=Settings`） | 图标 26×24 | 打开 23 设置 | 常驻 |
+| 2 | 标题栏右 | 齿轮（`aria-label=Settings`） | 图标 26×24 | 打开 23 设置；macOS 应用菜单也提供 Settings（⌘,） | 常驻 |
 | 3 | 工具条最左 | 侧栏图标（`aria-label=Toggle sidebar`） | 图标 26×24 | 收起/展开侧栏 | 板上无按下态 |
 | 4 | 工具条 | Fetch / Pull / Push / Branch / Stash / Agent | 文字+图标 26 高 | 同步、建分支、存 stash、打开 12 | 板上都不禁用 |
 | 5 | 工具条最右 | 镜像侧栏图标（`aria-label=Toggle inspector`） | 图标 26×24 | 收起/展开检查器 | 板上无按下态 |

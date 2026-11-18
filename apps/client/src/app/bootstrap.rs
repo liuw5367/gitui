@@ -313,6 +313,8 @@ pub(crate) fn app() -> impl IntoElement {
         auxiliary: false,
         persist_session: true,
         window: signal(None),
+        welcome_window: signal(None),
+        settings_window: signal(None),
     };
     let close_session = session.clone();
     main_window().on_close_press(move |reason| {
@@ -430,7 +432,10 @@ pub(crate) fn app() -> impl IntoElement {
 
     // 同步（P3 批 A）：面板状态收进 SyncState，用例收进 SyncCommands。
     let sync_commands = features::sync::commands::SyncCommands {
-        state: features::sync::state::SyncState { dialog: sync_state },
+        state: features::sync::state::SyncState {
+            dialog: sync_state,
+            task: signal(None),
+        },
         session: session.clone(),
         language,
         notice,

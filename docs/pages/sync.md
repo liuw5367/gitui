@@ -91,6 +91,14 @@
 离开：× / Close → 04；Cancel 只中止本次操作（结果未画）
 ```
 
+### 当前实现行为
+
+Fetch、Pull、Push 都在同一块 800×520 面板内显示各自选项、目标仓库、运行状态、输出与结果。Git 命令由后台子进程执行；右列持续显示实际 stdout/stderr，不解析不稳定的百分比，运行时用不定进度条。目标以稳定的 tab ID 和仓库路径固定，操作期间不能改选项或切换操作类型。
+
+面板头的 ×、脚部 Close 都只隐藏面板，任务继续；运行中的 Cancel 会终止 Git 子进程。重开面板可继续查看任务，完成后显示成功、失败或取消状态。任务结束时按原 tab ID 与路径刷新仓库状态、分支、远端引用、工作区变更和未完成的 merge/rebase 操作；若目标标签已关闭，不会把结果写到其它仓库。
+
+Push 遇到 non-fast-forward 时显示 Pull with Rebase、Pull with Merge 和 Cancel；选择一种 Pull 且成功后会重试原 Push。Force with lease 只传 `--force-with-lease`，选中时提示会改写远端历史，不会自动使用 `--force`。取消 Pull 不会自动 abort 已开始的 merge/rebase；取消 Push 后远端可能已收到部分对象，需再 Fetch 确认。
+
 ## 7. 画板没覆盖的组合（待补设计）
 
 1. **失败态**：认证失败、non-fast-forward 被拒、网络中断、hook 拒绝四种都没有画面；`Force with lease` 勾上后的二次确认也没画。

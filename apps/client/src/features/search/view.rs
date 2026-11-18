@@ -5,14 +5,16 @@
 
 use super::commands::SearchCommands;
 use super::state::SearchState;
-use crate::design::{self, metrics};
+use crate::design;
 use crate::i18n;
+use crate::ui;
 use nsh_core::prelude::*;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-/// 面板宽度与最大高度（设计板 `.palette`）。
-const WIDTH: f32 = 520.0;
+/// 面板宽度与高度（设计板 `.palette`）。
+const WIDTH: f32 = 620.0;
+const HEIGHT: f32 = 512.0;
 pub(crate) const MAX_ROWS: usize = 9;
 const DEFAULT_COMMAND_IDS: [&str; 5] = ["open", "refresh", "history", "changes", "settings"];
 
@@ -82,7 +84,7 @@ pub(crate) enum RepoSource {
     Scanned,
 }
 
-/// 空查询显示最近仓库和常用命令；输入后搜索打开中、最近、扫描仓库与全部命令。
+/// 空查询先显示常用命令，再显示最近仓库；输入后仍保持命令在仓库之前。
 pub(crate) fn rows(
     query: &str,
     language: &str,
@@ -100,38 +102,49 @@ pub(crate) fn rows(
     let mut seen = HashSet::new();
 
     if needle.is_empty() {
+        rows.extend(DEFAULT_COMMAND_IDS.map(Row::Command));
+        let mut repositories = Vec::new();
         for path in recent {
             let identity = repository_identity(path);
             if !seen.insert(identity.clone()) {
                 continue;
             }
-            rows.push(Row::Repo {
+            repositories.push(Row::Repo {
                 path: path.clone(),
                 open: open_paths.contains(&identity),
                 source: RepoSource::Recent,
             });
-            if rows.len() == 4 {
+            if repositories.len() == 4 {
                 break;
             }
         }
         for path in open_repos {
-            if rows.len() == 4 {
+            if repositories.len() == 4 {
                 break;
             }
             let identity = repository_identity(path);
             if seen.insert(identity) {
-                rows.push(Row::Repo {
+                repositories.push(Row::Repo {
                     path: path.clone(),
                     open: true,
                     source: RepoSource::Recent,
                 });
             }
         }
-        rows.extend(DEFAULT_COMMAND_IDS.map(Row::Command));
+        rows.extend(repositories);
         rows.truncate(MAX_ROWS);
         return rows;
     }
 
+    rows.extend(
+        commands()
+            .into_iter()
+            .filter(|command| {
+                let label = i18n::t(language, command.key).to_lowercase();
+                label.contains(&needle) || command.id.contains(&needle)
+            })
+            .map(|command| Row::Command(command.id)),
+    );
     for path in open_repos {
         if rows.len() == MAX_ROWS {
             break;
@@ -173,15 +186,6 @@ pub(crate) fn rows(
             }
         }
     }
-    rows.extend(
-        commands()
-            .into_iter()
-            .filter(|command| {
-                let label = i18n::t(language, command.key).to_lowercase();
-                label.contains(&needle) || command.id.contains(&needle)
-            })
-            .map(|command| Row::Command(command.id)),
-    );
     rows.truncate(MAX_ROWS);
     return rows;
 }
@@ -191,7 +195,7 @@ fn repository_identity(path: &str) -> PathBuf {
     return path.canonicalize().unwrap_or(path);
 }
 
-/// 面板宽度内的结果表。面板按窗口居中，点遮罩关闭。
+/// 面板宽度内的结果表。面板按画板位置出现，点击遮罩不关闭。
 ///
 /// `open_repos` / `recent` 由调用方从会话里取，保持本函数不直接读取标签页之外的
 /// 状态（渲染与键盘导航因此能用同一份结果）。
@@ -247,22 +251,11 @@ pub(crate) fn palette(
             };
             if group != last_group {
                 children.push(
-                    view()
-                        .w_full()
-                        .h(px(20.0))
-                        .px(px(10.0))
-                        .items_center()
-                        .child(
-                            text({
-                                let language_now = language_now.clone();
-                                move || i18n::t(language_now.as_str(), group)
-                            })
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .font_weight(FontWeight(600))
-                            .text_color(move || design::text3()),
-                        )
-                        .into_element(),
+                    crate::ui::section::section_label_upper({
+                        let language_now = language_now.clone();
+                        move || i18n::t(language_now.as_str(), group)
+                    })
+                    .into_element(),
                 );
                 last_group = group;
             }
@@ -283,31 +276,53 @@ pub(crate) fn palette(
                     };
                     let path = path.clone();
                     let label = path.rsplit('/').next().unwrap_or(path.as_str()).to_string();
-                    let hint = if is_open {
-                        i18n::t(language_now.as_str(), "palette.switch")
-                    } else {
-                        path.clone()
-                    };
+                    let hint = path.clone();
                     let run = open_repo.clone();
                     let open_signal = open_signal;
+                    let leading = view()
+                        .w(px(26.0))
+                        .h(px(26.0))
+                        .flex_shrink_0()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .border_1()
+                        .border_color(move || {
+                            if is_highlighted {
+                                design::line_strong()
+                            } else {
+                                design::line()
+                            }
+                        })
+                        .bg(move || {
+                            if is_highlighted {
+                                design::content()
+                            } else {
+                                design::panel()
+                            }
+                        })
+                        .child(crate::ui::icon::icon_view(
+                            icon,
+                            crate::ui::icon::IconSize::Inline,
+                            move || {
+                                if is_highlighted {
+                                    design::accent()
+                                } else {
+                                    design::text3()
+                                }
+                            },
+                        ))
+                        .into_element();
+                    let trailing = if is_highlighted {
+                        vec![crate::ui::badge::kbd("↵").into_element()]
+                    } else {
+                        Vec::new()
+                    };
                     crate::ui::row::row(
                         move || label.clone(),
-                        None,
-                        Some(
-                            crate::ui::icon::icon_view(
-                                icon,
-                                crate::ui::icon::IconSize::Button,
-                                design::text3,
-                            )
-                            .into_element(),
-                        ),
-                        vec![
-                            text(hint.clone())
-                                .flex_shrink_0()
-                                .text_size(px(crate::ui::SECONDARY))
-                                .text_color(move || design::text3())
-                                .into_element(),
-                        ],
+                        Some((Box::new(move || hint.clone()), true)),
+                        Some(leading),
+                        trailing,
                         is_highlighted,
                         false,
                         move || {
@@ -325,25 +340,58 @@ pub(crate) fn palette(
                     let run = run.clone();
                     let id = command.id;
                     let label = i18n::t(language_now.as_str(), command.key);
+                    let language_for_hint = language_now.clone();
                     let shortcut = command.shortcut;
                     let open_signal = open_signal;
+                    let leading = view()
+                        .w(px(26.0))
+                        .h(px(26.0))
+                        .flex_shrink_0()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .border_1()
+                        .border_color(move || {
+                            if is_highlighted {
+                                design::line_strong()
+                            } else {
+                                design::line()
+                            }
+                        })
+                        .bg(move || {
+                            if is_highlighted {
+                                design::content()
+                            } else {
+                                design::panel()
+                            }
+                        })
+                        .child(crate::ui::icon::icon_view(
+                            "search",
+                            crate::ui::icon::IconSize::Inline,
+                            move || {
+                                if is_highlighted {
+                                    design::accent()
+                                } else {
+                                    design::text3()
+                                }
+                            },
+                        ))
+                        .into_element();
+                    let trailing = if shortcut.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![crate::ui::badge::kbd(shortcut).into_element()]
+                    };
                     crate::ui::row::row(
                         move || label.clone(),
-                        None,
-                        Some(
-                            crate::ui::icon::icon_view(
-                                "search",
-                                crate::ui::icon::IconSize::Button,
-                                design::text3,
-                            )
-                            .into_element(),
-                        ),
-                        vec![
-                            text(shortcut)
-                                .text_size(px(crate::ui::SECONDARY))
-                                .text_color(move || design::text3())
-                                .into_element(),
-                        ],
+                        Some((
+                            Box::new(move || {
+                                i18n::t(language_for_hint.as_str(), "palette.commandHint")
+                            }),
+                            false,
+                        )),
+                        Some(leading),
+                        trailing,
                         is_highlighted,
                         false,
                         move || {
@@ -371,52 +419,107 @@ pub(crate) fn palette(
                     .into_element(),
             );
         }
-        return view().w_full().child(children).into_element();
+        return view()
+            .w_full()
+            .flex_col()
+            .child(
+                scroll()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .child(view().w_full().flex_col().child(children)),
+            )
+            .into_element();
     });
 
-    // 遮罩与「点外面关闭」交给 ui 层（已迁移页面不直接写按压回调）。内层仍按
-    // 原版排布：铺满、居中、面板上移 120。
+    // 点外层不关闭，按页面画板只由 Esc 退出；面板自身截获按压事件。
     let dismiss = {
         let cmd = cmd.clone();
         move || cmd.state.palette_open.set(false)
     };
-    return crate::ui::dialog::modal_open(
-        move || i18n::t(language.get().as_str(), "palette.placeholder"),
-        100,
-        view().w_full().h_full().items_center().child(
-            view()
-                .w(px(WIDTH))
-                .mt(px(-120.0))
-                .p(px(6.0))
-                .flex_col()
-                .gap(px(3.0))
-                .rounded(px(metrics::RADIUS_PANEL))
-                .border_1()
-                .border_color(move || design::line())
-                .bg(move || design::token("popover"))
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(30.0))
-                        .px(px(8.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.0))
-                        .child(crate::ui::icon::icon_view(
-                            "search",
-                            crate::ui::icon::IconSize::Button,
-                            design::text3,
-                        ))
-                        .child(crate::ui::text_input::text_input(
+    let panel = crate::ui::dialog::modality(
+        view()
+            .w(px(WIDTH))
+            .h(px(HEIGHT))
+            .flex_col()
+            .overflow_hidden()
+            .rounded(px(12.0))
+            .border_1()
+            .border_color(move || design::line_strong())
+            .bg(move || design::token("popover"))
+            .shadow_lg()
+            .child(
+                view()
+                    .w_full()
+                    .h(px(50.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(9.0))
+                    .px(px(14.0))
+                    .border_b_1()
+                    .border_color(move || design::line())
+                    .child(crate::ui::icon::icon_view(
+                        "search",
+                        crate::ui::icon::IconSize::Inline,
+                        design::text3,
+                    ))
+                    .child(view().flex_1().min_w_0().child(
+                        crate::ui::text_input::text_input_sized(
                             query,
                             move || i18n::t(language.get().as_str(), "palette.placeholder"),
                             false,
+                            42.0,
                             move |text: &str| query.set(text.to_string()),
-                        )),
-                )
-                .child(list),
-        ),
+                        ),
+                    ))
+                    .child(crate::ui::badge::kbd("esc")),
+            )
+            .child(view().w_full().flex_1().min_h_0().child(list))
+            .child(
+                view()
+                    .w_full()
+                    .h(px(30.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(ui::GAP_SM))
+                    .px(px(12.0))
+                    .border_t_1()
+                    .border_color(move || design::line())
+                    .child(crate::ui::badge::kbd("↑↓"))
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "palette.navigate"))
+                            .text_size(px(ui::META))
+                            .text_color(move || design::text3()),
+                    )
+                    .child(crate::ui::badge::kbd("↵"))
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "palette.openSelected"))
+                            .text_size(px(ui::META))
+                            .text_color(move || design::text3()),
+                    )
+                    .child(crate::ui::badge::kbd("esc"))
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "palette.close"))
+                            .text_size(px(ui::META))
+                            .text_color(move || design::text3()),
+                    )
+                    .child(view().flex_1())
+                    .child(crate::ui::badge::kbd("⌘P")),
+            ),
+    );
+    return crate::ui::dialog::modal_open_with_blur(
+        move || i18n::t(language.get().as_str(), "palette.placeholder"),
+        100,
+        view()
+            .w_full()
+            .h_full()
+            .flex_col()
+            .items_center()
+            .justify_start()
+            .pt(px(92.0))
+            .child(panel),
         dismiss,
+        2.0,
     );
 }
 
@@ -436,14 +539,15 @@ mod tests {
     }
 
     #[test]
-    fn empty_query_shows_recent_repositories_and_common_commands() {
+    fn empty_query_shows_common_commands_before_recent_repositories() {
         let open = vec!["/work/alpha".to_string(), "/work/beta".to_string()];
         let recent = vec!["/work/beta".to_string(), "/old/gamma".to_string()];
         let scanned = vec!["/scan/delta".to_string()];
         let all = rows("", "en", &open, &recent, &scanned);
-        // 最近列表保留时间顺序；当前打开状态仍标在对应历史行上。
+        assert_eq!(all[0], Row::Command("open"));
+        assert_eq!(all[4], Row::Command("settings"));
         assert_eq!(
-            all[0],
+            all[5],
             Row::Repo {
                 path: "/work/beta".to_string(),
                 open: true,
@@ -451,7 +555,7 @@ mod tests {
             }
         );
         assert_eq!(
-            all[1],
+            all[6],
             Row::Repo {
                 path: "/old/gamma".to_string(),
                 open: false,
@@ -459,15 +563,13 @@ mod tests {
             }
         );
         assert_eq!(
-            all[2],
+            all[7],
             Row::Repo {
                 path: "/work/alpha".to_string(),
                 open: true,
                 source: RepoSource::Recent,
             }
         );
-        assert_eq!(all[3], Row::Command("open"));
-        assert_eq!(all[7], Row::Command("settings"));
         assert!(
             !all.iter()
                 .any(|row| matches!(row, Row::Repo { path, .. } if path == "/scan/delta"))

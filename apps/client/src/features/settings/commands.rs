@@ -64,6 +64,10 @@ impl SettingsCommands {
 
     /// 打开设置窗口（独立窗口，由 `settings_open` 驱动）。
     pub(crate) fn go_settings(&self) {
+        if let Some(window) = self.session.settings_window.get_untracked() {
+            window.focus();
+            return;
+        }
         self.refresh_identity();
         self.session.settings_open.set(true);
     }

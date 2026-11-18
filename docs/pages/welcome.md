@@ -100,6 +100,10 @@
 内距 24×16、圆角 9）——40×40 图标块 + 「No repositories yet」+「Open a local repository on the right,
 or clone and create one from the tabs.」；分组标题不出现。
 
+### 搜索行为（当前实现）
+
+空查询只显示成功打开过的最近仓库；没有历史时保留空态与 Scan 入口。输入查询后，按路径文本搜索最近记录和 Git 设置中保存的**全部扫描结果**，不受命令面板 `scan_selected` 勾选影响。规范化仓库根相同的结果合并，历史行优先；扫描独占结果放在 `Scanned repositories` 分组，仍可打开、显示于 Finder 或复制路径，但菜单不显示 `Remove from List`。扫描不会自动写入最近历史；只有打开成功后才加入历史。
+
 ## 3. 右栏的三种表单
 
 分段控件用 `on` 标出当前项，右栏其余内容随之整体替换。表单区标题与副标题配对如下：

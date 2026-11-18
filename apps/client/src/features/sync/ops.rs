@@ -2,6 +2,7 @@
 
 use crate::app::session::{Sync, SyncOptions, Tab, load_tab};
 use crate::features::changes::ops::refresh_changes;
+use domain::GitError;
 use git::Repo;
 
 /// 清掉同步失败的状态（重试或用户主动关闭横幅）。
@@ -37,6 +38,10 @@ pub(crate) fn sync_with_remote(
         Sync::Pull => repo.pull_with(&options.pull),
         Sync::Push => repo.push_with(Some(remote.as_str()), &options.push),
     };
+    finish_sync_result(tab, kind, result);
+}
+
+pub(crate) fn finish_sync_result(tab: &mut Tab, kind: Sync, result: Result<String, GitError>) {
     match result {
         Ok(message) => {
             tab.sync_failed = false;
@@ -46,25 +51,38 @@ pub(crate) fn sync_with_remote(
             } else {
                 message
             });
-            refresh_changes(tab);
-            // 领先/落后与历史都要跟着刷新。
-            let filter = tab.filter.clone();
-            let refreshed = load_tab(tab.path.as_str(), &filter);
-            tab.branch = refreshed.branch;
-            tab.ahead = refreshed.ahead;
-            tab.behind = refreshed.behind;
-            tab.commits = refreshed.commits;
-            tab.refs = refreshed.refs;
-            tab.remote_urls = refreshed.remote_urls;
-            tab.changelists = refreshed.changelists;
+            refresh_synced_tab(tab);
         }
         Err(error) => {
             tab.sync_failed = true;
             tab.sync_fault = git::classify_network_error(error.detail().as_str());
             tab.sync_message = Some(error.detail());
-            refresh_changes(tab);
+            refresh_synced_tab(tab);
         }
     }
+}
+
+pub(crate) fn finish_sync_cancelled(tab: &mut Tab, message: String) {
+    tab.sync_failed = false;
+    tab.sync_fault = None;
+    tab.sync_message = Some(message);
+    refresh_synced_tab(tab);
+}
+
+fn refresh_synced_tab(tab: &mut Tab) {
+    refresh_changes(tab);
+    let filter = tab.filter.clone();
+    let refreshed = load_tab(tab.path.as_str(), &filter);
+    tab.branch = refreshed.branch;
+    tab.ahead = refreshed.ahead;
+    tab.behind = refreshed.behind;
+    tab.commits = refreshed.commits;
+    tab.refs = refreshed.refs;
+    tab.remote_urls = refreshed.remote_urls;
+    tab.changelists = refreshed.changelists;
+    tab.head = refreshed.head;
+    tab.operation = refreshed.operation;
+    tab.conflicts = refreshed.conflicts;
 }
 
 #[cfg(test)]
