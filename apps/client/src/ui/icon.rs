@@ -1,6 +1,6 @@
 //! 图标：设计稿的 SVG sprite，尺寸与颜色由调用方通过枚举给定。
 //!
-//! nsh 0.5.0 没有 SF Symbols 的接口（只有 iOS 导航栏的 header symbol），因此图标
+//! nsh 0.6.0 没有 SF Symbols 的接口（只有 iOS 导航栏的 header symbol），因此图标
 //! 沿用设计稿的路径数据。尺寸只允许三档，避免每处各写一个数字。
 
 use crate::design::{self, icons};

@@ -11,8 +11,9 @@
 
 NSH 把界面拆成三层：`nsh-core` 给原语与布局，`nsh-base` 给**无外观**的行为组件
 （`button` 的文档原话是 “a press target with no look of its own”），外观属于应用。
-NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchField`，
-也没有 SF Symbols 接口。
+NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、`NSTableView`、
+`NSSearchField`。普通视图也没有 SF Symbols 图标接口；系统符号只用于 iOS 导航栏菜单项等
+平台专用槽位。
 
 所以一致性不可能靠「调用系统控件」得到，只能靠这一层：它同时是唯一允许写字号、颜色、
 圆角、内边距的地方。

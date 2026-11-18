@@ -11,7 +11,7 @@
 
 ## 项目事实
 
-- 跨平台原生 Git 客户端，Rust + NSH 0.5.0；当前只实现 macOS 端（AppKit），其他平台不展开。
+- 跨平台原生 Git 客户端，Rust + NSH 0.6.0；当前只实现 macOS 端（AppKit），其他平台不展开。
 - 根目录是 Cargo workspace（`Cargo.toml` 的 `members` = 四个 crate + `apps/client`），共用一份 `Cargo.lock` 与一个 `target/`。**crate 边界仍然独立**：`domain` / `git` / `store` / `agent` 是库，`apps/client` 是唯一二进制；不要把逻辑搬进 `apps/client` 之外的地方，也不要把四个 crate 合成一个。依赖方向只有 `git → domain` 和四个 crate → `apps/client`；不要引入反向边。
 - 产品名尚未最终确定。名称与标识只在 `apps/client/src/brand.rs`、`apps/client/nsh.json` 与 `apps/client/scripts/release-macos.sh` 定义；不要在代码或文档里另造名称。
 - 设计稿在 `designs/graft-git`，由 design 单独维护。页面以 NSH 原生组件为基础，尽量采用平台原生样式；生产实现只引用设计源，不引入 TSX、JS 运行时、HTML 或 WebView。

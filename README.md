@@ -1,6 +1,6 @@
 # 原生 Git 客户端
 
-跨平台的原生 Git 客户端，用 Rust 与 NSH 0.5.0 编写。界面由 NSH 的 Rust API 在当前平台的原生后端渲染，仓库中没有 TSX、JS 运行时或 HTML 界面。当前实现 macOS 端（AppKit 后端），其他平台的细节暂不展开。
+跨平台的原生 Git 客户端，用 Rust 与 NSH 0.6.0 编写。界面由 NSH 的 Rust API 在当前平台的原生后端渲染，仓库中没有 TSX、JS 运行时或 HTML 界面。当前实现 macOS 端（AppKit 后端），其他平台的细节暂不展开。
 
 项目暂名 gitui，最终名称未定；名称与标识在 `apps/client/src/brand.rs`、`apps/client/nsh.json` 与[打包脚本](apps/client/scripts/release-macos.sh)中定义，改名位置见[客户端 README](apps/client/README.md) 的「改名」一节。
 
@@ -40,10 +40,10 @@
 
 - 当前构建目标为 macOS；`apps/client/src/main.rs` 在非 macOS 目标上只打印提示，不启动界面。
 - Rust，各包从 workspace 根目录继承 edition 2024；rustfmt 风格版固定在根目录 `rustfmt.toml`。
-- NSH（[nsh.dev 文档](https://nsh.dev/llms.txt)）0.5.0。`apps/client/Cargo.toml` 把 `nsh-core`、`nsh-base` 与 `nsh-platform-macos` 固定为 `=0.5.0`。
+- NSH（[nsh.dev 文档](https://nsh.dev/llms.txt)）0.6.0。`apps/client/Cargo.toml` 把 `nsh-core`、`nsh-base` 与 `nsh-platform-macos` 固定为 `=0.6.0`。
 - PATH 中有 `git`；执行层固定调用它。
 
-开发验证所用版本：rustc 1.100.0、nsh 0.5.0、git 2.56.0。
+开发验证所用版本：rustc 1.100.0、nsh 0.6.0、git 2.56.0。
 
 ## 运行
 
