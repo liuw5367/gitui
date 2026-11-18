@@ -95,7 +95,7 @@ if [ "${GITUI_DIRTY:-0}" = "1" ] && [ -n "${GITUI_REPO:-}" ]; then
   fi
 fi
 
-echo "启动应用（HOME=$home_dir）…"
+echo "启动应用（HOME=${home_dir}）…"
 (
   cd "$root/apps/client"
   APP_HOME="$app_home" \
@@ -147,7 +147,7 @@ if [ "$window_flag" = "--smallest" ]; then
   [ -n "${latest:-}" ] && window_id="$latest"
 fi
 screencapture -x -l"$window_id" "$out"
-echo "截图：${out#"$root"/}（窗口 id $window_id）"
+echo "截图：${out#"$root"/}（窗口 id ${window_id}）"
 
 if [ -f "$home_dir/run-$name.pid" ]; then
   kill "$(cat "$home_dir/run-$name.pid")" 2>/dev/null || true
