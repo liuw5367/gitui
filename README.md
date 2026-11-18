@@ -8,7 +8,7 @@
 
 ## 当前能力
 
-- **仓库**：打开本地仓库；克隆时可以指定分支、深度与子模块，克隆后可直接打开，过程中显示进度并可取消；初始化时可以生成 `.gitignore` 与 `README.md`；最近仓库、会话恢复与多标签；关联工作树可在独立原生窗口打开、创建、移除与清理。
+- **仓库**：打开本地仓库；克隆时可以指定分支、深度与子模块，克隆后可直接打开，过程中显示进度并可取消；初始化时可以生成 `.gitignore` 与 `README.md`；欢迎页历史只记录成功打开过的仓库；Git 设置可扫描目录，逐项选择哪些仓库可由命令面板搜索；命令面板默认显示最近仓库与常用命令。另有会话恢复与多标签；关联工作树可在独立原生窗口打开、创建、移除与清理。
 - **历史与 diff**：按关键字、作者、时间与引用筛选；多提交对比；统一与并排 diff；软换行；导出补丁；单文件补丁；blame 与文件历史。
 - **变更与提交**：对文件、hunk 与行执行暂存、取消暂存；丢弃改动；变更清单；提交时可选 amend、sign-off 与提交后推送；钩子失败后可以重试、跳过或查看完整日志。
 - **引用与恢复**：分支、标签、远程、贮藏、子模块与工作树的常用操作；侧栏分组可折叠，远端组显示实际 Fetch/Push URL 和可折叠的远端跟踪分支树，支持指定远端获取、建立本地跟踪分支、定向拉取与删除远端分支；贮藏支持全量或选择文件保存、指定条目应用/弹出/删除与差异查看；子模块支持更新到记录版本或配置分支最新版本、同步 URL、在新标签打开、暂存 gitlink 变更与安全移除；工作树支持创建已有分支或新分支的关联工作树、安全移除干净且未打开的工作树、清理失效登记，并可在独立窗口使用；reflog 撤销；固定形态的 reword 与 squash。
@@ -58,7 +58,7 @@ nsh run
 APP_HOME=/tmp/app-home nsh run
 ```
 
-应用数据默认在 `~/.config/gitui`，目录名取 `apps/client/src/brand.rs` 的 `STORAGE_DIR`；`APP_HOME` 可以覆盖。其中保存会话、最近仓库、设置、变更清单、快捷键、语言、外观与 Agent 状态。
+应用数据默认在 `~/.config/gitui`，目录名取 `apps/client/src/brand.rs` 的 `STORAGE_DIR`；`APP_HOME` 可以覆盖。其中保存会话、成功打开过的最近仓库、扫描仓库的命令面板搜索资格、设置、变更清单、快捷键、语言、外观与 Agent 状态。
 
 打包用 `apps/client/scripts/release-macos.sh`。脚本调用 `nsh package --target macos`；设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 
@@ -68,7 +68,7 @@ APP_HOME=/tmp/app-home nsh run
 
 ```sh
 cargo fmt --all                 # 格式化整个 workspace 的 Rust 代码
-cargo test                       # 全部：domain 17 / git 70 / store 17 / agent 12 / nsh-app 96
+cargo test                       # 全部：domain 17 / git 78 / store 18 / agent 12 / nsh-app 106
 (cd apps/client && cargo test)   # 只跑客户端，等价于 cargo test -p nsh-app
 (cd apps/client && nsh check)
 tools/check-ui.sh

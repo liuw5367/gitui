@@ -457,7 +457,8 @@ pub(crate) fn app() -> impl IntoElement {
     } else {
         Some(store::now_unix())
     };
-    let git_selected = git_found.clone();
+    let git_selected =
+        features::settings::commands::load_scan_search_selection(&store_dir, &git_found);
 
     let settings_commands = features::settings::commands::SettingsCommands {
         state: features::settings::state::SettingsState {

@@ -254,8 +254,9 @@ impl SearchCommands {
         match id {
             "open" => self.welcome.choose_folder(),
             "openPalette" => {
-                // 打开时把高亮拉回第一行。
+                // 每次打开都回到默认仓库与常用命令，并把高亮拉回第一行。
                 self.state.palette_selected.set(0);
+                self.state.palette_query.set(String::new());
                 self.state.palette_open.set(true);
             }
             "newTab" => self.session.go_repo_manager(),
@@ -339,11 +340,13 @@ impl SearchCommands {
             .iter()
             .map(|entry| entry.path.clone())
             .collect();
+        let scanned_paths = self.settings.state.scan_selected.get_untracked();
         return view::rows(
             self.state.palette_query.get_untracked().as_str(),
             self.language.get_untracked().as_str(),
             &open_paths,
             &recent_paths,
+            &scanned_paths,
         );
     }
 

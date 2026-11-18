@@ -360,7 +360,6 @@ fn discovery(
         );
     }
     let select_cmd = cmd.clone();
-    let add_cmd = cmd.clone();
     let results_card = ui::feedback::card(
         view()
             .w_full()
@@ -390,7 +389,7 @@ fn discovery(
                         text(move || {
                             i18n::with_arguments(
                                 language.get().as_str(),
-                                "settings.selectedCount",
+                                "settings.searchableCount",
                                 &[("count", selected_count.to_string())],
                             )
                         })
@@ -434,23 +433,6 @@ fn discovery(
                         {
                             let select_cmd = select_cmd.clone();
                             move || select_cmd.select_all_found(!all_selected)
-                        },
-                    ))
-                    .child(view().flex_1())
-                    .child(ui::button::button(
-                        move || {
-                            i18n::with_arguments(
-                                language.get().as_str(),
-                                "settings.addSelected",
-                                &[("count", selected_count.to_string())],
-                            )
-                        },
-                        ui::button::ButtonVariant::Primary,
-                        ui::button::ButtonSize::Small,
-                        selected_count == 0,
-                        {
-                            let add_cmd = add_cmd.clone();
-                            move || add_cmd.add_selected_repos()
                         },
                     )),
             ),

@@ -1,9 +1,10 @@
-//! 本地持久化：最近仓库与会话。
+//! 本地持久化：最近打开仓库、会话与扫描仓库搜索资格。
 //!
 //! 采用逐行文本格式（每行一个路径），不需要额外依赖：
 //!
 //! - `recent.txt`：最近打开的仓库，最新的在第一行，每行 `<打开时间>\t<路径>`；
 //! - `session.txt`：第一行是当前 tab 下标，其后每行是一个打开中的仓库路径。
+//! - `git-scan-repositories.txt`：扫描发现的仓库是否允许命令面板搜索。
 //!
 //! 所有函数都接受目录参数，便于测试用临时目录；应用层用 [`default_dir`] 取得
 //! `~/.config/gitui`。写入采用“先写临时文件再改名”，避免
@@ -346,6 +347,41 @@ pub fn save_git_scan_folders(dir: &Path, folders: &[PathBuf]) {
         .map(|folder| folder.display().to_string())
         .collect();
     let _ = write_lines(&dir.join("git-scan-folders.txt"), &lines);
+}
+
+/// 扫描结果是否允许进入命令面板搜索（`git-scan-repositories.txt`）。
+///
+/// 每行以 `+`（启用）或 `-`（停用）开头，后面是绝对路径。文件缺失或某条路径没有
+/// 显式记录时，由应用按默认启用处理。
+pub fn load_git_scan_search_preferences(dir: &Path) -> Vec<(String, bool)> {
+    let Ok(text) = std::fs::read_to_string(dir.join("git-scan-repositories.txt")) else {
+        return Vec::new();
+    };
+    return text
+        .lines()
+        .filter_map(|line| {
+            let enabled = match line.chars().next()? {
+                '+' => true,
+                '-' => false,
+                _ => return None,
+            };
+            let path = line.get(1..)?;
+            if path.is_empty() {
+                return None;
+            }
+            Some((path.to_string(), enabled))
+        })
+        .collect();
+}
+
+/// 保存扫描结果的命令面板搜索资格。
+pub fn save_git_scan_search_preferences(dir: &Path, preferences: &[(String, bool)]) {
+    let lines: Vec<String> = preferences
+        .iter()
+        .filter(|(path, _)| !path.is_empty())
+        .map(|(path, enabled)| format!("{}{path}", if *enabled { '+' } else { '-' }))
+        .collect();
+    let _ = write_lines(&dir.join("git-scan-repositories.txt"), &lines);
 }
 
 /// 快捷键覆盖项（`shortcuts.txt`，每行 `<动作 id>=<组合>`）。
@@ -895,6 +931,25 @@ mod tests {
         let folders = vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")];
         save_git_scan_folders(dir.path(), &folders);
         assert_eq!(load_git_scan_folders(dir.path()), folders);
+    }
+
+    #[test]
+    fn scan_search_preferences_persist_and_ignore_unknown_lines() {
+        let dir = TempDir::new("scan-search-preferences");
+        assert!(load_git_scan_search_preferences(dir.path()).is_empty());
+        let preferences = vec![
+            ("/work/alpha".to_string(), true),
+            ("/work/beta".to_string(), false),
+        ];
+        save_git_scan_search_preferences(dir.path(), &preferences);
+        assert_eq!(load_git_scan_search_preferences(dir.path()), preferences);
+
+        std::fs::write(
+            dir.path().join("git-scan-repositories.txt"),
+            "+/work/alpha\n?/work/ignored\n-/work/beta\n",
+        )
+        .expect("write");
+        assert_eq!(load_git_scan_search_preferences(dir.path()), preferences,);
     }
 
     #[test]

@@ -98,7 +98,7 @@ pub(crate) struct SettingsState {
     pub(crate) credential_helper: Signal<String>,
     /// Git 可执行文件的编辑值（Choose… / 手动输入）。
     pub(crate) git_path: Signal<String>,
-    /// 扫描目录、每个目录的仓库数、聚合结果、勾选结果与上次扫描时间。
+    /// 扫描目录、每个目录的仓库数、聚合结果、允许命令面板搜索的仓库与上次扫描时间。
     pub(crate) scan_folders: Signal<Vec<std::path::PathBuf>>,
     pub(crate) scan_counts: Signal<Vec<usize>>,
     pub(crate) scan_found: Signal<Vec<String>>,

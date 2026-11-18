@@ -106,6 +106,7 @@ fn modal_element(
 ) -> impl IntoElement {
     let title = std::rc::Rc::new(title);
     return nsh_base::dialog()
+        .animation(ModalAnimation::Fade)
         .close_on_escape(true)
         // 遮罩由应用绘制，自己的点击处理负责关闭。
         .close_on_backdrop_press(false)

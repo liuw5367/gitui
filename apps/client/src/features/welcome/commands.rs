@@ -177,14 +177,12 @@ impl WelcomeCommands {
             )));
             return;
         }
-        // 「克隆后打开」关闭时只记入最近仓库，不切走当前工作区。
+        // 只有实际打开仓库才会进入最近打开历史。
         let open_after = chosen.open_after_clone;
         cloning.set(true);
         clone_progress.set(String::new());
         cancel.store(false, Ordering::Relaxed);
         clone_error.set(None);
-        let recent = session.recent;
-        let store_dir = session.store_dir.clone();
         spawn(async move {
             // 启动后按 100ms 轮询：界面一直可响应，取消也能立刻生效。
             let mut run = match git::start_clone(url.trim(), destination.trim(), &options) {
@@ -220,23 +218,6 @@ impl WelcomeCommands {
                 Ok(()) => {
                     if open_after {
                         session.open_path(destination.trim().to_string());
-                    } else {
-                        let path = destination.trim().to_string();
-                        let list = recent.get_untracked();
-                        // 复用既有的「记住最近仓库」入口，顺序与去重规则一致。
-                        store::remember_recent(&store_dir, &list, path.as_str());
-                        // 克隆后不打开时也要尽量记下分支，欢迎页才能显示 chip。
-                        if let Ok(repo) = git::Repo::open(path.as_str()) {
-                            let branch = match repo.head_state() {
-                                git::HeadState::Branch(name) => Some(name),
-                                git::HeadState::Unborn { branch } => Some(branch),
-                                git::HeadState::Detached { .. } => None,
-                            };
-                            if let Some(branch) = branch {
-                                store::set_recent_branch(&store_dir, path.as_str(), &branch);
-                            }
-                        }
-                        recent.set(store::load_recent(&store_dir));
                     }
                 }
                 Err(detail) => clone_error.set(Some(detail)),

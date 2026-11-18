@@ -38,7 +38,7 @@ pub(crate) struct SessionHandle {
     pub(crate) welcome_open: Signal<bool>,
     /// 设置窗口是否打开（独立窗口；菜单、工具栏与 Done 都只改这个信号）。
     pub(crate) settings_open: Signal<bool>,
-    /// 最近仓库列表：打开、克隆或扫描后写入。
+    /// 最近仓库列表：仓库成功打开后写入，扫描发现不修改此列表。
     pub(crate) recent: Signal<Vec<store::RecentRepo>>,
     /// 应用数据目录：会话、最近仓库与设置都落在这里。
     pub(crate) store_dir: PathBuf,
@@ -98,6 +98,8 @@ impl SessionHandle {
                 nsh_core::element::desktop::main_window().focus();
             }
             if persist_session {
+                store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
+                recent.set(store::load_recent(&store_dir));
                 crate::persist(&store_dir, active, tabs);
             }
             return;

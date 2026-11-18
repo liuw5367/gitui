@@ -10,7 +10,33 @@ use crate::features::SessionHandle;
 use crate::i18n;
 use crate::shared::diff::DiffCommands;
 use nsh_core::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// 按持久化状态载入当前扫描结果；新发现的仓库默认允许命令面板搜索。
+pub(crate) fn load_scan_search_selection(store_dir: &Path, found: &[String]) -> Vec<String> {
+    let mut preferences = store::load_git_scan_search_preferences(store_dir);
+    let selected = merge_scan_search_selection(found, &mut preferences);
+    store::save_git_scan_search_preferences(store_dir, &preferences);
+    return selected;
+}
+
+fn merge_scan_search_selection(
+    found: &[String],
+    preferences: &mut Vec<(String, bool)>,
+) -> Vec<String> {
+    let mut selected = Vec::new();
+    for path in found {
+        if let Some((_, enabled)) = preferences.iter().find(|(known, _)| known == path) {
+            if *enabled {
+                selected.push(path.clone());
+            }
+        } else {
+            preferences.push((path.clone(), true));
+            selected.push(path.clone());
+        }
+    }
+    return selected;
+}
 
 #[derive(Clone)]
 pub(crate) struct SettingsCommands {
@@ -319,8 +345,9 @@ impl SettingsCommands {
             .map(|folder| store::scan_git_repositories(std::slice::from_ref(folder)).len())
             .collect();
         let found = store::scan_git_repositories(&folders);
+        let selected = load_scan_search_selection(&self.store_dir, &found);
         self.state.scan_counts.set(counts);
-        self.state.scan_selected.set(found.clone());
+        self.state.scan_selected.set(selected);
         self.state.scan_found.set(found);
         self.state.scan_last_at.set(if folders.is_empty() {
             None
@@ -338,6 +365,7 @@ impl SettingsCommands {
             selected.push(path);
         }
         self.state.scan_selected.set(selected);
+        self.persist_scan_search_selection();
     }
 
     /// 全选 / 全不选扫描结果。
@@ -349,29 +377,23 @@ impl SettingsCommands {
         } else {
             self.state.scan_selected.set(Vec::new());
         }
+        self.persist_scan_search_selection();
     }
 
-    /// 只把勾选的仓库加入最近列表。
-    pub(crate) fn add_selected_repos(&self) {
+    /// 只更新当前扫描结果的搜索资格，保留已移出扫描目录的历史选择。
+    fn persist_scan_search_selection(&self) {
+        let found = self.state.scan_found.get_untracked();
         let selected = self.state.scan_selected.get_untracked();
-        if selected.is_empty() {
-            return;
+        let mut preferences = store::load_git_scan_search_preferences(&self.store_dir);
+        for path in found {
+            let enabled = selected.iter().any(|item| item == &path);
+            if let Some((_, saved)) = preferences.iter_mut().find(|(known, _)| known == &path) {
+                *saved = enabled;
+            } else {
+                preferences.push((path, enabled));
+            }
         }
-        let recent = self.session.recent;
-        let mut list = recent.get_untracked();
-        for path in &selected {
-            store::remember_recent(&self.store_dir, &list, path.as_str());
-            list = store::load_recent(&self.store_dir);
-        }
-        recent.set(list);
-        crate::interactions::notify(
-            self.notice,
-            i18n::with_arguments(
-                self.language.get_untracked().as_str(),
-                "settings.scanAdded",
-                &[("count", selected.len().to_string())],
-            ),
-        );
+        store::save_git_scan_search_preferences(&self.store_dir, &preferences);
     }
 
     /// 设置启动方式（原 `set_launch_restore`）：true = 恢复上次会话。
@@ -519,6 +541,31 @@ impl SettingsCommands {
         self.state.restore_confirm.set(false);
         let done = i18n::t(self.language.get_untracked().as_str(), "shortcut.restored");
         crate::interactions::notify(self.notice, done);
+    }
+}
+
+#[cfg(test)]
+mod scan_search_tests {
+    use super::*;
+
+    #[test]
+    fn scan_search_selection_keeps_choices_and_enables_new_repositories() {
+        let found = vec![
+            "/scan/alpha".to_string(),
+            "/scan/beta".to_string(),
+            "/scan/gamma".to_string(),
+        ];
+        let mut preferences = vec![
+            ("/scan/alpha".to_string(), false),
+            ("/scan/beta".to_string(), true),
+            ("/removed/old".to_string(), false),
+        ];
+
+        let selected = merge_scan_search_selection(&found, &mut preferences);
+
+        assert_eq!(selected, vec!["/scan/beta", "/scan/gamma"]);
+        assert_eq!(preferences[2], ("/removed/old".to_string(), false));
+        assert_eq!(preferences[3], ("/scan/gamma".to_string(), true));
     }
 }
 
