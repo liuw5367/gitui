@@ -21,6 +21,7 @@
 ## 修改约定
 
 - 先读对应 README；稳定的行为、契约或配置变化要同步更新最近的文档。
+- 修改 Rust 代码后必须运行 `cargo fmt --all`，格式化整个 workspace。
 - 页面改动遵守 [页面开发规范](docs/development/page-development.md) 与[验收门槛](docs/development/verification.md)。
 - UI 改动遵守 `src/ui` 层规则：已迁移的页面文件不直接引用 `nsh_base`，不写字号字面量或十六进制颜色；字号取 `ui` 刻度，颜色取 `design`。
 - 截图写入 `files.local/shots/`；`files.local/` 已被 `.gitignore` 排除，截图不提交。
@@ -31,6 +32,7 @@
 ## 验证
 
 ```sh
+cargo fmt --all
 cargo test
 (cd apps/client && nsh check)
 tools/check-ui.sh

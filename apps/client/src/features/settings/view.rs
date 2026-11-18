@@ -69,12 +69,11 @@ fn restore_confirm(state: &SettingsState, cmd: &SettingsCommands) -> AnyElement 
             move || reset.restore_shortcuts(),
         )
         .into_element();
-        let message = text(move || {
-            i18n::t(language.get().as_str(), "confirm.restoreShortcutsMessage")
-        })
-        .text_size(px(ui::BODY))
-        .line_height(px(ui::BODY_LINE))
-        .text_color(move || design::text2());
+        let message =
+            text(move || i18n::t(language.get().as_str(), "confirm.restoreShortcutsMessage"))
+                .text_size(px(ui::BODY))
+                .line_height(px(ui::BODY_LINE))
+                .text_color(move || design::text2());
         ui::dialog::dialog(
             open.get(),
             420.0,

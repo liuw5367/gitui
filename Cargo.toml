@@ -16,3 +16,7 @@ members = [
     "crates/git",
     "crates/store",
 ]
+
+[workspace.package]
+edition = "2024"
+publish = false

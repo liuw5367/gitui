@@ -39,7 +39,7 @@
 ## 环境
 
 - 当前构建目标为 macOS；`apps/client/src/main.rs` 在非 macOS 目标上只打印提示，不启动界面。
-- Rust，各 crate 使用 edition 2024。
+- Rust，各包从 workspace 根目录继承 edition 2024；rustfmt 风格版固定在根目录 `rustfmt.toml`。
 - NSH（[nsh.dev 文档](https://nsh.dev/llms.txt)）0.5.0。`apps/client/Cargo.toml` 把 `nsh-core`、`nsh-base` 与 `nsh-platform-macos` 固定为 `=0.5.0`。
 - PATH 中有 `git`；执行层固定调用它。
 
@@ -67,6 +67,7 @@ APP_HOME=/tmp/app-home nsh run
 根目录是 Cargo workspace：`crates/domain`、`crates/git`、`crates/store`、`crates/agent` 与 `apps/client` 是成员，共用一份 `Cargo.lock` 与一个 `target/`。crate 边界不变，单独验证某个 crate 用 `cargo test -p <name>`。
 
 ```sh
+cargo fmt --all                 # 格式化整个 workspace 的 Rust 代码
 cargo test                       # 全部：domain 17 / git 70 / store 17 / agent 12 / nsh-app 96
 (cd apps/client && cargo test)   # 只跑客户端，等价于 cargo test -p nsh-app
 (cd apps/client && nsh check)
