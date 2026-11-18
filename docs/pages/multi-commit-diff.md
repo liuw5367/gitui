@@ -37,7 +37,7 @@
 |---|---|---|---|
 | 返回条 | 中列顶部 | 高 34（内联样式）；内距 0×11；间距 8 | `< Commits`、两个 SHA、`3 of 128 commits`、右端两个 chip |
 | 选择条 | 返回条下 | 高 34；内距 0×10；间距 6；`accent-soft` 底 | `3 commits selected` + 范围摘要 + 五个动作 |
-| diff 工具条 | 选择条下 | 高 38；内距 0×11；间距 8 | `3 commits` 徽章 + 路径 + 增删、布局分段、三个开关、`7 of 12 files`、前后文件 |
+| diff 工具条 | 选择条下 | 高 38；内距 0×11；间距 8 | `3 commits` 徽章 + 路径 + 增删、布局分段、四个开关、`7 of 12 files`、前后文件 |
 | diff 主体 | 工具条下 | 剩 636 高；等宽 11、行高 19 | 单栏文件头、hunk、增删行、折叠行 |
 | 检查器 | 主体右 | 宽 360；头内距 12/14/10 | 三个提交的合并摘要 + 12 个文件 |
 | 侧栏 | 主体左 | 宽 232；内距 2/8/12 | 与 04 同一套六组引用，`main` 行仍是 `sel` |
@@ -61,7 +61,7 @@ SHA 徽章 `c72d9a4` → `3 of 128 commits`（10.5 `text3`）→ 弹性空隙 �
 ## 4. diff 区
 
 - **工具条左侧** crumb 换成 `3 commits` 徽章（高 18、圆角 4、内距 0×6、`panel-2` 底 + 1px `line-soft`）+ 一个 10 的右箭头 + 路径 mono 11 + 增删 mono 9.5。
-- **右侧**：`Split | Unified`（tiny 分段，`Unified` 白底——与 04b 相反）→ 三个 24×24 开关（折叠全部、自动换行、显示空白）→ `7 of 12 files`（10.5 等宽）→ `Previous file` / `Next file` 两个 24×24 箭头，**按文件**计。
+- **右侧**：`Split | Unified`（tiny 分段，`Unified` 白底——与 04b 相反）→ 折叠、自动换行、显示空白、忽略空白差异四个开关 → `7 of 12 files`（10.5 等宽）→ `Previous file` / `Next file` 两个 24×24 箭头，**按文件**计。空白可视化只改展示文本，忽略空白重新调用 Git；复制与导出仍使用原始 patch。
 - **文件头**只有一格（内联 `grid-template-columns:1fr`）：`a/` + 路径 + `→` + `b/` + 路径，9.5 `text3`、内距 4×9。
 - **表**是三列：旧行号 42 + 新行号 42 + 代码。统一视图也保留**两列行号**，删除行的新行号格与新增行的旧行号格是 `.empty`；代码列前手写 `-` / `+` 号（`minus` / `plus` 色），不是靠底色区分。
 - hunk 行与折叠行横跨三格（`colspan=3`），高 21 / 20，与 04b 同规格；hunk 右端也有 `Copy Hunk` mini。
@@ -112,7 +112,7 @@ SHA 徽章 `c72d9a4` → `3 of 128 commits`（10.5 `text3`）→ 弹性空隙 �
 | 5 | 选择条 | Compare | 按钮 22 高、9.5 | 打开 07 | 常驻 |
 | 6 | 选择条 | Clear | ghost 按钮 22 高 | 清空选择 | 常驻 |
 | 7 | diff 工具条 | Split / Unified | 分段两项 | 切渲染 | 当前项白底：`Unified` |
-| 8 | diff 工具条 | 折叠 / 换行 / 空白（`aria-label=Collapse all hunks` / `Toggle word wrap` / `Show whitespace`） | 图标 24×24 | 视图开关 | 板上都无 `on` 态 |
+| 8 | diff 工具条 | 折叠 / 换行 / 空白 / 忽略空白 | 图标按钮 | 视图开关 | 状态强调色 |
 | 9 | diff 工具条 | `<` / `>`（`aria-label=Previous file` / `Next file`） | 图标 24×24 | 上一个/下一个文件 | 板上常亮 |
 | 10 | 每个 hunk | Copy Hunk | mini 17 高 | 复制该 hunk | 每个 hunk 一个 |
 | 11 | 检查器页脚 | Export Patch / 复制（`Copy combined diff`）/ `⋯`（`More actions`） | 小按钮 22 + 两个图标 24 | 导出补丁、复制合并 diff、更多 | 板上没有展开菜单 |

@@ -129,7 +129,7 @@ pub(crate) fn show_commit_diff(tab: &mut Tab, index: usize) {
     tab.show_commit_diff = true;
 }
 
-/// 选择右侧目录树中的文件，只准备 Info/Blame 使用的数据，不加载文件补丁。
+/// 清除目录树中的文件选择与对应的只读文件信息。
 pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     let Some(path) = path else {
         tab.selected_file = None;
@@ -166,6 +166,36 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     {
         tab.selected_file = None;
     }
+}
+
+/// 当前历史差异的展示补丁。忽略空白只改变 Git 生成的可见差异，调用方仍保留普通补丁
+/// 作为复制、导出和统计的数据来源。
+pub(crate) fn diff_patch_for_tab(tab: &Tab, ignore_whitespace: bool) -> domain::diff::Patch {
+    let Ok(repo) = Repo::open(tab.path.as_str()) else {
+        return domain::diff::Patch::default();
+    };
+    if let Some((from, to)) = tab.compare_range() {
+        let (Some(from), Some(to)) = (tab.commits.get(from), tab.commits.get(to)) else {
+            return domain::diff::Patch::default();
+        };
+        let range = format!("{}^", from.sha);
+        return repo
+            .diff_between_with_whitespace(range.as_str(), to.sha.as_str(), ignore_whitespace)
+            .unwrap_or_default();
+    }
+    if let Some((path, _)) = &tab.file_patch
+        && let Some(commit) = tab.selected_commit()
+    {
+        return repo
+            .patch_for_path_with_whitespace(commit.sha.as_str(), path.as_str(), ignore_whitespace)
+            .unwrap_or_default();
+    }
+    if let Some(commit) = tab.selected_commit() {
+        return repo
+            .patch_with_whitespace(commit.sha.as_str(), ignore_whitespace)
+            .unwrap_or_default();
+    }
+    return domain::diff::Patch::default();
 }
 
 /// History 表格在关键字过滤后显示的原始提交下标；当前选中项始终可见，供引用跳转定位。

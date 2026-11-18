@@ -1069,6 +1069,15 @@
     "exported": "已导出 patch",
     "exportName": "changes.patch",
     "nothingToExport": "当前没有可导出的 diff",
-    "folded": "%{count} 行未改动"
+    "folded": "%{count} 行未改动",
+    "fold": "折叠未改动行",
+    "wrap": "切换自动换行",
+    "showWhitespace": "显示空白字符",
+    "ignoreWhitespace": "忽略空白差异",
+    "previousChange": "上一处改动",
+    "nextChange": "下一处改动",
+    "copy": "复制 patch",
+    "copyHunk": "复制此块",
+    "noTextChanges": "没有可显示的文本差异"
   }
 }

@@ -215,7 +215,7 @@ fn center_content(
             }
 
             // diff 区展示的内容：区间对比 > 单文件补丁 > 提交补丁。
-            let (label, patch) = match tab.compare_range() {
+            let (label, raw_patch) = match tab.compare_range() {
                 Some((from, to)) => {
                     let from_short = tab
                         .commits
@@ -246,6 +246,13 @@ fn center_content(
                     ),
                 },
             };
+            // 忽略空白用 Git 重新生成展示补丁；原始补丁仍供统计、复制与导出使用。
+            let ignore_whitespace = history.diff.state.ignore_whitespace.get();
+            let patch = if ignore_whitespace {
+                crate::features::history::ops::diff_patch_for_tab(&tab, true)
+            } else {
+                raw_patch.clone()
+            };
             let tab_for_history = tab.clone();
             let tab_for_changes = tab.clone();
             let search_for_body = search.clone();
@@ -275,6 +282,7 @@ fn center_content(
                             language,
                             label,
                             patch,
+                            raw_patch,
                         ));
                     }
                     center.into_element()

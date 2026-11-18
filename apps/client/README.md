@@ -55,7 +55,7 @@ APP_HOME=/tmp/app-home nsh run
 
 页面开发流程、响应式契约与完成门槛见 [docs/development/page-development.md](../../docs/development/page-development.md)。
 
-History 的默认中心区域展示完整全引用提交列表与按父提交计算的 branch graph；引用侧栏的分支、远端分支、tag、stash 叶行按完整 ref 或 stash OID 定位并滚动到目标提交。右侧检查器展示提交信息和文件变更目录树，树中的文件选择不会加载文件 diff；提交右键菜单的显式补丁与已有筛选、Compare 路径仍保留。
+History 的默认中心区域展示完整全引用提交列表与按父提交计算的 branch graph；引用侧栏的分支、远端分支、tag、stash 叶行按完整 ref 或 stash OID 定位并滚动到目标提交。右侧检查器展示提交信息和文件变更目录树，选择文件会在中栏显示该文件的提交差异；提交右键菜单可显式显示整个提交的差异。Diff 使用 NSH DiffView 按文件路径自动识别语法，支持 Unified/Split、折叠、换行、显示空白、忽略空白差异、hunk 导航、复制与导出；差异基于第一父提交，根提交与空 tree 比较。现有 History 筛选和 Compare 入口保留，后续仍扩展多选条件与比较语义。
 
 设计稿位于 [designs/graft-git](../../designs/graft-git/)，由 design 单独维护；页面实现只引用画板与共享样式，不把 HTML/CSS 或 WebView 带进应用。
 

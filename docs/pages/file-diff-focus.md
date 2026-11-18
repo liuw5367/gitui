@@ -20,7 +20,7 @@
 │ Branches 5    │ < Commits  3f2a1c9  Fix diff hunk ...       │ Fix diff hunk alignment       │
 │ ● main * +2-0 │                   7 files  +162 -62         │ MC Mia Chen  2 hours ago      │
 │ ● feature/dif │ src/git/diff-engine.ts      +18 -7          │ 3f2a1c9 [copy]                │
-│ Remotes 2     │ [Split] Unified | [fold][wrap][ws]          │ Committed on main · 7 files   │
+│ Remotes 2     │ [Split] Unified | [fold][wrap][ws][ignore]  │ Committed on main · 7 files   │
 │   origin 8    │ 2 of 7   [<] [>]                            │  Changes 7  Files  Info       │
 │ Tags 3        │ a/ src/git/diff-engine.ts                   │ 7 files changed +162 -62      │
 │ ▣ v1.4.0      │ b/ src/git/diff-engine.ts                   │ [tree] [flat]                 │
@@ -38,7 +38,7 @@
 | 区域 | 位置 | 尺寸（画板值） | 内容 |
 |---|---|---|---|
 | 返回条 | 中列顶部 | 高 34（内联样式，不是类）；内距 0×11；底 `panel` | `< Commits` chip、SHA、提交标题、右端 `7 files · +162 −62` |
-| diff 工具条 | 返回条下 | 高 38；内距 0×11；间距 8 | 路径 + 增删、Split/Unified、三个视图开关、`2 of 7`、前后改动 |
+| diff 工具条 | 返回条下 | 高 38；内距 0×11；间距 8 | 路径 + 增删、Split/Unified、四个视图开关、`2 of 7`、前后改动 |
 | diff 主体 | 工具条下 | 剩 640 高；等宽 11、行高 19 | 两栏文件头、hunk 行、上下文/增删行、折叠行 |
 | 侧栏 | 主体左 | 宽 232；内距 2/8/12 | 与 04 同一套六组引用 |
 | 检查器 | 主体右 | 宽 360；头内距 12/14/10 | 与 04 同一套提交头与页签，7 个文件 |
@@ -54,8 +54,10 @@
 
 左侧 crumb：路径 mono 11 `text` + 增删（`+18` 绿、`−7` 红，mono 9.5）；这里没有提交链，因为只有一个文件。
 右半：`Split | Unified` 分段（tiny：容器内距 2、项高 21、内距 0×7、10.5，`Split` 白底为当前）→ 1×18 竖线 →
-三个 24×24 图标（折叠全部 hunk、自动换行、显示空白，最后一个板上字形是 `¶`）→ 竖线 → `2 of 7`（10.5、等宽数字）→
+四个图标（折叠未改动上下文、自动换行、显示空白 `¶`、忽略空白差异）→ 竖线 → `2 of 7`（10.5、等宽数字）→
 前后各一个 24×24 箭头。两个箭头的 aria 是 `Previous change` / `Next change`——**按「改动」计**，不像 06/07 按文件计。
+
+`Show whitespace` 只把显示副本中的空格和 tab 换成可见符号；`Ignore whitespace` 重新调用 Git `--ignore-all-space`。两者互不影响，复制与导出始终保留原始 patch。DiffView 依据每个文件的路径独立选择内置语法，未知扩展名回退纯文本。
 
 ## 4. diff 主体
 
@@ -110,7 +112,7 @@
 
 ## 8. 按钮与链接清单
 
-共 11 组；分段、页签、整行可点的行不计入，见本节末。
+共 12 组；分段、页签、整行可点的行不计入，见本节末。
 
 | # | 位置 | 文案 | 形态 | 作用 | 随状态变化 |
 |---|---|---|---|---|---|
@@ -118,13 +120,14 @@
 | 2 | diff 工具条 | Split / Unified | 分段两项（`role=group`） | 切渲染 | 当前项白底；板上 `Split` |
 | 3 | diff 工具条 | 折叠图标（`aria-label=Collapse all hunks`） | 图标 24×24 | 折叠全部 hunk | 常驻，无按下态 |
 | 4 | diff 工具条 | 换行图标（`aria-label=Toggle word wrap`） | 图标 24×24 | 开关自动换行 | 无 `on` 态 |
-| 5 | diff 工具条 | `¶`（`aria-label=Show whitespace`） | 图标 24×24 | 显示空白字符 | 无 `on` 态 |
-| 6 | diff 工具条 | `<`（`aria-label=Previous change`） | 图标 24×24 | 上一处改动 | 板上常亮 |
-| 7 | diff 工具条 | `>`（`aria-label=Next change`） | 图标 24×24 | 下一处改动 | 板上常亮 |
-| 8 | 每个 hunk 右端 | Copy Hunk | mini 17 高 | 复制该 hunk | 每个 hunk 一个 |
-| 9 | 检查器页脚 | Open in Editor | 小按钮 22 高 + 外链 12 | 在编辑器打开 | 常驻 |
-| 10 | 检查器页脚 | 复制（`aria-label=Copy commit SHA`） | 图标 24×24 | 复制 SHA | 常驻 |
-| 11 | 检查器页脚 | `⋯`（`aria-label=More commit actions`） | 图标 24×24 | 更多提交动作 | 板上没有展开菜单 |
+| 5 | diff 工具条 | `¶`（`aria-label=Show whitespace`） | 图标按钮 | 显示空格和 tab | 状态强调色 |
+| 6 | diff 工具条 | Filter（`aria-label=Ignore whitespace changes`） | 图标按钮 | 让 Git 忽略空白差异 | 状态强调色 |
+| 7 | diff 工具条 | `<`（`aria-label=Previous change`） | 图标按钮 | 上一处改动 | 无 hunk 时禁用 |
+| 8 | diff 工具条 | `>`（`aria-label=Next change`） | 图标按钮 | 下一处改动 | 无 hunk 时禁用 |
+| 9 | 每个 hunk 右端 | Copy Hunk | mini 17 高 | 复制该 hunk | 每个 hunk 一个 |
+| 10 | 检查器页脚 | Open in Editor | 小按钮 22 高 + 外链 12 | 在编辑器打开 | 常驻 |
+| 11 | 检查器页脚 | 复制（`aria-label=Copy commit SHA`） | 图标 24×24 | 复制 SHA | 常驻 |
+| 12 | 检查器页脚 | `⋯`（`aria-label=More commit actions`） | 图标 24×24 | 更多提交动作 | 板上没有展开菜单 |
 
 - **窗口级按钮**（页签 `+`、齿轮、侧栏/检查器开关、Fetch/Pull/Push/Branch/Stash/Agent、横幅 `Sign in…` 与 `Use SSH`）与 04 完全一致，逐个见 [workspace.md](workspace.md) §8。**页签**：检查器 `Changes 7 / Files / Info`（`role=tablist`，`Files` 链去 18）；**整行可点**：7 行文件（当前行 `aria-current=true`）。
 

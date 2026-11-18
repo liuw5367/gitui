@@ -17,8 +17,23 @@ impl Repo {
     ///
     /// 需要原始文本时用返回值的 [`Patch::raw`]。
     pub fn diff_between(&self, from: &str, to: &str) -> Result<Patch, GitError> {
+        return self.diff_between_with_whitespace(from, to, false);
+    }
+
+    /// 比较两个 revision，可选择忽略空白变化。
+    pub fn diff_between_with_whitespace(
+        &self,
+        from: &str,
+        to: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
         let range = format!("{}..{}", from, to);
-        let output = run_git(&self.root, &["diff", "--no-color", range.as_str()])?;
+        let mut args = vec!["diff", "--no-color"];
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push(range.as_str());
+        let output = run_git(&self.root, &args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
     }
@@ -27,30 +42,60 @@ impl Repo {
     ///
     /// 需要原始文本时用返回值的 [`Patch::raw`]。
     pub fn patch_for_path(&self, sha: &str, path: &str) -> Result<Patch, GitError> {
-        let output = run_git(
-            &self.root,
-            &[
-                "show",
-                "--no-color",
-                "--patch",
-                "--format=",
-                sha,
-                "--",
-                path,
-            ],
-        )?;
-        let text = String::from_utf8_lossy(&output).to_string();
-        return Ok(Patch::parse(text.as_str()));
+        return self.patch_for_path_with_whitespace(sha, path, false);
+    }
+
+    /// 某个提交里单个文件的补丁，可选择忽略空白变化。
+    pub fn patch_for_path_with_whitespace(
+        &self,
+        sha: &str,
+        path: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        return self.show_commit_patch(sha, Some(path), ignore_whitespace);
     }
 
     /// 一个提交的补丁文本（不含 commit 头）。
     ///
     /// 需要原始文本时用返回值的 [`Patch::raw`]。
     pub fn patch(&self, sha: &str) -> Result<Patch, GitError> {
-        let output = run_git(
-            &self.root,
-            &["show", "--no-color", "--patch", "--format=", sha],
-        )?;
+        return self.patch_with_whitespace(sha, false);
+    }
+
+    /// 某个提交相对于其第一父提交的补丁；根提交与空 tree 比较。
+    ///
+    /// Git 默认可能以 combined diff 显示 merge commit，这里固定第一父提交语义。
+    pub fn patch_with_whitespace(
+        &self,
+        sha: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        return self.show_commit_patch(sha, None, ignore_whitespace);
+    }
+
+    fn show_commit_patch(
+        &self,
+        sha: &str,
+        path: Option<&str>,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        let mut args = vec![
+            "show",
+            "--no-color",
+            "--patch",
+            "--format=",
+            "--root",
+            "--diff-merges=first-parent",
+        ];
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push(sha);
+        if let Some(path) = path {
+            args.push("--");
+            args.push(path);
+        }
+        let output = run_git(&self.root, &args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
     }
@@ -71,7 +116,17 @@ impl Repo {
 
     /// 一个提交改动的文件与行数统计。
     pub fn numstat(&self, sha: &str) -> Result<Vec<DiffStat>, GitError> {
-        let output = run_git(&self.root, &["show", "--numstat", "--format=", sha])?;
+        let output = run_git(
+            &self.root,
+            &[
+                "show",
+                "--numstat",
+                "--format=",
+                "--root",
+                "--diff-merges=first-parent",
+                sha,
+            ],
+        )?;
         let mut stats = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             if line.trim().is_empty() {

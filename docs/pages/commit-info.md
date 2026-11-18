@@ -16,7 +16,7 @@
 ├───────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ Branches 5     │ < Commits  3f2a1c9  Fix diff hunk ...            │ Fix diff hunk alignment           │
 │ ● main ✓ ↑2    │ src/git/diff-engine.ts     +18 -7                │ M Mia Chen  2h ago · Jun 14       │
-│ ● feature/diff │ [Split] Unified   [fold][wrap][ws]               │ 3f2a1c9 · 8b41e07 · 14 files      │
+│ ● feature/diff │ [Split] Unified   [fold][wrap][ws][ignore]       │ 3f2a1c9 · 8b41e07 · 14 files      │
 │ Remotes 2      │ 2 of 7   [<] [>]                                 │ Changes  Files  [Info]            │
 │   origin 8     │ a/ src/git/diff-engine.ts                        │ Commit    3f2a1c9e8b41e07         │
 │ Tags 3         │ b/ src/git/diff-engine.ts                        │ Parents   8b41e07                 │
@@ -39,13 +39,13 @@
 | 标题栏 | 顶部通栏 | 高 40（内联 `height:40px` 覆盖样式表的 44）；内距 0×13 | 窗口灯 12、三个仓库页签、`+`、右端 `● Fetched 2m ago` 与齿轮 |
 | 工具条 | 标题栏下 | 高 44；内距 0×10；间距 6 | 侧栏开关、Fetch/Pull/Push、Branch/Stash、搜索框 176×26、`History / Changes 12`、`Agent`、检查器开关 |
 | 返回条 | 中列顶部 | 高 34（内联，不是类）；内距 0×11；间距 8 | `< Commits` chip、提交标题、右端 `7 files` |
-| diff 工具条 | 返回条下 | 高 38；内距 0×11；间距 8 | SHA 徽章 + 路径 + 增删、`Split / Unified` 分段、三个视图开关、`2 of 7`、前后改动 |
+| diff 工具条 | 返回条下 | 高 38；内距 0×11；间距 8 | SHA 徽章 + 路径 + 增删、`Split / Unified` 分段、四个视图开关、`2 of 7`、前后改动 |
 | diff 主体 | 工具条下 | 剩 670 高 = 742 − 34 − 38；等宽 11、行高 19 | 两栏文件头、1 个 hunk、14 行代码、1 行折叠 |
 | 侧栏 | 主体左 | 宽 232（含右边框 1）；内距 2/8/12 | 与 04 同一套六组引用 |
 | 检查器 | 主体右 | 宽 360（含左边框 1）；头内距 12/14/10 | 提交头、三个页签、8 行键值、Actions、一段说明 |
 | 状态栏 | 底部通栏 | 高 24；内距 0×12；11 | 分支、`● 2 ahead · 0 behind`、`12 changes`、`UTF-8`、`LF`、`TypeScript` |
 
-中列 798 = 1390 − 232 − 360。图中 `[Split] Unified` 是分段，`[fold]/[wrap]/[ws]` 是三个图标按钮，`[Copy SHA]` 一类方括号是按钮占位，`M` 是头像里的首字母。
+中列 798 = 1390 − 232 − 360。图中 `[Split] Unified` 是分段，`[fold]/[wrap]/[ws]/[ignore]` 是四个图标按钮，`[Copy SHA]` 一类方括号是按钮占位，`M` 是头像里的首字母。
 
 ## 2. 返回条与 diff 工具条
 
@@ -54,7 +54,7 @@
 **diff 工具条** 38 高，左右两簇：
 
 - 左簇 crumb：SHA 徽章（mono 10.5、`panel-2` 底、1px `line-soft`、内距 2×5、圆角 4）→ 10 的右箭头 → 路径（mono 11 `text`，可省略）→ `+18`（`add-fg`）/ `−7`（`del-fg`），后两者 mono 9.5。
-- 右簇：`Split | Unified`（分段容器内距 2、圆角 7、`panel-2` 底、1px `line-soft`；项高 21、内距 0×7、10.5/500，`Split` 白底 + 0 1px 1px 阴影）→ 1×18 竖线（左右外距 3）→ 三个 24×24 图标（折叠全部 hunk、自动换行、`¶`）→ 再一条竖线 → `2 of 7`（10.5、等宽数字）→ 前后两个 24×24 箭头。
+- 右簇：`Split | Unified`（分段容器内距 2、圆角 7、`panel-2` 底、1px `line-soft`；项高 21、内距 0×7、10.5/500，`Split` 白底 + 0 1px 1px 阴影）→ 折叠、换行、显示空白 `¶`、忽略空白差异四个开关 → `2 of 7`（10.5、等宽数字）→ 前后两个改动导航箭头。忽略空白由 Git 重新生成差异；显示空白只转换展示副本。
 
 ## 3. diff 主体
 
@@ -109,21 +109,22 @@
 
 ## 7. 按钮与链接清单
 
-共 11 组；分段、页签、整行可点的行不计入，见本节末。
+共 12 组；分段、页签、整行可点的行不计入，见本节末。
 
 | # | 位置 | 文案 | 形态 | 作用 | 随状态变化 |
 |---|---|---|---|---|---|
 | 1 | 返回条 | `< Commits`（`aria-label=Back to commit list`） | chip 22 高 + 左箭头 10 | 回 04 | 常驻 |
 | 2 | diff 工具条 | 折叠（`aria-label=Collapse all hunks`） | 图标 24×24 | 折叠全部 hunk | 无按下态 |
 | 3 | diff 工具条 | 换行（`aria-label=Toggle word wrap`） | 图标 24×24 | 开关自动换行 | 无 `on` 态 |
-| 4 | diff 工具条 | `¶`（`aria-label=Show whitespace`） | 图标 24×24 | 显示空白字符 | 无 `on` 态 |
-| 5 | diff 工具条 | `<`（`aria-label=Previous change`） | 图标 24×24 | 上一处改动 | 板上常亮 |
-| 6 | diff 工具条 | `>`（`aria-label=Next change`） | 图标 24×24 | 下一处改动 | 板上常亮 |
-| 7 | 每个 hunk 右端 | Copy Hunk | mini 17 高 | 复制该 hunk | 每 hunk 一个 |
-| 8 | 检查器 Actions | Copy SHA | 按钮 24 高 | 复制完整 SHA | 常驻 |
-| 9 | 检查器 Actions | Open on GitHub | 按钮 24 高 | 在浏览器打开该提交 | 板上无禁用态 |
-| 10 | 检查器 Actions | Cherry-pick | 按钮 24 高 | 摘取到当前分支 | 常驻 |
-| 11 | 检查器 Actions | Revert | 按钮 24 高 | 生成反向提交 | 常驻 |
+| 4 | diff 工具条 | `¶`（`aria-label=Show whitespace`） | 图标按钮 | 显示空格和 tab | 状态强调色 |
+| 5 | diff 工具条 | Filter（`aria-label=Ignore whitespace changes`） | 图标按钮 | 忽略空白差异 | 状态强调色 |
+| 6 | diff 工具条 | `<`（`aria-label=Previous change`） | 图标 24×24 | 上一处改动 | 无 hunk 时禁用 |
+| 7 | diff 工具条 | `>`（`aria-label=Next change`） | 图标 24×24 | 下一处改动 | 无 hunk 时禁用 |
+| 8 | 每个 hunk 右端 | Copy Hunk | mini 17 高 | 复制该 hunk | 每 hunk 一个 |
+| 9 | 检查器 Actions | Copy SHA | 按钮 24 高 | 复制完整 SHA | 常驻 |
+| 10 | 检查器 Actions | Open on GitHub | 按钮 24 高 | 在浏览器打开该提交 | 板上无禁用态 |
+| 11 | 检查器 Actions | Cherry-pick | 按钮 24 高 | 摘取到当前分支 | 常驻 |
+| 12 | 检查器 Actions | Revert | 按钮 24 高 | 生成反向提交 | 常驻 |
 
 - **分段**：diff 工具条 `Split / Unified`（`role=group`，当前项白底）；**页签**：检查器 `Changes / Files / Info` 三个都是 `button`，只有 `Info` 带 `aria-selected=true`。
 - **窗口级按钮**（页签 `+`、齿轮、侧栏/检查器开关、Fetch/Pull/Push/Branch/Stash、`Changes 12`、`Agent`）与 04 一致，见 [workspace.md](workspace.md) §8。

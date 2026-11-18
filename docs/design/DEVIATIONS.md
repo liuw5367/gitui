@@ -61,7 +61,8 @@
 | 39 | 引用侧栏分支与远端行 | 分支名称显示完整斜杠路径并带分支图标；remote 展开后显示 fetch / push URL 行 | 分支树叶节点只显示当前层级名称且不显示分支图标；remote 下隐藏 URL 行，URL 仍可从 remote 右键菜单复制 | 按反馈简化分支与 remote 条目，树分组已表达路径层级 | 是（恢复完整路径、图标与 URL 行） |
 | 40 | Git 扫描结果与命令面板 | 扫描结果卡有 `Select All` 与 `Add N Repositories`；命令面板画板展示打开仓库、最近仓库与命令 | 扫描复选框只控制命令面板搜索资格；空查询最多显示 5 条常用命令与 4 条仓库，输入后按「命令、打开、最近、已启用扫描」分组；欢迎页输入后搜索最近记录与全部扫描结果 | 扫描负责发现，实际打开动作负责更新历史；欢迎页查询所有发现结果，命令面板则遵守用户勾选的搜索资格 | 是（恢复批量加入历史与画板命令面板样例） |
 
-| 41 | History 提交浏览与检查器 | History 画板把提交列表、选中提交 diff 和平铺文件列表并列显示；文件树没有完整设计 | 默认中心区只显示提交列表与 branch graph；右侧检查器在 Files 页签按目录显示变更文件，提交右键菜单可显式打开提交补丁；左侧本地分支、远端分支、tag、stash 定位到相应 commit，点击文件只选中并启用复制路径/打开编辑器动作，不加载文件 diff（`features/history/view.rs`、`inspector.rs`、`app/workspace.rs`） | 以 commit 浏览和提交信息为主要工作流；提交图依据 Git parents 绘制，树结构补足画板未定义的层级 | 是（恢复默认提交补丁面板与文件平铺补丁选择） |
+| 41 | History 提交浏览与检查器 | History 画板把提交列表、选中提交 diff 和平铺文件列表并列显示；文件树没有完整设计 | 默认中心区只显示提交列表与 branch graph；右侧检查器在 Files 页签按目录显示变更文件，提交右键菜单可显式打开提交补丁；左侧本地分支、远端分支、tag、stash 定位到相应 commit，点击文件显示该文件的提交补丁（`features/history/view.rs`、`inspector.rs`、`app/workspace.rs`） | 以 commit 浏览和提交信息为主要工作流；提交图依据 Git parents 绘制，树结构补足画板未定义的层级 | 是（恢复默认提交补丁面板与文件平铺补丁选择） |
+| 42 | Diff 空白筛选 | File diff / Commit info 画板只有一个 `Show whitespace` 图标 | 除显示空格与 tab 的开关外，再提供独立 `Ignore whitespace changes` 开关；后者通过 Git `--ignore-all-space` 重新生成展示差异，复制、导出与统计仍用原始 patch（`shared/diff.rs`、`crates/git/src/diff.rs`） | 可视化空白与忽略空白影响的是不同数据：一个只改显示文本，一个改变 Git 差异匹配；把两者合并会造成筛选含义不清 | 是（移除单独图标并保留 Git 查询能力） |
 
 ## 3. 已澄清：不算偏离
 

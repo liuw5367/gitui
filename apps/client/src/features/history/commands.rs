@@ -51,23 +51,18 @@ impl HistoryCommands {
         }
     }
 
-    /// 读取单文件补丁（保留现有显式入口供文件 diff 工作流使用）。
-    pub(crate) fn select_file(&self, index: usize) {
-        let current = self.session.active.get_untracked();
-        let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            ops::select_file(tab, index);
-            self.session.tabs.set(list);
-        }
-    }
-
-    /// 在提交变更树中选中文件，不展示文件补丁。
+    /// 在提交变更树中选中文件并打开该文件的提交差异。
     pub(crate) fn select_tree_path(&self, id: String) {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            let path = id.strip_prefix("file:");
-            ops::select_file_in_tree(tab, path);
+            if let Some(path) = id.strip_prefix("file:") {
+                if let Some(index) = tab.files.iter().position(|file| file.path == path) {
+                    ops::select_file(tab, index);
+                }
+            } else {
+                ops::select_file_in_tree(tab, None);
+            }
             self.session.tabs.set(list);
         }
     }

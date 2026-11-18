@@ -90,8 +90,9 @@ pub(crate) fn app() -> impl IntoElement {
     let notice = signal(Option::<String>::None);
     // diff 的并排/合并切换（设计板 04）。
     let diff_split = signal(false);
-    // diff 的三个显示开关（设计板 04）。
+    // diff 的布局与显示选项（设计板 04）。
     let diff_options = signal(crate::shared::diff::DiffOptions::default());
+    let diff_ignore_whitespace = signal(false);
     // 历史改写弹窗（改写说明 / 合并提交）。
     let rewrite_state = signal(Option::<features::commit::state::RewriteState>::None);
     // 命令面板的高亮行。
@@ -367,6 +368,7 @@ pub(crate) fn app() -> impl IntoElement {
         state: crate::shared::diff::DiffState {
             split: diff_split,
             options: diff_options,
+            ignore_whitespace: diff_ignore_whitespace,
         },
         settings: settings_state,
         store_dir: store_dir.clone(),

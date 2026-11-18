@@ -1069,6 +1069,15 @@
     "exported": "Patch exported",
     "exportName": "changes.patch",
     "nothingToExport": "Nothing selected to export",
-    "folded": "%{count} unchanged lines"
+    "folded": "%{count} unchanged lines",
+    "fold": "Fold unchanged lines",
+    "wrap": "Toggle soft wrap",
+    "showWhitespace": "Show whitespace",
+    "ignoreWhitespace": "Ignore whitespace changes",
+    "previousChange": "Previous change",
+    "nextChange": "Next change",
+    "copy": "Copy patch",
+    "copyHunk": "Copy hunk",
+    "noTextChanges": "There are no text changes to show"
   }
 }
