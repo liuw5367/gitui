@@ -358,6 +358,8 @@ pub(crate) fn app() -> impl IntoElement {
         when: filter_when,
         filter_open,
         compare_mode,
+        table_ref: component_ref(),
+        scroll_request: signal(None),
         filter: current_filter.clone(),
     };
     // diff 的显示开关由 history 与 changes 共用，因此放在 shared。

@@ -40,6 +40,8 @@ pub(crate) struct Tab {
     pub(crate) ahead: u32,
     pub(crate) behind: u32,
     pub(crate) commits: Vec<Commit>,
+    /// 普通 History 浏览只显示提交图；右键菜单可临时切到提交补丁。
+    pub(crate) show_commit_diff: bool,
     pub(crate) refs: Refs,
     /// 侧栏分组与引用树的折叠键，只在对应仓库标签的运行期保存。
     pub(crate) sidebar_collapsed: BTreeSet<String>,
@@ -50,9 +52,7 @@ pub(crate) struct Tab {
     pub(crate) filter: LogFilter,
     /// 选中的提交下标；空仓库时为 `None`。
     pub(crate) selected: Option<usize>,
-    /// 选中的提交的补丁（加载期解析好，渲染期不再解析）。
-    /// 没有选中提交时是 `Patch::default()`，与原来的空串语义等价；
-    /// 导出 patch 与复制用 `patch.raw`（原始文本）。
+    /// 当前显式显示的提交或比较补丁；导出 patch 与复制用 `patch.raw`（原始文本）。
     pub(crate) patch: domain::diff::Patch,
     /// 选中的提交改动的文件统计。
     pub(crate) files: Vec<DiffStat>,
@@ -307,7 +307,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         }
     };
     let summary = repo.summary().unwrap_or_default();
-    let commits = repo.log_filtered(200, filter).unwrap_or_default();
+    let commits = repo.log_history(filter).unwrap_or_default();
     let refs = repo.refs().unwrap_or_default();
     let status = repo.status().unwrap_or_default();
     let authors = repo.authors().unwrap_or_default();

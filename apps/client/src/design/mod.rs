@@ -132,6 +132,16 @@ pub(crate) fn del_fg() -> AdaptiveColor {
     return token("del-fg");
 }
 
+/// 提交图泳道颜色，四种设计 token 循环复用。
+pub(crate) fn graph_color(lane: usize) -> AdaptiveColor {
+    return match lane % 4 {
+        0 => token("g1"),
+        1 => token("g2"),
+        2 => token("g3"),
+        _ => token("g4"),
+    };
+}
+
 pub(crate) fn warn() -> AdaptiveColor {
     return token("warn");
 }

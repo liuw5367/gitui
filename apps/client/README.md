@@ -55,6 +55,8 @@ APP_HOME=/tmp/app-home nsh run
 
 页面开发流程、响应式契约与完成门槛见 [docs/development/page-development.md](../../docs/development/page-development.md)。
 
+History 的默认中心区域展示完整全引用提交列表与按父提交计算的 branch graph；引用侧栏的分支、远端分支、tag、stash 叶行按完整 ref 或 stash OID 定位并滚动到目标提交。右侧检查器展示提交信息和文件变更目录树，树中的文件选择不会加载文件 diff；提交右键菜单的显式补丁与已有筛选、Compare 路径仍保留。
+
 设计稿位于 [designs/graft-git](../../designs/graft-git/)，由 design 单独维护；页面实现只引用画板与共享样式，不把 HTML/CSS 或 WebView 带进应用。
 
 `ui` 层采用 macOS 原生刻度：正文 13、次要文字 11、元数据 11、代码 12/18、控件 22/28/32、行高 24/28、原生工具栏基准 52、主工作区紧凑工具栏 40、状态栏 24；系统刻度决定字号与控件高度。

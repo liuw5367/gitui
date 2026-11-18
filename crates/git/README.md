@@ -23,7 +23,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 分组 | 方法 |
 |---|---|
 | 打开与状态 | `Repo::open`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs` |
-| 历史与内容 | `log`、`log_filtered`、`authors`、`commit_details`、`commits_between`、`diff_between`、`patch`、`patch_for_path`、`numstat`、`blame`、`file_history`、`reflog` |
+| 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`diff_between`、`patch`、`patch_for_path`、`numstat`、`blame`、`file_history`、`reflog` |
 | 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_pop`、`stash_apply`、`stash_drop` |
@@ -39,6 +39,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 `Repo::refs` 返回 `Refs { branches, remotes, remote_info, remote_branches, tags, stashes, submodules, worktrees }`。`RemoteInfo` 保存全部 fetch/push URL；`RemoteBranch` 分开保存远端名和远端内的分支名，`full_name()` 返回 `origin/feature/topic` 形式。远端 HEAD 符号别名不会作为远端分支返回。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 保存显示序号 `reference`、提交 OID `oid` 与摘要，操作可按 OID 在序号变化后重新定位。`SubmoduleInfo` 保存 `.gitmodules` 的路径、URL、可选跟踪分支，以及初始化状态、当前提交、父仓库 index 中的 gitlink 提交和子模块自身是否有改动。`update_submodule(path, false)` 初始化并检出父仓库记录的版本，`update_submodule(path, true)` 要求配置跟踪分支并按 `--remote` 更新；`sync_submodule` 同步配置 URL，`remove_submodule` 会拒绝删除含本地改动或未记录提交的已初始化子模块。`WorktreeInfo` 记录关联工作树路径、主工作树标记、分支、锁定、失效登记、目录存在状态及工作区是否干净；`add_worktree` 可检出现有分支或从起点新建分支，`remove_worktree` 只移除干净、未锁定、非主工作树的登记路径且不使用强制选项，`prune_worktrees` 立即清理 Git 标为失效的登记。`stash_push_selected` 以 literal pathspec 只保存指定路径，`stash_show` 可读取包含未跟踪文件的差异。
 
 `rebase_onto` 把当前分支变基到指定引用；若 Git 因冲突退出，仓库会保留 rebase 状态供界面继续解决。`checkout_tracking_branch` 创建并检出跟踪指定远端分支的本地分支。`pull_remote_branch` 拉取指定远端分支并合入当前分支。`push_branch` 推送指定本地分支到远端同名分支，不要求当前检出该分支；`delete_remote_branch` 通过非强制删除 refspec 移除服务器分支。
+
+`log_all` 返回所有引用可达的完整历史，`log_history` 默认从全部引用读取并按拓扑顺序排列，指定 `LogFilter.reference` 时限制到该引用；两者不应用 `log_filtered` 的条数上限。`authors` 也从全部引用收集作者，供全引用历史筛选使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
 
 ## 选项
 

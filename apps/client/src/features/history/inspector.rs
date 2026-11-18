@@ -1,6 +1,6 @@
 //! 提交检查器（设计板 08 / 18 / 19）：Files / Info / Blame 三个页签。
 //!
-//! - Files：选中提交改动的文件（numstat，含 +/−），点一行看该文件的补丁；
+//! - Files：按目录展示提交改动的文件（numstat，含 +/−），选中文件以启用路径动作；
 //! - Info：提交元信息（SHA、tree、父提交、作者/提交者与时间、引用）与动作入口
 //!   （当前只有复制 SHA 之外的入口标注未实现）；
 //! - Blame：选中文件的逐行归属，同时列出该文件的历史。
@@ -35,9 +35,9 @@ pub(crate) fn inspector(
 ) -> impl IntoElement + use<> {
     let _ = state;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
-    let select_file: std::sync::Arc<dyn Fn(usize)> = {
+    let select_file: std::sync::Arc<dyn Fn(String)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |index: usize| cmd.select_file(index))
+        std::sync::Arc::new(move |id: String| cmd.select_tree_path(id))
     };
     let commit = tab.selected_commit().cloned();
     let now = store::now_unix();
@@ -242,7 +242,7 @@ pub(crate) fn inspector(
 fn files_body(
     language: Signal<SharedString>,
     tab: Tab,
-    select_file: std::sync::Arc<dyn Fn(usize)>,
+    select_file: std::sync::Arc<dyn Fn(String)>,
 ) -> AnyElement {
     let files = tab.files.clone();
     let selected = tab.selected_file;
@@ -259,60 +259,64 @@ fn files_body(
             )
             .into_element();
     }
-    // 表格：一列「文件」，行内容（图标 + 路径 + +/− 统计）由 render 回调自绘，
-    // 行高 24 与设计板 08 的检查器行一致。
-    let rows: Vec<Vec<String>> = files.iter().map(|file| vec![file.path.clone()]).collect();
-    let files_for_render = files.clone();
-    return crate::ui::table::table(crate::ui::table::TableSpec {
-        columns: vec![crate::ui::table::Column {
-            key: "file",
-            title: None,
-            width: None,
-            fixed: false,
-        }],
-        rows,
-        selected,
-        row_height: Some(24.0),
-        on_select: Box::new(move |index| select_file(index)),
-        render: Some(Box::new(move |row, _key, _text| {
-            let file = &files_for_render[row as usize];
-            return view()
-                .w_full()
-                .h_full()
-                .flex_row()
-                .items_center()
-                .gap(px(crate::ui::GAP_SM))
-                .px(px(crate::ui::GAP_SM))
-                .child(crate::ui::icon::icon_view(
-                    "file",
-                    crate::ui::icon::IconSize::Compact,
-                    design::text3,
-                ))
-                .child(
-                    text(file.path.clone())
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(crate::ui::CODE_LINE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(format!("+{}", file.additions))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::add_fg()),
-                )
-                .child(
-                    text(format!("−{}", file.deletions))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::del_fg()),
-                )
-                .into_element();
-        })),
-        on_row_press: None,
-        on_context_menu: None,
-    })
-    .into_element();
+    let selected_id = selected
+        .and_then(|index| files.get(index))
+        .map(|file| SharedString::from(format!("file:{}", file.path)));
+    let items = file_tree(&files);
+    return crate::ui::tree::tree(items, selected_id, move |id| select_file(id.to_string()))
+        .into_element();
+}
+
+#[derive(Default)]
+struct FileDirectory {
+    directories: std::collections::BTreeMap<String, FileDirectory>,
+    files: Vec<domain::DiffStat>,
+}
+
+fn file_tree(files: &[domain::DiffStat]) -> Vec<crate::ui::tree::TreeItem> {
+    let mut root = FileDirectory::default();
+    for file in files {
+        let mut segments = file.path.split('/').collect::<Vec<_>>();
+        if segments.is_empty() {
+            continue;
+        }
+        segments.pop();
+        let mut directory = &mut root;
+        for segment in segments {
+            directory = directory
+                .directories
+                .entry(segment.to_string())
+                .or_default();
+        }
+        directory.files.push(file.clone());
+    }
+    return directory_items(&root, "");
+}
+
+fn directory_items(directory: &FileDirectory, parent: &str) -> Vec<crate::ui::tree::TreeItem> {
+    let mut items = Vec::new();
+    for (name, child) in &directory.directories {
+        let path = if parent.is_empty() {
+            name.clone()
+        } else {
+            format!("{parent}/{name}")
+        };
+        items.push(crate::ui::tree::node(
+            format!("directory:{path}"),
+            name.clone(),
+            directory_items(child, path.as_str()),
+        ));
+    }
+    for file in &directory.files {
+        let name = file.path.rsplit('/').next().unwrap_or(file.path.as_str());
+        let label = format!("{name}   +{} −{}", file.additions, file.deletions);
+        items.push(crate::ui::tree::node(
+            format!("file:{}", file.path),
+            label,
+            Vec::new(),
+        ));
+    }
+    return items;
 }
 
 fn info_body(

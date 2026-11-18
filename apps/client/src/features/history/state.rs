@@ -11,7 +11,7 @@ use std::sync::Arc;
 pub(crate) struct HistoryState {
     /// 工具栏搜索框里的关键字。
     pub(crate) query: Signal<String>,
-    /// 只在该分支/标签上读历史；空串表示当前 HEAD。
+    /// 只在该分支/标签上读历史；空串表示全部引用。
     pub(crate) reference: Signal<String>,
     /// 作者过滤；空串表示不限。
     pub(crate) author: Signal<String>,
@@ -21,6 +21,10 @@ pub(crate) struct HistoryState {
     pub(crate) filter_open: Signal<bool>,
     /// 对比模式（设计板 06）。
     pub(crate) compare_mode: Signal<bool>,
+    /// 虚拟化历史表的引用，用于引用点击后的行级滚动。
+    pub(crate) table_ref: ComponentRef<nsh_base::DataTable>,
+    /// 下次历史表布局完成后要滚动到的可见行。
+    pub(crate) scroll_request: Signal<Option<usize>>,
     /// 当前生效的筛选条件（原 `initial_filter` / `current_filter` 用的那份）：
     /// 读上面四个信号现算，不在别处缓存；`open_path` 也要用它，所以随状态一起持有。
     pub(crate) filter: Arc<dyn Fn() -> LogFilter>,

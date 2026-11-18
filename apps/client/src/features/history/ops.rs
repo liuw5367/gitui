@@ -12,15 +12,87 @@ pub(crate) fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
         select_commit(tab, index);
         return true;
     }
-    let filter = LogFilter::default();
-    if let Ok(commits) = Repo::open(tab.path.as_str())
-        .and_then(|repo| repo.log_filtered(200, &filter).map_err(|error| error))
-    {
+    let compare_shas = tab
+        .compare
+        .iter()
+        .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
+        .collect::<Vec<_>>();
+    if let Ok(commits) = Repo::open(tab.path.as_str()).and_then(|repo| repo.log_all()) {
         tab.commits = commits;
-        tab.filter = filter;
+        tab.compare = compare_shas
+            .iter()
+            .filter_map(|sha| tab.commits.iter().position(|commit| commit.sha == *sha))
+            .collect();
     }
     if let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) {
         select_commit(tab, index);
+        return true;
+    }
+    return false;
+}
+
+/// 引用导航在全部引用中按 SHA 选择目标，并保留可兼容的其它筛选与 Compare 状态。
+pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter) -> bool {
+    let compare_shas = tab
+        .compare
+        .iter()
+        .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
+        .collect::<Vec<_>>();
+    let compare_refs_active = tab.compare_base.is_some() && tab.compare_target.is_some();
+    let compare_refs_patch = tab.patch.clone();
+    let Ok(repo) = Repo::open(tab.path.as_str()) else {
+        return false;
+    };
+    // 引用导航必须跨所有分支定位。作者/时间筛选仍应用；关键字留给表格处理，
+    // 这样目标即使不匹配关键字也能作为当前选中行滚入视口。
+    let mut all_branches_filter = filter.clone();
+    all_branches_filter.reference = None;
+    all_branches_filter.query.clear();
+    let Ok(mut commits) = repo.log_history(&all_branches_filter) else {
+        return false;
+    };
+    let mut required_shas = compare_shas.clone();
+    required_shas.push(sha.to_string());
+    if required_shas
+        .iter()
+        .any(|required| !commits.iter().any(|commit| commit.sha == *required))
+    {
+        let Ok(all_commits) = repo.log_all() else {
+            return false;
+        };
+        if required_shas
+            .iter()
+            .any(|required| !all_commits.iter().any(|commit| commit.sha == *required))
+        {
+            return false;
+        }
+        let mut order_by_sha = std::collections::HashMap::with_capacity(all_commits.len());
+        for (order, commit) in all_commits.iter().enumerate() {
+            order_by_sha.insert(commit.sha.clone(), order);
+        }
+        for commit in &all_commits {
+            if required_shas.iter().any(|required| *required == commit.sha)
+                && !commits.iter().any(|existing| existing.sha == commit.sha)
+            {
+                commits.push(commit.clone());
+            }
+        }
+        commits.sort_by_key(|commit| order_by_sha.get(&commit.sha).copied().unwrap_or(usize::MAX));
+    }
+    tab.commits = commits;
+    tab.compare = compare_shas
+        .iter()
+        .filter_map(|sha| tab.commits.iter().position(|commit| commit.sha == *sha))
+        .collect();
+    tab.filter = filter.clone();
+    tab.filter.reference = None;
+    if let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) {
+        select_commit(tab, index);
+        if tab.compare.len() >= 2 {
+            tab.patch = compare_patch(tab).unwrap_or_default();
+        } else if compare_refs_active {
+            tab.patch = compare_refs_patch;
+        }
         return true;
     }
     return false;
@@ -33,6 +105,7 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
     }
     let sha = tab.commits[index].sha.clone();
     tab.selected = Some(index);
+    tab.show_commit_diff = false;
     tab.selected_file = None;
     tab.file_patch = None;
     let repo = match Repo::open(tab.path.as_str()) {
@@ -48,6 +121,75 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
     tab.blame.clear();
     tab.file_history.clear();
     tab.error = None;
+}
+
+/// 显式打开提交补丁时才读取它，普通 commit 选择保持轻量。
+pub(crate) fn show_commit_diff(tab: &mut Tab, index: usize) {
+    select_commit(tab, index);
+    tab.show_commit_diff = true;
+}
+
+/// 选择右侧目录树中的文件，只准备 Info/Blame 使用的数据，不加载文件补丁。
+pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
+    let Some(path) = path else {
+        tab.selected_file = None;
+        tab.file_patch = None;
+        tab.blame.clear();
+        tab.file_history.clear();
+        return;
+    };
+    let Some(index) = tab.files.iter().position(|file| file.path == path) else {
+        return;
+    };
+    let Some(commit) = tab.selected_commit() else {
+        return;
+    };
+    let sha = commit.sha.clone();
+    tab.selected_file = Some(index);
+    tab.file_patch = None;
+    tab.blame_path = path.to_string();
+    match Repo::open(tab.path.as_str()) {
+        Ok(repo) => {
+            tab.blame = repo.blame(path).unwrap_or_default();
+            tab.file_history = repo.file_history(path, 50).unwrap_or_default();
+            tab.error = None;
+        }
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    }
+    // 保留选中提交身份，避免后续依赖可变列表位置重新解释该文件。
+    if tab
+        .selected_commit()
+        .is_none_or(|selected| selected.sha != sha)
+    {
+        tab.selected_file = None;
+    }
+}
+
+/// History 表格在关键字过滤后显示的原始提交下标；当前选中项始终可见，供引用跳转定位。
+pub(crate) fn visible_commit_indices(
+    commits: &[domain::Commit],
+    query: &str,
+    selected: Option<usize>,
+) -> Vec<usize> {
+    let needle = query.to_lowercase();
+    return commits
+        .iter()
+        .enumerate()
+        .filter_map(|(index, commit)| {
+            let matches = needle.is_empty()
+                || commit.summary.to_lowercase().contains(&needle)
+                || commit.author.to_lowercase().contains(&needle)
+                || commit.short.contains(&needle)
+                || commit
+                    .refs
+                    .iter()
+                    .any(|reference| reference.to_lowercase().contains(&needle));
+            (matches || selected == Some(index)).then_some(index)
+        })
+        .collect();
 }
 
 /// 选中某个文件并读取它在当前提交里的补丁。
@@ -91,6 +233,7 @@ pub(crate) fn toggle_compare(tab: &mut Tab, index: usize) {
         tab.compare.push(index);
         tab.compare.sort_unstable();
     }
+    tab.patch = compare_patch(tab).unwrap_or_default();
 }
 
 /// 对比模式下要显示的补丁：区间 diff；不足两个提交时为 `None`。

@@ -51,13 +51,29 @@ pub(crate) struct TableSpec {
 
 /// 一张虚拟化表格。
 pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
+    return table_inner(spec, None);
+}
+
+/// 带行滚动句柄的虚拟化表格，用于定位历史里的深层提交。
+pub(crate) fn table_with_scroll(
+    spec: TableSpec,
+    table_ref: ComponentRef<nsh_base::DataTable>,
+    scroll_request: Signal<Option<usize>>,
+) -> impl IntoElement {
+    return table_inner(spec, Some((table_ref, scroll_request)));
+}
+
+fn table_inner(
+    spec: TableSpec,
+    scroll: Option<(ComponentRef<nsh_base::DataTable>, Signal<Option<usize>>)>,
+) -> impl IntoElement {
     let columns = columns_of(&spec.columns);
     let data = rows_of(&spec.columns, &spec.rows);
     let render = spec.render;
     let row_press = spec.on_row_press.map(std::rc::Rc::new);
     let context_menu = spec.on_context_menu.map(std::rc::Rc::new);
     let on_select = std::rc::Rc::new(spec.on_select);
-    return nsh_base::data_table()
+    let mut table = nsh_base::data_table()
         .columns(columns)
         .data(data)
         .row_height(Points(spec.row_height.unwrap_or(ui::ROW)))
@@ -104,6 +120,24 @@ pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
                 on_select(row as usize);
             }
         });
+    let mut mounted_scroll = None;
+    if let Some((table_ref, scroll_request)) = scroll {
+        table = table.component_ref(&table_ref);
+        mounted_scroll = Some((table_ref, scroll_request));
+    }
+    let mut root = view().w_full().h_full().child(table);
+    if let Some((table_ref, scroll_request)) = mounted_scroll {
+        root = root.on_layout(move |_: &nsh_core::Bounds<nsh_core::Points>| {
+            let Some(row) = scroll_request.get_untracked() else {
+                return;
+            };
+            if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
+                api.scroll_to_row(row as u32, Some(false));
+                scroll_request.set(None);
+            }
+        });
+    }
+    return root;
 }
 
 /// 把列定义转成 `data_table` 的列。

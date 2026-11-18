@@ -110,6 +110,8 @@ impl AppHandles {
             when,
             filter_open: signal(false),
             compare_mode: signal(false),
+            table_ref: component_ref(),
+            scroll_request: signal(None),
             filter,
         };
         handles.sync.session = session.clone();

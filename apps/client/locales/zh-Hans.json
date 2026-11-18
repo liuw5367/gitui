@@ -145,6 +145,7 @@
     "date": "时间",
     "empty": "还没有提交",
     "noMatch": "没有匹配的提交",
+    "referenceNotFound": "该引用已失效，或没有指向可显示的提交。",
     "loading": "正在读取历史…",
     "selectCommit": "选择一个提交查看改动",
     "diffEmpty": "该提交没有改动",

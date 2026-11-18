@@ -145,6 +145,7 @@
     "date": "Date",
     "empty": "No commits yet",
     "noMatch": "No commits match",
+    "referenceNotFound": "This reference no longer points to a visible commit.",
     "loading": "Loading history…",
     "selectCommit": "Select a commit to read its changes",
     "diffEmpty": "No changes in this commit",

@@ -64,7 +64,7 @@ impl When {
 
 /// 组装 `LogFilter`。
 ///
-/// - `reference`：只在该分支/标签上读取；空字符串表示当前 HEAD 的全部历史。
+/// - `reference`：只在该分支/标签上读取；空字符串表示全部引用可达的历史。
 /// - `author`：空字符串表示不限。
 /// - `when`：时间预设。
 pub fn build(query: &str, reference: &str, author: &str, when: When, now: i64) -> LogFilter {

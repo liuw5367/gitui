@@ -839,7 +839,8 @@ fn remote_branch_row(
     let prefix_cmd = cmd.clone();
     let prefix_menu_key = prefix_key.clone();
     let prefix_menu_descendants = prefix_descendants.clone();
-    let click_cmd = cmd.clone();
+    let history_cmd = cmd.history.clone();
+    let history_ref = format!("refs/remotes/{full_name}");
     let label = branch_item_label(branch_name.as_str()).to_string();
     let row = view()
         .w_full()
@@ -994,11 +995,7 @@ fn remote_branch_row(
             false,
             false,
             metrics::SIDE_ROW_H,
-            move || {
-                if has_children {
-                    click_cmd.toggle_sidebar_fold(tab_id, prefix_key.clone());
-                }
-            },
+            move || history_cmd.show_reference_at(tab_id, history_ref.clone()),
         ));
     return row.into_element();
 }
@@ -1166,6 +1163,8 @@ fn branch_row(
     let branch_delete = branch.name.clone();
     let branch_copy = branch.name.clone();
     let branch_push = branch.name.clone();
+    let history_cmd = cmd.history.clone();
+    let history_ref = format!("refs/heads/{}", branch.name);
     let can_compare = !current && !current_branch.is_empty();
     let menu_cmd = cmd.clone();
     let menu_current_branch = current_branch.to_string();
@@ -1304,7 +1303,7 @@ fn branch_row(
             current,
             false,
             metrics::SIDE_ROW_H,
-            || {},
+            move || history_cmd.show_reference_at(tab_id, history_ref.clone()),
         ));
     return row.into_element();
 }
@@ -1573,15 +1572,10 @@ fn tag_row(
     let menu_cmd = cmd.clone();
     let menu_name = name.clone();
     let menu_remotes = remotes.clone();
+    let history_cmd = cmd.history.clone();
+    let history_ref = format!("refs/tags/{name}");
     return view()
         .w_full()
-        .h(px(metrics::SIDE_ROW_H))
-        .px(px(7.0))
-        .flex_row()
-        .items_center()
-        .gap(px(7.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .hover(|style| style.bg(move || design::hover()))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
             let push_items = menu_remotes.iter().map(|remote| {
                 let push_cmd = menu_cmd.clone();
@@ -1612,20 +1606,23 @@ fn tag_row(
             ));
             ui::menu::popup_at(items, event.page_position);
         })
-        .child(crate::ui::icon::icon_view(
-            "tag",
-            crate::ui::icon::IconSize::Compact,
-            design::tag_fg,
+        .child(crate::ui::row::row_sized(
+            move || name.clone(),
+            None,
+            None,
+            vec![
+                crate::ui::icon::icon_view(
+                    "tag",
+                    crate::ui::icon::IconSize::Compact,
+                    design::tag_fg,
+                )
+                .into_element(),
+            ],
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            move || history_cmd.show_reference_at(tab_id, history_ref.clone()),
         ))
-        .child(
-            text(name)
-                .text_size(px(crate::ui::BODY))
-                .text_color(move || design::text2())
-                .min_w_0()
-                .flex_1()
-                .number_of_lines(1)
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
         .into_element();
 }
 
@@ -1659,15 +1656,10 @@ fn stash_row(
     let menu_stash = cmd.search.clone();
     let menu_stash_selected = cmd.search.clone();
     let selected_paths = changed_paths;
+    let history_cmd = cmd.history.clone();
+    let history_sha = oid.clone();
     return view()
         .w_full()
-        .h(px(metrics::SIDE_ROW_H))
-        .px(px(7.0))
-        .flex_row()
-        .items_center()
-        .gap(px(7.0))
-        .rounded(px(metrics::RADIUS_CONTROL))
-        .hover(|style| style.bg(move || design::hover()))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
             let stash_cmd = menu_stash.clone();
             let mut items = vec![ui::menu::action(
@@ -1737,20 +1729,23 @@ fn stash_row(
             ));
             ui::menu::popup_at(items, event.page_position);
         })
-        .child(crate::ui::icon::icon_view(
-            "archive",
-            crate::ui::icon::IconSize::Compact,
-            design::text2,
+        .child(crate::ui::row::row_sized(
+            move || row_name.clone(),
+            None,
+            None,
+            vec![
+                crate::ui::icon::icon_view(
+                    "archive",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text2,
+                )
+                .into_element(),
+            ],
+            false,
+            false,
+            metrics::SIDE_ROW_H,
+            move || history_cmd.show_commit_at(tab_id, history_sha.clone()),
         ))
-        .child(
-            text(row_name)
-                .text_size(px(crate::ui::BODY))
-                .text_color(move || design::text2())
-                .min_w_0()
-                .flex_1()
-                .number_of_lines(1)
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
         .into_element();
 }
 

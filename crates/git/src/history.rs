@@ -2,7 +2,7 @@
 
 use domain::{Commit, GitError};
 
-use crate::exec::{portable_separator, run_git};
+use crate::exec::{portable_separator, run_git, run_git_full};
 use crate::parse::parse_log;
 use crate::query::Repo;
 
@@ -70,6 +70,60 @@ pub struct LogFilter {
 }
 
 impl Repo {
+    /// 全部引用可达的提交，按拓扑顺序返回完整历史。
+    pub fn log_all(&self) -> Result<Vec<Commit>, GitError> {
+        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
+        let output = run_git_full(
+            &self.root,
+            &["log", "--all", "--topo-order", "--date=unix", format],
+        )?;
+        return parse_log(&String::from_utf8_lossy(&output));
+    }
+
+    /// 历史页使用的完整提交列表。没有引用过滤时遍历所有引用；指定引用时保留
+    /// `LogFilter` 的范围语义，但不截断历史长度。
+    pub fn log_history(&self, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
+        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
+        let mut args = vec!["log".to_string(), "--topo-order".to_string()];
+        let reference = filter.reference.as_deref().unwrap_or_default();
+        if reference.is_empty() {
+            args.push("--all".to_string());
+        } else {
+            args.push(reference.to_string());
+        }
+        args.push("--date=unix".to_string());
+        args.push(format.to_string());
+        if let Some(since) = filter.since.as_ref() {
+            args.push(format!("--since={since}"));
+        }
+        if let Some(until) = filter.until.as_ref() {
+            args.push(format!("--until={until}"));
+        }
+        if let Some(author) = filter.author.as_ref().filter(|author| !author.is_empty()) {
+            args.push(format!("--author={author}"));
+        }
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let output = run_git_full(&self.root, &args)?;
+        let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
+        filter_query(&mut commits, &filter.query);
+        return Ok(commits);
+    }
+
+    /// 将完整引用解析为提交 SHA。`^{commit}` 同时支持轻量与 annotated tag。
+    pub fn resolve_commit(&self, reference: &str) -> Result<String, GitError> {
+        let revision = format!("{reference}^{{commit}}");
+        let output = run_git(
+            &self.root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                revision.as_str(),
+            ],
+        )?;
+        return Ok(String::from_utf8_lossy(&output).trim().to_string());
+    }
+
     /// 最近的提交，最多 `limit` 条。`query` 非空时按摘要、作者、短 SHA 过滤。
     pub fn log(&self, limit: usize, query: &str) -> Result<Vec<Commit>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
@@ -81,18 +135,7 @@ impl Repo {
             &["log", limit_arg.as_str(), "--date=unix", format],
         )?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
-        if !query.is_empty() {
-            let query = query.to_lowercase();
-            commits.retain(|commit| {
-                commit.summary.to_lowercase().contains(&query)
-                    || commit.author.to_lowercase().contains(&query)
-                    || commit.short.contains(&query)
-                    || commit
-                        .refs
-                        .iter()
-                        .any(|reference| reference.to_lowercase().contains(&query))
-            });
-        }
+        filter_query(&mut commits, query);
         return Ok(commits);
     }
 
@@ -132,24 +175,13 @@ impl Repo {
         }
         let output = run_git(&self.root, &args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
-        if !filter.query.is_empty() {
-            let needle = filter.query.to_lowercase();
-            commits.retain(|commit| {
-                commit.summary.to_lowercase().contains(&needle)
-                    || commit.author.to_lowercase().contains(&needle)
-                    || commit.short.contains(&needle)
-                    || commit
-                        .refs
-                        .iter()
-                        .any(|reference| reference.to_lowercase().contains(&needle))
-            });
-        }
+        filter_query(&mut commits, &filter.query);
         return Ok(commits);
     }
 
     /// 历史里出现过的作者，按最近提交的先后去重。
     pub fn authors(&self) -> Result<Vec<String>, GitError> {
-        let output = run_git(&self.root, &["log", "--format=%an"])?;
+        let output = run_git(&self.root, &["log", "--all", "--format=%an"])?;
         let mut authors: Vec<String> = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let name = line.trim();
@@ -306,6 +338,22 @@ impl Repo {
         }
         return Ok(entries);
     }
+}
+
+fn filter_query(commits: &mut Vec<Commit>, query: &str) {
+    if query.is_empty() {
+        return;
+    }
+    let needle = query.to_lowercase();
+    commits.retain(|commit| {
+        commit.summary.to_lowercase().contains(&needle)
+            || commit.author.to_lowercase().contains(&needle)
+            || commit.short.contains(&needle)
+            || commit
+                .refs
+                .iter()
+                .any(|reference| reference.to_lowercase().contains(&needle))
+    });
 }
 
 #[cfg(test)]

@@ -18,18 +18,20 @@
 
 use crate::design;
 use crate::ui;
-use nsh_base::{SelectValue, TreeItem};
+use nsh_base::SelectValue;
 use nsh_core::prelude::*;
+
+pub(crate) use nsh_base::TreeItem;
 
 /// 一个节点。`children` 为空时是不可展开的叶子。
 pub(crate) fn node(
-    id: &'static str,
+    id: impl Into<SharedString>,
     label: impl Into<SharedString>,
     children: Vec<TreeItem>,
 ) -> TreeItem {
     // `TreeItem` 是 non_exhaustive：只能 default 后逐字段赋值。
     let mut item = TreeItem::default();
-    item.id = SharedString::from(id);
+    item.id = id.into();
     item.label = label.into();
     item.children = children;
     return item;

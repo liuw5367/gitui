@@ -11,6 +11,15 @@ pub(crate) const MAX_DETAIL: usize = 4096;
 
 /// 在 `directory` 里运行 `git args...`，返回 stdout。
 pub fn run_git(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
+    return run_git_inner(directory, args, true);
+}
+
+/// 读取需要完整输出的只读命令，例如全引用历史。
+pub(crate) fn run_git_full(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
+    return run_git_inner(directory, args, false);
+}
+
+fn run_git_inner(directory: &Path, args: &[&str], limit_stdout: bool) -> Result<Vec<u8>, GitError> {
     let program = "git";
     let mut command = Command::new(program);
     command
@@ -37,7 +46,9 @@ pub fn run_git(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
         });
     }
     let mut stdout = output.stdout;
-    stdout.truncate(MAX_OUTPUT);
+    if limit_stdout {
+        stdout.truncate(MAX_OUTPUT);
+    }
     return Ok(stdout);
 }
 

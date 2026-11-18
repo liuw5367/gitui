@@ -1,7 +1,7 @@
-//! 工作区：标题栏 + 工具栏 + 侧栏 + History/diff（+ 提交文件面板）+ 状态栏。
+//! 工作区：标题栏 + 工具栏 + 引用侧栏 + History（+ 右侧提交检查器）+ 状态栏。
 //!
-//! diff 区显示三种内容之一：选中提交的补丁、提交内单个文件的补丁、两个提交的区间
-//! 补丁。打开失败时在正文区显示错误面板。
+//! History 默认显示提交列表与 branch graph；提交菜单或 Compare 显式打开时才显示补丁。
+//! 打开失败时在正文区显示错误面板。
 //!
 //! P4 起这是主窗口版式的组装根：参数收成一个 `AppHandles`，各功能句柄按需克隆。
 
@@ -250,26 +250,35 @@ fn center_content(
             let tab_for_changes = tab.clone();
             let search_for_body = search.clone();
             return match mode.get() {
-                crate::Mode::History => view()
-                    .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .flex_col()
-                    .child(history_view::history(
-                        &history.state,
-                        &history,
-                        tab_for_history,
-                        &search_for_body,
-                        &refs,
-                    ))
-                    .child(diff::diff(
-                        &history.diff.state,
-                        &history.diff,
-                        language,
-                        label,
-                        patch,
-                    ))
-                    .into_element(),
+                crate::Mode::History => {
+                    let show_diff = tab.show_commit_diff
+                        || tab.compare_range().is_some()
+                        || (tab.compare_base.is_some() && tab.compare_target.is_some())
+                        || tab.file_patch.is_some();
+                    let mut center =
+                        view()
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .flex_col()
+                            .child(history_view::history(
+                                &history.state,
+                                &history,
+                                tab_for_history,
+                                &search_for_body,
+                                &refs,
+                            ));
+                    if show_diff {
+                        center = center.child(diff::diff(
+                            &history.diff.state,
+                            &history.diff,
+                            language,
+                            label,
+                            patch,
+                        ));
+                    }
+                    center.into_element()
+                }
                 crate::Mode::Agent => view().w_full().flex_1().min_h_0().into_element(),
                 crate::Mode::Blame => {
                     crate::features::history::blame_view(language, tab_for_history, notice)

@@ -2,6 +2,7 @@
 
 pub(crate) mod blame;
 pub(crate) mod commands;
+pub(crate) mod graph;
 pub(crate) mod inspector;
 pub(crate) mod ops;
 pub(crate) mod state;
