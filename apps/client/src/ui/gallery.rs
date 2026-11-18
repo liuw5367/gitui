@@ -58,6 +58,8 @@ fn body(
     dialog_open: Signal<bool>,
 ) -> impl IntoElement {
     let close = move || open.set(false);
+    let split_left_open = signal(true);
+    let split_right_open = signal(true);
     return scroll().w_full().h_full().child(
         view()
             .w_full()
@@ -535,6 +537,96 @@ fn body(
                         false,
                         move || dialog_open.set(true),
                     )),
+            ))
+            .child(section(
+                "Resizable panes",
+                view()
+                    .w_full()
+                    .flex_col()
+                    .gap(px(ui::GAP))
+                    .child(
+                        view()
+                            .flex_row()
+                            .gap(px(ui::GAP_SM))
+                            .child(dynamic(move || {
+                                let is_open = split_left_open.get();
+                                return button(
+                                    move || {
+                                        if is_open { "Hide left" } else { "Show left" }.to_string()
+                                    },
+                                    ButtonVariant::Secondary,
+                                    ButtonSize::Small,
+                                    false,
+                                    move || split_left_open.set(!split_left_open.get_untracked()),
+                                )
+                                .into_element();
+                            }))
+                            .child(dynamic(move || {
+                                let is_open = split_right_open.get();
+                                return button(
+                                    move || {
+                                        if is_open { "Hide right" } else { "Show right" }
+                                            .to_string()
+                                    },
+                                    ButtonVariant::Secondary,
+                                    ButtonSize::Small,
+                                    false,
+                                    move || split_right_open.set(!split_right_open.get_untracked()),
+                                )
+                                .into_element();
+                            })),
+                    )
+                    .child(ui::split::horizontal(vec![
+                        ui::split::Pane::fixed(
+                            view()
+                                .w_full()
+                                .h(px(116.0))
+                                .flex_col()
+                                .items_center()
+                                .justify_center()
+                                .bg(move || design::sidebar())
+                                .child(
+                                    text("Left")
+                                        .text_size(px(ui::BODY))
+                                        .text_color(move || design::text()),
+                                ),
+                            160.0,
+                        )
+                        .min(120.0)
+                        .visible(move || split_left_open.get()),
+                        ui::split::Pane::flex(
+                            view()
+                                .w_full()
+                                .h(px(116.0))
+                                .flex_col()
+                                .items_center()
+                                .justify_center()
+                                .bg(move || design::content())
+                                .child(
+                                    text("Center")
+                                        .text_size(px(ui::BODY))
+                                        .text_color(move || design::text()),
+                                ),
+                        )
+                        .min(180.0),
+                        ui::split::Pane::fixed(
+                            view()
+                                .w_full()
+                                .h(px(116.0))
+                                .flex_col()
+                                .items_center()
+                                .justify_center()
+                                .bg(move || design::panel())
+                                .child(
+                                    text("Right")
+                                        .text_size(px(ui::BODY))
+                                        .text_color(move || design::text()),
+                                ),
+                            180.0,
+                        )
+                        .min(140.0)
+                        .visible(move || split_right_open.get()),
+                    ])),
             ))
             .child(ui::dialog::dialog(
                 dialog_open.get(),

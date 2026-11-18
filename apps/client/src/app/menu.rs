@@ -1,7 +1,7 @@
 //! 原生菜单：菜单栏的分组、文案与加速键，随语言重建。
 //!
 //! 菜单项与命令面板共用同一批动作（都经 `SearchCommands::run_command` 分发），
-//! 系统角色项（关闭/撤销/最小化等）由系统给文案。
+//! 系统角色项（撤销/最小化等）由系统给文案。
 
 use nsh_core::desktop::MenuRole;
 use nsh_core::element::desktop::MenuItem;
@@ -18,7 +18,7 @@ pub(crate) fn build_menu(
     shortcuts: bool,
 ) -> Vec<MenuItem> {
     // 录制快捷键时不给菜单挂加速键：原生 NSMenu 的键等价物会先于窗口按键表
-    // 消费组合键，否则录制 ⌘O / ⌘W / ⌘P 等只会触发菜单命令，无法改键。
+    // 消费组合键，否则录制 ⌘O / ⌘P 等只会触发菜单命令，无法改键。
     let shortcut_item = |item: MenuItem, id: &str| {
         if shortcuts {
             item.shortcut(&combo(id))
@@ -45,10 +45,8 @@ pub(crate) fn build_menu(
                 }),
                 shortcut_item(MenuItem::new(menu("menu.newTab")), "newTab")
                     .on_select(menu_run("newTab")),
-                shortcut_item(MenuItem::new(menu("menu.closeTab")), "closeTab")
-                    .on_select(menu_run("closeTab")),
+                MenuItem::new(menu("menu.closeTab")).on_select(menu_run("closeTab")),
                 MenuItem::separator(),
-                MenuItem::role(MenuRole::Close),
             ],
         ),
         MenuItem::submenu(

@@ -5,7 +5,7 @@
 //!   （当前只有复制 SHA 之外的入口标注未实现）；
 //! - Blame：选中文件的逐行归属，同时列出该文件的历史。
 //!
-//! 宽度 320，与设计稿 `.insp` 一致。入口 `inspector` 收本功能的状态与用例；
+//! 宽度由工作区分栏调整，初始宽度与 Commit 面板一致。入口 `inspector` 收本功能的状态与用例；
 //! 拣选/回滚走 `cmd.recovery`，复制与编辑器打开走 `shared::os` 的自由函数。
 
 use super::commands::HistoryCommands;
@@ -15,9 +15,6 @@ use crate::design;
 use crate::features::recovery::commands::RecoveryCommands;
 use crate::i18n;
 use nsh_core::prelude::*;
-
-/// 面板宽度（设计板 `.insp`）。
-pub(crate) const WIDTH: f32 = 320.0;
 
 /// 检查器的页签（设计板 08 / 18 / 19）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,13 +68,11 @@ pub(crate) fn inspector(
         .and_then(|index| tab.files.get(index))
         .map(|file| file.path.clone());
     return view()
-        .w(px(WIDTH))
+        .w_full()
+        .min_w_0()
         .h_full()
-        .flex_shrink_0()
         .flex_col()
         .bg(move || design::panel())
-        .border_l_1()
-        .border_color(move || design::line())
         .child(
             view()
                 .w_full()

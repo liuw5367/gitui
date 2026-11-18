@@ -32,6 +32,8 @@ pub(crate) mod welcome;
 pub(crate) struct SessionHandle {
     pub(crate) tabs: Signal<Vec<Tab>>,
     pub(crate) active: Signal<usize>,
+    /// 仓库加载任务的 owner：不随欢迎窗口等短生命周期视图关闭而取消。
+    pub(crate) task_owner: Owner,
     /// 欢迎窗口是否打开（独立窗口；打开仓库后关掉，关掉最后一个标签页后重新打开）。
     pub(crate) welcome_open: Signal<bool>,
     /// 设置窗口是否打开（独立窗口；菜单、工具栏与 Done 都只改这个信号）。
@@ -125,32 +127,35 @@ impl SessionHandle {
 
         let path_for_load = path.clone();
         let branch_dir = store_dir.clone();
-        spawn(async move {
-            let loaded = crate::app::session::load_tab(path_for_load.as_str(), &filter);
-            // 读到 HEAD 后把分支写回最近仓库，欢迎页下次打开时能显示 chip。
-            let branch = match &loaded.head {
-                git::HeadState::Branch(name) => Some(name.clone()),
-                git::HeadState::Unborn { branch } => Some(branch.clone()),
-                git::HeadState::Detached { .. } => None,
-            };
-            let loaded_path = loaded.path.clone();
-            let mut list = tabs.get_untracked();
-            // 关闭后同路径重开会得到新 load_id，旧任务不能写回新标签。
-            let Some(index) = list
-                .iter()
-                .position(|candidate| candidate.id == tab_id && candidate.load_id == load_id)
-            else {
-                return;
-            };
-            let mut loaded = loaded;
-            loaded.id = tab_id;
-            loaded.load_id = load_id;
-            list[index] = loaded;
-            tabs.set(list);
-            if persist_session && let Some(branch) = branch {
-                store::set_recent_branch(&branch_dir, &loaded_path, &branch);
-                recent.set(store::load_recent(&branch_dir));
-            }
+        // 欢迎窗口关闭会销毁其内容 owner；在会话 owner 下启动，保证切换窗口后任务仍能完成。
+        self.task_owner.run(|| {
+            spawn(async move {
+                let loaded = crate::app::session::load_tab(path_for_load.as_str(), &filter);
+                // 读到 HEAD 后把分支写回最近仓库，欢迎页下次打开时能显示 chip。
+                let branch = match &loaded.head {
+                    git::HeadState::Branch(name) => Some(name.clone()),
+                    git::HeadState::Unborn { branch } => Some(branch.clone()),
+                    git::HeadState::Detached { .. } => None,
+                };
+                let loaded_path = loaded.path.clone();
+                let mut list = tabs.get_untracked();
+                // 关闭后同路径重开会得到新 load_id，旧任务不能写回新标签。
+                let Some(index) = list
+                    .iter()
+                    .position(|candidate| candidate.id == tab_id && candidate.load_id == load_id)
+                else {
+                    return;
+                };
+                let mut loaded = loaded;
+                loaded.id = tab_id;
+                loaded.load_id = load_id;
+                list[index] = loaded;
+                tabs.set(list);
+                if persist_session && let Some(branch) = branch {
+                    store::set_recent_branch(&branch_dir, &loaded_path, &branch);
+                    recent.set(store::load_recent(&branch_dir));
+                }
+            });
         });
     }
 
@@ -531,6 +536,7 @@ mod session_tab_tests {
             filter: Arc::new(git::LogFilter::default),
             notice: signal(None),
             language: signal(SharedString::from("en")),
+            task_owner: Owner::current(),
             auxiliary: true,
             persist_session: false,
             window: signal(None),

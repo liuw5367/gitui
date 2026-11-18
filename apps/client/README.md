@@ -18,6 +18,7 @@ APP_HOME=/tmp/app-home nsh run
 - 应用数据目录默认是 `~/.config/gitui`，由 `src/brand.rs` 的 `STORAGE_DIR` 决定；`APP_HOME` 可以直接覆盖。解析规则见 [store README](../../crates/store/README.md)。
 - 窗口初始内容区 1392×852，与设计板的内容区一致；最小尺寸为 1100×700。
 - 启动行为由设置的 `Launch behavior` 决定：恢复上次会话时按保存顺序打开主窗口标签且不打开欢迎页；空会话或 `Show Welcome` 只显示欢迎窗口。主窗口 `+` 打开欢迎窗口，关闭最后一个标签会清空会话并返回欢迎页；应用退出会保存当前标签顺序和活动仓库。
+- 主窗口默认进入 Changes，中栏显示变更列表、右栏显示 Commit，左侧引用栏也默认打开。左右栏与弹性中栏都可拖拽调整宽度；工具栏按钮可分别隐藏或恢复左右栏，宽度保留到当前窗口关闭。Settings 是独立普通窗口，支持系统最小化、缩放和关闭；⌘W 在 Settings、Welcome 与关联工作树窗口关闭当前窗口，在主窗口关闭活动仓库标签页。
 - Worktrees 侧栏的 `Open in New Window` 为关联工作树打开独立单仓库窗口，不显示仓库标签栏或加号；重复打开同一路径会聚焦已有工作树窗口，关闭辅助窗口不会改动主窗口会话。
 - 打包用 `scripts/release-macos.sh`：脚本调用 `nsh package --target macos`，设置 `APP_SIGN_IDENTITY` 与 `APP_NOTARY_PROFILE` 后继续签名、公证与 stapling。
 
@@ -56,7 +57,7 @@ APP_HOME=/tmp/app-home nsh run
 
 设计稿位于 [designs/graft-git](../../designs/graft-git/)，由 design 单独维护；页面实现只引用画板与共享样式，不把 HTML/CSS 或 WebView 带进应用。
 
-`ui` 层采用 macOS 原生刻度：正文 13、次要文字 11、元数据 11、代码 12/18、控件 22/28/32、行高 24/28、工具栏 52、状态栏 24；系统刻度决定字号与控件高度。
+`ui` 层采用 macOS 原生刻度：正文 13、次要文字 11、元数据 11、代码 12/18、控件 22/28/32、行高 24/28、原生工具栏基准 52、主工作区紧凑工具栏 40、状态栏 24；系统刻度决定字号与控件高度。
 
 组件画廊用于逐项检查 `ui` 层外观，作为独立窗口打开，快捷键为 ⌘⇧D。
 

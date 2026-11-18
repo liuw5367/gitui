@@ -287,9 +287,10 @@ fn sidebar(
                                 list = list.child(ui::section::section_label_upper(move || {
                                     i18n::t(language.get().as_str(), label_key)
                                 }));
+                                let mut rows = view().w_full().flex_col().gap(px(ui::GAP_XS));
                                 for repo in items {
                                     let selected = open_paths.iter().any(|path| path == &repo.path);
-                                    list = list.child(repo_row(
+                                    rows = rows.child(repo_row(
                                         language,
                                         repo,
                                         selected,
@@ -297,6 +298,7 @@ fn sidebar(
                                         forget.clone(),
                                     ));
                                 }
+                                list = list.child(rows);
                             }
                             return list.into_element();
                         },

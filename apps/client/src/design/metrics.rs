@@ -8,12 +8,12 @@ pub const CONTENT_W: f32 = 1392.0;
 /// 窗口内容区高（900 视口减上下各 24）。
 pub const CONTENT_H: f32 = 852.0;
 
-/// 工作区标题栏（`.titlebar.with-tabs`）。
-pub const TITLEBAR_H: f32 = 44.0;
+/// 工作区标题栏（`.titlebar.with-tabs`）；仓库 tabs 本身保持 27pt。
+pub const TITLEBAR_H: f32 = 40.0;
 /// 无仓库标签页时的标题栏（`.titlebar`）。
 pub const TITLEBAR_PLAIN_H: f32 = 38.0;
-/// `.toolbar.v2`。
-pub const TOOLBAR_H: f32 = native::TOOLBAR;
+/// `.toolbar.v2` 紧凑高度。
+pub const TOOLBAR_H: f32 = 40.0;
 /// 工作区侧栏（`.sidebar`）。
 pub const SIDEBAR_W: f32 = 232.0;
 /// 状态栏（`.statusbar`）。

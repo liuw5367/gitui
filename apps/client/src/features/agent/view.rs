@@ -11,9 +11,6 @@ use crate::i18n;
 use agent::{Action as AgentAction, AuditEntry, Permission};
 use nsh_core::prelude::*;
 
-/// 面板宽度（设计板 `.insp` 同宽）。
-pub(crate) const WIDTH: f32 = 320.0;
-
 /// 入口 `agent_panel`：计划、权限与审计都读 `AgentState`，动作走 `AgentCommands`。
 pub(crate) fn agent_panel(
     state: &AgentState,
@@ -30,13 +27,11 @@ pub(crate) fn agent_panel(
     let permissions_cmd = cmd.clone();
     let now = store::now_unix();
     return view()
-        .w(px(WIDTH))
+        .w_full()
+        .min_w_0()
         .h_full()
-        .flex_shrink_0()
         .flex_col()
         .bg(move || design::panel())
-        .border_l_1()
-        .border_color(move || design::line())
         .child(
             view()
                 .w_full()

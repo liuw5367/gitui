@@ -120,12 +120,20 @@ pub(crate) fn select(
         })
         .item_class("rounded-md focus:bg-accent selected:font-medium disabled:opacity-50")
         .render_item(|item: &SelectEntry| {
-            view().h(px(ui::CONTROL)).px(px(8.0)).items_center().child(
-                text(item.title.clone())
-                    .text_size(px(ui::SECONDARY))
-                    .line_height(px(ui::CONTROL))
-                    .text_color(move || design::text()),
-            )
+            view()
+                .w_full()
+                .h(px(ui::CONTROL))
+                .px(px(8.0))
+                .flex_row()
+                .items_center()
+                .justify_start()
+                .child(
+                    text(item.title.clone())
+                        .flex_1()
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::CONTROL))
+                        .text_color(move || design::text()),
+                )
         })
         .trigger(trigger);
 }

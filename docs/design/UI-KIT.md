@@ -71,7 +71,7 @@ NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、
 | `banner` / `banner_sized` / `progress` / `card` | `ui/feedback.rs` | `nsh_base::progress` | `BannerTone` 六档：Info / Warning / Danger / Accent / Neutral / Highlight | 确定与不确定进度 |
 | `dialog` / `modal` / `confirm_destructive` / `notice` | `ui/dialog.rs` | `nsh_base::dialog` + 应用遮罩 | 页头 44、页脚 48、正文内距 16，最大高 760 | Esc、取消回调、遮罩点击 |
 | `diff_surface` | `ui/diff_surface.rs` | `nsh_base::DiffView` | 分栏 / 统一；软换行、折叠 | hunk 动作回调 |
-| `split` / `Pane` | `ui/split.rs` | `h_resizable` / `v_resizable` | 横向 / 纵向；`fixed` / `flex`，`.min()` / `.max()` | 拖拽、把手焦点 |
+| `split` / `Pane` | `ui/split.rs` | `h_resizable` / `v_resizable` | 横向 / 纵向；`fixed` / `flex`，`.min()` / `.max()` / `.visible()`；1pt 指示线 | NSH 拖拽命中区、键盘无障碍调整 |
 | `menu` / `menu_button` | `ui/menu.rs` | 系统 `NSMenu` | `action` / `checkable` / `danger` / `divider` / `section` | 启用、勾选 |
 | `key_value` / `key_values` | `ui/key_value.rs` | `view` + `text` | 行 24，标签列 96 | — |
 | `gallery` | `ui/gallery.rs` | 上述全部 | — | 独立调试窗口，入口 `⌘⇧D` |
@@ -121,7 +121,11 @@ NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、
 | 横幅 / 进度 / 卡片 | `ui::feedback::banner(..)` / `progress(Some(x))` / `card(..)` |
 | 模态框 | `ui::dialog::dialog(..)`；确认类用 `confirm_destructive` / `notice` |
 | 表格 | `ui::table::table(TableSpec { .. })` |
-| 可拖拽分栏 | `ui::split::horizontal(vec![Pane::fixed(..).min(..), Pane::flex(..)])` |
+| 可拖拽分栏 | `ui::split::horizontal(vec![Pane::fixed(..).min(..).visible(..), Pane::flex(..)])` |
+
+分栏使用 NSH 的 resizable panel group：桌面拖拽命中带为 9pt，中心指示线为 1pt `border` token。
+`.visible(..)` 隐藏侧栏时不占空间，重新显示会恢复当前窗口生命周期内的宽度；宽度不写入设置。
+主窗口的左引用栏、中间内容栏和右面板共用一组稳定的水平分栏，左右宽度可拖拽，工具栏按钮控制两侧栏显隐。
 
 ### 常选错的三处
 

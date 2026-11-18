@@ -11,8 +11,8 @@ use crate::design::{self, metrics};
 use crate::i18n;
 use nsh_core::prelude::*;
 
-/// 面板宽度（与提交文件面板一致）。
-pub(crate) const WIDTH: f32 = 320.0;
+/// 提交面板的初始宽度（可由工作区分栏拖拽调整）。
+pub(crate) const WIDTH: f32 = 360.0;
 
 /// 入口 `commit_panel` 收本功能的状态与用例；跨功能的「请 Agent 起草」由宿主
 /// 组装成一个回调传进来（切到 Agent 主视图并提议计划）。
@@ -90,13 +90,11 @@ pub(crate) fn commit_panel(
         );
     }
     return view()
-        .w(px(WIDTH))
+        .w_full()
+        .min_w_0()
         .h_full()
-        .flex_shrink_0()
         .flex_col()
         .bg(move || design::panel())
-        .border_l_1()
-        .border_color(move || design::line())
         .child(
             view()
                 .w_full()

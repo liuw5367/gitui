@@ -6,10 +6,8 @@
 //! 与 Done 开关设置页。
 //!
 //! 两者共用一个模型：各自的 id、标题（走 i18n）、初始与最小尺寸、`open` 信号与
-//! `on_open_change` 写回，内容在 `features/*/view.rs`。窗口类型按用途分开——欢迎页是
-//! 入口页（可缩放、可最小化），设置是工具窗（`Dialog`：居中于屏幕、不可最小化/
-//! 最大化）；设置窗口不允许 Esc 关窗——录制快捷键时 Esc 是取消键，误关窗口会丢掉
-//! 正在看的上下文。
+//! `on_open_change` 写回，内容在 `features/*/view.rs`。Welcome 与 Settings 都是独立的
+//! 普通窗口；设置仍不允许 Esc 关窗，因为录制快捷键时 Esc 是取消键。
 
 use crate::app::handles::AppHandles;
 use crate::app::session::Tab;
@@ -58,14 +56,15 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             on_key("mod+f", move |_| focus.focus_search());
             let open_repository = welcome.clone();
             on_key("mod+o", move |_| open_repository.open_or_choose());
+            let window = nsh_core::element::desktop::current_window();
+            on_key("mod+w", move |_| window.close());
             return features::welcome::view::welcome(&welcome.state, &welcome);
         });
 
     let settings_window = nsh_core::element::desktop::window()
         .id("settings")
-        .kind(WindowKind::Dialog)
-        // 不挂到主窗口下：挂上去以后它是"被拥有的对话框"，系统截图与窗口切换器都
-        // 只认父窗口；居中改在屏幕上，仍然是独立的工具窗（不可最小化）。
+        .kind(WindowKind::Normal)
+        // 不挂到主窗口下：Settings 使用自己的原生标题栏、最小化、缩放与关闭行为。
         .default_position(WindowPosition::Center)
         .title(settings_title)
         .default_size(size(Points(920.0), Points(700.0)))
@@ -80,6 +79,8 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             center_this_window();
             // 设置窗口的按键在这里挂一次：录制改键、Esc 取消录制、⌫ 清空绑定。
             crate::app::hotkeys::install_settings_window(&settings);
+            let window = nsh_core::element::desktop::current_window();
+            on_key("mod+w", move |_| window.close());
             // 当前仓库只在开窗时取一次快照：窗口内容不订阅标签页——每次标签页变化
             // 重建整页会把旧复选控件留在已释放的 owner 上（nsh 的 prop 写入会 panic）。
             let tab = tabs.get_untracked().get(active.get_untracked()).cloned();
@@ -229,6 +230,8 @@ fn worktree_window_content(handles: AppHandles) -> impl IntoElement + use<> {
     let language = handles.language;
     let search = handles.search.clone();
     let settings_open = handles.session.settings_open;
+    let window = nsh_core::element::desktop::current_window();
+    on_key("mod+w", move |_| window.close());
     return view()
         .w_full()
         .h_full()
@@ -308,7 +311,7 @@ fn worktree_window_attributes() -> WindowAttributes {
     return attributes;
 }
 
-/// 设置窗口的属性：最小尺寸之外，显式关掉 `Dialog` 的“Esc 关窗”默认值。
+/// 设置窗口的属性：保留快捷键录制期间的 Esc 行为，不让 Esc 关闭窗口。
 fn settings_window_attributes() -> WindowAttributes {
     let mut attributes = attributes_with_min_size(760.0, 520.0);
     attributes.close_on_escape = Some(false);

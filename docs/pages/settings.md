@@ -8,8 +8,9 @@
 `width:min(920px,100%)`、`height:min(700px,calc(100vh - 48px))`；预览画布 1440×900、`.desktop` 四周留白 24，
 因此窗口 **920×700**，不是主窗口的 1392×852；右栏切成「标题 + 副标题 + 七段」，换分区只替换这部分。
 
-实现用独立窗口（`WindowKind::Dialog`）承担这扇窗，标题栏用**系统原生**的而不是画板自绘的 38 高栏，
-标题 `Settings`；关窗用系统关闭按钮（页脚已移除，见 DEVIATIONS #34）。见 [DEVIATIONS #23](../design/DEVIATIONS.md)。
+实现用独立普通窗口（`WindowKind::Normal`）承担这扇窗，标题栏用**系统原生**的而不是画板自绘的 38 高栏，
+标题 `Settings`，支持系统最小化、缩放与关闭；⌘W 关闭 Settings 自己，不会关闭主窗口仓库标签。Esc 不关窗，
+因为快捷键页录制中 Esc 用于取消录制。页脚已移除，见 DEVIATIONS #34。见 [DEVIATIONS #23](../design/DEVIATIONS.md)。
 
 ## 1. 骨架
 

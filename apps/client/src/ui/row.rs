@@ -167,6 +167,7 @@ pub(crate) fn row_sized(
             .text_size(px(ui::BODY))
             .line_height(px(ui::BODY_LINE))
             .text_color(move || foreground)
+            .number_of_lines(1)
             .text_overflow(nsh_core::EllipsizeMode::Tail),
     );
     if let Some((hint, mono)) = subtitle {

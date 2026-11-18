@@ -32,8 +32,10 @@ pub(crate) struct SearchCommands {
     pub(crate) settings: SettingsCommands,
     /// Fetch / Pull / Push 命令打开同步面板。
     pub(crate) sync: SyncCommands,
-    /// 右侧检查器的显隐：命令面板与工具栏按钮共用同一个信号。
-    pub(crate) inspector_open: Signal<bool>,
+    /// 左侧引用栏的显隐：由工具栏控制。
+    pub(crate) sidebar_open: Signal<bool>,
+    /// 右侧面板的显隐：命令面板与工具栏按钮共用同一个信号。
+    pub(crate) right_panel_open: Signal<bool>,
 }
 
 impl SearchCommands {
@@ -257,13 +259,20 @@ impl SearchCommands {
                 self.state.palette_open.set(true);
             }
             "newTab" => self.session.go_repo_manager(),
-            "closeTab" => self.session.close_tab(self.session.active.get_untracked()),
+            "closeTab" => {
+                if nsh_core::element::desktop::main_window()
+                    .state()
+                    .is_some_and(|state| state.focused)
+                {
+                    self.session.close_tab(self.session.active.get_untracked());
+                }
+            }
             "refresh" => self.history.refresh(),
             "history" => self.set_mode(crate::Mode::History),
             "changes" => self.set_mode(crate::Mode::Changes),
             "inspector" => self
-                .inspector_open
-                .set(!self.inspector_open.get_untracked()),
+                .right_panel_open
+                .set(!self.right_panel_open.get_untracked()),
             "compare" => {
                 let compare_mode = self.history.state.compare_mode;
                 compare_mode.set(!compare_mode.get_untracked())

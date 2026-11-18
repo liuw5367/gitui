@@ -287,13 +287,11 @@ pub(crate) fn refs_sidebar(
     ));
 
     return view()
-        .w(px(metrics::SIDEBAR_W))
+        .w_full()
+        .min_w_0()
         .h_full()
-        .flex_shrink_0()
         .flex_col()
         .bg(move || design::sidebar())
-        .border_r_1()
-        .border_color(move || design::line())
         .child(
             scroll().w_full().h_full().child(
                 view()
@@ -479,12 +477,6 @@ fn remote_node_rows(
         let key = format!("remote:{}", remote.name);
         let is_collapsed = collapsed.contains(key.as_str());
         let mut children = Vec::new();
-        for url in &remote.fetch_urls {
-            children.push(remote_url_row(language, cmd, "remote.fetchUrl", url));
-        }
-        for url in &remote.push_urls {
-            children.push(remote_url_row(language, cmd, "remote.pushUrl", url));
-        }
         let tree = build_remote_branch_tree(&remote_branches);
         children.extend(remote_branch_tree_rows(
             &tree,
@@ -618,56 +610,6 @@ fn remote_row(
         row = row.child(children);
     }
     return row.into_element();
-}
-
-fn remote_url_row(
-    language: Signal<SharedString>,
-    cmd: &RefsCommands,
-    label_key: &'static str,
-    url: &str,
-) -> AnyElement {
-    let url = url.to_string();
-    let row_url = url.clone();
-    let menu_notice = cmd.notice;
-    return view()
-        .w_full()
-        .pl(px(19.0))
-        .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let copy_notice = menu_notice;
-            let copy_url = row_url.clone();
-            ui::menu::popup_at(
-                vec![ui::menu::action(
-                    i18n::t(language.get().as_str(), "remote.copyUrl"),
-                    true,
-                    move || crate::shared::os::copy_text(copy_notice, language, copy_url.clone()),
-                )],
-                event.page_position,
-            );
-        })
-        .child(crate::ui::row::row_sized(
-            move || i18n::t(language.get().as_str(), label_key),
-            None,
-            Some(
-                crate::ui::icon::icon_view(
-                    "external",
-                    crate::ui::icon::IconSize::Compact,
-                    design::text3,
-                )
-                .into_element(),
-            ),
-            vec![
-                text(url.clone())
-                    .text_size(px(crate::ui::SECONDARY))
-                    .text_color(move || design::text3())
-                    .text_overflow(nsh_core::EllipsizeMode::Head)
-                    .into_element(),
-            ],
-            false,
-            false,
-            metrics::SIDE_ROW_H,
-            || {},
-        ))
-        .into_element();
 }
 
 fn build_remote_branch_tree(branches: &[git::RemoteBranch]) -> Vec<RemoteBranchNode> {
@@ -898,7 +840,7 @@ fn remote_branch_row(
     let prefix_menu_key = prefix_key.clone();
     let prefix_menu_descendants = prefix_descendants.clone();
     let click_cmd = cmd.clone();
-    let label = branch_name.clone();
+    let label = branch_item_label(branch_name.as_str()).to_string();
     let row = view()
         .w_full()
         .pl(px(19.0 + depth as f32 * 12.0))
@@ -1032,32 +974,23 @@ fn remote_branch_row(
         .child(crate::ui::row::row_sized(
             move || label.clone(),
             None,
-            Some(
-                crate::ui::icon::icon_view(
-                    if has_children && prefix_collapsed {
-                        "chev-right"
-                    } else if has_children {
-                        "chev-down"
-                    } else {
-                        "branch"
-                    },
-                    crate::ui::icon::IconSize::Compact,
-                    design::text3,
-                )
-                .into_element(),
-            ),
             if has_children {
-                vec![
+                Some(
                     crate::ui::icon::icon_view(
-                        "branch",
+                        if prefix_collapsed {
+                            "chev-right"
+                        } else {
+                            "chev-down"
+                        },
                         crate::ui::icon::IconSize::Compact,
                         design::text3,
                     )
                     .into_element(),
-                ]
+                )
             } else {
-                Vec::new()
+                None
             },
+            Vec::new(),
             false,
             false,
             metrics::SIDE_ROW_H,
@@ -1221,7 +1154,7 @@ fn branch_row(
     has_origin: bool,
     depth: usize,
 ) -> AnyElement {
-    let name = branch.name.clone();
+    let label = branch_item_label(branch.name.as_str()).to_string();
     let current = branch.current;
     let branch_checkout = branch.name.clone();
     let branch_new = branch.name.clone();
@@ -1236,13 +1169,6 @@ fn branch_row(
     let can_compare = !current && !current_branch.is_empty();
     let menu_cmd = cmd.clone();
     let menu_current_branch = current_branch.to_string();
-    let mut tracking = String::new();
-    if branch.ahead > 0 {
-        tracking.push_str(&format!("↑{}", branch.ahead));
-    }
-    if branch.behind > 0 {
-        tracking.push_str(&format!("↓{}", branch.behind));
-    }
     let row = view()
         .w_full()
         .pl(px(7.0 + depth as f32 * 12.0))
@@ -1371,36 +1297,21 @@ fn branch_row(
             ui::menu::popup_at(items, event.page_position);
         })
         .child(crate::ui::row::row_sized(
-            move || name.clone(),
+            move || label.clone(),
             None,
-            Some(
-                crate::ui::icon::icon_view(
-                    "branch",
-                    crate::ui::icon::IconSize::Button,
-                    if current {
-                        design::accent
-                    } else {
-                        design::text3
-                    },
-                )
-                .into_element(),
-            ),
-            if tracking.is_empty() {
-                Vec::new()
-            } else {
-                vec![
-                    text(tracking)
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3())
-                        .into_element(),
-                ]
-            },
+            None,
+            Vec::new(),
             current,
             false,
             metrics::SIDE_ROW_H,
             || {},
         ));
     return row.into_element();
+}
+
+/// 斜杠路径已由树节点表示，行内只显示当前层级的分支名称。
+fn branch_item_label(name: &str) -> &str {
+    return name.rsplit('/').next().unwrap_or(name);
 }
 
 fn worktree_row(
@@ -1518,7 +1429,9 @@ fn worktree_row(
             text(name)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
+                .min_w_0()
                 .flex_1()
+                .number_of_lines(1)
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         );
     if !branch.is_empty() {
@@ -1527,6 +1440,7 @@ fn worktree_row(
                 .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3())
                 .max_w(px(86.0))
+                .number_of_lines(1)
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         );
     }
@@ -1634,13 +1548,17 @@ fn submodule_row(
             text(row_path)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
+                .min_w_0()
                 .flex_1()
+                .number_of_lines(1)
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
         .child(
             text(move || i18n::t(language.get().as_str(), status_key))
                 .text_size(px(crate::ui::SECONDARY))
-                .text_color(move || status_color()),
+                .text_color(move || status_color())
+                .number_of_lines(1)
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
         .into_element();
 }
@@ -1703,7 +1621,9 @@ fn tag_row(
             text(name)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
+                .min_w_0()
                 .flex_1()
+                .number_of_lines(1)
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
         .into_element();
@@ -1826,7 +1746,9 @@ fn stash_row(
             text(row_name)
                 .text_size(px(crate::ui::BODY))
                 .text_color(move || design::text2())
+                .min_w_0()
                 .flex_1()
+                .number_of_lines(1)
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         )
         .into_element();

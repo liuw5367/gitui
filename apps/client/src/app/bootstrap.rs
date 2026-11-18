@@ -26,7 +26,7 @@ pub(crate) fn app() -> impl IntoElement {
 
     let mut title_bar = TitleBarOptions::default();
     title_bar.style = TitleBarStyle::Hidden;
-    title_bar.height = Some(Points(44.0));
+    title_bar.height = Some(Points(crate::design::metrics::TITLEBAR_H));
     let mut window = WindowAttributes::default();
     window.title = Some(brand::PRODUCT_NAME.to_string());
     window.title_bar = Some(title_bar);
@@ -48,18 +48,22 @@ pub(crate) fn app() -> impl IntoElement {
     let filter_author = signal(String::new());
     let filter_when = signal(SharedString::from(When::All.id()));
     let filter_open = signal(false);
-    // 验收开关（debug 构建）：`GITUI_INSPECTOR=1` 启动即展开右侧检查器（板 08 / 18）。
-    let inspector_open = signal(acceptance::flag("GITUI_INSPECTOR"));
-    let compare_mode = signal(false);
     // 验收开关：`GITUI_MODE=history|changes|refs|agent` 指定启动时的主视图，
-    // 用于逐个巡检各页渲染（历史表曾整行不可见却连续几轮被截图判过）。
+    // 用于逐个巡检各页渲染；未指定时默认进入 Changes + Commit。
     let mode = signal(match acceptance::value("GITUI_MODE").as_deref() {
+        Some("history") => Mode::History,
         Some("changes") => Mode::Changes,
         Some("refs") => Mode::Refs,
         Some("agent") => Mode::Agent,
         Some("blame") => Mode::Blame,
-        _ => Mode::History,
+        _ => Mode::Changes,
     });
+    // 默认打开左侧引用栏；右栏默认显示 Changes 对应的 Commit 面板。
+    // GITUI_MODE 可覆盖主视图，History 验收时用 GITUI_INSPECTOR=1 展开 Inspector。
+    let sidebar_open = signal(true);
+    let right_panel_open =
+        signal(mode.get_untracked() == Mode::Changes || acceptance::flag("GITUI_INSPECTOR"));
+    let compare_mode = signal(false);
     let commit_summary = signal(String::new());
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
@@ -299,6 +303,7 @@ pub(crate) fn app() -> impl IntoElement {
     let session = features::SessionHandle {
         tabs,
         active,
+        task_owner: Owner::current(),
         welcome_open,
         settings_open,
         recent,
@@ -552,7 +557,8 @@ pub(crate) fn app() -> impl IntoElement {
         commit: commit_commands.clone(),
         settings: settings_commands.clone(),
         sync: sync_commands.clone(),
-        inspector_open,
+        sidebar_open,
+        right_panel_open,
     };
 
     // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。

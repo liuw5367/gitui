@@ -49,6 +49,7 @@ impl AppHandles {
         let session = crate::features::SessionHandle {
             tabs: signal(Vec::new()),
             active: signal(0),
+            task_owner: self.session.task_owner,
             welcome_open: self.session.welcome_open,
             settings_open: self.session.settings_open,
             recent: self.session.recent,
@@ -129,7 +130,9 @@ impl AppHandles {
             mode: handles.history.mode,
             form: signal(None),
         };
-        handles.search.inspector_open = signal(false);
+        handles.search.sidebar_open = signal(true);
+        handles.search.right_panel_open =
+            signal(handles.history.mode.get_untracked() == crate::Mode::Changes);
         handles.settings.session = session;
         handles.settings.diff = handles.diff.clone();
         handles.search.settings = handles.settings.clone();

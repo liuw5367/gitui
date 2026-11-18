@@ -1,6 +1,6 @@
 //! 工作区外壳：标题栏（仓库标签页）、工具栏与状态栏。
 //!
-//! 尺寸取自设计稿：`.titlebar.with-tabs` 44、`.toolbar.v2` 44、`.statusbar` 24。
+//! 尺寸取自设计稿：`.titlebar.with-tabs` 与 `.toolbar.v2` 使用紧凑 40pt，高度不改变 tabs。
 //! P1 中 Fetch/Pull/Push、Branch/Stash、Agent 还没有对应的写路径或同步实现，
 //! 这些按钮按禁用态渲染，不伪装成可用。
 
@@ -154,17 +154,7 @@ pub(crate) fn titlebar(
                             .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text2()),
                         ),
-                )
-                .child(crate::ui::button::icon_button(
-                    "gear",
-                    move || i18n::t(language.get().as_str(), "shell.settings"),
-                    crate::ui::button::ButtonSize::Toolbar,
-                    false,
-                    {
-                        let go_settings = settings.clone();
-                        move || go_settings.go_settings()
-                    },
-                )),
+                ),
         );
 }
 
@@ -176,7 +166,8 @@ pub(crate) fn toolbar(
     mode: Signal<crate::Mode>,
     search: &SearchCommands,
     sync: std::sync::Arc<dyn Fn(Sync) -> ()>,
-    panel_open: Signal<bool>,
+    sidebar_open: Signal<bool>,
+    right_panel_open: Signal<bool>,
 ) -> impl IntoElement {
     // 工具栏的分段与两个入口都改主区模式，因此直接调搜索功能的用例。
     let do_agent = {
@@ -208,13 +199,31 @@ pub(crate) fn toolbar(
         .bg(move || design::bar())
         .border_b_1()
         .border_color(move || design::line())
-        .child(crate::ui::button::icon_button(
-            "sidebar",
-            move || i18n::t(language.get().as_str(), "shell.sidebar"),
-            crate::ui::button::ButtonSize::Toolbar,
-            true,
-            || {},
-        ))
+        .child(dynamic(move || -> AnyElement {
+            let is_open = sidebar_open.get();
+            let label_key = if is_open {
+                "shell.hideSidebar"
+            } else {
+                "shell.showSidebar"
+            };
+            let color_state = sidebar_open;
+            crate::ui::button::icon_button_tuned(
+                "sidebar",
+                move || i18n::t(language.get().as_str(), label_key),
+                crate::ui::button::ButtonSize::Toolbar,
+                Some(crate::ui::icon::IconSize::Toolbar),
+                Some(std::rc::Rc::new(move || {
+                    if color_state.get() {
+                        design::accent()
+                    } else {
+                        design::text2()
+                    }
+                })),
+                false,
+                move || sidebar_open.set(!sidebar_open.get_untracked()),
+            )
+            .into_element()
+        }))
         .child(crate::ui::v_separator())
         .child(tool_button(language, "refresh", "shell.fetch", move || {
             do_fetch(Sync::Fetch)
@@ -273,21 +282,31 @@ pub(crate) fn toolbar(
             do_agent()
         }))
         // 设计稿：Agent 右侧的 tb-icon 是右侧面板的显隐开关。
-        .child(crate::ui::button::icon_button_tuned(
-            "sidebar",
-            move || i18n::t(language.get().as_str(), "shell.sidebar"),
-            crate::ui::button::ButtonSize::Toolbar,
-            Some(crate::ui::icon::IconSize::Toolbar),
-            Some(std::rc::Rc::new(move || {
-                if panel_open.get() {
-                    design::accent()
-                } else {
-                    design::text2()
-                }
-            })),
-            false,
-            move || panel_open.set(!panel_open.get_untracked()),
-        ));
+        .child(dynamic(move || -> AnyElement {
+            let is_open = right_panel_open.get();
+            let label_key = if is_open {
+                "shell.hideRightPanel"
+            } else {
+                "shell.showRightPanel"
+            };
+            let color_state = right_panel_open;
+            crate::ui::button::icon_button_tuned(
+                "sidebar",
+                move || i18n::t(language.get().as_str(), label_key),
+                crate::ui::button::ButtonSize::Toolbar,
+                Some(crate::ui::icon::IconSize::Toolbar),
+                Some(std::rc::Rc::new(move || {
+                    if color_state.get() {
+                        design::accent()
+                    } else {
+                        design::text2()
+                    }
+                })),
+                false,
+                move || right_panel_open.set(!right_panel_open.get_untracked()),
+            )
+            .into_element()
+        }));
 }
 
 /// 同步结果条：成功用面板底色，失败用危险色；没有结果时高度为 0。
@@ -342,7 +361,7 @@ pub(crate) fn state_banner(
     return view()
         .w_full()
         .h(move || if visible() { px(26.0) } else { px(0.0) })
-        .border_b_1()
+        .border_b(move || if visible() { px(1.0) } else { px(0.0) })
         .border_color(move || design::line())
         .overflow_hidden()
         .child(dynamic(move || -> AnyElement {
@@ -602,7 +621,7 @@ pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
             Some(tab) if tab.sync_failed => design::del_bg(),
             _ => design::panel(),
         })
-        .border_b_1()
+        .border_b(move || if has_message() { px(1.0) } else { px(0.0) })
         .border_color(move || design::line())
         .overflow_hidden()
         .child(dynamic(move || -> AnyElement {

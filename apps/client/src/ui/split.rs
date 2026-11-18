@@ -1,8 +1,8 @@
 //! 分栏：可拖拽调整尺寸的面板组，用于检查器与 diff 之间、冲突页的三栏。
 //!
 //! 行为来自 `nsh_base` 的 `h_resizable`/`v_resizable`（拖拽、键盘、最小尺寸、
-//! 把手焦点都由它提供）。这里只做两件事：把「每栏一个元素 + 尺寸约束」收成一个
-//! 数组参数，并保证把手在深浅色下都可见。
+//! 把手焦点与可见状态都由它提供）。这里只把「每栏一个元素 + 尺寸约束」收成一个
+//! 数组参数，并保证把手指示线在深浅色下都可见。
 //!
 //! 用法：
 //! ```ignore
@@ -12,7 +12,6 @@
 //! ])
 //! ```
 
-use crate::design;
 use nsh_base::{h_resizable, resizable_panel, v_resizable};
 use nsh_core::prelude::*;
 
@@ -23,6 +22,7 @@ pub(crate) struct Pane {
     size: Option<f32>,
     min: f32,
     max: Option<f32>,
+    visible: Option<std::rc::Rc<dyn Fn() -> bool>>,
 }
 
 impl Pane {
@@ -33,6 +33,7 @@ impl Pane {
             size: Some(size),
             min: 120.0,
             max: None,
+            visible: None,
         };
     }
 
@@ -43,6 +44,7 @@ impl Pane {
             size: None,
             min: 200.0,
             max: None,
+            visible: None,
         };
     }
 
@@ -55,6 +57,12 @@ impl Pane {
     /// 最大尺寸。
     pub(crate) fn max(mut self, max: f32) -> Pane {
         self.max = Some(max);
+        return self;
+    }
+
+    /// 由工具栏信号控制显隐；隐藏时 NSH 会记住该栏的宽度。
+    pub(crate) fn visible(mut self, visible: impl Fn() -> bool + 'static) -> Pane {
+        self.visible = Some(std::rc::Rc::new(visible));
         return self;
     }
 }
@@ -75,7 +83,8 @@ fn group(mut builder: nsh_base::ResizablePanelGroupElement, panes: Vec<Pane>) ->
         .w_full()
         .h_full()
         .min_h_0()
-        .border_color(move || design::line());
+        // 命中区仍由 NSH 保持 9pt，实际可见指示线固定为 1pt。
+        .handle_class("bg-border");
     for pane in panes {
         let mut panel = resizable_panel()
             .size(pane.size.map(Points))
@@ -83,6 +92,9 @@ fn group(mut builder: nsh_base::ResizablePanelGroupElement, panes: Vec<Pane>) ->
             .child(pane.content);
         if let Some(max) = pane.max {
             panel = panel.max_size(Some(Points(max)));
+        }
+        if let Some(visible) = pane.visible {
+            panel = panel.visible(move || visible());
         }
         builder = builder.child(panel);
     }
