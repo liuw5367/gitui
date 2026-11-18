@@ -1,15 +1,16 @@
-//! 本地持久化：最近打开仓库、会话与扫描仓库搜索资格。
+//! 本地持久化：设置写入 TOML，运行状态与审计保持独立文本文件。
 //!
-//! 采用逐行文本格式（每行一个路径），不需要额外依赖：
+//! 偏好统一保存在 `settings.toml`；会话、最近仓库、变更清单与审计继续使用文本格式：
 //!
 //! - `recent.txt`：最近打开的仓库，最新的在第一行，每行 `<打开时间>\t<路径>`；
 //! - `session.txt`：第一行是当前 tab 下标，其后每行是一个打开中的仓库路径。
-//! - `git-scan-repositories.txt`：扫描发现的仓库是否允许命令面板搜索。
+//! - `changelists.txt`：仓库变更清单；`agent-audit.txt`：Agent 审计记录。
 //!
 //! 所有函数都接受目录参数，便于测试用临时目录；应用层用 [`default_dir`] 取得
-//! `~/.config/gitui`。写入采用“先写临时文件再改名”，避免
-//! 中途失败留下半个文件。路径里若含换行会被跳过，避免破坏行格式。
+//! `~/.config/gitui`。写入采用“先写临时文件再改名”，避免中途失败留下半个文件。
 
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// 最近仓库的数量上限。
@@ -51,14 +52,10 @@ fn config_dir(home: &Path, directory: &str) -> PathBuf {
     return home.join(".config").join(directory);
 }
 
-fn language_file(dir: &Path) -> PathBuf {
-    return dir.join("language.txt");
-}
-
 /// 读取界面语言；未设置时返回 `None`（由应用跟随系统语言）。
 pub fn load_language(dir: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(language_file(dir)).ok()?;
-    let language = text.trim();
+    let config = read_config(dir)?;
+    let language = config.general.language.trim();
     if language.is_empty() {
         return None;
     }
@@ -67,7 +64,7 @@ pub fn load_language(dir: &Path) -> Option<String> {
 
 /// 保存界面语言。
 pub fn save_language(dir: &Path, language: &str) {
-    let _ = write_lines(&language_file(dir), &[language.to_string()]);
+    update_config(dir, |config| config.general.language = language.to_string());
 }
 
 /// 一个变更清单：名称与其中的文件路径。
@@ -217,195 +214,429 @@ impl Default for Settings {
     }
 }
 
+const CONFIG_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredConfig {
+    schema_version: u32,
+    #[serde(default)]
+    general: GeneralPreferences,
+    #[serde(default)]
+    git: GitPreferences,
+    #[serde(default)]
+    shortcuts: Vec<ShortcutPreference>,
+    #[serde(default)]
+    agent: AgentPreferencesSection,
+}
+
+impl Default for StoredConfig {
+    fn default() -> Self {
+        return StoredConfig {
+            schema_version: CONFIG_SCHEMA_VERSION,
+            general: GeneralPreferences::default(),
+            git: GitPreferences::default(),
+            shortcuts: Vec::new(),
+            agent: AgentPreferencesSection::default(),
+        };
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+struct GeneralPreferences {
+    language: String,
+    appearance: String,
+    file_tree: bool,
+    merge_empty_dirs: bool,
+    compact_single_child: bool,
+    restore_session: bool,
+    update_mode: String,
+    date_format: String,
+    date_pattern: String,
+}
+
+impl Default for GeneralPreferences {
+    fn default() -> Self {
+        let settings = Settings::default();
+        return GeneralPreferences {
+            language: String::new(),
+            appearance: String::new(),
+            file_tree: settings.file_tree,
+            merge_empty_dirs: settings.merge_empty_dirs,
+            compact_single_child: settings.compact_single_child,
+            restore_session: settings.restore_session,
+            update_mode: settings.update_mode,
+            date_format: settings.date_format,
+            date_pattern: settings.date_pattern,
+        };
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+struct GitPreferences {
+    use_system_git: bool,
+    git_path: String,
+    ssh_for_new_remotes: bool,
+    external_editor: String,
+    diff_tool: String,
+    merge_tool: String,
+    terminal: String,
+    external_editor_for_messages: bool,
+    proxy_mode: String,
+    verify_ssl: bool,
+    use_system_git_config: bool,
+    scan_folders: Vec<String>,
+    scan_search_preferences: Vec<ScanSearchPreference>,
+}
+
+impl Default for GitPreferences {
+    fn default() -> Self {
+        let settings = Settings::default();
+        return GitPreferences {
+            use_system_git: settings.use_system_git,
+            git_path: settings.git_path,
+            ssh_for_new_remotes: settings.ssh_for_new_remotes,
+            external_editor: settings.external_editor,
+            diff_tool: settings.diff_tool,
+            merge_tool: settings.merge_tool,
+            terminal: settings.terminal,
+            external_editor_for_messages: settings.external_editor_for_messages,
+            proxy_mode: settings.proxy_mode,
+            verify_ssl: settings.verify_ssl,
+            use_system_git_config: settings.use_system_git_config,
+            scan_folders: Vec::new(),
+            scan_search_preferences: Vec::new(),
+        };
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+struct AgentPreferencesSection {
+    provider: AgentProviderPreferences,
+    runtime: AgentRuntimePreferences,
+    permissions: BTreeMap<String, String>,
+}
+
+impl Default for AgentPreferencesSection {
+    fn default() -> Self {
+        return AgentPreferencesSection {
+            provider: AgentProviderPreferences::default(),
+            runtime: AgentRuntimePreferences::default(),
+            permissions: BTreeMap::new(),
+        };
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+struct AgentProviderPreferences {
+    protocol: String,
+    base_url: String,
+    model: String,
+    temperature: f32,
+    max_tokens: u32,
+    send_diffs: bool,
+    send_repository_path: bool,
+}
+
+impl Default for AgentProviderPreferences {
+    fn default() -> Self {
+        let settings = Settings::default();
+        return AgentProviderPreferences {
+            protocol: settings.agent_protocol,
+            base_url: settings.agent_base_url,
+            model: settings.agent_model,
+            temperature: settings.agent_temperature,
+            max_tokens: settings.agent_max_tokens,
+            send_diffs: settings.agent_send_diffs,
+            send_repository_path: settings.agent_send_repository_path,
+        };
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+struct AgentRuntimePreferences {
+    automation: String,
+    review_millis: u32,
+    protected_branches: Vec<String>,
+}
+
+impl Default for AgentRuntimePreferences {
+    fn default() -> Self {
+        return AgentRuntimePreferences {
+            automation: "off".to_string(),
+            review_millis: 8000,
+            protected_branches: vec!["main".to_string()],
+        };
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ShortcutPreference {
+    id: String,
+    combo: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ScanSearchPreference {
+    path: String,
+    enabled: bool,
+}
+
+/// Agent 的本地偏好。字符串 ID 与 `crates/agent` 保持解耦。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentPreferences {
+    pub automation: String,
+    pub review_millis: u32,
+    pub protected_branches: Vec<String>,
+    pub permissions: BTreeMap<String, String>,
+}
+
+impl Default for AgentPreferences {
+    fn default() -> Self {
+        return AgentPreferences {
+            automation: "off".to_string(),
+            review_millis: 8000,
+            protected_branches: vec!["main".to_string()],
+            permissions: BTreeMap::new(),
+        };
+    }
+}
+
+impl StoredConfig {
+    fn settings(&self) -> Settings {
+        return Settings {
+            file_tree: self.general.file_tree,
+            merge_empty_dirs: self.general.merge_empty_dirs,
+            compact_single_child: self.general.compact_single_child,
+            restore_session: self.general.restore_session,
+            update_mode: self.general.update_mode.clone(),
+            use_system_git: self.git.use_system_git,
+            git_path: self.git.git_path.clone(),
+            date_format: self.general.date_format.clone(),
+            date_pattern: self.general.date_pattern.clone(),
+            agent_protocol: self.agent.provider.protocol.clone(),
+            agent_base_url: self.agent.provider.base_url.clone(),
+            agent_model: self.agent.provider.model.clone(),
+            agent_temperature: self.agent.provider.temperature,
+            agent_max_tokens: self.agent.provider.max_tokens,
+            agent_send_diffs: self.agent.provider.send_diffs,
+            agent_send_repository_path: self.agent.provider.send_repository_path,
+            ssh_for_new_remotes: self.git.ssh_for_new_remotes,
+            external_editor: self.git.external_editor.clone(),
+            diff_tool: self.git.diff_tool.clone(),
+            merge_tool: self.git.merge_tool.clone(),
+            terminal: self.git.terminal.clone(),
+            external_editor_for_messages: self.git.external_editor_for_messages,
+            proxy_mode: self.git.proxy_mode.clone(),
+            verify_ssl: self.git.verify_ssl,
+            use_system_git_config: self.git.use_system_git_config,
+        };
+    }
+
+    fn set_settings(&mut self, settings: &Settings) {
+        self.general.file_tree = settings.file_tree;
+        self.general.merge_empty_dirs = settings.merge_empty_dirs;
+        self.general.compact_single_child = settings.compact_single_child;
+        self.general.restore_session = settings.restore_session;
+        self.general.update_mode = settings.update_mode.clone();
+        self.general.date_format = settings.date_format.clone();
+        self.general.date_pattern = settings.date_pattern.clone();
+
+        self.git.use_system_git = settings.use_system_git;
+        self.git.git_path = settings.git_path.clone();
+        self.git.ssh_for_new_remotes = settings.ssh_for_new_remotes;
+        self.git.external_editor = settings.external_editor.clone();
+        self.git.diff_tool = settings.diff_tool.clone();
+        self.git.merge_tool = settings.merge_tool.clone();
+        self.git.terminal = settings.terminal.clone();
+        self.git.external_editor_for_messages = settings.external_editor_for_messages;
+        self.git.proxy_mode = settings.proxy_mode.clone();
+        self.git.verify_ssl = settings.verify_ssl;
+        self.git.use_system_git_config = settings.use_system_git_config;
+
+        self.agent.provider.protocol = settings.agent_protocol.clone();
+        self.agent.provider.base_url = settings.agent_base_url.clone();
+        self.agent.provider.model = settings.agent_model.clone();
+        self.agent.provider.temperature = settings.agent_temperature;
+        self.agent.provider.max_tokens = settings.agent_max_tokens;
+        self.agent.provider.send_diffs = settings.agent_send_diffs;
+        self.agent.provider.send_repository_path = settings.agent_send_repository_path;
+    }
+
+    fn agent_preferences(&self) -> AgentPreferences {
+        return AgentPreferences {
+            automation: self.agent.runtime.automation.clone(),
+            review_millis: self.agent.runtime.review_millis,
+            protected_branches: self.agent.runtime.protected_branches.clone(),
+            permissions: self.agent.permissions.clone(),
+        };
+    }
+
+    fn set_agent_preferences(&mut self, preferences: AgentPreferences) {
+        self.agent.runtime.automation = preferences.automation;
+        self.agent.runtime.review_millis = preferences.review_millis;
+        self.agent.runtime.protected_branches = preferences.protected_branches;
+        self.agent.permissions = preferences.permissions;
+    }
+}
+
 fn settings_file(dir: &Path) -> PathBuf {
-    return dir.join("settings.txt");
+    return dir.join("settings.toml");
+}
+
+fn read_config(dir: &Path) -> Option<StoredConfig> {
+    let text = match std::fs::read_to_string(settings_file(dir)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Some(StoredConfig::default());
+        }
+        Err(_) => return None,
+    };
+    let config: StoredConfig = toml::from_str(&text).ok()?;
+    if config.schema_version != CONFIG_SCHEMA_VERSION {
+        return None;
+    }
+    return Some(config);
+}
+
+fn write_config(dir: &Path, config: &StoredConfig) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let text = toml::to_string_pretty(config).map_err(std::io::Error::other)?;
+    let file = settings_file(dir);
+    let temporary = file.with_extension("toml.tmp");
+    std::fs::write(&temporary, text)?;
+    std::fs::rename(&temporary, file)?;
+    return Ok(());
+}
+
+fn update_config(dir: &Path, update: impl FnOnce(&mut StoredConfig)) {
+    let Some(mut config) = read_config(dir) else {
+        return;
+    };
+    update(&mut config);
+    let _ = write_config(dir, &config);
 }
 
 /// 读取设置；文件缺失时返回默认值。
 pub fn load_settings(dir: &Path) -> Settings {
-    let mut settings = Settings::default();
-    let Ok(text) = std::fs::read_to_string(settings_file(dir)) else {
-        return settings;
-    };
-    for line in text.lines() {
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        match key.trim() {
-            "file_tree" => settings.file_tree = value.trim() != "false",
-            "merge_empty_dirs" => settings.merge_empty_dirs = value.trim() != "false",
-            "compact_single_child" => settings.compact_single_child = value.trim() != "false",
-            "restore_session" => settings.restore_session = value.trim() != "false",
-            "update_mode" => settings.update_mode = value.trim().to_string(),
-            "use_system_git" => settings.use_system_git = value.trim() != "false",
-            "git_path" => settings.git_path = value.trim().to_string(),
-            "date_format" => settings.date_format = value.trim().to_string(),
-            "date_pattern" => settings.date_pattern = value.trim().to_string(),
-            "agent_protocol" => settings.agent_protocol = value.trim().to_string(),
-            "agent_base_url" => settings.agent_base_url = value.trim().to_string(),
-            "agent_model" => settings.agent_model = value.trim().to_string(),
-            "agent_temperature" => settings.agent_temperature = value.trim().parse().unwrap_or(0.2),
-            "agent_max_tokens" => settings.agent_max_tokens = value.trim().parse().unwrap_or(4096),
-            "agent_send_diffs" => settings.agent_send_diffs = value.trim() != "false",
-            "agent_send_repository_path" => {
-                settings.agent_send_repository_path = value.trim() != "false"
-            }
-            "ssh_for_new_remotes" => settings.ssh_for_new_remotes = value.trim() != "false",
-            "external_editor" => settings.external_editor = value.trim().to_string(),
-            "diff_tool" => settings.diff_tool = value.trim().to_string(),
-            "merge_tool" => settings.merge_tool = value.trim().to_string(),
-            "terminal" => settings.terminal = value.trim().to_string(),
-            "external_editor_for_messages" => {
-                settings.external_editor_for_messages = value.trim() != "false"
-            }
-            "proxy_mode" => settings.proxy_mode = value.trim().to_string(),
-            "verify_ssl" => settings.verify_ssl = value.trim() != "false",
-            "use_system_git_config" => settings.use_system_git_config = value.trim() != "false",
-            _ => {}
-        }
-    }
-    return settings;
+    return read_config(dir)
+        .map(|config| config.settings())
+        .unwrap_or_default();
 }
 
 /// 保存设置。
 pub fn save_settings(dir: &Path, settings: &Settings) {
-    let lines = vec![
-        format!("file_tree={}", settings.file_tree),
-        format!("merge_empty_dirs={}", settings.merge_empty_dirs),
-        format!("compact_single_child={}", settings.compact_single_child),
-        format!("restore_session={}", settings.restore_session),
-        format!("update_mode={}", settings.update_mode),
-        format!("use_system_git={}", settings.use_system_git),
-        format!("git_path={}", settings.git_path),
-        format!("date_format={}", settings.date_format),
-        format!("date_pattern={}", settings.date_pattern),
-        format!("agent_protocol={}", settings.agent_protocol),
-        format!("agent_base_url={}", settings.agent_base_url),
-        format!("agent_model={}", settings.agent_model),
-        format!("agent_temperature={}", settings.agent_temperature),
-        format!("agent_max_tokens={}", settings.agent_max_tokens),
-        format!("agent_send_diffs={}", settings.agent_send_diffs),
-        format!(
-            "agent_send_repository_path={}",
-            settings.agent_send_repository_path
-        ),
-        format!("ssh_for_new_remotes={}", settings.ssh_for_new_remotes),
-        format!("external_editor={}", settings.external_editor),
-        format!("diff_tool={}", settings.diff_tool),
-        format!("merge_tool={}", settings.merge_tool),
-        format!("terminal={}", settings.terminal),
-        format!(
-            "external_editor_for_messages={}",
-            settings.external_editor_for_messages
-        ),
-        format!("proxy_mode={}", settings.proxy_mode),
-        format!("verify_ssl={}", settings.verify_ssl),
-        format!("use_system_git_config={}", settings.use_system_git_config),
-    ];
-    let _ = write_lines(&settings_file(dir), &lines);
+    update_config(dir, |config| config.set_settings(settings));
 }
 
-/// Agent 的设置：每个动作的权限（`动作=权限` 行）。
-pub fn load_agent_policies(dir: &Path) -> Vec<(String, String)> {
-    let Ok(text) = std::fs::read_to_string(dir.join("agent-policies.txt")) else {
-        return Vec::new();
-    };
-    return text
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(action, permission)| (action.trim().to_string(), permission.trim().to_string()))
-        .filter(|(action, permission)| !action.is_empty() && !permission.is_empty())
-        .collect();
+/// 读取 Agent 偏好；权限缺省时由 `crates/agent` 的策略默认值接管。
+pub fn load_agent_preferences(dir: &Path) -> AgentPreferences {
+    return read_config(dir)
+        .map(|config| config.agent_preferences())
+        .unwrap_or_default();
 }
 
-/// 保存 Agent 的动作权限。
-pub fn save_agent_policies(dir: &Path, policies: &[(String, String)]) {
-    let lines: Vec<String> = policies
-        .iter()
-        .map(|(action, permission)| format!("{}={}", action, permission))
-        .collect();
-    let _ = write_lines(&dir.join("agent-policies.txt"), &lines);
+/// 保存 Agent 偏好。
+pub fn save_agent_preferences(dir: &Path, preferences: AgentPreferences) {
+    update_config(dir, |config| config.set_agent_preferences(preferences));
 }
 
-/// 用于扫描仓库的目录列表（`git-scan-folders.txt`，每行一个绝对路径）。
+/// 修改 Agent 偏好的指定字段，同时保留其余配置分区。
+pub fn update_agent_preferences(dir: &Path, update: impl FnOnce(&mut AgentPreferences)) {
+    update_config(dir, |config| {
+        let mut preferences = config.agent_preferences();
+        update(&mut preferences);
+        config.set_agent_preferences(preferences);
+    });
+}
+
+/// 用于扫描仓库的目录列表，保存在 `settings.toml` 的 Git 分区。
 pub fn load_git_scan_folders(dir: &Path) -> Vec<PathBuf> {
-    let Ok(text) = std::fs::read_to_string(dir.join("git-scan-folders.txt")) else {
-        return Vec::new();
-    };
-    return text
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(PathBuf::from)
-        .collect();
+    return read_config(dir)
+        .map(|config| {
+            config
+                .git
+                .scan_folders
+                .into_iter()
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default();
 }
 
 /// 保存扫描目录。
 pub fn save_git_scan_folders(dir: &Path, folders: &[PathBuf]) {
-    let lines: Vec<String> = folders
-        .iter()
-        .map(|folder| folder.display().to_string())
-        .collect();
-    let _ = write_lines(&dir.join("git-scan-folders.txt"), &lines);
+    update_config(dir, |config| {
+        config.git.scan_folders = folders
+            .iter()
+            .map(|folder| folder.display().to_string())
+            .collect();
+    });
 }
 
-/// 扫描结果是否允许进入命令面板搜索（`git-scan-repositories.txt`）。
+/// 扫描结果是否允许进入命令面板搜索，保存在 `settings.toml` 的 Git 分区。
 ///
-/// 每行以 `+`（启用）或 `-`（停用）开头，后面是绝对路径。文件缺失或某条路径没有
-/// 显式记录时，由应用按默认启用处理。
+/// 文件缺失或某条路径没有显式记录时，由应用按默认启用处理。
 pub fn load_git_scan_search_preferences(dir: &Path) -> Vec<(String, bool)> {
-    let Ok(text) = std::fs::read_to_string(dir.join("git-scan-repositories.txt")) else {
-        return Vec::new();
-    };
-    return text
-        .lines()
-        .filter_map(|line| {
-            let enabled = match line.chars().next()? {
-                '+' => true,
-                '-' => false,
-                _ => return None,
-            };
-            let path = line.get(1..)?;
-            if path.is_empty() {
-                return None;
-            }
-            Some((path.to_string(), enabled))
+    return read_config(dir)
+        .map(|config| {
+            config
+                .git
+                .scan_search_preferences
+                .into_iter()
+                .map(|preference| (preference.path, preference.enabled))
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
 }
 
 /// 保存扫描结果的命令面板搜索资格。
 pub fn save_git_scan_search_preferences(dir: &Path, preferences: &[(String, bool)]) {
-    let lines: Vec<String> = preferences
-        .iter()
-        .filter(|(path, _)| !path.is_empty())
-        .map(|(path, enabled)| format!("{}{path}", if *enabled { '+' } else { '-' }))
-        .collect();
-    let _ = write_lines(&dir.join("git-scan-repositories.txt"), &lines);
+    update_config(dir, |config| {
+        config.git.scan_search_preferences = preferences
+            .iter()
+            .filter(|(path, _)| !path.is_empty())
+            .map(|(path, enabled)| ScanSearchPreference {
+                path: path.clone(),
+                enabled: *enabled,
+            })
+            .collect();
+    });
 }
 
-/// 快捷键覆盖项（`shortcuts.txt`，每行 `<动作 id>=<组合>`）。
+/// 快捷键覆盖项；只保存与默认值不同的绑定。
 ///
 /// 只存与默认值不同的项：默认值随版本演进时，没改过的动作自动跟上新默认。
 pub fn load_shortcuts(dir: &Path) -> Vec<(String, String)> {
-    let Ok(text) = std::fs::read_to_string(dir.join("shortcuts.txt")) else {
-        return Vec::new();
-    };
-    return text
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(id, combo)| (id.trim().to_string(), combo.trim().to_string()))
-        .filter(|(id, _combo)| !id.is_empty())
-        .collect();
+    return read_config(dir)
+        .map(|config| {
+            config
+                .shortcuts
+                .into_iter()
+                .map(|shortcut| (shortcut.id, shortcut.combo))
+                .collect()
+        })
+        .unwrap_or_default();
 }
 
 /// 保存快捷键覆盖项。
 pub fn save_shortcuts(dir: &Path, overrides: &[(String, String)]) {
-    let lines: Vec<String> = overrides
-        .iter()
-        .map(|(id, combo)| format!("{id}={combo}"))
-        .collect();
-    let _ = write_lines(&dir.join("shortcuts.txt"), &lines);
+    update_config(dir, |config| {
+        config.shortcuts = overrides
+            .iter()
+            .map(|(id, combo)| ShortcutPreference {
+                id: id.clone(),
+                combo: combo.clone(),
+            })
+            .collect();
+    });
 }
 
 /// 在给定目录下找 Git 仓库（含 `.git` 的目录），最多下探三层。
@@ -469,14 +700,10 @@ pub fn save_agent_audit(dir: &Path, entries: &[String]) {
     let _ = write_lines(&dir.join("agent-audit.txt"), entries);
 }
 
-fn appearance_file(dir: &Path) -> PathBuf {
-    return dir.join("appearance.txt");
-}
-
 /// 读取外观偏好；未设置时返回 `None`（跟随系统）。
 pub fn load_appearance(dir: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(appearance_file(dir)).ok()?;
-    let value = text.trim();
+    let config = read_config(dir)?;
+    let value = config.general.appearance.trim();
     if value.is_empty() {
         return None;
     }
@@ -485,7 +712,9 @@ pub fn load_appearance(dir: &Path) -> Option<String> {
 
 /// 保存外观偏好。
 pub fn save_appearance(dir: &Path, appearance: &str) {
-    let _ = write_lines(&appearance_file(dir), &[appearance.to_string()]);
+    update_config(dir, |config| {
+        config.general.appearance = appearance.to_string()
+    });
 }
 
 fn recent_file(dir: &Path) -> PathBuf {
@@ -722,17 +951,58 @@ mod tests {
     }
 
     #[test]
-    fn agent_policies_and_audit_round_trip() {
+    fn agent_preferences_and_audit_round_trip() {
         let dir = TempDir::new("agent");
-        assert!(load_agent_policies(dir.path()).is_empty());
-        save_agent_policies(dir.path(), &[("push".to_string(), "deny".to_string())]);
         assert_eq!(
-            load_agent_policies(dir.path()),
-            vec![("push".to_string(), "deny".to_string())]
+            load_agent_preferences(dir.path()),
+            AgentPreferences::default()
+        );
+        save_agent_preferences(
+            dir.path(),
+            AgentPreferences {
+                automation: "commit".to_string(),
+                review_millis: 5000,
+                protected_branches: vec!["main".to_string(), "feature,preview".to_string()],
+                permissions: BTreeMap::from([
+                    ("push".to_string(), "deny".to_string()),
+                    ("fetch".to_string(), "allow".to_string()),
+                ]),
+            },
+        );
+        update_agent_preferences(dir.path(), |preferences| {
+            preferences
+                .permissions
+                .insert("commit".to_string(), "allow".to_string());
+        });
+        let loaded = load_agent_preferences(dir.path());
+        assert_eq!(loaded.automation, "commit");
+        assert_eq!(loaded.review_millis, 5000);
+        assert_eq!(
+            loaded.protected_branches,
+            vec!["main".to_string(), "feature,preview".to_string()]
+        );
+        assert_eq!(
+            loaded.permissions.get("push").map(String::as_str),
+            Some("deny")
+        );
+        assert_eq!(
+            loaded.permissions.get("commit").map(String::as_str),
+            Some("allow")
+        );
+
+        update_agent_preferences(dir.path(), |preferences| {
+            preferences.review_millis = 3000;
+        });
+        let loaded = load_agent_preferences(dir.path());
+        assert_eq!(loaded.review_millis, 3000);
+        assert_eq!(
+            loaded.permissions.get("push").map(String::as_str),
+            Some("deny")
         );
 
         save_agent_audit(dir.path(), &["1\tfetch\tok\t2 refs".to_string()]);
         assert_eq!(load_agent_audit(dir.path()).len(), 1);
+        assert!(dir.path().join("agent-audit.txt").exists());
     }
 
     #[test]
@@ -761,6 +1031,8 @@ mod tests {
                 ..Settings::default()
             },
         );
+        assert!(dir.path().join("settings.toml").exists());
+        assert!(!dir.path().join("settings.txt").exists());
         let loaded = load_settings(dir.path());
         assert!(!loaded.file_tree);
         assert!(!loaded.restore_session);
@@ -780,6 +1052,146 @@ mod tests {
         assert!(!loaded.agent_send_diffs);
         assert!(loaded.agent_send_repository_path);
         assert_eq!(Settings::default().update_mode, "auto");
+    }
+
+    #[test]
+    fn partial_toml_uses_defaults_for_missing_fields() {
+        let dir = TempDir::new("partial-toml");
+        std::fs::write(
+            dir.path().join("settings.toml"),
+            "schema_version = 1\n\n[general]\nfile_tree = false\n",
+        )
+        .expect("write partial TOML");
+
+        let loaded = load_settings(dir.path());
+        assert!(!loaded.file_tree);
+        assert_eq!(loaded.update_mode, Settings::default().update_mode);
+        assert_eq!(loaded.agent_model, Settings::default().agent_model);
+    }
+
+    #[test]
+    fn preference_sections_share_one_file_without_clobbering_each_other() {
+        let dir = TempDir::new("preference-sections");
+        save_settings(
+            dir.path(),
+            &Settings {
+                file_tree: false,
+                git_path: "/tmp/git=工具/βin".to_string(),
+                ..Settings::default()
+            },
+        );
+        save_language(dir.path(), "zh-Hans");
+        save_appearance(dir.path(), "dark");
+        save_shortcuts(
+            dir.path(),
+            &[("commit".to_string(), "mod+shift+c".to_string())],
+        );
+        let scan_folder = PathBuf::from("/work/βeta,=directory\t1");
+        save_git_scan_folders(dir.path(), std::slice::from_ref(&scan_folder));
+        save_git_scan_search_preferences(dir.path(), &[("/work/repo,=β\t1".to_string(), false)]);
+        update_agent_preferences(dir.path(), |preferences| {
+            preferences.automation = "commit".to_string();
+            preferences
+                .permissions
+                .insert("push".to_string(), "deny".to_string());
+        });
+
+        assert!(!load_settings(dir.path()).file_tree);
+        assert_eq!(load_settings(dir.path()).git_path, "/tmp/git=工具/βin");
+        assert_eq!(load_language(dir.path()).as_deref(), Some("zh-Hans"));
+        assert_eq!(load_appearance(dir.path()).as_deref(), Some("dark"));
+        assert_eq!(
+            load_shortcuts(dir.path()),
+            vec![("commit".to_string(), "mod+shift+c".to_string())]
+        );
+        assert_eq!(load_git_scan_folders(dir.path()), vec![scan_folder]);
+        assert_eq!(
+            load_git_scan_search_preferences(dir.path()),
+            vec![("/work/repo,=β\t1".to_string(), false)]
+        );
+        let agent = load_agent_preferences(dir.path());
+        assert_eq!(agent.automation, "commit");
+        assert_eq!(
+            agent.permissions.get("push").map(String::as_str),
+            Some("deny")
+        );
+
+        let text =
+            std::fs::read_to_string(dir.path().join("settings.toml")).expect("read TOML config");
+        for section in [
+            "[general]",
+            "[git]",
+            "[shortcuts]",
+            "[agent.provider]",
+            "[agent.runtime]",
+            "[agent.permissions]",
+        ] {
+            assert!(text.contains(section), "missing {section}: {text}");
+        }
+    }
+
+    #[test]
+    fn malformed_or_newer_toml_is_preserved_and_not_overwritten() {
+        let dir = TempDir::new("invalid-toml");
+        for text in [
+            "schema_version = [\n",
+            "schema_version = 2\n",
+            "schema_version = 1\n\n[general]\nunknown = true\n",
+            "[general]\nfile_tree = false\n",
+        ] {
+            let file = dir.path().join("settings.toml");
+            std::fs::write(&file, text).expect("write invalid TOML");
+            assert_eq!(load_settings(dir.path()), Settings::default());
+            save_appearance(dir.path(), "dark");
+            assert_eq!(std::fs::read_to_string(file).expect("read TOML"), text);
+        }
+    }
+
+    #[test]
+    fn legacy_preference_text_files_are_ignored_and_left_untouched() {
+        let dir = TempDir::new("legacy-preferences");
+        let legacy = [
+            (
+                "settings.txt",
+                "file_tree=false\nagent_model=legacy-model\n",
+            ),
+            ("language.txt", "zh-Hans\n"),
+            ("appearance.txt", "dark\n"),
+            ("shortcuts.txt", "push=mod+shift+p\n"),
+            ("agent-policies.txt", "push=deny\nautomation=commit\n"),
+            ("git-scan-folders.txt", "/work\n"),
+            ("git-scan-repositories.txt", "-/work/repo\n"),
+        ];
+        for (name, contents) in legacy {
+            std::fs::write(dir.path().join(name), contents).expect("write legacy preference");
+        }
+
+        assert_eq!(load_settings(dir.path()), Settings::default());
+        assert_eq!(load_language(dir.path()), None);
+        assert_eq!(load_appearance(dir.path()), None);
+        assert!(load_shortcuts(dir.path()).is_empty());
+        assert_eq!(
+            load_agent_preferences(dir.path()),
+            AgentPreferences::default()
+        );
+        assert!(load_git_scan_folders(dir.path()).is_empty());
+        assert!(load_git_scan_search_preferences(dir.path()).is_empty());
+
+        save_language(dir.path(), "en");
+        save_settings(
+            dir.path(),
+            &Settings {
+                file_tree: false,
+                ..Settings::default()
+            },
+        );
+        assert!(dir.path().join("settings.toml").exists());
+        for (name, contents) in legacy {
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join(name)).expect("read legacy preference"),
+                contents
+            );
+        }
     }
 
     #[test]
@@ -934,22 +1346,15 @@ mod tests {
     }
 
     #[test]
-    fn scan_search_preferences_persist_and_ignore_unknown_lines() {
+    fn scan_search_preferences_persist_with_toml_escaping() {
         let dir = TempDir::new("scan-search-preferences");
         assert!(load_git_scan_search_preferences(dir.path()).is_empty());
         let preferences = vec![
             ("/work/alpha".to_string(), true),
-            ("/work/beta".to_string(), false),
+            ("/work/βeta,=one\tunit".to_string(), false),
         ];
         save_git_scan_search_preferences(dir.path(), &preferences);
         assert_eq!(load_git_scan_search_preferences(dir.path()), preferences);
-
-        std::fs::write(
-            dir.path().join("git-scan-repositories.txt"),
-            "+/work/alpha\n?/work/ignored\n-/work/beta\n",
-        )
-        .expect("write");
-        assert_eq!(load_git_scan_search_preferences(dir.path()), preferences,);
     }
 
     #[test]

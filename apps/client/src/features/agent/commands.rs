@@ -48,17 +48,6 @@ impl AgentCommands {
         store::save_agent_audit(&self.store_dir, &lines);
     }
 
-    /// 运行设置写盘（原 `persist_agent`）：只覆盖这三项，权限条目原样保留。
-    fn persist_settings(&self, settings: &agent::Settings) {
-        let pairs = settings.write_pairs();
-        let mut lines: Vec<(String, String)> = store::load_agent_policies(&self.store_dir);
-        for (key, value) in pairs {
-            lines.retain(|(existing, _)| existing != &key);
-            lines.push((key, value));
-        }
-        store::save_agent_policies(&self.store_dir, &lines);
-    }
-
     /// 按当前改动提议一份计划（原 `propose_plan`）。
     pub(crate) fn propose_plan(&self) {
         let tabs = self.session.tabs;
@@ -286,20 +275,14 @@ impl AgentCommands {
         permission: agent::Permission,
     ) {
         let agent_policies = self.state.policies;
-        let store_dir = self.store_dir.clone();
         let mut policies = agent_policies.get_untracked();
         policies.set(action, permission);
-        agent_policies.set(policies.clone());
-        let entries: Vec<(String, String)> = agent::Action::ALL
-            .into_iter()
-            .map(|candidate| {
-                (
-                    candidate.id().to_string(),
-                    policies.permission(candidate).id().to_string(),
-                )
-            })
-            .collect();
-        store::save_agent_policies(&store_dir, &entries);
+        agent_policies.set(policies);
+        store::update_agent_preferences(&self.store_dir, |preferences| {
+            preferences
+                .permissions
+                .insert(action.id().to_string(), permission.id().to_string());
+        });
     }
 
     /// 设置自动化程度（原 `set_automation`）：改动即持久化。
@@ -307,8 +290,10 @@ impl AgentCommands {
         let agent_settings = self.state.settings;
         let mut next = agent_settings.get_untracked();
         next.automation = mode;
-        agent_settings.set(next.clone());
-        self.persist_settings(&next);
+        agent_settings.set(next);
+        store::update_agent_preferences(&self.store_dir, |preferences| {
+            preferences.automation = mode.id().to_string();
+        });
     }
 
     /// 设置自动执行前的预览时长（原 `set_review_millis`）。
@@ -316,8 +301,10 @@ impl AgentCommands {
         let agent_settings = self.state.settings;
         let mut next = agent_settings.get_untracked();
         next.review_millis = millis;
-        agent_settings.set(next.clone());
-        self.persist_settings(&next);
+        agent_settings.set(next);
+        store::update_agent_preferences(&self.store_dir, |preferences| {
+            preferences.review_millis = millis;
+        });
     }
 
     /// 切换某个分支的受保护状态（原 `toggle_protected_branch`）。
@@ -329,8 +316,11 @@ impl AgentCommands {
         } else {
             next.protected.push(branch);
         }
-        agent_settings.set(next.clone());
-        self.persist_settings(&next);
+        let protected = next.protected.clone();
+        agent_settings.set(next);
+        store::update_agent_preferences(&self.store_dir, |preferences| {
+            preferences.protected_branches = protected;
+        });
     }
 }
 

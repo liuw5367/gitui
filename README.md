@@ -68,7 +68,7 @@ APP_HOME=/tmp/app-home nsh run
 
 ```sh
 cargo fmt --all                 # 格式化整个 workspace 的 Rust 代码
-cargo test                       # 全部：domain 17 / git 78 / store 18 / agent 12 / nsh-app 106
+cargo test                       # 全部：domain 17 / git 78 / store 22 / agent 11 / nsh-app 106
 (cd apps/client && cargo test)   # 只跑客户端，等价于 cargo test -p nsh-app
 (cd apps/client && nsh check)
 tools/check-ui.sh

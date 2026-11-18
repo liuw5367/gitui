@@ -159,38 +159,6 @@ impl Settings {
             action.id()
         ));
     }
-
-    /// 从 `key=value` 行读取（与策略共用同一个文件）。
-    pub fn read_pair(&mut self, key: &str, value: &str) -> bool {
-        return match key {
-            "automation" => {
-                self.automation = Automation::from_id(value);
-                true
-            }
-            "review-millis" => {
-                self.review_millis = value.parse().unwrap_or(self.review_millis);
-                true
-            }
-            "protected" => {
-                self.protected = value
-                    .split(',')
-                    .map(|name| name.trim().to_string())
-                    .filter(|name| !name.is_empty())
-                    .collect();
-                true
-            }
-            _ => false,
-        };
-    }
-
-    /// 写回成 `key=value` 行。
-    pub fn write_pairs(&self) -> Vec<(String, String)> {
-        return vec![
-            ("automation".to_string(), self.automation.id().to_string()),
-            ("review-millis".to_string(), self.review_millis.to_string()),
-            ("protected".to_string(), self.protected.join(",")),
-        ];
-    }
 }
 
 /// 权限策略。
@@ -491,26 +459,6 @@ mod tests {
             plan.runnable(&policies, &settings, "feature/x"),
             vec![0, 1, 3]
         );
-    }
-
-    #[test]
-    fn settings_pairs_round_trip() {
-        let settings = Settings::default();
-        let pairs = settings.write_pairs();
-        assert_eq!(pairs.len(), 3);
-
-        let mut parsed = Settings {
-            automation: Automation::Off,
-            review_millis: 0,
-            protected: Vec::new(),
-        };
-        for (key, value) in &pairs {
-            assert!(parsed.read_pair(key, value), "应认识 {key}");
-        }
-        assert_eq!(parsed.automation, settings.automation);
-        assert_eq!(parsed.review_millis, settings.review_millis);
-        assert_eq!(parsed.protected, settings.protected);
-        assert!(!parsed.read_pair("unknown-key", "1"), "未知键应返回 false");
     }
 
     #[test]

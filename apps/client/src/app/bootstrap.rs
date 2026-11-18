@@ -124,9 +124,10 @@ pub(crate) fn app() -> impl IntoElement {
         None
     });
     let agent_plan = signal(Option::<agent::Plan>::None);
+    let stored_agent_preferences = store::load_agent_preferences(&store_dir);
     let agent_policies = signal({
         let mut policies = agent::Policies::default();
-        for (action, permission) in store::load_agent_policies(&store_dir) {
+        for (action, permission) in &stored_agent_preferences.permissions {
             let matched = agent::Action::ALL
                 .into_iter()
                 .find(|candidate| candidate.id() == action);
@@ -136,12 +137,10 @@ pub(crate) fn app() -> impl IntoElement {
         }
         policies
     });
-    let agent_settings = signal({
-        let mut settings = agent::Settings::default();
-        for (key, value) in store::load_agent_policies(&store_dir) {
-            settings.read_pair(key.as_str(), value.as_str());
-        }
-        settings
+    let agent_settings = signal(agent::Settings {
+        automation: agent::Automation::from_id(stored_agent_preferences.automation.as_str()),
+        review_millis: stored_agent_preferences.review_millis,
+        protected: stored_agent_preferences.protected_branches,
     });
     let agent_audit = signal(
         store::load_agent_audit(&store_dir)

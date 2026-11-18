@@ -1,6 +1,6 @@
 # store
 
-本地持久化。把会话、成功打开过的最近仓库、扫描仓库的命令面板搜索资格、设置、变更清单、快捷键、Agent 策略与审计写成文本文件，放在应用支持目录下。没有第三方依赖；读写函数都接收目录参数，便于测试与 `APP_HOME` 隔离。
+本地持久化。应用偏好保存在 `settings.toml`；会话、最近仓库、变更清单和 Agent 审计使用独立文本文件。读写函数接收目录参数，便于测试与 `APP_HOME` 隔离；store 直接依赖 Serde 与 TOML。
 
 ## 目录
 
@@ -15,28 +15,31 @@
 
 | 文件 | 格式 | 内容 |
 |---|---|---|
-| `recent.txt` | 每行 `<打开时间>\t<路径>\t<分支>`，最新的在前 | 最近仓库，上限 12 条；分支列可缺省，兼容只有路径或只有时间与路径的旧格式 |
+| `settings.toml` | 带 `schema_version = 1` 的 TOML | 通用、Git、快捷键和 Agent 偏好 |
+| `recent.txt` | 每行 `<打开时间>\t<路径>\t<分支>`，最新的在前 | 最近仓库，上限 12 条；兼容旧格式 |
 | `session.txt` | 第一行是当前 tab 下标，其后每行一个路径 | 打开的仓库与活动 tab |
-| `language.txt` | 一行语言标识 | `en` 或 `zh-Hans` |
-| `appearance.txt` | 一行 | `system`、`light` 或 `dark` |
-| `settings.txt` | 每行 `键=值` | 文件树、启动、更新、Git、日期、Agent、工具与网络偏好 |
 | `changelists.txt` | 每行 `<仓库>\t<清单名>\t<路径>` | 按仓库分组的变更清单 |
-| `shortcuts.txt` | 每行 `<动作 id>=<组合>` | 只保存与默认值不同的改键 |
-| `agent-policies.txt` | 每行 `<动作>=<权限>` | Agent 每个动作的权限 |
-| `agent-audit.txt` | 每行一条，格式为 `<时间>\t<动作>\t<结果>\t<详情>` | Agent 审计，最新的在前 |
-| `git-scan-folders.txt` | 每行一个绝对路径 | 设置页扫描 Git 仓库的目录 |
-| `git-scan-repositories.txt` | 每行 `+<绝对路径>` 或 `-<绝对路径>` | 扫描发现的仓库是否允许命令面板搜索 |
+| `agent-audit.txt` | 每行 `<时间>\t<动作>\t<结果>\t<详情>` | Agent 审计，最新的在前 |
 
-`settings.txt` 的键包括 `file_tree`、`merge_empty_dirs`、`compact_single_child`、`restore_session`、`update_mode`、`use_system_git`、`git_path`、`date_format`、`date_pattern`、`agent_protocol`、`agent_base_url`、`agent_model`、`agent_temperature`、`agent_max_tokens`、`agent_send_diffs`、`agent_send_repository_path`、`ssh_for_new_remotes`、`external_editor`、`diff_tool`、`merge_tool`、`terminal`、`external_editor_for_messages`、`proxy_mode`、`verify_ssl` 与 `use_system_git_config`。旧文件缺少新键时使用默认值。
+`settings.toml` 的分区：
 
-## 写入约定
+- `[general]`：界面语言、外观、日期、文件树、启动行为与更新偏好。
+- `[git]`：Git 可执行文件、外部工具、网络偏好、扫描目录及扫描仓库的搜索选择。
+- `[shortcuts]`：只保存与默认值不同的动作绑定。
+- `[agent.provider]`：协议、端点、模型、采样温度、回复上限及隐私偏好。
+- `[agent.runtime]`：自动化程度、执行预览时间与受保护分支。
+- `[agent.permissions]`：Agent 动作标识到权限标识的映射。
 
-- 先写同名临时文件（`settings.txt` 写为 `settings.txt.tmp`），再用 `rename` 覆盖目标文件，避免中途失败留下半个文件。
-- 含换行或回车的路径会跳过，逐行格式无法表达这类路径。
-- 文件缺失或内容不符合格式时回退空状态或默认值，不返回错误。
-- 保存变更清单时保留其他仓库的条目；保存最近仓库时去重并截断到 12 条。
-- 同一路径再次打开时保留已有的分支记录；分支为空时仍写两列，旧版本可以继续读取。
-- 扫描搜索资格文件缺失或没有某条仓库记录时，由应用将该扫描仓库默认设为可搜索；未知格式的行会忽略。
+Git 身份由 Git 配置管理。App key 不写入 `settings.toml`；当前只保存在应用进程内存。Credentials 页不保存账号令牌。
+
+## 默认值与错误处理
+
+- 缺少 `settings.toml` 或缺少版本字段之外的配置字段时使用应用默认值；新仓库的扫描搜索资格仍由应用默认设为启用。
+- 旧版 `settings.txt`、`language.txt`、`appearance.txt`、`shortcuts.txt`、`agent-policies.txt`、`git-scan-folders.txt` 与 `git-scan-repositories.txt` 不读取、不改写、不删除。使用新版本时这些旧偏好不会生效；新版本只读写 `settings.toml`。
+- 缺少 `schema_version`、TOML 语法错误、未知字段或不支持的 schema 版本会使设置读取回默认值；保存会跳过，不覆盖原文件。修复或移走该文件后，偏好读写恢复。当前 UI 不提示此类存储错误。
+- 设置先写入 `settings.toml.tmp`，再用 `rename` 替换目标文件。各类偏好更新前读取当前 TOML，并只修改对应分区。
+- 运行数据仍沿用文本文件及临时文件加改名写入；逐行格式不能表达含换行的字段。
+- 保存变更清单时保留其他仓库条目；保存最近仓库时去重并截断至 12 条。
 - 读取会话时，`active` 超出范围会夹到最后一个已打开的仓库。
 
 ## 扫描仓库
@@ -47,7 +50,7 @@
 - 跳过 `node_modules`、`target` 与以 `.` 开头的目录；
 - 结果排序并去重，保证同样的输入得到同样的顺序。
 
-设置页把每个结果的搜索资格写入 `git-scan-repositories.txt`。文件缺失或新发现的仓库默认可搜索；逐项取消后会保存停用状态。移出当前扫描结果的路径设置会保留，重新扫描到时继续使用。扫描只更新发现结果，不改最近打开列表。
+设置页把每个扫描结果的搜索资格保存在 `settings.toml`。新发现的仓库默认可搜索；逐项取消后保存停用状态。移出当前扫描结果的路径设置会保留，重新扫描到时继续使用。扫描只更新发现结果，不改最近打开列表。
 
 ## 测试
 
@@ -56,7 +59,7 @@ cd crates/store
 cargo test
 ```
 
-当前 18 项通过，覆盖默认目录规则、各文件的往返读写、缺失文件的默认值、最近仓库的去重与上限、分支列与旧格式兼容、会话下标夹取、变更清单按仓库隔离、快捷键覆盖项、Agent 策略与审计、扫描深度与噪音目录过滤、扫描仓库命令面板搜索资格的读写。
+测试覆盖配置默认值、TOML 往返与分区更新、旧偏好文件忽略、损坏配置保护、Agent 权限和运行设置隔离、快捷键、扫描偏好，以及运行状态文本文件的读写。
 
 ## 使用方
 

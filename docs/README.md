@@ -8,6 +8,8 @@
 
 欢迎页历史仅记录成功打开过的仓库；Git 设置中的扫描复选框控制扫描结果能否进入命令面板搜索，扫描发现不自动加入打开历史。命令面板空查询显示最近打开仓库和常用命令，输入查询后也搜索已启用的扫描结果。页面背景见[欢迎页](pages/welcome.md)、[Git 设置](pages/settings-git.md)与[命令面板](pages/command-palette.md)，实现差异见[DEVIATIONS](design/DEVIATIONS.md)。
 
+应用偏好统一保存在 `settings.toml`；会话、最近仓库、变更清单与 Agent 审计仍使用独立文本记录。旧版设置 `.txt` 不迁移、不删除；格式与失败行为见 [store 持久化说明](../crates/store/README.md)。
+
 Rust 格式由根目录 `rustfmt.toml` 固定；Agent 修改 Rust 代码后运行 `cargo fmt --all`。执行要求见项目 [AGENTS.md](../AGENTS.md)。
 
 | 目录 | 内容 | 入口 |
