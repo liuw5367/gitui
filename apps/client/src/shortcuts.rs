@@ -32,7 +32,7 @@ pub struct Action {
 }
 
 /// 全部可绑定动作，顺序即设置页的显示顺序。
-pub const ACTIONS: [Action; 22] = [
+pub const ACTIONS: [Action; 23] = [
     Action {
         id: "open",
         key: "shortcut.openRepo",
@@ -45,6 +45,14 @@ pub const ACTIONS: [Action; 22] = [
         key: "shortcut.palette",
         desc: "shortcut.descPalette",
         default: "mod+p",
+        scope: Scope::Global,
+    },
+    // 新建标签页：打开欢迎窗口挑仓库，也为键盘用户提供入口。
+    Action {
+        id: "newTab",
+        key: "shortcut.newTab",
+        desc: "shortcut.descNewTab",
+        default: "mod+t",
         scope: Scope::Global,
     },
     Action {
@@ -415,10 +423,7 @@ mod tests {
         // 这些组合在设置窗口挂载时逐个 `on_key`：任何一个解析失败或是系统保留键
         // 都会在打开设置页时 panic，所以在这里逐个过一遍。
         let combos = observable();
-        assert!(
-            !combos.is_empty(),
-            "录制回显的组合不应该是空的"
-        );
+        assert!(!combos.is_empty(), "录制回显的组合不应该是空的");
         for combo in &combos {
             let parsed = nsh_core::keymap::Keystroke::parse_with(combo, true)
                 .unwrap_or_else(|error| panic!("{combo}: {error}"));

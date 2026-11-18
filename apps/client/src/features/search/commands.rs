@@ -256,6 +256,7 @@ impl SearchCommands {
                 self.state.palette_selected.set(0);
                 self.state.palette_open.set(true);
             }
+            "newTab" => self.session.go_repo_manager(),
             "closeTab" => self.session.close_tab(self.session.active.get_untracked()),
             "refresh" => self.history.refresh(),
             "history" => self.set_mode(crate::Mode::History),

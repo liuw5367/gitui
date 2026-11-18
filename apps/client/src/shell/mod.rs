@@ -51,34 +51,37 @@ pub(crate) fn titlebar(
             .flex_row()
             .items_center()
             .gap(px(4.0))
+            // 这一整块是标题栏的拖动区：页签与按钮自己处理按压，其余位置拖动窗口。
+            .window_drag(true)
             .child(crate::ui::tabs::repository_tabs(
                 tabs,
                 active,
                 open.clone(),
                 language,
             ))
+            // `+` 紧跟在最后一个页签右侧；它右侧的空白是拖动区（见下方 spacer）。
+            // 命中区比视觉尺寸大 4pt：标题栏里的 26×24 图标按钮不好点，实测用户按
+            // 加号经常落在边缘的空处（那里只剩拖动区，点了没有反应）。
             .child(
-                view()
-                    .w(px(27.0))
-                    .h(px(metrics::RTAB_H))
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(metrics::RADIUS_CONTROL))
-                    .hover(|style| style.bg(move || design::hover()))
-                    .label(SharedString::from(i18n::t(
-                        language.get_untracked().as_str(),
-                        "shell.addTab",
-                    )))
-                    .on_press({
+                crate::ui::button::icon_button(
+                    "plus",
+                    move || i18n::t(language.get_untracked().as_str(), "shell.addTab"),
+                    crate::ui::button::ButtonSize::Toolbar,
+                    false,
+                    {
                         let open = open.clone();
                         move || open.go_repo_manager()
-                    })
-                    .child(crate::ui::icon::icon_view(
-                        "plus",
-                        crate::ui::icon::IconSize::Button,
-                        design::text2,
-                    )),
+                    },
+                )
+                // 只向右/上/下扩 4pt：向左扩会盖住页签末尾的 ×，反而更难关页签。
+                .hit_slop(EdgeInsets {
+                    left: px(0.0),
+                    ..EdgeInsets::all(px(4.0))
+                }),
             )
+            // 页签与按钮之外的位置留给拖动窗口：这块空白没有任何处理按压的视图，
+            // 显式标成拖动区（不依赖祖先的间接推断）。
+            .child(view().flex_1().min_w_0().h_full().window_drag(true))
             .into_element();
     });
     return view()

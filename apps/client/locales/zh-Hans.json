@@ -440,6 +440,7 @@
     "push": "推送",
     "openPalette": "命令面板",
     "openRepo": "打开仓库…",
+    "newTab": "新建标签页",
     "settings": "设置"
   },
   "theme": {
@@ -839,6 +840,7 @@
   "shortcut": {
     "openRepo": "打开仓库",
     "palette": "命令面板",
+    "newTab": "新建标签页",
     "closeTab": "关闭标签页",
     "refresh": "刷新",
     "filter": "筛选提交",
@@ -876,6 +878,7 @@
     "descOpen": "打开本地仓库。",
     "descPalette": "切换仓库或运行命令。",
     "descCloseTab": "关闭当前仓库标签页。",
+    "descNewTab": "打开欢迎窗口选择仓库。",
     "descRefresh": "重新载入当前仓库。",
     "descFilter": "聚焦变更过滤器。",
     "descFilterHistory": "过滤历史列表。",

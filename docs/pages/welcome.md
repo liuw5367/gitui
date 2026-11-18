@@ -125,6 +125,7 @@ Nothing listed yet — clone or create one from the tabs.        ⌘O
 
 - 字段与 `Choose…` 同行：`grid 1fr auto`，底对齐，间距 8。
 - 字段右端有 `⌘V` 键帽。
+- 在路径字段里按回车等同于点 `Open Repository`：有值时直接打开，空值时先选目录。
 - 主按钮下方一行 hint（9pt `text3`）。
 - 最底是 meta-line（10pt `text3`）：左边提示可去分段克隆或新建，右边是 `⌘O`。**只有 Open 有这一行。**
 

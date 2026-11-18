@@ -10,9 +10,10 @@ use crate::ui::button::{
     ButtonSize, ButtonVariant, button, button_hint, icon_button, icon_button_tip,
 };
 use crate::ui::feedback::BannerTone;
+use nsh_core::desktop::WindowPosition;
 use nsh_core::prelude::*;
 
-/// 画廊根节点：占满窗口、自己的滚动区。
+/// 组件画廊是独立调试窗口，不参与主窗口的命中测试。
 pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
     let input_value = signal(String::new());
     let area_value = signal(String::new());
@@ -21,17 +22,20 @@ pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
     let segment = signal(SharedString::from("history"));
     let select_value = signal(SharedString::from("history"));
     let dialog_open = signal(false);
-    return view()
-        .absolute()
-        .inset(px(0.0))
-        .z_index(200)
-        .bg(move || design::content())
-        .when(!open.get(), |style| style.opacity(0.0))
-        .child(dynamic(move || -> AnyElement {
-            if !open.get() {
-                return view().w(px(0.0)).h(px(0.0)).into_element();
+    return nsh_core::element::desktop::window()
+        .id("ui-gallery")
+        .title("UI Gallery")
+        .default_size(size(Points(1180.0), Points(760.0)))
+        .default_position(WindowPosition::Center)
+        .open(open)
+        .on_open_change(move |change| {
+            if !change.open {
+                open.set(false);
             }
-            return body(
+        })
+        .content(move || {
+            body(
+                open,
                 input_value,
                 area_value,
                 checked,
@@ -40,11 +44,11 @@ pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
                 select_value,
                 dialog_open,
             )
-            .into_element();
-        }));
+        });
 }
 
 fn body(
+    open: Signal<bool>,
     input_value: Signal<String>,
     area_value: Signal<String>,
     checked: Signal<bool>,
@@ -53,7 +57,7 @@ fn body(
     select_value: Signal<SharedString>,
     dialog_open: Signal<bool>,
 ) -> impl IntoElement {
-    let close = move || segment.set(SharedString::from("history"));
+    let close = move || open.set(false);
     return scroll().w_full().h_full().child(
         view()
             .w_full()

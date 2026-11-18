@@ -33,6 +33,9 @@ pub(crate) fn app() -> impl IntoElement {
     window.min_size = Some(Some(size(Points(1100.0), Points(700.0))));
     window.close_on_press = Some(false);
     main_window().set(window);
+    // 属性会把隐藏标题栏（44pt）加进 frame：窗口打开时的居中因此偏上 43pt。属性与
+    // 居中按顺序入队，同一批应用，拿到的是最终尺寸。
+    main_window().center(None);
 
     let store_dir = store::default_dir(brand::STORAGE_DIR);
     let language = signal(SharedString::from(
@@ -63,8 +66,7 @@ pub(crate) fn app() -> impl IntoElement {
     // 验收开关：`GITUI_PALETTE=1` 启动即打开命令面板（⌘K 的等价物），
     // 用于截图核对面板与列表项。
     let palette_open = signal(acceptance::flag("GITUI_PALETTE"));
-    // 组件画廊（P0 的验收入口）：⌘⇧D 打开，Esc 关闭。P6 并入命令面板。
-    // `GITUI_GALLERY=1` 用于截图验收：不依赖键盘自动化也能直接看到组件层。
+    // 组件画廊是独立验收窗口：⌘⇧D 打开或关闭；`GITUI_GALLERY=1` 用于截图启动时打开。
     let gallery_open = signal(acceptance::flag("GITUI_GALLERY"));
     let settings_state = signal(store::load_settings(&store_dir));
     {
@@ -99,7 +101,6 @@ pub(crate) fn app() -> impl IntoElement {
     let shortcut_error = signal(Option::<String>::None);
     let restore_confirm = signal(acceptance::flag("GITUI_RESTORE_CONFIRM"));
     let blink_on = signal(true);
-    let blink_running = signal(false);
     let pending_keystroke =
         signal(acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()));
     // reflog 的过滤关键字（动作或说明）。
@@ -201,8 +202,7 @@ pub(crate) fn app() -> impl IntoElement {
     let settings_open = signal(acceptance::flag("GITUI_SETTINGS"));
     // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
     // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
-    // 欢迎窗口是独立窗口且默认铺在主窗口之上，截图验收组件画廊时它会挡住画廊，
-    // 之前把「截到欢迎页的空白」误当成「画廊没渲染」，就是因为它。
+    // 欢迎页与组件画廊都是独立窗口；截图脚本关闭欢迎页，避免误截较小的欢迎窗口。
     let suppress_welcome = acceptance::flag("GITUI_NO_WELCOME");
     let welcome_open = signal(initial_tabs.is_empty() && !suppress_welcome);
     let active = signal(session.active.min(initial_tabs.len().saturating_sub(1)));
@@ -465,7 +465,6 @@ pub(crate) fn app() -> impl IntoElement {
             restore_confirm,
             pending_keystroke,
             blink_on,
-            blink_running,
             identity_name: signal(String::new()),
             identity_email: signal(String::new()),
             identity_use_global: signal(true),

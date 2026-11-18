@@ -1,6 +1,6 @@
 //! 设置页的快捷键分区（设计板 25）：搜索、录制、按 Global / Repository 分组。
 //!
-//! 分组与行数来自 `shortcuts::ACTIONS` 的真实注册表：本构建有 22 个可绑定动作，
+//! 分组与行数来自 `shortcuts::ACTIONS` 的真实注册表：本构建有 23 个可绑定动作，
 //! 画板的 4 / 6 / 3 只是示例，不能为了对齐数量伪造动作。
 //!
 //! 录制卡插在**正在录制的那一行下方**（画板把它画在列表顶部），被搜索过滤掉时才
@@ -114,17 +114,16 @@ fn body(
     let pending = pending.get();
     // 录制卡默认插在正在录制的那一行下方；只有该行被搜索过滤掉时才退回到列表顶部，
     // 否则录制中会看不到取消入口。
-    let mut recorder_card = recording_id
-        .map(|id| {
-            recorder(
-                language,
-                id,
-                bindings.clone(),
-                pending.clone(),
-                blink,
-                error_text.clone(),
-            )
-        });
+    let mut recorder_card = recording_id.map(|id| {
+        recorder(
+            language,
+            id,
+            bindings.clone(),
+            pending.clone(),
+            blink,
+            error_text.clone(),
+        )
+    });
     let mut sections: Vec<AnyElement> = Vec::new();
     for scope in [Scope::Global, Scope::Repository] {
         let visible = shortcuts::ACTIONS
@@ -285,6 +284,7 @@ fn recorder(
         keys = keys.child(
             text(move || i18n::t(language.get().as_str(), "shortcut.unassigned"))
                 .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         );
     } else {
@@ -292,19 +292,27 @@ fn recorder(
             keys = keys.child(ui::badge::kbd(cap));
         }
     }
-    // 录制中闪一下，明示「正在等按键」；不录制时它不出现（卡片本身就是录制态）。
+    // 光标柱：与键帽共用一条行高容器，两者垂直居中在同一基线上；亮灭由 `blink` 驱动，
+    // 明示「正在等按键」。卡片本身就是录制态，所以它不单独占位宽以外的东西。
     keys = keys.child(
         view()
-            .w(px(2.0))
-            .h(px(16.0))
+            .h(px(ui::SECONDARY_LINE))
             .flex_shrink_0()
-            .bg(move || {
-                if blink.get() {
-                    design::accent()
-                } else {
-                    AdaptiveColor::TRANSPARENT
-                }
-            }),
+            .flex_row()
+            .items_center()
+            .child(
+                view()
+                    .w(px(2.0))
+                    .h(px(ui::SECONDARY_LINE))
+                    .rounded(px(1.0))
+                    .bg(move || {
+                        if blink.get() {
+                            design::accent()
+                        } else {
+                            AdaptiveColor::TRANSPARENT
+                        }
+                    }),
+            ),
     );
     let mut card = view()
         .w_full()
@@ -322,18 +330,34 @@ fn recorder(
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
+                // 录制中红点：常亮，不参与闪烁（闪一个红点既抢眼又不稳）。
+                //
+                // 行高盒子必须是**横向**排列再 `items_center`：`view()` 默认是纵向的，
+                // 纵向容器上的 `items_center` 是水平居中，6pt 的点会贴在盒子顶部——这正是
+                // 「红点比文字高一截」的原因。横向容器里 `items_center` 才是垂直居中。
                 .child(
                     view()
-                        .w(px(6.0))
-                        .h(px(6.0))
-                        .rounded(px(3.0))
-                        .bg(move || design::danger()),
+                        .h(px(ui::SECONDARY_LINE))
+                        .flex_shrink_0()
+                        .flex_row()
+                        .items_center()
+                        .child(
+                            view()
+                                .w(px(6.0))
+                                .h(px(6.0))
+                                .rounded(px(3.0))
+                                .bg(move || design::danger()),
+                        ),
                 )
+                // 中日韩字形填满整个 em 盒（含基线以下的深度），与右侧只占 cap 高度的
+                // 拉丁文字同基线时看起来偏低约 1pt。用 `translate_y` 做纯绘制位移（不参与
+                // 布局）：负外边距会被样式层钳成 0，位移不会。
                 .child(
                     text(move || i18n::t(language.get().as_str(), "shortcut.recordingTitle"))
                         .text_size(px(ui::SECONDARY))
                         .line_height(px(ui::SECONDARY_LINE))
                         .font_weight(FontWeight::SEMIBOLD)
+                        .translate_y(px(-1.0))
                         .text_color(move || design::accent()),
                 )
                 .child(

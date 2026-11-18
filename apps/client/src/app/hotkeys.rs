@@ -209,6 +209,27 @@ pub(crate) fn install_settings_window(
             }
         }
     });
+    // 录制卡里的光标柱靠 `blink_on` 闪烁（红点常亮，不参与闪烁）。
+    //
+    // 这个循环必须挂在**窗口内容**这层稳定 owner 上：先前版本在 `record_shortcut`
+    // 里 `spawn`，而那个方法由列表行里的 Record 按钮调用——设置 `recording_shortcut`
+    // 会让包含该按钮的 `dynamic` 子树重建、owner 被释放，nsh 随即取消它名下的任务，
+    // 于是「录制中」的光标一次都不闪（只有启动时经 `GITUI_RECORD` 直接录制的那条
+    // 路径能闪，因为它的 owner 是根）。
+    //
+    // `set_interval` 每 530ms 跑一次，录制结束就把光标恢复常亮；窗口关闭时 owner
+    // 释放、定时器随任务一起取消，不需要额外的停止逻辑。
+    {
+        let blink_on = settings.state.blink_on;
+        let recording = settings.state.recording_shortcut;
+        set_interval(std::time::Duration::from_millis(530), move || {
+            if recording.get_untracked().is_some() {
+                blink_on.set(!blink_on.get_untracked());
+            } else {
+                blink_on.set(true);
+            }
+        });
+    }
 }
 
 /// 向 NSH 注册本 crate 的原生组件。

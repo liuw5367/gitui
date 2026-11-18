@@ -10,13 +10,13 @@
 # 所以这里把它钉在真实 HOME 的 ~/.cargo 上（可用 SHOTS_REAL_HOME 覆盖）。
 #
 # 用法：
-#   tools/shots.sh gallery            # 组件画廊（GITUI_GALLERY=1，并关掉欢迎窗口）
+#   tools/shots.sh gallery            # 独立组件画廊窗口（GITUI_GALLERY=1）
 #
 # 只截应用窗口：先用 tools/winid.swift 取窗口 id，再 screencapture -l 精确截取。
 # 整屏截图会截到最前面的别的程序（曾经截到编辑器并误判「界面空白」）。
 #
 # 环境变量的作用（每个都可单独设，也可以组合）：
-#   GITUI_GALLERY=1     打开组件画廊（主窗口的覆盖层）
+#   GITUI_GALLERY=1     打开独立组件画廊窗口
 #   GITUI_SYNC=1        启动即打开同步面板（验收弹层用）
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
 #   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
@@ -30,8 +30,7 @@
 #   GITUI_RESTORE_CONFIRM=1   启动即打开设置页的「恢复默认快捷键」确认弹层
 #   GITUI_INSPECTOR=1   启动即展开右侧检查器（板 08 / 18）
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
-#   GITUI_NO_WELCOME=1  不打开欢迎窗口——它是独立窗口，默认盖在主窗口上，
-#                       会把画廊挡在后面，截出来就是一片白
+#   GITUI_NO_WELCOME=1  不打开欢迎窗口，避免截图时选中比画廊更小的欢迎窗口
 #   GITUI_WELCOME_FORM=open|clone|init   欢迎页初始分段
 #   GITUI_WELCOME_STATE=empty|recent|clone-error
 #   GITUI_WELCOME_RECENT=path|branch:path|branch   recent 状态的种子数据
@@ -118,15 +117,15 @@ echo "启动应用（HOME=$home_dir）…"
   echo $! >"$home_dir/run-$name.pid"
 )
 
-# 取窗口 id：主窗口最大；欢迎页是较小的独立窗口，用 --smallest。
+# 取窗口 id：主窗口最大；欢迎页、设置页、组件画廊是较小的独立窗口，用 --smallest。
 if [ ! -x "$bin" ] || [ "$root/tools/winid.swift" -nt "$bin" ]; then
   CLANG_MODULE_CACHE_PATH="$swift_cache" SWIFT_MODULE_CACHE_PATH="$swift_cache" \
     swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
 fi
-# 欢迎页与设置页都是独立窗口，都比主窗口小：用 --smallest 取那一扇。
+# 欢迎页、设置页与组件画廊都是独立窗口，比主窗口小：用 --smallest 取目标窗口。
 window_flag="--id"
 case "$name" in
-  welcome*|settings*) window_flag="--smallest" ;;
+  welcome*|settings*|gallery*) window_flag="--smallest" ;;
 esac
 # 等窗口出现的上限要按冷构建算：改动 rust 源码后 nsh 会重新编译，实测 60–100s，
 # 早先按热构建的 60s 设上限，改完代码必然超时（曾因此误以为「窗口没出现」）。
@@ -141,7 +140,7 @@ if [ -z "${window_id:-}" ]; then
   exit 1
 fi
 sleep "$settle_seconds"
-# 独立窗口（欢迎、设置）可能比主窗口晚出现：等待结束后再按"最小窗口"重取一次 id，
+# 独立窗口（欢迎、设置、组件画廊）可能比主窗口晚出现：等待结束后再按"最小窗口"重取一次 id，
 # 否则截到的是先出现的主窗口。
 if [ "$window_flag" = "--smallest" ]; then
   latest="$("$bin" nsh-app --smallest 2>/dev/null || true)"

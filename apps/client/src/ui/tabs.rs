@@ -79,6 +79,9 @@ pub(crate) fn tabs(
 }
 
 /// 主窗口标题栏里的仓库页签，宽度与次序来自工作区设计板 04。
+///
+/// 页签条**按内容取宽**（`flex_shrink(1.0)`，不 `flex_grow`）：`+` 要紧跟在最后一个
+/// 页签右侧，而不是被推到标题栏最右端；页签多到放不下时才收缩并横向滚动。
 pub(crate) fn repository_tabs(
     tabs: Signal<Vec<RepositoryTab>>,
     active: Signal<usize>,
@@ -89,7 +92,7 @@ pub(crate) fn repository_tabs(
     return scroll()
         .horizontal()
         .scrollbar(false)
-        .flex_1()
+        .flex_shrink(1.0)
         .min_w_0()
         .h_full()
         .child(
@@ -109,6 +112,11 @@ pub(crate) fn repository_tabs(
                         let move_tabs = session.clone();
                         let width_state = widths;
                         let start_x = signal(0.0_f32);
+                        // 页签自身的悬停：× 的显隐跟着它走。设计稿的要求是「活动页签
+                        // 平时不显示 ×、悬停才出现」，而 `on_mouse_enter` 在「指针进入
+                        // 该视图或其内部视图」时都会触发，所以整块页签悬停即可，不必
+                        // 精确悬停到 14pt 的 × 上（它的常态不透明度就是 0）。
+                        let hovered = signal(false);
                         let current = move || active.get() == index.get();
                         let close_label = i18n::with_arguments(
                             language.get_untracked().as_str(),
@@ -141,6 +149,8 @@ pub(crate) fn repository_tabs(
                                 }
                             })
                             .hover(|style| style.bg(move || design::hover()))
+                            .on_mouse_enter(move |_: &MouseEvent| hovered.set(true))
+                            .on_mouse_leave(move |_: &MouseEvent| hovered.set(false))
                             .on_layout(move |bounds: &Bounds<Points>| {
                                 let mut measured = width_state.get_untracked();
                                 if let Some((_, width)) =
@@ -200,16 +210,19 @@ pub(crate) fn repository_tabs(
                                 move_tabs.move_tab(id, destination);
                             })
                             .on_press(move || activate.activate_tab_id(id))
+                            // 活动页签的状态点：绿色 `ok` token。未选中的页签不画点
+                            // （以前活动页签用的是 `accent`——那是极浅的选中底色，
+                            // 白底上看起来就是灰点，等于没有状态指示）。
                             .child(dynamic({
                                 let current = current.clone();
                                 move || -> AnyElement {
                                     if current() {
                                         return view()
-                                            .w(px(5.0))
-                                            .h(px(5.0))
+                                            .w(px(6.0))
+                                            .h(px(6.0))
                                             .flex_shrink_0()
                                             .rounded(px(3.0))
-                                            .bg(move || design::token("accent"))
+                                            .bg(move || design::ok())
                                             .into_element();
                                     }
                                     return view().w(px(0.0)).h(px(0.0)).into_element();
@@ -238,7 +251,21 @@ pub(crate) fn repository_tabs(
                                     .items_center()
                                     .justify_center()
                                     .rounded(px(4.0))
-                                    .opacity(if current() { 0.0 } else { 0.55 })
+                                    // 悬停整块页签即显示 ×（`on_mouse_enter` 在指针进入
+                                    // 该视图或其内部视图时触发，不必精确命中 14pt 的 ×）；
+                                    // 其余状态：活动页签 0.35、非活动页签 0.55。活动页签
+                                    // 一开始是画板的 0（完全不可见），但那样一旦指针事件
+                                    // 不达（例如窗口刚激活、指针没有移动），关闭入口就彻底
+                                    // 消失——留 0.35 既有状态层次又不会「找不到 ×」。
+                                    .opacity(move || {
+                                        if hovered.get() {
+                                            1.0_f32
+                                        } else if current() {
+                                            0.35_f32
+                                        } else {
+                                            0.55_f32
+                                        }
+                                    })
                                     .hover(|style| {
                                         style.bg(move || design::line_soft()).opacity(1.0)
                                     })

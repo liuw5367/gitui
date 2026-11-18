@@ -40,6 +40,9 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
         .id("welcome")
         .title(welcome_title)
         .default_size(size(Points(900.0), Points(600.0)))
+        // 没有位置时 nsh 从主窗口左上角层叠（每扇窗偏移 24pt），三扇窗会互相错开而不是
+        // 落在屏幕中央；欢迎页与设置窗都显式居中。
+        .default_position(WindowPosition::Center)
         .attributes(attributes_with_min_size(800.0, 520.0))
         .open(welcome_open)
         .on_open_change(move |event| {
@@ -48,6 +51,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             }
         })
         .content(move || {
+            center_this_window();
             // 快捷键按窗口绑定：`on_key` 属于 `current_window`，主窗口的 ⌘F 不会
             // 在欢迎窗口触发（反之亦然）。
             let focus = welcome.clone();
@@ -73,6 +77,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             }
         })
         .content(move || {
+            center_this_window();
             // 设置窗口的按键在这里挂一次：录制改键、Esc 取消录制、⌫ 清空绑定。
             crate::app::hotkeys::install_settings_window(&settings);
             // 当前仓库只在开窗时取一次快照：窗口内容不订阅标签页——每次标签页变化
@@ -89,6 +94,17 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
         });
 
     return view().child(welcome_window).child(settings_window);
+}
+
+/// 窗口内容挂载后把窗口居中一次。
+///
+/// `default_position(Center)` 只在窗口打开的那一刻生效，而窗口的 frame 会随标题栏与
+/// 属性在打开之后变化（实测 900×600 的欢迎页落在主窗口层叠位置、主窗口纵向偏 43pt），
+/// 所以真正的居中要等窗口拿到最终尺寸后再做一次。内容闭包每次开窗只跑一次，因此在
+/// 这里请求下一帧居中不会和用户拖动窗口打架。
+fn center_this_window() {
+    let window = nsh_core::element::desktop::current_window();
+    request_animation_frame(move |_| window.center(None));
 }
 
 /// Install a per-window opener without capturing the callback signal it writes to.

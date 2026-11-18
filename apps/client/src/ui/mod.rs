@@ -145,9 +145,15 @@ pub(crate) fn separator() -> impl IntoElement {
         .bg(move || design::line());
 }
 
-/// 主题焦点 outline 的颜色。用 `outline` 而不是 `border`，避免改变布局尺寸。
+/// 主题焦点 outline 的颜色：与聚焦时的描边同一种蓝（`design::accent()` 读的 `blue`
+/// token）。
+///
+/// `theme.json` 里的 `focus` 不是颜色，而是一条 box-shadow 效果值（见
+/// `docs/design/TOKENS.md` 的「效果值不是颜色」一节）：`theme.color("focus")` 解析不出
+/// 颜色，只会退回前景色，焦点环于是被画成了近黑色。焦点环需要的是可描边的颜色，
+/// 所以取 `blue`，与输入框、按钮聚焦时的边框一致。
 pub(crate) fn focus_color() -> AdaptiveColor {
-    return design::token("focus");
+    return design::accent();
 }
 
 /// 焦点环的宽度。
@@ -163,6 +169,77 @@ mod guard_tests {
 
     use std::fs;
     use std::path::{Path, PathBuf};
+
+    /// 焦点环不能再去读 `focus` 这条 effect token。
+    ///
+    /// 回归点：`theme.json` 的 `focus` 是 box-shadow 效果值、不是颜色，`token("focus")`
+    /// 解析失败后会**静默**退回前景色——焦点环因此被画成近黑色，聚焦与否几乎看不出
+    /// 区别。现在取 `design::accent()`（强调蓝），与输入框、按钮聚焦时的边框一致；
+    /// 这条机械断言防止有人把它改回去。属于源码扫描，因为主题 token 需要完整运行时，
+    /// 单元测试里装不进去。
+    #[test]
+    fn focus_ring_does_not_read_the_focus_effect_token() {
+        let source = read(&src_root().join("ui/mod.rs"));
+        let start = source
+            .find("pub(crate) fn focus_color()")
+            .expect("ui/mod.rs 里应有 focus_color()");
+        let body_start = start + source[start..].find('{').expect("函数体");
+        // 函数体以顶格 `}` 结束（`\n` + `}`），用它确定边界。
+        let body_end = body_start + source[body_start..].find("\n}").expect("函数体结束");
+        let body = &source[body_start..body_end];
+        assert!(
+            !body.contains("token(\"focus\")"),
+            "focus_color() 又去读 effect token `focus` 了：它不是颜色，会退回前景色"
+        );
+        assert!(
+            body.contains("accent()"),
+            "focus_color() 应取 design::accent()（强调蓝）"
+        );
+    }
+
+    /// 关闭的全屏冲突层必须退出命中测试，否则它会挡住整个工作区的按钮和输入框。
+    #[test]
+    fn closed_conflict_layer_allows_pointer_events_through() {
+        let source = read(&src_root().join("features/merge/view.rs"));
+        let start = source
+            .find("pub(crate) fn conflict_view")
+            .expect("merge/view.rs 里应有 conflict_view()");
+        let end = source[start..]
+            .find(".items_center()")
+            .map(|offset| start + offset)
+            .expect("冲突层布局");
+        let layer = &source[start..end];
+        assert!(
+            layer.contains(".pointer_events(move ||"),
+            "冲突层需要按打开状态切换命中测试"
+        );
+        assert!(
+            layer.contains("PointerEvents::Auto") && layer.contains("PointerEvents::None"),
+            "冲突层打开时接收输入，关闭时必须穿透输入"
+        );
+    }
+
+    /// 组件画廊应使用独立窗口，不得作为主窗口上的全屏遮罩。
+    #[test]
+    fn gallery_uses_an_independent_window() {
+        let source = read(&src_root().join("ui/gallery.rs"));
+        let start = source
+            .find("pub(crate) fn gallery")
+            .expect("ui/gallery.rs 里应有 gallery()");
+        let end = source[start..]
+            .find("fn body(")
+            .map(|offset| start + offset)
+            .expect("画廊 body()");
+        let gallery = &source[start..end];
+        assert!(
+            gallery.contains("desktop::window()") && gallery.contains(".open(open)"),
+            "画廊应通过独立的 desktop window 显隐"
+        );
+        assert!(
+            !gallery.contains(".absolute()"),
+            "画廊不应在主窗口中创建全屏遮罩"
+        );
+    }
 
     /// 已迁移的页面文件（相对 `src/`）。P0 只有 ui 层自己。
     const MIGRATED: &[&str] = &[

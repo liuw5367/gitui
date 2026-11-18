@@ -132,6 +132,14 @@ pub(crate) fn conflict_view(
         .absolute()
         .inset(px(0.0))
         .z_index(130)
+        // 空状态仍保留全屏根节点；透明背景不会穿透点击，关闭时要退出命中测试。
+        .pointer_events(move || {
+            if tab.get().is_some_and(|tab| tab.conflict_open) {
+                PointerEvents::Auto
+            } else {
+                PointerEvents::None
+            }
+        })
         // 设计稿 `.merge-layer`：顶部对齐、`padding:22px 34px`。
         .items_center()
         .justify_center()

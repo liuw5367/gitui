@@ -73,7 +73,7 @@ NSH 0.5.0 没有 `NSButton`、`NSSegmentedControl`、`NSTableView`、`NSSearchFi
 | `split` / `Pane` | `ui/split.rs` | `h_resizable` / `v_resizable` | 横向 / 纵向；`fixed` / `flex`，`.min()` / `.max()` | 拖拽、把手焦点 |
 | `menu` / `menu_button` | `ui/menu.rs` | 系统 `NSMenu` | `action` / `checkable` / `danger` / `divider` / `section` | 启用、勾选 |
 | `key_value` / `key_values` | `ui/key_value.rs` | `view` + `text` | 行 24，标签列 96 | — |
-| `gallery` | `ui/gallery.rs` | 上述全部 | — | 调试入口 `⌘⇧D` |
+| `gallery` | `ui/gallery.rs` | 上述全部 | — | 独立调试窗口，入口 `⌘⇧D` |
 
 ## 4. 选用规则
 

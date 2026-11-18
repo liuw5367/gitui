@@ -43,6 +43,8 @@ pub(crate) fn build_menu(
                     let choose_folder = choose_folder.clone();
                     move || choose_folder()
                 }),
+                shortcut_item(MenuItem::new(menu("menu.newTab")), "newTab")
+                    .on_select(menu_run("newTab")),
                 shortcut_item(MenuItem::new(menu("menu.closeTab")), "closeTab")
                     .on_select(menu_run("closeTab")),
                 MenuItem::separator(),

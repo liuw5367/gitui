@@ -82,10 +82,9 @@ pub(crate) struct SettingsState {
     pub(crate) restore_confirm: Signal<bool>,
     /// 录制中刚按下的组合（原始 keystroke），用于回显；换键成功或取消后清空。
     pub(crate) pending_keystroke: Signal<Option<String>>,
-    /// 录制卡里光标柱的亮灭：录制中由定时器翻转，不录制时恒为 `true`。
+    /// 录制卡光标柱的亮灭：设置窗口里的定时器每 530ms 翻转一次，不录制时恒为
+    /// `true`（光标常亮）。红点不参与闪烁。
     pub(crate) blink_on: Signal<bool>,
-    /// 闪烁定时器是否已在跑，避免重复起循环。
-    pub(crate) blink_running: Signal<bool>,
     /// Commit identity 编辑框的值（仓库级；没有打开仓库时是全局值）。
     pub(crate) identity_name: Signal<String>,
     pub(crate) identity_email: Signal<String>,

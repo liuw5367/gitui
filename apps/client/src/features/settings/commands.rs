@@ -477,31 +477,8 @@ impl SettingsCommands {
         self.state.shortcut_error.set(None);
         self.state.pending_keystroke.set(None);
         self.state.recording_shortcut.set(Some(id));
-        self.blink_cursor();
-    }
-
-    /// 让录制卡里的光标柱闪烁：每 530ms 翻转一次，录制结束（成功或取消）时停下
-    /// 并恢复为常亮。只起一条循环，不会随录制卡的反复重建叠加。
-    fn blink_cursor(&self) {
-        if self.state.blink_running.get_untracked() {
-            return;
-        }
-        self.state.blink_running.set(true);
-        self.state.blink_on.set(true);
-        let blink_on = self.state.blink_on;
-        let blink_running = self.state.blink_running;
-        let recording = self.state.recording_shortcut;
-        spawn(async move {
-            while recording.get_untracked().is_some() {
-                timer(std::time::Duration::from_millis(530)).await;
-                if recording.get_untracked().is_none() {
-                    break;
-                }
-                blink_on.set(!blink_on.get_untracked());
-            }
-            blink_on.set(true);
-            blink_running.set(false);
-        });
+        // 闪烁由设置窗口内容里的定时器驱动（`app::hotkeys::install_settings_window`）：
+        // 在这里 spawn 会随录制态重建的子树一起被取消。
     }
 
     /// 取消录制（Esc）：不改任何绑定，只退出录制态并清掉上一条冲突提示。
@@ -529,7 +506,6 @@ impl SettingsCommands {
         self.state.recording_shortcut.set(None);
         self.state.shortcut_error.set(None);
     }
-
 
     /// 恢复全部默认快捷键。确认弹层由设置页自己画（`view.rs`），这里只执行。
     pub(crate) fn restore_shortcuts(&self) {

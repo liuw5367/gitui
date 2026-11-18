@@ -440,6 +440,7 @@
     "push": "Push",
     "openPalette": "Command Palette",
     "openRepo": "Open Repository…",
+    "newTab": "New Tab",
     "settings": "Settings"
   },
   "theme": {
@@ -839,6 +840,7 @@
   "shortcut": {
     "openRepo": "Open repository",
     "palette": "Command palette",
+    "newTab": "New tab",
     "closeTab": "Close tab",
     "refresh": "Refresh",
     "filter": "Filter commits",
@@ -876,6 +878,7 @@
     "descOpen": "Open a local repository.",
     "descPalette": "Switch repository or run a command.",
     "descCloseTab": "Close the current repository tab.",
+    "descNewTab": "Open the welcome window and pick a repository.",
     "descRefresh": "Reload the current repository.",
     "descFilter": "Focus the changes filter.",
     "descFilterHistory": "Filter the history list.",

@@ -678,19 +678,21 @@ fn open_form(
     let path = state.open_path;
     let error = state.open_error;
     let open = cmd;
+    let submit = open.clone();
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
         .flex_col()
         .gap(px(ui::GAP_LG))
-        // 路径输入框占满整行；主操作在下一行，不再带键帽提示。
+        // 路径输入框占满整行；回车等同点 Open。主操作在下一行，不再带键帽提示。
         .child(ui::field::field(
             move || i18n::t(language.get().as_str(), "welcome.repositoryPath"),
-            ui::text_input::path_input(
+            ui::text_input::path_input_submit(
                 path,
                 move || "~/Developer/gitui".to_string(),
                 Some("⌘V"),
                 move |text| path.set(text.to_string()),
+                move || submit.open_or_choose(),
             ),
             None,
             None,

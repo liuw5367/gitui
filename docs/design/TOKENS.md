@@ -35,11 +35,15 @@
 `theme.json` 比设计源多出的键集中在第一组（shadcn / NSH 主题基座）与少数实现侧
 条目。`代码入口` 列是 `design` 模块里的函数名；`—` 表示没有封装，代码里直接
 `design::token("键名")` 取——实际这样读的有 `popover`、`overlay`、`primary-bg`、
-`primary-foreground`、`sel-strong`、`focus`。
+`primary-foreground`、`sel-strong`。
 
 最后一组里的 `shadow-menu` 与 `focus` 是效果值（弹层阴影、焦点环），不是颜色；它们
 同样随明暗切换，所以和状态色放在一张表里。`focus` 的 Dark 列是 `—`：深色块里没有这个
 键，见 §7。
+
+这两个效果值都**不能**当颜色用：`theme.color("focus")` 解析不出来，只会退回前景色。
+焦点环是描边（`outline`），它取的是强调蓝 `blue`（`ui::focus_color()`），与输入框、
+按钮聚焦时的边框同色。
 
 <!-- tokens:colors:begin（由 tools/design/tokens.py 生成，勿手改） -->
 
@@ -279,10 +283,10 @@
 
 - `desk1` / `desk2` 只在画板的桌面背景里，窗口内容不用，未移植。
 - 圆角两处来源（`theme.cssVars.theme.radius` 与 `metrics::RADIUS_*`）没有合流。
-- `focus` 只在 `light` 里有值。nsh 的规则是「只写一侧的键，两个模式共用该值」
-  （`theme.rs`：“Set in one appearance only, the color is both's”），所以深色焦点环
-  其实还是浅色那支蓝 `rgba(0,122,255,.28)`，而不是深色的 `#0A84FF`。要分开就得在
-  `dark` 里补一条。
+- `focus` 只在 `light` 里有值，nsh 的规则是「只写一侧的键，两个模式共用该值」
+  （`theme.rs`：“Set in one appearance only, the color is both's”）。它是 box-shadow
+  效果值、不是颜色，因此没有代码入口：焦点环改用 `blue` 描边，深浅两个模式各取自己的
+  强调蓝，这条缺口不再影响界面。
 - 几个键目前没有读取点：`press`、`purple`、`shadow-menu`。菜单走系统 `NSMenu` 绘制，
   阴影用不到；`press` 与 `purple` 是设计稿里有、界面还没用上的语义。
 - `metrics.rs` 上半部分的画板逐值常量与 `native` 刻度并存，前者已不再驱动界面，

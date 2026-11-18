@@ -151,17 +151,45 @@ pub(crate) fn path_input(
     shortcut: Option<&'static str>,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
-    let mut children: Vec<AnyElement> = vec![
-        nsh_base::input()
-            .value(value)
-            .placeholder(placeholder)
-            .on_change(move |text: &str| on_change(text))
-            .text_size(px(ui::BODY))
-            .text_color(move || design::text())
-            .flex_1()
-            .min_w_0()
-            .into_element(),
-    ];
+    return path_input_inner(value, placeholder, shortcut, on_change, None);
+}
+
+/// 与 [`path_input`] 相同，回车触发 `on_submit`（欢迎页 Open 用它直接打开仓库）。
+pub(crate) fn path_input_submit(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    shortcut: Option<&'static str>,
+    on_change: impl Fn(&str) + 'static,
+    on_submit: impl Fn() + 'static,
+) -> impl IntoElement {
+    return path_input_inner(
+        value,
+        placeholder,
+        shortcut,
+        on_change,
+        Some(std::rc::Rc::new(on_submit)),
+    );
+}
+
+fn path_input_inner(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    shortcut: Option<&'static str>,
+    on_change: impl Fn(&str) + 'static,
+    on_submit: Option<std::rc::Rc<dyn Fn()>>,
+) -> impl IntoElement {
+    let mut input = nsh_base::input()
+        .value(value)
+        .placeholder(placeholder)
+        .on_change(move |text: &str| on_change(text))
+        .text_size(px(ui::BODY))
+        .text_color(move || design::text())
+        .flex_1()
+        .min_w_0();
+    if let Some(submit) = on_submit {
+        input = input.on_submit(move |_: &str| submit());
+    }
+    let mut children: Vec<AnyElement> = vec![input.into_element()];
     if let Some(combo) = shortcut {
         children.push(ui::badge::kbd(combo).into_element());
     }

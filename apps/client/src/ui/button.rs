@@ -233,7 +233,7 @@ pub(crate) fn icon_button(
     size: ButtonSize,
     disabled: bool,
     on_press: impl Fn() + 'static,
-) -> impl IntoElement {
+) -> nsh_base::ButtonElement {
     return icon_button_tuned(name, label, size, None, None, disabled, on_press);
 }
 
@@ -246,7 +246,7 @@ pub(crate) fn icon_button_tuned(
     foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
     disabled: bool,
     on_press: impl Fn() + 'static,
-) -> impl IntoElement {
+) -> nsh_base::ButtonElement {
     return icon_shell(
         name,
         label,
