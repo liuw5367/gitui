@@ -35,6 +35,17 @@ impl ChangesCommands {
         }
     }
 
+    /// 从工作区 Diff 返回提交列表。
+    pub(crate) fn clear_selected_change(&self) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            tab.selected_change = None;
+            tab.change_diff = domain::diff::Patch::default();
+            self.session.tabs.set(list);
+        }
+    }
+
     pub(crate) fn clear_stash_diff_at(&self, tab_id: u64) {
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {

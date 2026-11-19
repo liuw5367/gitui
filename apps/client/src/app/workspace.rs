@@ -1,6 +1,6 @@
-//! 工作区：标题栏 + 工具栏 + 引用侧栏 + History（+ 右侧提交检查器）+ 状态栏。
+//! 工作区：标题栏 + 工具栏 + 引用侧栏 + 中栏主视图 + 右侧检查器 + 状态栏。
 //!
-//! History 默认显示提交列表与 branch graph；提交菜单或 Compare 显式打开时才显示补丁。
+//! Changes 启动时在中栏显示 History 提交列表，选中工作区文件后整栏切换到 Diff。
 //! 打开失败时在正文区显示错误面板。
 //!
 //! P4 起这是主窗口版式的组装根：参数收成一个 `AppHandles`，各功能句柄按需克隆。
@@ -129,6 +129,8 @@ fn match_body(
 ) -> impl IntoElement {
     let left_current = current;
     let right_current = current;
+    let show_tree = settings_state.get_untracked().file_tree;
+    let tree = crate::app::session::TreeOptions::from_settings(&settings_state.get_untracked());
     return crate::ui::split::horizontal(vec![
         crate::ui::split::Pane::fixed(
             refs_sidebar_content(language, current, refs.clone()),
@@ -141,8 +143,7 @@ fn match_body(
         crate::ui::split::Pane::flex(center_content(
             language,
             current,
-            changes,
-            settings_state,
+            changes.clone(),
             refs,
             history.clone(),
             session.clone(),
@@ -150,7 +151,9 @@ fn match_body(
         ))
         .min(320.0),
         crate::ui::split::Pane::fixed(
-            right_content(language, current, agent, history, commit, search),
+            right_content(
+                language, current, agent, history, commit, changes, show_tree, tree, search,
+            ),
             crate::features::commit::view::WIDTH,
         )
         .min(280.0)
@@ -183,7 +186,6 @@ fn center_content(
     language: Signal<SharedString>,
     current: Memo<Option<Tab>>,
     changes: ChangesCommands,
-    settings_state: Signal<store::Settings>,
     refs: RefsCommands,
     history: HistoryCommands,
     session: crate::features::SessionHandle,
@@ -192,9 +194,6 @@ fn center_content(
     let mode = search.state.mode;
     // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
     let refs_tab = signal(refs::state::RefsTab::Refs);
-    let group_by_directory = settings_state.get_untracked().file_tree;
-    let tree_options =
-        crate::app::session::TreeOptions::from_settings(&settings_state.get_untracked());
     let notice = history.notice;
     let refresh = history.clone();
     return view()
@@ -299,31 +298,49 @@ fn center_content(
                 crate::Mode::History => {
                     let show_diff =
                         tab.show_commit_diff || compare_active || tab.file_patch.is_some();
-                    let mut center =
-                        view()
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .flex_col()
+                    let center = view().w_full().h_full().min_h_0().flex_col();
+                    if show_diff {
+                        let return_title = if compare_active {
+                            label.clone()
+                        } else {
+                            tab.selected_commit()
+                                .map(|commit| commit.summary.clone())
+                                .unwrap_or_else(|| label.clone())
+                        };
+                        let file_count = if compare_active {
+                            raw_patch.files.len()
+                        } else {
+                            tab.files.len()
+                        };
+                        let return_to_history: std::sync::Arc<dyn Fn()> = {
+                            let history = history.clone();
+                            std::sync::Arc::new(move || history.return_to_history())
+                        };
+                        center
+                            .child(diff::diff(
+                                &history.diff.state,
+                                &history.diff,
+                                language,
+                                label,
+                                patch,
+                                raw_patch,
+                                compare_feedback,
+                                return_title,
+                                file_count,
+                                return_to_history,
+                            ))
+                            .into_element()
+                    } else {
+                        center
                             .child(history_view::history(
                                 &history.state,
                                 &history,
                                 tab_for_history,
                                 &search_for_body,
                                 &refs,
-                            ));
-                    if show_diff {
-                        center = center.child(diff::diff(
-                            &history.diff.state,
-                            &history.diff,
-                            language,
-                            label,
-                            patch,
-                            raw_patch,
-                            compare_feedback,
-                        ));
+                            ))
+                            .into_element()
                     }
-                    center.into_element()
                 }
                 crate::Mode::Agent => view().w_full().flex_1().min_h_0().into_element(),
                 crate::Mode::Blame => {
@@ -339,14 +356,20 @@ fn center_content(
                     refs_tab,
                 )
                 .into_element(),
-                crate::Mode::Changes => crate::features::changes::view::changes(
-                    &changes.state,
-                    &changes,
-                    tab_for_changes,
-                    group_by_directory,
-                    tree_options,
-                )
-                .into_element(),
+                crate::Mode::Changes => {
+                    if tab.stash_diff.is_some() || tab.selected_change.is_some() {
+                        crate::features::changes::view::change_diff(&changes, tab_for_changes)
+                    } else {
+                        history_view::history(
+                            &history.state,
+                            &history,
+                            tab_for_history,
+                            &search_for_body,
+                            &refs,
+                        )
+                        .into_element()
+                    }
+                }
             };
         }));
 }
@@ -386,10 +409,14 @@ fn right_content(
     agent: AgentCommands,
     history: HistoryCommands,
     commit: CommitCommands,
+    changes: ChangesCommands,
+    show_tree: bool,
+    tree: crate::app::session::TreeOptions,
     search: SearchCommands,
 ) -> impl IntoElement {
     let mode = search.state.mode;
     let inspector_tab = signal(inspector::InspectorTab::Files);
+    let inspector_file_list_mode = signal(inspector::FileListMode::Tree);
     return view()
         .w_full()
         .h_full()
@@ -399,15 +426,20 @@ fn right_content(
                 return view().w_full().h_full().into_element();
             };
             match mode.get() {
-                crate::Mode::History => {
-                    inspector::inspector(&history.state, &history, tab, language, inspector_tab)
-                        .into_element()
-                }
+                crate::Mode::History => inspector::inspector(
+                    &history.state,
+                    &history,
+                    tab,
+                    language,
+                    inspector_tab,
+                    inspector_file_list_mode,
+                )
+                .into_element(),
                 crate::Mode::Agent => {
                     crate::features::agent::view::agent_panel(&agent.state, &agent, language)
                         .into_element()
                 }
-                crate::Mode::Changes | crate::Mode::Refs | crate::Mode::Blame => {
+                crate::Mode::Changes => {
                     // 「请 Agent 起草」= 切到 Agent 主视图并提议一份计划。
                     let ask_agent: std::sync::Arc<dyn Fn()> = {
                         let agent = agent.clone();
@@ -420,8 +452,32 @@ fn right_content(
                     crate::features::commit::view::commit_panel(
                         &commit.state,
                         &commit,
+                        Some(changes.clone()),
                         language,
                         tab,
+                        show_tree,
+                        tree,
+                        ask_agent,
+                    )
+                    .into_element()
+                }
+                crate::Mode::Refs | crate::Mode::Blame => {
+                    let ask_agent: std::sync::Arc<dyn Fn()> = {
+                        let agent = agent.clone();
+                        let mode = mode;
+                        std::sync::Arc::new(move || {
+                            mode.set(crate::Mode::Agent);
+                            agent.propose_plan();
+                        })
+                    };
+                    crate::features::commit::view::commit_panel(
+                        &commit.state,
+                        &commit,
+                        None,
+                        language,
+                        tab,
+                        show_tree,
+                        tree,
                         ask_agent,
                     )
                     .into_element()

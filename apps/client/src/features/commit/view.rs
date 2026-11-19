@@ -8,6 +8,7 @@ use super::commands::CommitCommands;
 use super::state::CommitState;
 use crate::app::session::Tab;
 use crate::design::{self, metrics};
+use crate::features::changes::commands::ChangesCommands;
 use crate::i18n;
 use nsh_core::prelude::*;
 
@@ -19,8 +20,11 @@ pub(crate) const WIDTH: f32 = 360.0;
 pub(crate) fn commit_panel(
     state: &CommitState,
     cmd: &CommitCommands,
+    changes: Option<ChangesCommands>,
     language: Signal<SharedString>,
     tab: Tab,
+    show_tree: bool,
+    tree: crate::app::session::TreeOptions,
     ask_agent: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     let summary = state.summary;
@@ -43,52 +47,9 @@ pub(crate) fn commit_panel(
     let signoff = tab.signoff;
     let push_after = tab.push_after_commit;
     let hook_cmd = cmd.clone();
+    let ask_agent_header = ask_agent.clone();
     // 「改写上一条」时不需要暂存内容：只改提交说明也是合法操作。
     let can_commit = staged_count > 0 || amend;
-    let mut staged_rows: Vec<AnyElement> = Vec::new();
-    for entry in &staged {
-        let name = entry
-            .path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&entry.path)
-            .to_string();
-        let status = entry.status_letter();
-        let additions = entry.additions;
-        let deletions = entry.deletions;
-        staged_rows.push(
-            view()
-                .w_full()
-                .h(px(20.0))
-                .px(px(6.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    text(name)
-                        .flex_1()
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(status.to_string())
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::warn()),
-                )
-                .child(
-                    text(format!("+{}", additions))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::add_fg()),
-                )
-                .child(
-                    text(format!("−{}", deletions))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::del_fg()),
-                )
-                .into_element(),
-        );
-    }
     return view()
         .w_full()
         .min_w_0()
@@ -98,11 +59,11 @@ pub(crate) fn commit_panel(
         .child(
             view()
                 .w_full()
-                .h(px(26.0))
+                .h(px(33.0))
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
-                .px(px(12.0))
+                .gap(px(7.0))
+                .px(px(14.0))
                 .border_b_1()
                 .border_color(move || design::line_soft())
                 .child(
@@ -112,11 +73,37 @@ pub(crate) fn commit_panel(
                         .text_color(move || design::text()),
                 )
                 .child(
-                    text(tab.changes.len().to_string())
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3()),
-                ),
+                    view()
+                        .px(px(4.0))
+                        .rounded(px(4.0))
+                        .bg(move || design::panel2())
+                        .child(
+                            text(tab.changes.len().to_string())
+                                .text_size(px(crate::ui::META))
+                                .text_color(move || design::text2()),
+                        ),
+                )
+                .child(view().flex_1())
+                .child(crate::ui::button::button_icon(
+                    || "Agent".to_string(),
+                    "sparkle",
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || ask_agent_header(),
+                )),
         )
+        .child(dynamic(move || -> AnyElement {
+            let Some(changes) = changes.clone() else {
+                return view().w_full().h(px(0.0)).into_element();
+            };
+            return crate::features::changes::view::changelists_panel(
+                &changes,
+                tab.clone(),
+                show_tree,
+                tree,
+            );
+        }))
         .child(
             view()
                 .w_full()
@@ -181,34 +168,6 @@ pub(crate) fn commit_panel(
                                     move || ask_agent()
                                 },
                             ))
-                            .child(
-                                view()
-                                    .w_full()
-                                    .flex_col()
-                                    .rounded(px(metrics::RADIUS_CONTROL))
-                                    .border_1()
-                                    .border_color(move || design::line())
-                                    .bg(move || design::content())
-                                    .child(
-                                        view()
-                                            .w_full()
-                                            .h(px(20.0))
-                                            .px(px(6.0))
-                                            .items_center()
-                                            .child(
-                                                text(move || {
-                                                    i18n::with_arguments(
-                                                        language.get().as_str(),
-                                                        "commit.stagedFiles",
-                                                        &[("count", staged_count.to_string())],
-                                                    )
-                                                })
-                                                .text_size(px(crate::ui::SECONDARY))
-                                                .text_color(move || design::text3()),
-                                            ),
-                                    )
-                                    .child(staged_rows),
-                            )
                             .child(dynamic(move || -> AnyElement {
                                 let Some(log) = hook_log.clone() else {
                                     return view().w_full().h(px(0.0)).into_element();

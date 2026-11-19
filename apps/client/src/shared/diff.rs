@@ -127,6 +127,9 @@ pub(crate) fn diff(
     patch: Patch,
     raw_patch: Patch,
     empty_feedback: Option<&'static str>,
+    return_title: String,
+    file_count: usize,
+    return_to_history: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     // 只改展示文本；复制、导出与统计都取未转换的原始补丁。
     let options = state.options.get();
@@ -204,6 +207,45 @@ pub(crate) fn diff(
         .min_h_0()
         .flex_col()
         .bg(move || design::content())
+        .child(
+            view()
+                .w_full()
+                .h(px(metrics::DIFF_RETURN_H))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .px(px(11.0))
+                .border_b_1()
+                .border_color(move || design::line())
+                .bg(move || design::panel())
+                .child(crate::ui::button::button_icon(
+                    move || i18n::t(language.get().as_str(), "history.backToList"),
+                    "chev-left",
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || return_to_history(),
+                ))
+                .child(
+                    text(return_title)
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(move || {
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "files.changedCount",
+                            &[("count", file_count.to_string())],
+                        )
+                    })
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+                ),
+        )
         .child(
             view()
                 .w_full()

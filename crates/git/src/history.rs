@@ -88,33 +88,68 @@ pub struct LogFilter {
 }
 
 impl Repo {
-    /// 全部引用可达的提交，按拓扑顺序返回完整历史。
+    /// 全部引用与 stash 可达的提交，按拓扑顺序返回完整历史。
     pub fn log_all(&self) -> Result<Vec<Commit>, GitError> {
-        let output = run_git_full(
-            &self.root,
-            &["log", "--all", "--topo-order", "--date=unix", LOG_FORMAT],
-        )?;
-        return parse_log(&String::from_utf8_lossy(&output));
+        let stashes = self.stash_entries()?;
+        let mut args = vec![
+            "log".to_string(),
+            "--all".to_string(),
+            "--topo-order".to_string(),
+            "--date=unix".to_string(),
+            LOG_FORMAT.to_string(),
+        ];
+        args.extend(stashes.iter().map(|(_, oid)| oid.clone()));
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let output = run_git_full(&self.root, &args)?;
+        let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
+        decorate_stashes(&mut commits, &stashes);
+        return Ok(commits);
     }
 
     /// 历史页使用的完整提交列表。没有引用过滤时遍历所有引用；指定引用时保留
     /// `LogFilter` 的范围语义，但不截断历史长度。
     pub fn log_history(&self, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
-        let args = history_args(filter, true);
+        let stashes = if reference_filters(filter).is_empty() {
+            self.stash_entries()?
+        } else {
+            Vec::new()
+        };
+        let args = history_args(filter, true, &stashes);
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
         let output = run_git_full(&self.root, &args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
+        decorate_stashes(&mut commits, &stashes);
         filter_query(&mut commits, &filter.query);
         filter_message_and_authors(&mut commits, filter);
         return Ok(commits);
     }
 
-    /// 图形布局使用的未筛选祖先集合，只受分支范围限制。
+    /// 图形布局使用的未筛选祖先集合；默认范围包括全部 stash，指定引用时只读对应范围。
     pub fn log_history_graph(&self, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
-        let args = history_args(filter, false);
+        let stashes = if reference_filters(filter).is_empty() {
+            self.stash_entries()?
+        } else {
+            Vec::new()
+        };
+        let args = history_args(filter, false, &stashes);
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
         let output = run_git_full(&self.root, &args)?;
-        return parse_log(&String::from_utf8_lossy(&output));
+        let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
+        decorate_stashes(&mut commits, &stashes);
+        return Ok(commits);
+    }
+
+    fn stash_entries(&self) -> Result<Vec<(String, String)>, GitError> {
+        let output = run_git(&self.root, &["stash", "list", "--format=%gd%x1f%H"])?;
+        let entries = String::from_utf8_lossy(&output)
+            .lines()
+            .filter_map(|line| {
+                let (reference, oid) = line.split_once('\u{1f}')?;
+                (!reference.is_empty() && !oid.is_empty())
+                    .then(|| (reference.to_string(), oid.to_string()))
+            })
+            .collect();
+        return Ok(entries);
     }
 
     /// 将完整引用解析为提交 SHA。`^{commit}` 同时支持轻量与 annotated tag。
@@ -377,7 +412,11 @@ impl Repo {
     }
 }
 
-fn history_args(filter: &LogFilter, include_filters: bool) -> Vec<String> {
+fn history_args(
+    filter: &LogFilter,
+    include_filters: bool,
+    stashes: &[(String, String)],
+) -> Vec<String> {
     let mut args = vec![
         "log".to_string(),
         "--topo-order".to_string(),
@@ -385,6 +424,9 @@ fn history_args(filter: &LogFilter, include_filters: bool) -> Vec<String> {
         LOG_FORMAT.to_string(),
     ];
     push_revisions(&mut args, filter);
+    if reference_filters(filter).is_empty() {
+        args.extend(stashes.iter().map(|(_, oid)| oid.clone()));
+    }
     if include_filters {
         if let Some(since) = filter.since.as_ref() {
             args.push(format!("--since={since}"));
@@ -401,7 +443,16 @@ fn history_args(filter: &LogFilter, include_filters: bool) -> Vec<String> {
 }
 
 fn push_revisions(args: &mut Vec<String>, filter: &LogFilter) {
-    let references = if filter.references.is_empty() {
+    let references = reference_filters(filter);
+    if references.is_empty() {
+        args.push("--all".to_string());
+    } else {
+        args.extend(references);
+    }
+}
+
+fn reference_filters(filter: &LogFilter) -> Vec<String> {
+    return if filter.references.is_empty() {
         filter.reference.iter().cloned().collect::<Vec<_>>()
     } else {
         filter.references.clone()
@@ -409,10 +460,18 @@ fn push_revisions(args: &mut Vec<String>, filter: &LogFilter) {
     .into_iter()
     .filter(|reference| !reference.is_empty())
     .collect::<Vec<_>>();
-    if references.is_empty() {
-        args.push("--all".to_string());
-    } else {
-        args.extend(references);
+}
+
+fn decorate_stashes(commits: &mut [Commit], stashes: &[(String, String)]) {
+    for commit in commits {
+        let Some((reference, _)) = stashes.iter().find(|(_, oid)| oid == &commit.sha) else {
+            continue;
+        };
+        commit.refs.retain(|reference| reference != "refs/stash");
+        let label = format!("stash: {reference}");
+        if !commit.refs.contains(&label) {
+            commit.refs.push(label);
+        }
     }
 }
 
@@ -542,6 +601,34 @@ mod tests {
             )
             .expect("log");
         assert!(other_author.is_empty());
+    }
+
+    #[test]
+    fn history_and_graph_include_every_stash_commit() {
+        let (_guard, path) = fixture("stash-history", &[("a.txt", "base\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        for (contents, message) in [("first\n", "first stash"), ("second\n", "second stash")] {
+            std::fs::write(repo.root().join("a.txt"), contents).expect("change tracked file");
+            run_git(repo.root(), &["stash", "push", "-m", message]).expect("stash push");
+        }
+
+        let stashes = repo.stash_entries().expect("stash entries");
+        assert_eq!(stashes.len(), 2);
+        let history = repo.log_history(&LogFilter::default()).expect("history");
+        let all = repo.log_all().expect("all commits");
+        let graph = repo
+            .log_history_graph(&LogFilter::default())
+            .expect("graph");
+        for (reference, oid) in stashes {
+            let stash_label = format!("stash: {reference}");
+            assert!(
+                history
+                    .iter()
+                    .any(|commit| { commit.sha == oid && commit.refs.contains(&stash_label) })
+            );
+            assert!(all.iter().any(|commit| commit.sha == oid));
+            assert!(graph.iter().any(|commit| commit.sha == oid));
+        }
     }
 
     #[test]

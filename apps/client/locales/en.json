@@ -137,6 +137,7 @@
   },
   "history": {
     "commits": "%{count} commits",
+    "backToList": "Commits",
     "filter": "Filter commits",
     "allAuthors": "All authors",
     "clear": "Clear",
@@ -288,6 +289,7 @@
   },
   "files": {
     "title": "Files",
+    "changedCount": "%{count} files",
     "changes": "Changes",
     "info": {
       "sha": "Commit",
@@ -366,6 +368,11 @@
     "moveSelected": "Move 3 selected files to…",
     "rename": "Rename Changelist…",
     "footHint": "Filters only — staging commits",
+    "dragHint": "Drag files onto another changelist to move them",
+    "tree": "Tree",
+    "flat": "Flat",
+    "filter": "Filter changes",
+    "manage": "Manage…",
     "moveHere": "Move here",
     "newName": "New changelist name",
     "create": "Create",

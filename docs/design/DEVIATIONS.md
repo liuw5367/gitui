@@ -61,15 +61,16 @@
 | 39 | 引用侧栏分支与远端行 | 分支名称显示完整斜杠路径并带分支图标；remote 展开后显示 fetch / push URL 行 | 分支树叶节点只显示当前层级名称且不显示分支图标；remote 下隐藏 URL 行，URL 仍可从 remote 右键菜单复制 | 按反馈简化分支与 remote 条目，树分组已表达路径层级 | 是（恢复完整路径、图标与 URL 行） |
 | 40 | Git 扫描结果与命令面板 | 扫描结果卡有 `Select All` 与 `Add N Repositories`；命令面板画板展示打开仓库、最近仓库与命令 | 扫描复选框只控制命令面板搜索资格；空查询最多显示 5 条常用命令与 4 条仓库，输入后按「命令、打开、最近、已启用扫描」分组；欢迎页输入后搜索最近记录与全部扫描结果 | 扫描负责发现，实际打开动作负责更新历史；欢迎页查询所有发现结果，命令面板则遵守用户勾选的搜索资格 | 是（恢复批量加入历史与画板命令面板样例） |
 
-| 41 | History 提交浏览与检查器 | History 画板把提交列表、选中提交 diff 和平铺文件列表并列显示；文件树没有完整设计 | 默认中心区只显示提交列表与 branch graph；右侧检查器在 Files 页签按目录显示变更文件，提交右键菜单可显式打开提交补丁；左侧本地分支、远端分支、tag、stash 定位到相应 commit，点击文件显示该文件的提交补丁（`features/history/view.rs`、`inspector.rs`、`app/workspace.rs`） | 以 commit 浏览和提交信息为主要工作流；提交图依据 Git parents 绘制，树结构补足画板未定义的层级 | 是（恢复默认提交补丁面板与文件平铺补丁选择） |
+| 41 | History 提交浏览与检查器 | History 画板把提交列表、选中提交 diff 和平铺文件列表并列显示；文件树没有完整设计 | 默认中心区只显示提交列表与 branch graph；右侧检查器头部展示提交摘要、作者/时间、可复制 SHA 和总改动统计，Files 页签用公共 Tree / Row 显示目录与文件，并提供树/平铺切换、选中态和逐文件增删统计；Info / Blame / Files 页签可切换。点文件后中栏从 History 整栏切换为 Diff，点目录只展开或收起；提交右键菜单先同步选中提交再显示原生动作菜单；Diff 顶部返回按钮回到列表并保留提交选择。左侧本地分支、远端分支、tag、stash 定位到相应 commit（`features/history/view.rs`、`inspector.rs`、`app/workspace.rs`、`shared/diff.rs`） | 以 commit 浏览和提交信息为主要工作流；提交图依据 Git parents 绘制，树结构补足画板未定义的层级 | 是（恢复并列面板与文件平铺补丁选择） |
 | 42 | Diff 空白筛选 | File diff / Commit info 画板只有一个 `Show whitespace` 图标 | 除显示空格与 tab 的开关外，再提供独立 `Ignore whitespace changes` 开关；后者通过 Git `--ignore-all-space` 重新生成展示差异，复制、导出与统计仍用原始 patch（`shared/diff.rs`、`crates/git/src/diff.rs`） | 可视化空白与忽略空白影响的是不同数据：一个只改显示文本，一个改变 Git 差异匹配；把两者合并会造成筛选含义不清 | 是（移除单独图标并保留 Git 查询能力） |
-| 43 | History 组合筛选 | 画板以分支多选、单作者选择与日历范围呈现；作者没有身份标识说明 | 作者可多选并以 email 区分；日期端点用 `YYYY-MM-DD` 输入字段；分支与作者列表可滚动，包含本地和远端分支（`features/history/view.rs`、`filters.rs`） | 需求确认作者需要多选，同名作者应能区分；日期文本字段可精确键入，且避免在筛选浮层内再嵌一层日历弹层 | 是（可换为日历范围控件并缩窄作者显示） |
+| 43 | History 组合筛选 | 画板以分支多选、单作者选择与日历范围呈现；作者没有身份标识说明 | 作者以 email 区分并支持多选；顶栏用分支数、作者数显示已选数量，点击后打开窗口内锚定的多选浮层，勾选后立即应用且保持展开；点外部、按 Esc 或点关闭按钮收起浮层。日期端点仍用 `YYYY-MM-DD` 输入字段，路径、消息和日期在完整筛选浮层内编辑并应用（`features/history/view.rs`、`features/history/commands.rs`、`filters.rs`） | 顶栏空间有限，菜单显示已选数量即可；同名作者需要 email 身份区分 | 是（可换为日历范围控件） |
 | 44 | Merge 冲突代码显示 | Ours / Result / Theirs 以冲突块为单位并排标注来源行，冲突标记有单独着色 | 三侧直接展示 index stage 文件内容并用 NSH Editor 按路径语法高亮；Result 是独立可编辑文本（`features/merge/view.rs`、`ui/text_input.rs`） | NSH 没有三方合并 diff 组件；保持真实 stage 内容与可编辑 Result，避免把行级差异错当成可写回的结果 | 是（替换三侧显示组件） |
-| 45 | 引用比较条与端点选择 | 比较板未画 ref 选择器、工作区端点与空差异反馈 | 比较条提供本地/远端分支、tag、stash 选择，2-dot/3-dot、Swap、工作区切换与空态文案（`features/history/view.rs`、`app/workspace.rs`） | 完成 Compare 端点选择与退化状态，不让画板缺省组合限制可用的 Git 比较语义 | 是（需重做比较条与相应状态） |
+| 45 | 引用比较条与端点选择 | 比较板未画 ref 选择器、工作区端点与空差异反馈 | History 顶栏的引用 Compare 下拉菜单提供本地/远端分支、tag、stash 端点，2-dot/3-dot、Swap、工作区切换与清除；列表比较继续由 Compare 按钮进入（`features/history/view.rs`、`app/workspace.rs`） | 将多项端点与模式操作收进原生菜单，给窄中栏保留列表空间；退化态继续提供明确反馈 | 是（需重做比较菜单与相应状态） |
 | 46 | 欢迎页路径输入提示 | Open 路径、Clone 目标目录、Init 目录各显示 `⌘V` 键帽 | 三个字段均不显示键帽（`features/welcome/view.rs`） | 按反馈减少输入框旁的快捷键提示；系统输入框仍支持粘贴 | 是（为三个字段恢复 `⌘V` 参数） |
 | 47 | 命令面板遮罩 | 画板为 18% 压暗并模糊 2px | 遮罩完全透明，不模糊底层（features/search/view.rs、ui/dialog.rs） | 按本次明确要求优先采用普通弹窗的透明遮罩，保留模态拦截与 Escape 关闭 | 是（改回画板遮罩） |
 | 48 | 命令面板空结果 | 画板未提供零匹配状态 | 居中搜索图标、未找到仓库或命令的提示和输入建议（features/search/view.rs、locales/*.json） | 按反馈明确搜索范围并改善无匹配时的反馈 | 是（按后续空态设计统一） |
 | 49 | 命令面板搜索结果与键盘滚动 | 画板最多展示 9 条结果，未定义列表滚动 | 输入搜索时显示全部匹配项，结果区可滚动；↑/↓ 选中移出可视区时自动滚入视图。空查询仍显示 5 条常用命令与最多 4 个最近/已打开仓库 | 按反馈移除搜索结果数量上限，并保证键盘导航可到达全部匹配项 | 是（恢复 9 条截断） |
+| 50 | Changes 启动与工作区 Diff | Changes 画板展示已选文件的 Diff，未画启动时的提交列表 | Changes 工具栏保持选中，中栏初始显示 History 提交列表；右栏 Commit 面板包含可暂存、筛选、拖放移动的 Changelists 树，选择文件后中栏整栏切成 Diff（`app/workspace.rs`、`features/changes/view.rs`、`features/commit/view.rs`） | 沿用设计板的单视图 Diff 与 Commit / Changelists 样式，同时按明确的启动流程先展示提交图 | 是（回到独立 Changes 主区与 Diff 堆叠） |
 
 ## 3. 已澄清：不算偏离
 

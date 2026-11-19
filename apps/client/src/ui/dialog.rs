@@ -144,6 +144,29 @@ pub(crate) fn modal_open_transparent(
     .into_element();
 }
 
+/// 透明遮罩的浮层：点击内容外或按 Escape 都关闭，适用于筛选器等轻量弹出面板。
+pub(crate) fn popover_overlay(
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl IntoElement,
+    on_dismiss: impl Fn() + 'static,
+) -> AnyElement {
+    let dismiss = std::rc::Rc::new(on_dismiss);
+    let cancel = dismiss.clone();
+    let backdrop = dismiss.clone();
+    return modal_element(
+        title,
+        z_index,
+        content,
+        move || cancel(),
+        move || backdrop(),
+        None,
+        true,
+        ModalAnimation::None,
+    )
+    .into_element();
+}
+
 fn modal_element(
     title: impl Fn() -> String + 'static,
     z_index: i32,

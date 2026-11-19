@@ -4,6 +4,10 @@
 - **来源**：`designs/graft-git/project/FileDiffFocus.dc.html` 与共享样式表 `assets/0a859d3b7b7fd8e4958bfb63b7af439a.bin`。只按画板描述目标，不取自实现。
 - **实现差异**：见 [../design/DEVIATIONS.md](../design/DEVIATIONS.md)，本文不重复。
 
+## 当前实现
+
+History 中栏在提交列表与 Diff 之间整栏切换，两个视图不会上下并列。选择提交时仍显示 History 列表与右侧检查器；在检查器选择变更文件后，列表隐藏，Diff 占满中栏高度。Diff 顶部「提交列表」按钮返回完整列表，并保留当前提交选择。
+
 板内 `.window` 没有内联尺寸，取样式表的 `height:calc(100vh - 48px)`：预览 1440×900、桌面留白 24，窗口 **1392×852**。
 标题栏 / 工具条 / 横幅 / 侧栏 / 检查器 / 状态栏与 04 逐像素相同，差别只在中列：历史表换成「返回条 + diff 区」。
 

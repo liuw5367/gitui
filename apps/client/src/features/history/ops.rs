@@ -144,6 +144,34 @@ pub(crate) fn show_commit_diff(tab: &mut Tab, index: usize) {
     tab.show_commit_diff = true;
 }
 
+/// 返回提交列表；引用对比退出后恢复完整历史，并尽量保留当前选中提交。
+pub(crate) fn return_to_history(tab: &mut Tab) {
+    let selected_sha = tab.selected_commit().map(|commit| commit.sha.clone());
+    if tab.compare_base.is_some() || tab.compare_target.is_some() {
+        set_compare_refs(tab, None, None);
+    }
+    tab.comparing = false;
+    tab.compare.clear();
+    tab.compare_worktree = false;
+
+    let selected = selected_sha
+        .and_then(|sha| tab.commits.iter().position(|commit| commit.sha == sha))
+        .or_else(|| tab.selected.filter(|index| *index < tab.commits.len()));
+    if let Some(index) = selected {
+        select_commit(tab, index);
+    } else {
+        tab.selected = None;
+        tab.show_commit_diff = false;
+        tab.selected_file = None;
+        tab.file_patch = None;
+        tab.patch = domain::diff::Patch::default();
+        tab.files.clear();
+        tab.details = None;
+        tab.blame.clear();
+        tab.file_history.clear();
+    }
+}
+
 /// 清除目录树中的文件选择与对应的只读文件信息。
 pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     let Some(path) = path else {
@@ -297,6 +325,10 @@ pub(crate) fn toggle_compare(tab: &mut Tab, index: usize) {
         if let Some((first, last)) = tab.compare_range() {
             let low = first.min(index);
             let high = last.max(index);
+            tab.compare = (low..=high).collect();
+        } else if let Some(first) = tab.compare.first().copied() {
+            let low = first.min(index);
+            let high = first.max(index);
             tab.compare = (low..=high).collect();
         } else {
             tab.compare = vec![index];
@@ -527,7 +559,9 @@ mod tests {
         assert!(compare_patch(&tab).is_some(), "区间 diff 应可读出");
 
         toggle_compare(&mut tab, 0);
-        assert_eq!(tab.compare_range(), None, "移出后不再成区间");
+        assert_eq!(tab.compare_range(), Some((1, 2)), "移出端点后区间收窄");
+        toggle_compare(&mut tab, 1);
+        assert_eq!(tab.compare_range(), None, "移出最后一个端点后结束比较");
     }
 
     #[test]

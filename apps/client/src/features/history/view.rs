@@ -1,4 +1,4 @@
-//! 历史表：`.hist` 256 高，含工具条（32）、筛选浮层、列标题（23）与 28 高的提交行。
+//! 历史表：占满中栏可用高度，含工具条、筛选浮层、列标题与可滚动的提交行。
 //!
 //! 行内是设计稿的四列：图线 64、说明（含引用徽章）、作者 96、时间 58。工具条上的
 //! 芯片显示当前筛选条件；点筛选图标打开浮层（设计板 05）。对比模式下点击提交是
@@ -29,6 +29,7 @@ const GRAPH_LANE_W: f32 = 10.0;
 
 /// 浮层宽度（设计板 `.filter-pop`）。
 const POP_W: f32 = 432.0;
+const QUICK_FILTER_W: f32 = 320.0;
 
 #[derive(Clone)]
 struct FilterBranch {
@@ -162,6 +163,8 @@ pub(crate) fn history(
     let authors = tab.authors.clone();
     let language_value = language;
     let filter_open = state.filter_open;
+    let filter_position = state.filter_position;
+    let filter_menu = state.filter_menu;
     let compare_mode = state.compare_mode;
     // 筛选浮层在 `dynamic` 里渲染，参数要能反复取用，因此这里各留一份克隆。
     let filter_state = state.clone();
@@ -172,13 +175,21 @@ pub(crate) fn history(
 
     return view()
         .w_full()
-        .h(px(metrics::HISTORY_H))
-        .flex_shrink_0()
+        .flex_1()
+        .min_h_0()
+        .relative()
         .flex_col()
         .bg(move || design::content())
         .border_b_1()
         .border_color(move || design::line())
-        .child(hist_bar(language, state, cmd, &tab))
+        .child(hist_bar(
+            language,
+            state,
+            cmd,
+            &tab,
+            filter_position,
+            filter_menu,
+        ))
         .child(
             view()
                 .w_full()
@@ -195,262 +206,257 @@ pub(crate) fn history(
                 .child(column_header(language, "history.date").w(px(DATE_W))),
         )
         .child(
-            view().w_full().flex_1().min_h_0().child(
-                scroll()
-                    .w_full()
-                    .h_full()
-                    .child(
-                        view()
-                            .w_full()
-                            .flex_col()
-                            .child(dynamic(move || -> AnyElement {
-                                // 后台还在读：先画骨架行，避免看到「空仓库」的假象。
-                                if loading {
-                                    let mut skeleton: Vec<AnyElement> = Vec::new();
-                                    for index in 0..8 {
-                                        skeleton.push(skeleton_row(index));
-                                    }
-                                    return view()
-                                        .w_full()
-                                        .flex_col()
-                                        .child(skeleton)
-                                        .into_element();
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .child(
+                    view()
+                        .w_full()
+                        .h_full()
+                        .child(dynamic(move || -> AnyElement {
+                            // 后台还在读：先画骨架行，避免看到「空仓库」的假象。
+                            if loading {
+                                let mut skeleton: Vec<AnyElement> = Vec::new();
+                                for index in 0..8 {
+                                    skeleton.push(skeleton_row(index));
                                 }
-                                if visible.get().is_empty() {
-                                    let branch_for_empty = branch_for_empty.clone();
-                                    let mut empty = view()
-                                        .w_full()
-                                        .h(px(96.0))
-                                        .items_center()
-                                        .justify_center()
-                                        .flex_col()
-                                        .gap(px(8.0))
-                                        .child(
-                                            text(move || {
-                                                let lang = language_value.get();
-                                                let lang = lang.as_str();
-                                                if unborn {
-                                                    return i18n::with_arguments(
-                                                        lang,
-                                                        "state.unborn",
-                                                        &[("branch", branch_for_empty.clone())],
-                                                    );
-                                                }
-                                                let key = if compare_refs_empty {
-                                                    "compare.noCommits"
-                                                } else if total == 0 {
-                                                    "history.empty"
-                                                } else {
-                                                    "history.noMatch"
-                                                };
-                                                return i18n::t(lang, key);
-                                            })
-                                            .text_size(px(crate::ui::BODY))
-                                            .text_color(move || design::text3()),
-                                        );
-                                    if unborn {
-                                        let initial_commit = initial_commit.clone();
-                                        empty = empty.child(crate::ui::button::button(
-                                            {
-                                                let language_value = language_value;
-                                                move || {
-                                                    i18n::t(
-                                                        language_value.get().as_str(),
-                                                        "state.createInitialCommit",
-                                                    )
-                                                }
-                                            },
-                                            crate::ui::button::ButtonVariant::Secondary,
-                                            crate::ui::button::ButtonSize::Small,
-                                            false,
-                                            move || initial_commit(),
-                                        ));
-                                    }
-                                    return empty.into_element();
-                                }
-                                let select = select.clone();
-                                let toggle_compare = toggle_compare.clone();
-                                let row_search = row_search.clone();
-                                let squash_range = squash_range.clone();
-                                let compare_for_rows = compare.clone();
-                                // 表格：单列，整行交给 render 自绘——图线、引用徽章、对比
-                                // 强调色都要保留，表格只负责虚拟化、行高与键盘导航。
-                                // `visible` 是 Memo，先取一份快照供 render 与回调按索引取行。
-                                let rows_snapshot = visible.get();
-                                let rows: Vec<Vec<String>> = rows_snapshot
-                                    .iter()
-                                    .map(|(index, _commit)| vec![index.to_string()])
-                                    .collect();
-                                let commits_for_render = rows_snapshot.clone();
-                                let compare_for_render = compare_for_rows.clone();
-                                let visible_commits = rows_snapshot
-                                    .iter()
-                                    .map(|(_, commit)| commit.clone())
-                                    .collect::<Vec<_>>();
-                                let graphs_for_render =
-                                    graph::layout_filtered(&visible_commits, &graph_ancestors);
-                                let select_for_press = select.clone();
-                                let toggle_for_press = toggle_compare.clone();
-                                let compare_mode_for_press = compare_mode;
-                                let open_diff_for_menu = open_commit_diff.clone();
-                                let menu_search = row_search.clone();
-                                let menu_commit = commit_for_rows.clone();
-                                let menu_squash = squash_range.clone();
-                                let menu_refs = refs_for_menu.clone();
-                                let menu_recovery = recovery_for_menu.clone();
-                                let commits_for_press = rows_snapshot.clone();
-                                let commits_for_menu = rows_snapshot.clone();
-                                let visible_selected = rows_snapshot
-                                    .iter()
-                                    .position(|(index, _)| selected == Some(*index));
-                                return crate::ui::table::table_with_scroll(
-                                    crate::ui::table::TableSpec {
-                                        columns: vec![crate::ui::table::Column {
-                                            key: "commit",
-                                            title: None,
-                                            // 单列自绘整行：宽度要给足，否则图线/摘要/作者/时间
-                                            // 会被裁在 120pt 的默认列宽里看不出内容。
-                                            width: Some(1200.0),
-                                            fixed: false,
-                                        }],
-                                        rows,
-                                        selected: visible_selected,
-                                        row_height: Some(metrics::COMMIT_ROW_H),
-                                        on_select: Box::new(move |_index| {}),
-                                        render: Some(Box::new(move |row, _key, _text| {
-                                            let Some((index, commit)) =
-                                                commits_for_render.get(row as usize).cloned()
-                                            else {
-                                                return view().w_full().h_full().into_element();
-                                            };
-                                            let is_selected = selected == Some(index);
-                                            let in_compare = compare_for_render.contains(&index);
-                                            let has_refs = !commit.refs.is_empty();
-                                            let graph_row = graphs_for_render
-                                                .get(row as usize)
-                                                .cloned()
-                                                .unwrap_or_default();
-                                            return view()
-                                                .w_full()
-                                                .h(px(metrics::COMMIT_ROW_H))
-                                                .flex_row()
-                                                .items_center()
-                                                .gap(px(8.0))
-                                                .px(px(8.0))
-                                                .bg(move || {
-                                                    if in_compare {
-                                                        design::accent_soft()
-                                                    } else {
-                                                        AdaptiveColor::TRANSPARENT
-                                                    }
-                                                })
-                                                .child(graph_cell(
-                                                    graph_row,
-                                                    graph_width,
-                                                    is_selected || in_compare,
-                                                ))
-                                                .child(
-                                                    view()
-                                                        .flex_1()
-                                                        .min_w_0()
-                                                        .flex_row()
-                                                        .items_center()
-                                                        .gap(px(6.0))
-                                                        .child(
-                                                            text(commit.summary.clone())
-                                                                .text_size(px(crate::ui::BODY))
-                                                                .text_color(move || design::text())
-                                                                .text_overflow(
-                                                                    nsh_core::EllipsizeMode::Tail,
-                                                                ),
-                                                        )
-                                                        .child(
-                                                            view()
-                                                                .h(px(16.0))
-                                                                .flex_row()
-                                                                .items_center()
-                                                                .gap(px(4.0))
-                                                                .when(has_refs, |this| {
-                                                                    this.child(ref_chips(
-                                                                        commit.refs.clone(),
-                                                                    ))
-                                                                }),
-                                                        ),
-                                                )
-                                                .child(
-                                                    text(commit.author.clone())
-                                                        .w(px(AUTHOR_W))
-                                                        .text_size(px(crate::ui::SECONDARY))
-                                                        .text_color(move || design::text2())
-                                                        .text_overflow(
-                                                            nsh_core::EllipsizeMode::Tail,
-                                                        ),
-                                                )
-                                                .child(
-                                                    text({
-                                                        let timestamp =
-                                                            commit.date.parse().unwrap_or(0);
-                                                        crate::dates::format(
-                                                            language_value.get().as_str(),
-                                                            timestamp,
-                                                            now,
-                                                        )
-                                                    })
-                                                    .w(px(DATE_W))
-                                                    .text_size(px(crate::ui::SECONDARY))
-                                                    .text_color(move || design::text3()),
-                                                )
-                                                .into_element();
-                                        })),
-                                        on_row_press: Some(Box::new(move |row, platform| {
-                                            let Some((index, _)) =
-                                                commits_for_press.get(row as usize).cloned()
-                                            else {
-                                                return;
-                                            };
-                                            // 对比模式下点击是加入/移出集合；否则普通点击选中，
-                                            // ⌘ 点击也加入对比。
-                                            if compare_mode_for_press.get_untracked() || platform {
-                                                toggle_for_press(index);
-                                            } else {
-                                                select_for_press(index);
+                                return view().w_full().flex_col().child(skeleton).into_element();
+                            }
+                            if visible.get().is_empty() {
+                                let branch_for_empty = branch_for_empty.clone();
+                                let mut empty = view()
+                                    .w_full()
+                                    .h(px(96.0))
+                                    .items_center()
+                                    .justify_center()
+                                    .flex_col()
+                                    .gap(px(8.0))
+                                    .child(
+                                        text(move || {
+                                            let lang = language_value.get();
+                                            let lang = lang.as_str();
+                                            if unborn {
+                                                return i18n::with_arguments(
+                                                    lang,
+                                                    "state.unborn",
+                                                    &[("branch", branch_for_empty.clone())],
+                                                );
                                             }
-                                        })),
-                                        on_context_menu: Some(Box::new(move |row, x, y| {
-                                            let Some((index, commit)) =
-                                                commits_for_menu.get(row as usize).cloned()
-                                            else {
-                                                return;
+                                            let key = if compare_refs_empty {
+                                                "compare.noCommits"
+                                            } else if total == 0 {
+                                                "history.empty"
+                                            } else {
+                                                "history.noMatch"
                                             };
-                                            let items = commit_menu(
-                                                language_value,
-                                                &commit,
-                                                {
-                                                    let open_diff = open_diff_for_menu.clone();
-                                                    std::sync::Arc::new(move || open_diff(index))
-                                                },
-                                                &menu_search,
-                                                &menu_recovery,
-                                                menu_squash.clone(),
-                                                &menu_refs,
-                                                &menu_commit,
-                                            );
-                                            crate::ui::menu::popup_at(
-                                                items,
-                                                nsh_core::Point {
-                                                    x: Points(x),
-                                                    y: Points(y),
-                                                },
-                                            );
-                                        })),
-                                    },
-                                    table_ref,
-                                    scroll_request,
-                                )
-                                .into_element();
-                            })),
-                    ),
-            ),
+                                            return i18n::t(lang, key);
+                                        })
+                                        .text_size(px(crate::ui::BODY))
+                                        .text_color(move || design::text3()),
+                                    );
+                                if unborn {
+                                    let initial_commit = initial_commit.clone();
+                                    empty = empty.child(crate::ui::button::button(
+                                        {
+                                            let language_value = language_value;
+                                            move || {
+                                                i18n::t(
+                                                    language_value.get().as_str(),
+                                                    "state.createInitialCommit",
+                                                )
+                                            }
+                                        },
+                                        crate::ui::button::ButtonVariant::Secondary,
+                                        crate::ui::button::ButtonSize::Small,
+                                        false,
+                                        move || initial_commit(),
+                                    ));
+                                }
+                                return empty.into_element();
+                            }
+                            let select = select.clone();
+                            let toggle_compare = toggle_compare.clone();
+                            let row_search = row_search.clone();
+                            let squash_range = squash_range.clone();
+                            let compare_for_rows = compare.clone();
+                            // 表格：单列，整行交给 render 自绘——图线、引用徽章、对比
+                            // 强调色都要保留，表格只负责虚拟化、行高与键盘导航。
+                            // `visible` 是 Memo，先取一份快照供 render 与回调按索引取行。
+                            let rows_snapshot = visible.get();
+                            let rows: Vec<Vec<String>> = rows_snapshot
+                                .iter()
+                                .map(|(index, _commit)| vec![index.to_string()])
+                                .collect();
+                            let commits_for_render = rows_snapshot.clone();
+                            let compare_for_render = compare_for_rows.clone();
+                            let visible_commits = rows_snapshot
+                                .iter()
+                                .map(|(_, commit)| commit.clone())
+                                .collect::<Vec<_>>();
+                            let graphs_for_render =
+                                graph::layout_filtered(&visible_commits, &graph_ancestors);
+                            let select_for_press = select.clone();
+                            let toggle_for_press = toggle_compare.clone();
+                            let compare_mode_for_press = compare_mode;
+                            let open_diff_for_menu = open_commit_diff.clone();
+                            let select_for_context = select.clone();
+                            let menu_search = row_search.clone();
+                            let menu_commit = commit_for_rows.clone();
+                            let menu_squash = squash_range.clone();
+                            let menu_refs = refs_for_menu.clone();
+                            let menu_recovery = recovery_for_menu.clone();
+                            let commits_for_press = rows_snapshot.clone();
+                            let commits_for_menu = rows_snapshot.clone();
+                            let visible_selected = rows_snapshot
+                                .iter()
+                                .position(|(index, _)| selected == Some(*index));
+                            return crate::ui::table::table_with_scroll(
+                                crate::ui::table::TableSpec {
+                                    columns: vec![crate::ui::table::Column {
+                                        key: "commit",
+                                        title: None,
+                                        // 单列自绘整行：宽度要给足，否则图线/摘要/作者/时间
+                                        // 会被裁在 120pt 的默认列宽里看不出内容。
+                                        width: Some(1200.0),
+                                        fixed: false,
+                                    }],
+                                    rows,
+                                    selected: visible_selected,
+                                    row_height: Some(metrics::COMMIT_ROW_H),
+                                    on_select: Box::new(move |_index| {}),
+                                    render: Some(Box::new(move |row, _key, _text| {
+                                        let Some((index, commit)) =
+                                            commits_for_render.get(row as usize).cloned()
+                                        else {
+                                            return view().w_full().h_full().into_element();
+                                        };
+                                        let is_selected = selected == Some(index);
+                                        let in_compare = compare_for_render.contains(&index);
+                                        let has_refs = !commit.refs.is_empty();
+                                        let graph_row = graphs_for_render
+                                            .get(row as usize)
+                                            .cloned()
+                                            .unwrap_or_default();
+                                        return view()
+                                            .w_full()
+                                            .h(px(metrics::COMMIT_ROW_H))
+                                            .flex_row()
+                                            .items_center()
+                                            .gap(px(8.0))
+                                            .px(px(8.0))
+                                            .bg(move || {
+                                                if in_compare {
+                                                    design::accent_soft()
+                                                } else {
+                                                    AdaptiveColor::TRANSPARENT
+                                                }
+                                            })
+                                            .child(graph_cell(
+                                                graph_row,
+                                                graph_width,
+                                                is_selected || in_compare,
+                                            ))
+                                            .child(
+                                                view()
+                                                    .flex_1()
+                                                    .min_w_0()
+                                                    .flex_row()
+                                                    .items_center()
+                                                    .gap(px(6.0))
+                                                    .child(
+                                                        text(commit.summary.clone())
+                                                            .text_size(px(crate::ui::BODY))
+                                                            .text_color(move || design::text())
+                                                            .text_overflow(
+                                                                nsh_core::EllipsizeMode::Tail,
+                                                            ),
+                                                    )
+                                                    .child(
+                                                        view()
+                                                            .h(px(16.0))
+                                                            .flex_row()
+                                                            .items_center()
+                                                            .gap(px(4.0))
+                                                            .when(has_refs, |this| {
+                                                                this.child(ref_chips(
+                                                                    commit.refs.clone(),
+                                                                ))
+                                                            }),
+                                                    ),
+                                            )
+                                            .child(
+                                                text(commit.author.clone())
+                                                    .w(px(AUTHOR_W))
+                                                    .text_size(px(crate::ui::SECONDARY))
+                                                    .text_color(move || design::text2())
+                                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+                                            )
+                                            .child(
+                                                text({
+                                                    let timestamp =
+                                                        commit.date.parse().unwrap_or(0);
+                                                    crate::dates::format(
+                                                        language_value.get().as_str(),
+                                                        timestamp,
+                                                        now,
+                                                    )
+                                                })
+                                                .w(px(DATE_W))
+                                                .text_size(px(crate::ui::SECONDARY))
+                                                .text_color(move || design::text3()),
+                                            )
+                                            .into_element();
+                                    })),
+                                    on_row_press: Some(Box::new(move |row, platform| {
+                                        let Some((index, _)) =
+                                            commits_for_press.get(row as usize).cloned()
+                                        else {
+                                            return;
+                                        };
+                                        // 对比模式下点击是加入/移出集合；否则普通点击选中，
+                                        // ⌘ 点击也加入对比。
+                                        if compare_mode_for_press.get_untracked() || platform {
+                                            toggle_for_press(index);
+                                        } else {
+                                            select_for_press(index);
+                                        }
+                                    })),
+                                    on_context_menu: Some(Box::new(move |row, x, y| {
+                                        let Some((index, commit)) =
+                                            commits_for_menu.get(row as usize).cloned()
+                                        else {
+                                            return;
+                                        };
+                                        select_for_context(index);
+                                        let items = commit_menu(
+                                            language_value,
+                                            &commit,
+                                            {
+                                                let open_diff = open_diff_for_menu.clone();
+                                                std::sync::Arc::new(move || open_diff(index))
+                                            },
+                                            &menu_search,
+                                            &menu_recovery,
+                                            menu_squash.clone(),
+                                            &menu_refs,
+                                            &menu_commit,
+                                        );
+                                        crate::ui::menu::popup_at(
+                                            items,
+                                            nsh_core::Point {
+                                                x: Points(x),
+                                                y: Points(y),
+                                            },
+                                        );
+                                    })),
+                                },
+                                table_ref,
+                                scroll_request,
+                            )
+                            .into_element();
+                        })),
+                ),
         )
         // 06 板的多选操作栏：选中两个以上提交时出现。
         .child(dynamic(move || -> AnyElement {
@@ -526,24 +532,56 @@ pub(crate) fn history(
                 ))
                 .into_element();
         }))
-        .child(
-            view()
-                .w_full()
-                .h(px(0.0))
-                .child(dynamic(move || -> AnyElement {
-                    if !filter_open.get() {
-                        return view().w_full().h(px(0.0)).into_element();
-                    }
-                    return filter_pop(
-                        language_value,
-                        branches.clone(),
-                        authors.clone(),
-                        filter_state.clone(),
-                        filter_cmd.clone(),
-                    )
-                    .into_element();
-                })),
-        );
+        .child(dynamic(move || -> AnyElement {
+            let advanced = filter_open.get();
+            let menu = filter_menu.get();
+            if !advanced && menu.is_none() {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            let (left, top) = filter_position.get();
+            let title_key = match menu {
+                Some(crate::features::history::state::FilterMenu::Branches) => "filter.branch",
+                Some(crate::features::history::state::FilterMenu::Authors) => "filter.author",
+                None => "filter.title",
+            };
+            let panel = if advanced {
+                filter_pop(
+                    language_value,
+                    branches.clone(),
+                    authors.clone(),
+                    filter_state.clone(),
+                    filter_cmd.clone(),
+                )
+                .into_element()
+            } else {
+                quick_filter_pop(
+                    language_value,
+                    menu.unwrap_or(crate::features::history::state::FilterMenu::Branches),
+                    branches.clone(),
+                    authors.clone(),
+                    filter_state.clone(),
+                    filter_cmd.clone(),
+                )
+                .into_element()
+            };
+            let close_state = filter_state.clone();
+            return crate::ui::dialog::popover_overlay(
+                move || i18n::t(language_value.get().as_str(), title_key),
+                80,
+                view().w_full().h_full().relative().child(
+                    view()
+                        .absolute()
+                        .left(px(left))
+                        .top(px(top))
+                        .z_index(1)
+                        .child(crate::ui::dialog::modality(panel)),
+                ),
+                move || {
+                    close_state.filter_open.set(false);
+                    close_state.filter_menu.set(None);
+                },
+            );
+        }));
 }
 
 fn hist_bar(
@@ -551,10 +589,11 @@ fn hist_bar(
     state: &HistoryState,
     cmd: &HistoryCommands,
     tab: &Tab,
+    filter_position: Signal<(f32, f32)>,
+    filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
 ) -> impl IntoElement + use<> {
     let filter_open = state.filter_open;
     let compare_mode = state.compare_mode;
-    let branch = tab.branch.clone();
     let total = tab.commits.len();
     let applied = tab.filter.clone();
     let applied_branches = if applied.references.is_empty() {
@@ -564,7 +603,8 @@ fn hist_bar(
     };
     let has_dates = applied.since.is_some() || applied.until.is_some();
     let has_refine = applied.path.is_some() || !applied.message.is_empty();
-    let author_count = applied.authors.len();
+    let filter_active =
+        has_dates || has_refine || !applied_branches.is_empty() || !applied.authors.is_empty();
     // Compare refs 提供所有本地分支、远端跟踪分支与 tag；value 使用限定 ref 避免同名歧义。
     let mut refs_list: Vec<CompareRef> = Vec::new();
     let language_value = language.get_untracked();
@@ -611,6 +651,74 @@ fn hist_bar(
     let compare_pair = (tab.compare_base.clone(), tab.compare_target.clone());
     let compare_three_dot = tab.compare_three_dot;
     let compare_worktree = tab.compare_worktree;
+    let branch_selection = applied_branches.clone();
+    let branch_active = !branch_selection.is_empty();
+    let branch_filter_menu = filter_menu;
+    let branch_filter_open = filter_open;
+    let branch_filter_position = filter_position;
+    let branch_filter = crate::ui::menu::menu_button_tuned_at(
+        move || {
+            if branch_selection.is_empty() {
+                return i18n::t(language.get().as_str(), "filter.allBranches");
+            }
+            return i18n::with_arguments(
+                language.get().as_str(),
+                "filter.branchCount",
+                &[("count", branch_selection.len().to_string())],
+            );
+        },
+        move || {
+            branch_active
+                || branch_filter_menu.get()
+                    == Some(crate::features::history::state::FilterMenu::Branches)
+        },
+        Some("branch"),
+        move |position| {
+            if branch_filter_menu.get_untracked()
+                == Some(crate::features::history::state::FilterMenu::Branches)
+            {
+                branch_filter_menu.set(None);
+                return;
+            }
+            branch_filter_open.set(false);
+            branch_filter_position.set(filter_popover_position(position, QUICK_FILTER_W));
+            branch_filter_menu.set(Some(crate::features::history::state::FilterMenu::Branches));
+        },
+    );
+    let author_selection = applied.authors.clone();
+    let author_active = !author_selection.is_empty();
+    let author_filter_menu = filter_menu;
+    let author_filter_open = filter_open;
+    let author_filter_position = filter_position;
+    let author_filter = crate::ui::menu::menu_button_tuned_at(
+        move || {
+            if author_selection.is_empty() {
+                return i18n::t(language.get().as_str(), "history.allAuthors");
+            }
+            return i18n::with_arguments(
+                language.get().as_str(),
+                "filter.authorCount",
+                &[("count", author_selection.len().to_string())],
+            );
+        },
+        move || {
+            author_active
+                || author_filter_menu.get()
+                    == Some(crate::features::history::state::FilterMenu::Authors)
+        },
+        Some("chev-down"),
+        move |position| {
+            if author_filter_menu.get_untracked()
+                == Some(crate::features::history::state::FilterMenu::Authors)
+            {
+                author_filter_menu.set(None);
+                return;
+            }
+            author_filter_open.set(false);
+            author_filter_position.set(filter_popover_position(position, QUICK_FILTER_W));
+            author_filter_menu.set(Some(crate::features::history::state::FilterMenu::Authors));
+        },
+    );
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
         let cmd = cmd.clone();
@@ -630,10 +738,6 @@ fn hist_bar(
         let cmd = cmd.clone();
         std::sync::Arc::new(move |enabled| cmd.set_compare_worktree(enabled))
     };
-    let clear: std::sync::Arc<dyn Fn()> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move || cmd.clear_filter())
-    };
     return view()
         .w_full()
         .h(px(metrics::HIST_BAR_H))
@@ -649,25 +753,7 @@ fn hist_bar(
                 .font_weight(FontWeight(600))
                 .text_color(move || design::text()),
         )
-        .child(chip(
-            move || true,
-            {
-                let branch = branch.clone();
-                let selected_count = applied_branches.len();
-                move || {
-                    if selected_count > 0 {
-                        return i18n::with_arguments(
-                            language.get().as_str(),
-                            "filter.branchCount",
-                            &[("count", selected_count.to_string())],
-                        );
-                    }
-                    branch.clone()
-                }
-            },
-            design::branch_bg,
-            design::branch_fg,
-        ))
+        .child(branch_filter)
         .child(
             text(move || {
                 i18n::with_arguments(
@@ -679,30 +765,7 @@ fn hist_bar(
             .text_size(px(crate::ui::SECONDARY))
             .text_color(move || design::text3()),
         )
-        .child(chip(
-            move || has_dates,
-            move || i18n::t(language.get().as_str(), "filter.dateActive"),
-            design::panel2,
-            design::text2,
-        ))
-        .child(chip(
-            move || author_count > 0,
-            move || {
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "filter.authorCount",
-                    &[("count", author_count.to_string())],
-                )
-            },
-            design::panel2,
-            design::text2,
-        ))
-        .child(chip(
-            move || has_refine,
-            move || i18n::t(language.get().as_str(), "filter.refineActive"),
-            design::panel2,
-            design::text2,
-        ))
+        .child(author_filter)
         .child(view().flex_1())
         .child({
             let variant = if compare_mode.get() {
@@ -721,7 +784,7 @@ fn hist_bar(
                 },
             )
         })
-        .child(compare_refs(
+        .child(compare_refs_menu(
             language,
             refs_list,
             compare_pair,
@@ -731,44 +794,52 @@ fn hist_bar(
             set_compare_three_dot,
             set_compare_worktree,
         ))
-        .child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "filter.clear"),
-            crate::ui::button::ButtonVariant::Ghost,
-            crate::ui::button::ButtonSize::Small,
-            false,
-            move || clear(),
-        ))
-        .child(widgets_icon(filter_open));
+        .child(widgets_icon(
+            language,
+            filter_open,
+            filter_position,
+            filter_menu,
+            filter_active,
+        ));
 }
 
-fn widgets_icon(filter_open: Signal<bool>) -> impl IntoElement {
-    return crate::ui::button::icon_button(
+fn widgets_icon(
+    language: Signal<SharedString>,
+    filter_open: Signal<bool>,
+    filter_position: Signal<(f32, f32)>,
+    filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
+    filter_active: bool,
+) -> impl IntoElement {
+    let foreground = std::rc::Rc::new(move || {
+        if filter_open.get() || filter_active {
+            design::accent()
+        } else {
+            design::text2()
+        }
+    });
+    return crate::ui::button::icon_button_tuned_at(
         "filter",
-        move || "Filter".to_string(),
+        move || i18n::t(language.get().as_str(), "history.filter"),
         crate::ui::button::ButtonSize::Small,
+        Some(crate::ui::icon::IconSize::Button),
+        Some(foreground),
         false,
-        move || filter_open.set(!filter_open.get_untracked()),
+        move |position| {
+            if filter_open.get_untracked() {
+                filter_open.set(false);
+                return;
+            }
+            // 过滤器靠近触发按钮右对齐展开，避免遮住工具栏与提交列表入口。
+            filter_menu.set(None);
+            filter_position.set(filter_popover_position(position, POP_W));
+            filter_open.set(true);
+        },
     );
 }
 
-/// 工具条上的筛选芯片：`visible` 为假时不占位。
-fn chip(
-    visible: impl Fn() -> bool + 'static,
-    label: impl Fn() -> String + 'static,
-    background: fn() -> AdaptiveColor,
-    foreground: fn() -> AdaptiveColor,
-) -> impl IntoElement {
-    return view()
-        .h(move || if visible() { px(18.0) } else { px(0.0) })
-        .px(px(6.0))
-        .items_center()
-        .rounded(px(4.0))
-        .bg(move || background())
-        .child(
-            text(move || label())
-                .text_size(px(crate::ui::SECONDARY))
-                .text_color(move || foreground()),
-        );
+fn filter_popover_position(position: Point<Points>, width: f32) -> (f32, f32) {
+    let left = (position.x.0 - width + 12.0).max(8.0);
+    return (left, position.y.0 + 12.0);
 }
 
 fn column_header(language: Signal<SharedString>, key: &'static str) -> nsh_core::element::Text {
@@ -1022,6 +1093,142 @@ fn commit_menu(
     return items;
 }
 
+fn quick_filter_pop(
+    language: Signal<SharedString>,
+    kind: crate::features::history::state::FilterMenu,
+    branches: Vec<FilterBranch>,
+    authors: Vec<git::Author>,
+    state: HistoryState,
+    cmd: HistoryCommands,
+) -> impl IntoElement + use<> {
+    let draft = state.draft;
+    let close = state.filter_menu;
+    let (title_key, empty_key) = match kind {
+        crate::features::history::state::FilterMenu::Branches => {
+            ("filter.branch", "filter.allBranches")
+        }
+        crate::features::history::state::FilterMenu::Authors => {
+            ("filter.author", "filter.allAuthors")
+        }
+    };
+    let mut rows = Vec::new();
+    match kind {
+        crate::features::history::state::FilterMenu::Branches => {
+            rows.push(filter_choice_row(
+                language,
+                empty_key,
+                std::sync::Arc::new(move || draft.get().references.is_empty()),
+                {
+                    let cmd = cmd.clone();
+                    std::sync::Arc::new(move || cmd.clear_branch_filter())
+                },
+            ));
+            for branch in branches {
+                let reference = branch.reference.clone();
+                let selected = reference.clone();
+                let label = if branch.remote {
+                    format!(
+                        "{} · {}",
+                        branch.label,
+                        i18n::t(language.get_untracked().as_str(), "filter.remote")
+                    )
+                } else {
+                    branch.label
+                };
+                let checked =
+                    std::sync::Arc::new(move || draft.get().references.contains(&selected));
+                let toggle = cmd.clone();
+                rows.push(
+                    crate::ui::check::check_inline(
+                        move || label.clone(),
+                        move || checked(),
+                        26.0,
+                        14.0,
+                        false,
+                        move |_| toggle.toggle_branch_filter(reference.clone()),
+                    )
+                    .into_element(),
+                );
+            }
+        }
+        crate::features::history::state::FilterMenu::Authors => {
+            rows.push(filter_choice_row(
+                language,
+                empty_key,
+                std::sync::Arc::new(move || draft.get().authors.is_empty()),
+                {
+                    let cmd = cmd.clone();
+                    std::sync::Arc::new(move || cmd.clear_author_filter())
+                },
+            ));
+            for author in authors {
+                let email = author.email.clone();
+                let selected = email.clone();
+                let label = format!("{} <{}>", author.name, email);
+                let checked = std::sync::Arc::new(move || {
+                    draft.get().authors.iter().any(|item| item == &selected)
+                });
+                let toggle = cmd.clone();
+                rows.push(
+                    crate::ui::check::check_inline(
+                        move || label.clone(),
+                        move || checked(),
+                        26.0,
+                        14.0,
+                        false,
+                        move |_| toggle.toggle_author_filter(email.clone()),
+                    )
+                    .into_element(),
+                );
+            }
+        }
+    }
+
+    return view()
+        .w(px(QUICK_FILTER_W))
+        .p(px(10.0))
+        .flex_col()
+        .gap(px(crate::ui::GAP_XS))
+        .rounded(px(metrics::RADIUS_PANEL))
+        .border_1()
+        .border_color(move || design::line_strong())
+        .bg(move || design::token("popover"))
+        .shadow_lg()
+        .child(
+            view()
+                .w_full()
+                .h(px(crate::ui::ROW_COMPACT))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), title_key))
+                        .flex_1()
+                        .text_size(px(crate::ui::BODY))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(move || design::text()),
+                )
+                .child(kbd("esc"))
+                .child(crate::ui::button::icon_button(
+                    "x",
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "shell.close")
+                    },
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || close.set(None),
+                )),
+        )
+        .child(
+            scroll()
+                .w_full()
+                .h(px(288.0))
+                .child(view().w_full().flex_col().children(rows)),
+        )
+        .into_element();
+}
+
 fn filter_pop(
     language: Signal<SharedString>,
     branches: Vec<FilterBranch>,
@@ -1030,6 +1237,7 @@ fn filter_pop(
     cmd: HistoryCommands,
 ) -> impl IntoElement + use<> {
     let draft = state.draft;
+    let close_filter = state.filter_open;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let apply: std::sync::Arc<dyn Fn()> = {
         let cmd = cmd.clone();
@@ -1217,13 +1425,41 @@ fn filter_pop(
     return view()
         .w(px(POP_W))
         .max_h(px(560.0))
-        .p(px(10.0))
+        .p(px(12.0))
         .flex_col()
         .gap(px(6.0))
         .rounded(px(metrics::RADIUS_PANEL))
         .border_1()
-        .border_color(move || design::line())
+        .border_color(move || design::line_strong())
         .bg(move || design::token("popover"))
+        .shadow_lg()
+        .child(
+            view()
+                .w_full()
+                .h(px(crate::ui::ROW_COMPACT))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "filter.title"))
+                        .flex_1()
+                        .text_size(px(crate::ui::BODY))
+                        .line_height(px(crate::ui::ROW_COMPACT))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(move || design::text()),
+                )
+                .child(kbd("esc"))
+                .child(crate::ui::button::icon_button(
+                    "x",
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "shell.close")
+                    },
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || close_filter.set(false),
+                )),
+        )
         .child(
             view()
                 .w_full()
@@ -1307,8 +1543,7 @@ fn filter_pop(
                         move || clear()
                     },
                 ))
-                .child(view().flex_1())
-                .child(kbd("esc")),
+                .child(view().flex_1()),
         );
 }
 
@@ -1345,10 +1580,12 @@ fn filter_choice_row(
 fn ref_chips(refs: Vec<String>) -> impl IntoElement {
     let mut chips: Vec<AnyElement> = Vec::new();
     for reference in refs.into_iter().take(2) {
+        let is_stash = reference.starts_with("stash: ");
         let is_tag = reference.starts_with("tag:");
-        let is_remote = reference.contains('/') && !is_tag;
+        let is_remote = reference.contains('/') && !is_tag && !is_stash;
         let label = reference
             .trim_start_matches("HEAD -> ")
+            .trim_start_matches("stash: ")
             .trim_start_matches("tag: ")
             .to_string();
         chips.push(
@@ -1360,6 +1597,8 @@ fn ref_chips(refs: Vec<String>) -> impl IntoElement {
                 .bg(move || {
                     if is_tag {
                         design::tag_bg()
+                    } else if is_stash {
+                        design::panel2()
                     } else if is_remote {
                         design::panel2()
                     } else {
@@ -1372,6 +1611,8 @@ fn ref_chips(refs: Vec<String>) -> impl IntoElement {
                         .text_color(move || {
                             if is_tag {
                                 design::tag_fg()
+                            } else if is_stash {
+                                design::remote_fg()
                             } else if is_remote {
                                 design::remote_fg()
                             } else {
@@ -1385,8 +1626,8 @@ fn ref_chips(refs: Vec<String>) -> impl IntoElement {
     return view().flex_row().items_center().gap(px(4.0)).child(chips);
 }
 
-/// Compare refs 控件（设计板 07）：起点、终点与交换；未选择时提示从哪些引用里挑。
-fn compare_refs(
+/// Compare refs 下拉菜单：集中放入端点、模式、工作区比较、交换与清除动作。
+fn compare_refs_menu(
     language: Signal<SharedString>,
     refs: Vec<CompareRef>,
     pair: (Option<String>, Option<String>),
@@ -1398,142 +1639,107 @@ fn compare_refs(
 ) -> impl IntoElement {
     let (base, target) = pair;
     let has_pair = base.is_some() && target.is_some();
-    let swap_base = base.clone();
-    let swap_target = target.clone();
-    let clear_refs = set_compare_refs.clone();
-    let base_options = refs.clone();
-    let target_options = refs.clone();
-    let base_label_options = refs.clone();
-    let target_label_options = refs.clone();
-    let base_value = base.clone();
-    let target_value = target.clone();
-    let base_target = target.clone();
-    let target_base = base.clone();
-    let base_action = set_compare_refs.clone();
-    let target_action = set_compare_refs.clone();
-    let base_picker = crate::ui::menu::menu_button(
-        move || {
-            compare_ref_label(&base_label_options, base_value.as_deref())
-                .unwrap_or_else(|| i18n::t(language.get().as_str(), "compare.base"))
-        },
+    let label_key = if has_pair || compare_worktree {
+        "compare.refsActive"
+    } else {
+        "compare.pick"
+    };
+    let menu_refs = refs.clone();
+    let menu_base = base.clone();
+    let menu_target = target.clone();
+    let menu_set_refs = set_compare_refs.clone();
+    let menu_set_dot = set_three_dot.clone();
+    let menu_set_worktree = set_worktree.clone();
+
+    return crate::ui::menu::menu_button_tuned(
+        move || i18n::t(language.get().as_str(), label_key),
+        has_pair || compare_worktree,
         Some("chev-down"),
         move || {
             let mut items = Vec::new();
-            for option in base_options.clone() {
-                let action = base_action.clone();
-                let value = option.value.clone();
-                let target = base_target.clone();
-                items.push(crate::ui::menu::action(option.label, true, move || {
-                    action(Some(value.clone()), target.clone());
-                }));
+            for reference in menu_refs.clone() {
+                let value = reference.value.clone();
+                let target = menu_target.clone();
+                let selected = menu_base.as_deref() == Some(value.as_str());
+                let action = menu_set_refs.clone();
+                let label = format!(
+                    "{} · {}",
+                    i18n::t(language.get().as_str(), "compare.base"),
+                    reference.label
+                );
+                items.push(crate::ui::menu::checkable(
+                    label,
+                    selected,
+                    true,
+                    move || action(Some(value.clone()), target.clone()),
+                ));
             }
+            items.push(crate::ui::menu::divider());
+            for reference in menu_refs.clone() {
+                let value = reference.value.clone();
+                let base = menu_base.clone();
+                let selected = menu_target.as_deref() == Some(value.as_str());
+                let action = menu_set_refs.clone();
+                let label = format!(
+                    "{} · {}",
+                    i18n::t(language.get().as_str(), "compare.target"),
+                    reference.label
+                );
+                items.push(crate::ui::menu::checkable(
+                    label,
+                    selected,
+                    true,
+                    move || action(base.clone(), Some(value.clone())),
+                ));
+            }
+            items.push(crate::ui::menu::divider());
+            items.push(crate::ui::menu::checkable(
+                i18n::t(language.get().as_str(), "compare.twoDot"),
+                !three_dot,
+                true,
+                {
+                    let action = menu_set_dot.clone();
+                    move || action(false)
+                },
+            ));
+            items.push(crate::ui::menu::checkable(
+                i18n::t(language.get().as_str(), "compare.threeDot"),
+                three_dot,
+                !compare_worktree,
+                {
+                    let action = menu_set_dot.clone();
+                    move || action(true)
+                },
+            ));
+            items.push(crate::ui::menu::checkable(
+                i18n::t(language.get().as_str(), "compare.withWorkingTree"),
+                compare_worktree,
+                menu_target.is_some(),
+                {
+                    let action = menu_set_worktree.clone();
+                    move || action(!compare_worktree)
+                },
+            ));
+            items.push(crate::ui::menu::action(
+                i18n::t(language.get().as_str(), "compare.swap"),
+                has_pair && !compare_worktree,
+                {
+                    let action = menu_set_refs.clone();
+                    let base = menu_base.clone();
+                    let target = menu_target.clone();
+                    move || action(target.clone(), base.clone())
+                },
+            ));
+            items.push(crate::ui::menu::divider());
+            items.push(crate::ui::menu::action(
+                i18n::t(language.get().as_str(), "compare.clear"),
+                has_pair || menu_base.is_some() || menu_target.is_some() || compare_worktree,
+                {
+                    let action = menu_set_refs.clone();
+                    move || action(None, None)
+                },
+            ));
             return items;
         },
     );
-    let target_picker = crate::ui::menu::menu_button(
-        move || {
-            compare_ref_label(&target_label_options, target_value.as_deref())
-                .unwrap_or_else(|| i18n::t(language.get().as_str(), "compare.target"))
-        },
-        Some("chev-down"),
-        move || {
-            let mut items = Vec::new();
-            for option in target_options.clone() {
-                let action = target_action.clone();
-                let value = option.value.clone();
-                let base = target_base.clone();
-                items.push(crate::ui::menu::action(option.label, true, move || {
-                    action(base.clone(), Some(value.clone()));
-                }));
-            }
-            return items;
-        },
-    );
-    let clear_disabled = base.is_none() && target.is_none() && !compare_worktree;
-
-    return view()
-        .flex_row()
-        .items_center()
-        .gap(px(4.0))
-        .child(
-            text(move || {
-                i18n::t(
-                    language.get().as_str(),
-                    if has_pair || compare_worktree {
-                        "compare.refsActive"
-                    } else {
-                        "compare.pick"
-                    },
-                )
-            })
-            .text_size(px(crate::ui::SECONDARY))
-            .text_color(move || design::text3()),
-        )
-        .child(base_picker)
-        .child(
-            text("→")
-                .text_size(px(crate::ui::SECONDARY))
-                .text_color(move || design::text3()),
-        )
-        .child(target_picker)
-        .child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "compare.swap"),
-            crate::ui::button::ButtonVariant::Ghost,
-            crate::ui::button::ButtonSize::Small,
-            !has_pair || compare_worktree,
-            move || set_compare_refs(swap_target.clone(), swap_base.clone()),
-        ))
-        .child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "compare.twoDot"),
-            if three_dot {
-                crate::ui::button::ButtonVariant::Ghost
-            } else {
-                crate::ui::button::ButtonVariant::Secondary
-            },
-            crate::ui::button::ButtonSize::Small,
-            false,
-            {
-                let set_three_dot = set_three_dot.clone();
-                move || set_three_dot(false)
-            },
-        ))
-        .child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "compare.threeDot"),
-            if three_dot {
-                crate::ui::button::ButtonVariant::Secondary
-            } else {
-                crate::ui::button::ButtonVariant::Ghost
-            },
-            crate::ui::button::ButtonSize::Small,
-            compare_worktree,
-            {
-                let set_three_dot = set_three_dot.clone();
-                move || set_three_dot(true)
-            },
-        ))
-        .child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "compare.withWorkingTree"),
-            if compare_worktree {
-                crate::ui::button::ButtonVariant::Secondary
-            } else {
-                crate::ui::button::ButtonVariant::Ghost
-            },
-            crate::ui::button::ButtonSize::Small,
-            target.is_none(),
-            move || set_worktree(!compare_worktree),
-        ))
-        .child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "compare.clear"),
-            crate::ui::button::ButtonVariant::Ghost,
-            crate::ui::button::ButtonSize::Small,
-            clear_disabled,
-            move || clear_refs(None, None),
-        ));
-}
-
-fn compare_ref_label(refs: &[CompareRef], selected: Option<&str>) -> Option<String> {
-    return refs
-        .iter()
-        .find(|reference| Some(reference.value.as_str()) == selected)
-        .map(|reference| reference.label.clone());
 }

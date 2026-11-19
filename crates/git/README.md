@@ -44,7 +44,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 `conflict_sides(path)` 从 `git ls-files -u` 读取 index stage 1/2/3，再用对象 ID 读取各侧原始 blob；缺失 stage 返回 `None`，不把删除侧伪装成空文件。`conflict_worktree_content` 读取当前工作区字节。解决文本或二进制内容时，`resolve_conflict_bytes` 只写回并暂存给定路径；`resolve_conflict_delete` 以 `git rm` 暂存删除。`operation()` 通过 `git rev-parse --git-dir` 查找操作标记，因此也适用于 `.git` 是文件的关联工作树。
 
-`log_all` 返回所有引用可达的完整历史。`log_history` 默认从全部引用读取；`LogFilter.references` 可用多个本地或远端 ref 做 OR 范围，旧的单引用 `reference` 仍可用。它支持多作者 email、日期端点、literal 文件/目录 pathspec 与提交消息子串；条件维度之间按 AND 组合。`log_history_graph` 只应用引用范围，给筛选后的提交图重连祖先使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`authors_with_email` 返回按 email 去重的作者身份，`authors` 保留只取显示名的接口。日志解析包含 author email 和完整提交消息；`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
+`log_all` 返回所有引用可达的完整历史，并把 `git stash list` 中的每个 stash OID 加入范围。`log_history` 默认从全部引用与 stash 读取；`LogFilter.references` 可用多个本地或远端 ref 做 OR 范围，旧的单引用 `reference` 仍可用。它支持多作者 email、日期端点、literal 文件/目录 pathspec 与提交消息子串；条件维度之间按 AND 组合。`log_history_graph` 只应用引用范围，给筛选后的提交图重连祖先使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`authors_with_email` 返回按 email 去重的作者身份，`authors` 保留只取显示名的接口。日志解析包含 author email 和完整提交消息；`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
 
 ## 选项
 

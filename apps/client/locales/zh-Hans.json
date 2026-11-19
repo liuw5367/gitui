@@ -137,6 +137,7 @@
   },
   "history": {
     "commits": "%{count} 次提交",
+    "backToList": "提交列表",
     "filter": "筛选提交",
     "allAuthors": "所有作者",
     "clear": "清除",
@@ -288,6 +289,7 @@
   },
   "files": {
     "title": "文件",
+    "changedCount": "%{count} 个文件",
     "changes": "改动",
     "info": {
       "sha": "提交",
@@ -366,6 +368,11 @@
     "moveSelected": "移动 3 个选中文件到…",
     "rename": "重命名清单…",
     "footHint": "仅筛选 — 暂存后提交",
+    "dragHint": "将文件拖到其他变更清单即可移动",
+    "tree": "树",
+    "flat": "平铺",
+    "filter": "筛选改动",
+    "manage": "管理…",
     "moveHere": "移入",
     "newName": "新清单名称",
     "create": "新建",

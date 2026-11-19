@@ -85,27 +85,97 @@ pub(crate) fn menu_button(
     icon: Option<&'static str>,
     build_items: impl Fn() -> Vec<MenuItem> + 'static,
 ) -> impl IntoElement {
+    return menu_button_tuned(label, false, icon, build_items);
+}
+
+/// 下拉按钮：`active` 表示它当前代表的筛选或引用对比已生效。
+pub(crate) fn menu_button_tuned(
+    label: impl Fn() -> String + 'static,
+    active: bool,
+    icon: Option<&'static str>,
+    build_items: impl Fn() -> Vec<MenuItem> + 'static,
+) -> impl IntoElement {
     let build_items = std::rc::Rc::new(build_items);
+    return menu_button_tuned_at(
+        label,
+        move || active,
+        icon,
+        move |position| {
+            let items = build_items();
+            let _ = nsh_core::element::desktop::popup_menu_at(items, position);
+        },
+    );
+}
+
+/// 带根视图坐标的紧凑下拉按钮，用于打开自绘的锚定浮层。
+pub(crate) fn menu_button_tuned_at(
+    label: impl Fn() -> String + 'static,
+    active: impl Fn() -> bool + 'static,
+    icon: Option<&'static str>,
+    on_press: impl Fn(Point<Points>) + 'static,
+) -> impl IntoElement {
+    let active = std::rc::Rc::new(active);
+    let accessibility_label = label();
+    let active_for_bg = active.clone();
+    let active_for_border = active.clone();
+    let active_for_icon = active.clone();
+    let active_for_text = active.clone();
     let mut content = view()
         .h(px(crate::ui::CONTROL_SMALL))
         .px(px(crate::ui::GAP))
         .flex_row()
         .items_center()
         .gap(px(crate::ui::GAP_SM))
-        .rounded(px(6.0))
+        .rounded(px(crate::design::metrics::RADIUS_CONTROL))
+        .role(AccessibilityRole::Button)
+        .label(SharedString::from(accessibility_label))
+        .bg(move || {
+            if active_for_bg() {
+                crate::design::accent_soft()
+            } else {
+                crate::design::btn()
+            }
+        })
+        .border_1()
+        .border_color(move || {
+            if active_for_border() {
+                crate::design::accent()
+            } else {
+                crate::design::btn_border()
+            }
+        })
         .hover(|style| style.bg(move || crate::design::hover()))
-        .on_press(move |event: &PressEvent| {
-            let items = build_items();
-            let _ = nsh_core::element::desktop::popup_menu_at(items, event.page_position);
-        });
+        .active(|style| style.bg(move || crate::design::line_soft()))
+        .focus_visible(move |style| {
+            style
+                .outline(px(crate::ui::FOCUS_WIDTH))
+                .outline_color(move || crate::ui::focus_color())
+        })
+        .on_press(move |event: &PressEvent| on_press(event.page_position));
     if let Some(name) = icon {
-        content = content.child(crate::ui::icon::inline_icon(name));
+        content = content.child(crate::ui::icon::icon_view(
+            name,
+            crate::ui::icon::IconSize::Compact,
+            move || {
+                if active_for_icon() {
+                    crate::design::accent()
+                } else {
+                    crate::design::text2()
+                }
+            },
+        ));
     }
     return content.child(
         text(move || label())
             .text_size(px(crate::ui::BODY))
             .line_height(px(crate::ui::BODY_LINE))
-            .text_color(move || crate::design::text()),
+            .text_color(move || {
+                if active_for_text() {
+                    crate::design::accent()
+                } else {
+                    crate::design::text2()
+                }
+            }),
     );
 }
 

@@ -26,8 +26,6 @@ pub const SIDE_ROW_H: f32 = 25.0;
 /// 侧栏内边距（`.side-scroll` 上 2、左右 8、下 12）。
 pub const SIDE_SCROLL_PAD: (f32, f32, f32) = (2.0, 8.0, 12.0);
 
-/// History 区域高度（Workspace 板内联 `height:256px`）。
-pub const HISTORY_H: f32 = 256.0;
 /// `.hist-bar`。
 pub const HIST_BAR_H: f32 = 32.0;
 /// `.commit-cols`。
@@ -39,6 +37,8 @@ pub const COMMIT_COLS: (f32, f32, f32) = (64.0, 96.0, 58.0);
 
 /// `.diffbar`。
 pub const DIFFBAR_H: f32 = 38.0;
+/// File diff 返回提交列表的摘要条（画板 04b）。
+pub const DIFF_RETURN_H: f32 = 34.0;
 /// `.diffbody` 字号。
 pub const DIFF_FONT: f32 = 11.0;
 /// `.diffbody` 行高。

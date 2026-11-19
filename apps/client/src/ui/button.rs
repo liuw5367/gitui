@@ -258,6 +258,51 @@ pub(crate) fn icon_button_tuned(
     );
 }
 
+/// 同 [`icon_button_tuned`]，并把按下位置交给调用方，用于锚定自定义浮层。
+pub(crate) fn icon_button_tuned_at(
+    name: &'static str,
+    label: impl Fn() -> String + 'static,
+    size: ButtonSize,
+    icon_size_override: Option<IconSize>,
+    foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
+    disabled: bool,
+    on_press: impl Fn(Point<Points>) + 'static,
+) -> impl IntoElement {
+    let icon_size = icon_size_override.unwrap_or(match size {
+        ButtonSize::Small => IconSize::Button,
+        ButtonSize::Regular | ButtonSize::Large | ButtonSize::Toolbar => IconSize::Toolbar,
+    });
+    let (width, height) = match size {
+        ButtonSize::Toolbar => (26.0, 24.0),
+        other => (other.height(), other.height()),
+    };
+    let label_for_a11y = label();
+    return view()
+        .disabled(disabled)
+        .opacity(if disabled { 0.45 } else { 1.0 })
+        .role(AccessibilityRole::Button)
+        .label(SharedString::from(label_for_a11y))
+        .w(px(width))
+        .h(px(height))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .rounded(px(metrics::RADIUS_CONTROL))
+        .bg(AdaptiveColor::TRANSPARENT)
+        .hover(move |style| style.bg(move || design::hover()))
+        .active(move |style| style.bg(move || design::line_soft()))
+        .focus_visible(move |style| {
+            style
+                .outline(px(FOCUS_WIDTH))
+                .outline_color(move || focus_color())
+        })
+        .on_press(move |event: &PressEvent| on_press(event.page_position))
+        .child(icon_view(name, icon_size, move || match &foreground {
+            Some(color) => color(),
+            None => design::text2(),
+        }));
+}
+
 /// 图标按钮 + hover 提示：指针停留半秒后在按钮上方显示 `tip`。
 ///
 /// 用于只有图标、没有文字的入口（欢迎页底栏的检查更新与设置）：图标本身认不出来

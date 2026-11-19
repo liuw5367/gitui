@@ -51,17 +51,26 @@ impl HistoryCommands {
         }
     }
 
-    /// 在提交变更树中选中文件并打开该文件的提交差异。
-    pub(crate) fn select_tree_path(&self, id: String) {
+    /// 从提交差异返回完整提交列表，并保留当前选中的提交。
+    pub(crate) fn return_to_history(&self) {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            if let Some(path) = id.strip_prefix("file:") {
-                if let Some(index) = tab.files.iter().position(|file| file.path == path) {
-                    ops::select_file(tab, index);
-                }
-            } else {
-                ops::select_file_in_tree(tab, None);
+            ops::return_to_history(tab);
+            self.session.tabs.set(list);
+        }
+    }
+
+    /// 在提交变更树中选中文件并打开该文件的提交差异。
+    pub(crate) fn select_tree_path(&self, id: String) {
+        let Some(path) = id.strip_prefix("file:") else {
+            return;
+        };
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            if let Some(index) = tab.files.iter().position(|file| file.path == path) {
+                ops::select_file(tab, index);
             }
             self.session.tabs.set(list);
         }
@@ -211,6 +220,70 @@ impl HistoryCommands {
         }
     }
 
+    /// 顶部 branch 菜单直接切换已应用的多分支筛选。
+    pub(crate) fn toggle_branch_filter(&self, reference: String) {
+        self.update_filter(|filter| {
+            let mut references = if filter.references.is_empty() {
+                filter.reference.iter().cloned().collect::<Vec<_>>()
+            } else {
+                filter.references.clone()
+            };
+            if references.contains(&reference) {
+                references.retain(|item| item != &reference);
+            } else {
+                references.push(reference);
+            }
+            filter.reference = None;
+            filter.references = references;
+        });
+    }
+
+    pub(crate) fn clear_branch_filter(&self) {
+        self.update_filter(|filter| {
+            filter.reference = None;
+            filter.references.clear();
+        });
+    }
+
+    /// 顶部 author 菜单直接切换已应用的多作者筛选。
+    pub(crate) fn toggle_author_filter(&self, email: String) {
+        self.update_filter(|filter| {
+            if filter.authors.contains(&email) {
+                filter.authors.retain(|item| item != &email);
+            } else {
+                filter.authors.push(email);
+            }
+        });
+    }
+
+    pub(crate) fn clear_author_filter(&self) {
+        self.update_filter(|filter| filter.authors.clear());
+    }
+
+    fn update_filter(&self, update: impl FnOnce(&mut LogFilter)) {
+        let current = self.session.active.get_untracked();
+        let Some(mut filter) = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .map(|tab| tab.filter.clone())
+        else {
+            return;
+        };
+        update(&mut filter);
+        let references = if filter.references.is_empty() {
+            filter.reference.iter().cloned().collect()
+        } else {
+            filter.references.clone()
+        };
+        self.state.draft.update(|draft| {
+            draft.references = references;
+            draft.authors = filter.authors.clone();
+        });
+        self.reload_with_filter(&filter);
+    }
+
     /// 按当前条件重新读一遍当前仓库（原 `reload`）。
     fn reload_with_filter(&self, filter: &LogFilter) {
         let current = self.session.active.get_untracked();
@@ -235,6 +308,7 @@ impl HistoryCommands {
             }
         };
         self.state.filter_open.set(false);
+        self.state.filter_menu.set(None);
         self.reload_with_filter(&filter);
     }
 
@@ -242,6 +316,7 @@ impl HistoryCommands {
     pub(crate) fn clear_filter(&self) {
         self.state.draft.set(filters::FilterDraft::default());
         self.state.filter_open.set(false);
+        self.state.filter_menu.set(None);
         self.reload_with_filter(&LogFilter::default());
     }
 

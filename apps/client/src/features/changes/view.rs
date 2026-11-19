@@ -7,7 +7,6 @@
 //! （提示与文案取自 `cmd`），冲突文件的解决走 `cmd.merge`。
 
 use super::commands::ChangesCommands;
-use super::state::ChangesState;
 use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
@@ -16,23 +15,11 @@ use domain::diff::DiffLineKind;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
-/// 变更列表高度（设计板 `.changeslist`）。
-const LIST_H: f32 = 342.0;
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn changes(
-    state: &ChangesState,
-    cmd: &ChangesCommands,
-    tab: Tab,
-    group_by_directory: bool,
-    tree: crate::app::session::TreeOptions,
-) -> AnyElement {
+pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
     let language = cmd.language;
     if let Some((label, patch)) = tab.stash_diff.clone() {
         return stash_diff_view(language, cmd, tab.id, label, patch);
     }
-    let total = tab.changes.len();
-    let staged = tab.changes.iter().filter(|entry| entry.staged).count();
     let patch = tab.change_diff.clone();
     let label = tab
         .selected_change
@@ -93,85 +80,74 @@ pub(crate) fn changes(
             }
         }
     }
+    let clear = cmd.clone();
     return view()
         .w_full()
         .h_full()
+        .min_h_0()
         .flex_col()
-        .child(changes_list(
-            state,
-            cmd,
-            language,
-            tab,
-            staged,
-            total,
-            group_by_directory,
-            tree,
-        ))
+        .child(
+            view()
+                .w_full()
+                .h(px(metrics::DIFFBAR_H))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .px(px(11.0))
+                .border_b_1()
+                .border_color(move || design::line())
+                .child(crate::ui::button::button_icon(
+                    move || i18n::t(language.get().as_str(), "history.backToList"),
+                    "chev-left",
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || clear.clear_selected_change(),
+                ))
+                .child(crate::ui::icon::icon_view(
+                    "file",
+                    crate::ui::icon::IconSize::Button,
+                    design::text3,
+                ))
+                .child(
+                    text(label)
+                        .flex_1()
+                        .text_size(px(crate::ui::CODE))
+                        .text_color(move || design::text())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(format!("+{} −{}", additions, deletions))
+                        .text_size(px(crate::ui::CODE))
+                        .text_color(move || design::text3()),
+                ),
+        )
         .child(
             view()
                 .w_full()
                 .flex_1()
                 .min_h_0()
-                .flex_col()
-                .border_t_1()
-                .border_color(move || design::line())
                 .child(
-                    view()
+                    scroll()
                         .w_full()
-                        .h(px(metrics::DIFFBAR_H))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .px(px(11.0))
-                        .border_b_1()
-                        .border_color(move || design::line())
-                        .child(crate::ui::icon::icon_view(
-                            "file",
-                            crate::ui::icon::IconSize::Button,
-                            design::text3,
-                        ))
-                        .child(
-                            text(label)
-                                .text_size(px(crate::ui::CODE))
-                                .text_color(move || design::text())
-                                .text_overflow(nsh_core::EllipsizeMode::Tail),
-                        )
-                        .child(
-                            text(format!("+{} −{}", additions, deletions))
-                                .text_size(px(crate::ui::CODE))
-                                .text_color(move || design::text3()),
-                        ),
-                )
-                .child(
-                    view()
-                        .w_full()
-                        .flex_1()
-                        .min_h_0()
-                        .child(
-                            scroll()
+                        .h_full()
+                        .child(view().w_full().flex_col().child(if rows.is_empty() {
+                            view()
                                 .w_full()
-                                .h_full()
-                                .child(view().w_full().flex_col().child(if rows.is_empty() {
-                                    view()
-                                        .w_full()
-                                        .h(px(48.0))
-                                        .items_center()
-                                        .justify_center()
-                                        .child(
-                                            text(move || {
-                                                i18n::t(
-                                                    language.get().as_str(),
-                                                    "changes.selectFile",
-                                                )
-                                            })
-                                            .text_size(px(crate::ui::BODY))
-                                            .text_color(move || design::text3()),
-                                        )
-                                        .into_element()
-                                } else {
-                                    view().w_full().flex_col().child(rows).into_element()
-                                })),
-                        ),
+                                .h(px(48.0))
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    text(move || {
+                                        i18n::t(language.get().as_str(), "changes.selectFile")
+                                    })
+                                    .text_size(px(crate::ui::BODY))
+                                    .text_color(move || design::text3()),
+                                )
+                                .into_element()
+                        } else {
+                            view().w_full().flex_col().child(rows).into_element()
+                        })),
                 ),
         )
         .into_element();
@@ -251,357 +227,89 @@ fn stash_diff_view(
         .into_element();
 }
 
-#[allow(clippy::too_many_arguments)]
-fn changes_list(
-    state: &ChangesState,
+pub(crate) fn changelists_panel(
     cmd: &ChangesCommands,
-    language: Signal<SharedString>,
     tab: Tab,
-    staged_count: usize,
-    total: usize,
-    group_by_directory: bool,
+    show_tree: bool,
     tree: crate::app::session::TreeOptions,
-) -> impl IntoElement + use<> {
-    let changelist_open = state.changelist_open;
-    // 外部打开与复制的提示文案取自本功能的用例，视图不再经 `Actions` 中转。
+) -> AnyElement {
+    let language = cmd.language;
+    let tree_mode = signal(show_tree);
+    let filter_open = signal(false);
+    let filter_query = signal(String::new());
+    let dragged_path = signal(Option::<String>::None);
+    let drop_target = signal(Option::<Option<String>>::None);
+    let manage_open = cmd.state.changelist_open;
+    let total = tab.changes.len();
     let notice = cmd.notice;
     let copy_text: std::sync::Arc<dyn Fn(String)> = {
         let language = language;
-        std::sync::Arc::new(move |text: String| {
-            crate::shared::os::copy_text(notice, language, text)
-        })
+        std::sync::Arc::new(move |value| crate::shared::os::copy_text(notice, language, value))
     };
     let open_editor: std::sync::Arc<dyn Fn(String)> = {
         let language = language;
-        std::sync::Arc::new(move |path: String| {
-            crate::shared::os::open_editor(notice, language, path)
-        })
+        std::sync::Arc::new(move |path| crate::shared::os::open_editor(notice, language, path))
     };
     let reveal_path: std::sync::Arc<dyn Fn(String)> = {
         let language = language;
-        std::sync::Arc::new(move |path: String| {
-            crate::shared::os::reveal_path(notice, language, path)
-        })
-    };
-    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
-    let select_change: std::sync::Arc<dyn Fn(usize)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |index: usize| cmd.select_change(index))
+        std::sync::Arc::new(move |path| crate::shared::os::reveal_path(notice, language, path))
     };
     let toggle_stage: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |index: usize| cmd.toggle_stage(index))
+        std::sync::Arc::new(move |index| cmd.toggle_stage(index))
     };
     let discard_change: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |index: usize| cmd.discard_change(index))
-    };
-    let tab_for_pop = tab.clone();
-    let selected_path = tab
-        .selected_change
-        .and_then(|index| tab.changes.get(index))
-        .map(|entry| entry.path.clone());
-    let stage_all: std::sync::Arc<dyn Fn()> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move || cmd.stage_all())
-    };
-    let unstage_all: std::sync::Arc<dyn Fn()> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move || cmd.unstage_all())
+        std::sync::Arc::new(move |index| cmd.discard_change(index))
     };
     let move_to_changelist: std::sync::Arc<dyn Fn(String, Option<String>)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |path: String, name: Option<String>| {
-            cmd.move_to_changelist(path, name)
-        })
+        std::sync::Arc::new(move |path, target| cmd.move_to_changelist(path, target))
     };
-    let cmd_for_pop = cmd.clone();
-    let selected = tab.selected_change;
-
-    let mut sections: Vec<AnyElement> = Vec::new();
-    for (is_staged, title_key, action_label_key, action) in [
-        (true, "changes.staged", "changes.unstageAll", unstage_all),
-        (false, "changes.unstaged", "changes.stageAll", stage_all),
-    ] {
-        let entries: Vec<_> = tab
-            .changes
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| entry.staged == is_staged)
-            .collect();
-        if entries.is_empty() {
-            continue;
-        }
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        let mut current_directory = String::new();
-        // 目录链压缩需要知道所有出现过的目录。
-        let all_dirs: Vec<String> = tab
-            .changes
-            .iter()
-            .map(|entry| entry.directory().to_string())
-            .filter(|directory| !directory.is_empty())
-            .collect();
-        for (index, entry) in entries {
-            let raw_directory = entry.directory().to_string();
-            let directory = tree.compact_label(&all_dirs, raw_directory.as_str());
-            // 该目录自己有没有直接文件；没有且开了「合并空目录」就不画这一行。
-            let direct_files = tab
-                .changes
-                .iter()
-                .filter(|candidate| candidate.directory() == raw_directory)
-                .count();
-            let show_row = tree.shows_directory(direct_files);
-            if group_by_directory && directory != current_directory && show_row {
-                current_directory = directory.clone();
-                let label = if directory.is_empty() {
-                    ".".to_string()
-                } else {
-                    directory
-                };
-                rows.push(vec![format!("d|{label}")]);
-            }
-            rows.push(vec![format!("f|{index}")]);
-        }
-        sections.push(
-            view()
-                .w_full()
-                .flex_col()
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(24.0))
-                        .px(px(8.0))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.0))
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), title_key))
-                                .text_size(px(crate::ui::SECONDARY))
-                                .font_weight(FontWeight(600))
-                                .text_color(move || design::text2()),
-                        )
-                        .child(
-                            text(entries_count(&tab, is_staged).to_string())
-                                .text_size(px(crate::ui::SECONDARY))
-                                .text_color(move || design::text3()),
-                        )
-                        .child(view().flex_1())
-                        .child(crate::ui::button::button(
-                            move || i18n::t(language.get().as_str(), action_label_key),
-                            crate::ui::button::ButtonVariant::Ghost,
-                            crate::ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let action = action.clone();
-                                move || action()
-                            },
-                        )),
-                )
-                .child({
-                    // 表格必须是 `dynamic` 的直接返回值——历史表与检查器的表格都
-                    // 是这个形状；放进 `flex_col` 的 child 里 data_table 不出内容。
-                    let changes = tab.changes.clone();
-                    let changes_for_menu = tab.changes.clone();
-                    let select_for_press = select_change.clone();
-                    let changes_for_press = tab.changes.clone();
-                    let rows_for_press = rows.clone();
-                    let toggle_for_render = toggle_stage.clone();
-                    let rows_for_menu = rows.clone();
-                    let toggle_for_menu = toggle_stage.clone();
-                    let discard_for_menu = discard_change.clone();
-                    let copy_text = copy_text.clone();
-                    let open_editor = open_editor.clone();
-                    let reveal_path = reveal_path.clone();
-                    let move_to_changelist = move_to_changelist.clone();
-                    let repo_root = tab.path.clone();
-                    let changelists = tab.changelists.clone();
-                    let language_for_menu = language;
-                    let _ = &language_for_menu;
-                    let table_h = (rows.len() as f32) * 24.0;
-                    dynamic(move || -> AnyElement {
-                        let changes = changes.clone();
-                        let changes_for_press = changes_for_press.clone();
-                        let changes_for_menu = changes_for_menu.clone();
-                        let select_for_press = select_for_press.clone();
-                        let rows_for_press = rows_for_press.clone();
-                        let toggle_for_render = toggle_for_render.clone();
-                        let rows_for_menu = rows_for_menu.clone();
-                        let toggle_for_menu = toggle_for_menu.clone();
-                        let discard_for_menu = discard_for_menu.clone();
-                        let copy_text = copy_text.clone();
-                        let open_editor = open_editor.clone();
-                        let reveal_path = reveal_path.clone();
-                        let move_to_changelist = move_to_changelist.clone();
-                        let repo_root = repo_root.clone();
-                        let changelists = changelists.clone();
-                        return view()
-                            .w_full()
-                            .h(px(table_h))
-                            .child(crate::ui::table::table(crate::ui::table::TableSpec {
-                                columns: vec![crate::ui::table::Column {
-                                    key: "change",
-                                    title: None,
-                                    width: Some(1200.0),
-                                    fixed: false,
-                                }],
-                                rows: rows.clone(),
-                                selected,
-                                row_height: Some(24.0),
-                                on_select: Box::new(|_i| {}),
-                                render: Some(Box::new(move |row, _k, cell_text| {
-                                    let _ = row;
-                                    return match rows_row(&cell_text) {
-                                        Some(RowSpec::Directory(label)) => view()
-                                            .w_full()
-                                            .h(px(20.0))
-                                            .pl(px(8.0))
-                                            .flex_row()
-                                            .items_center()
-                                            .gap(px(5.0))
-                                            .child(widgets::icon("chev-down", 9.0, design::text3))
-                                            .child(
-                                                text(label)
-                                                    .text_size(px(crate::ui::SECONDARY))
-                                                    .text_color(move || design::text2()),
-                                            )
-                                            .into_element(),
-                                        Some(RowSpec::File(index)) => {
-                                            let Some(entry) = changes.get(index as usize) else {
-                                                return view().w_full().into_element();
-                                            };
-                                            let path = entry.path.clone();
-                                            let name = path
-                                                .rsplit('/')
-                                                .next()
-                                                .unwrap_or(&path)
-                                                .to_string();
-                                            let letter = entry.status_letter();
-                                            return view()
-                                                .w_full()
-                                                .h(px(24.0))
-                                                .pl(px(20.0))
-                                                .pr(px(8.0))
-                                                .flex_row()
-                                                .items_center()
-                                                .gap(px(6.0))
-                                                .child(crate::ui::check::indicator_action(
-                                                    entry_is_staged(is_staged),
-                                                    name.clone(),
-                                                    {
-                                                        let toggle = toggle_for_render.clone();
-                                                        let index = index;
-                                                        move || toggle(index as usize)
-                                                    },
-                                                ))
-                                                .child(
-                                                    text(name)
-                                                        .flex_1()
-                                                        .text_size(px(crate::ui::CODE))
-                                                        .text_color(move || design::text())
-                                                        .text_overflow(
-                                                            nsh_core::EllipsizeMode::Tail,
-                                                        ),
-                                                )
-                                                .child(
-                                                    text(letter.to_string())
-                                                        .w(px(10.0))
-                                                        .text_size(px(crate::ui::CODE))
-                                                        .text_color(move || status_color(letter)),
-                                                )
-                                                .child(
-                                                    text(format!("+{}", entry.additions))
-                                                        .text_size(px(crate::ui::SECONDARY))
-                                                        .text_color(move || design::add_fg()),
-                                                )
-                                                .child(
-                                                    text(format!("−{}", entry.deletions))
-                                                        .text_size(px(crate::ui::SECONDARY))
-                                                        .text_color(move || design::del_fg()),
-                                                )
-                                                .into_element();
-                                        }
-                                        None => view().w_full().into_element(),
-                                    };
-                                })),
-                                on_row_press: Some(Box::new(move |row, _cmd| {
-                                    // 目录行（`d|`）不参与选中；文件行取其索引。
-                                    let Some(spec) = rows_for_press.get(row as usize) else {
-                                        return;
-                                    };
-                                    let Some(RowSpec::File(index)) =
-                                        spec.first().and_then(|c| rows_row(c))
-                                    else {
-                                        return;
-                                    };
-                                    select_for_press(index as usize);
-                                    let _ = &changes_for_press;
-                                })),
-                                on_context_menu: Some(Box::new(move |row, x, y| {
-                                    let Some(spec) = rows_for_menu.get(row as usize) else {
-                                        return;
-                                    };
-                                    let Some(RowSpec::File(index)) =
-                                        spec.first().and_then(|c| rows_row(c))
-                                    else {
-                                        return;
-                                    };
-                                    let Some(entry) = changes_for_menu.get(index as usize) else {
-                                        return;
-                                    };
-                                    let items = file_menu(
-                                        language,
-                                        repo_root.as_str(),
-                                        entry.path.as_str(),
-                                        changelists.clone(),
-                                        is_staged,
-                                        entry.untracked,
-                                        index as usize,
-                                        toggle_for_menu.clone(),
-                                        discard_for_menu.clone(),
-                                        copy_text.clone(),
-                                        open_editor.clone(),
-                                        reveal_path.clone(),
-                                        move_to_changelist.clone(),
-                                    );
-                                    crate::ui::menu::popup_at(
-                                        items,
-                                        nsh_core::Point {
-                                            x: Points(x),
-                                            y: Points(y),
-                                        },
-                                    );
-                                })),
-                            }))
-                            .into_element();
-                    })
-                })
-                .into_element(),
-        );
+    let mut groups: Vec<(Option<String>, String, Vec<usize>)> = vec![(
+        None,
+        i18n::t(language.get_untracked().as_str(), "changelists.default"),
+        Vec::new(),
+    )];
+    for list in &tab.changelists {
+        groups.push((Some(list.name.clone()), list.name.clone(), Vec::new()));
     }
+    for (index, entry) in tab.changes.iter().enumerate() {
+        if let Some((_, _, indices)) = groups
+            .iter_mut()
+            .find(|(name, _, _)| *name == entry.changelist)
+        {
+            indices.push(index);
+        }
+    }
+    groups.sort_by_key(|(name, _, _)| {
+        if name == &tab.active_changelist {
+            0
+        } else if name.is_none() {
+            1
+        } else {
+            2
+        }
+    });
+    let group_count = groups.len();
+    let list_height = (total as f32 * 28.0 + group_count as f32 * 23.0).clamp(36.0, 252.0);
 
+    let mut group_views: Vec<AnyElement> = Vec::new();
     if !tab.conflicts.is_empty() {
-        let resolve = {
-            let cmd = cmd.clone();
-            std::sync::Arc::new(move |path: String, ours: bool| {
-                cmd.merge.resolve_conflict(path, ours)
-            })
-        };
-        let conflicts = tab.conflicts.clone();
-        let mut rows: Vec<AnyElement> = Vec::new();
-        for path in conflicts {
-            let ours = resolve.clone();
-            let theirs = resolve.clone();
+        let mut conflict_rows: Vec<AnyElement> = Vec::new();
+        for path in tab.conflicts.clone() {
             let ours_path = path.clone();
             let theirs_path = path.clone();
-            rows.push(
+            let ours = cmd.merge.clone();
+            let theirs = cmd.merge.clone();
+            conflict_rows.push(
                 view()
                     .w_full()
-                    .h(px(24.0))
-                    .pl(px(20.0))
-                    .pr(px(8.0))
+                    .h(px(28.0))
+                    .px(px(7.0))
                     .flex_row()
                     .items_center()
-                    .gap(px(6.0))
+                    .gap(px(5.0))
                     .bg(move || design::del_bg())
                     .child(
                         text(path)
@@ -615,144 +323,460 @@ fn changes_list(
                         crate::ui::button::ButtonVariant::Secondary,
                         crate::ui::button::ButtonSize::Small,
                         false,
-                        move || ours(ours_path.clone(), true),
+                        move || ours.resolve_conflict(ours_path.clone(), true),
                     ))
                     .child(crate::ui::button::button(
                         move || i18n::t(language.get().as_str(), "conflicts.theirs"),
                         crate::ui::button::ButtonVariant::Secondary,
                         crate::ui::button::ButtonSize::Small,
                         false,
-                        move || theirs(theirs_path.clone(), false),
+                        move || theirs.resolve_conflict(theirs_path.clone(), false),
                     ))
                     .into_element(),
             );
         }
-        sections.insert(
-            0,
+        group_views.push(
             view()
                 .w_full()
                 .flex_col()
                 .child(
                     view()
                         .w_full()
-                        .h(px(24.0))
-                        .px(px(8.0))
+                        .h(px(23.0))
+                        .px(px(7.0))
                         .flex_row()
                         .items_center()
-                        .gap(px(6.0))
                         .child(
                             text(move || i18n::t(language.get().as_str(), "conflicts.title"))
                                 .text_size(px(crate::ui::SECONDARY))
                                 .font_weight(FontWeight(600))
                                 .text_color(move || design::danger()),
-                        )
-                        .child(view().flex_1())
-                        .child(crate::ui::button::button(
-                            move || i18n::t(language.get().as_str(), "conflicts.resolve"),
-                            crate::ui::button::ButtonVariant::Secondary,
-                            crate::ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let cmd = cmd.clone();
-                                move || cmd.merge.open_conflict()
-                            },
-                        )),
+                        ),
                 )
-                .child(rows)
+                .child(conflict_rows)
                 .into_element(),
         );
     }
+    for (name, _label, mut indices) in groups {
+        indices.sort_by_key(|index| tab.changes[*index].path.clone());
+        let group_target = name.clone();
+        let leave_target = name.clone();
+        let active = tab.active_changelist == name;
+        let count = indices.len();
+        let mut group = view()
+            .w_full()
+            .flex_col()
+            .on_mouse_enter(move |_: &MouseEvent| {
+                if dragged_path.get_untracked().is_some() {
+                    drop_target.set(Some(group_target.clone()));
+                }
+            })
+            .on_mouse_leave(move |_: &MouseEvent| {
+                if drop_target.get_untracked() == Some(leave_target.clone()) {
+                    drop_target.set(None);
+                }
+            });
+        let active_name = name.clone();
+        let display_name = name.clone();
+        let set_active = cmd.clone();
+        group = group.child(crate::ui::row::row_sized(
+            move || {
+                display_name
+                    .clone()
+                    .unwrap_or_else(|| i18n::t(language.get().as_str(), "changelists.default"))
+            },
+            None,
+            Some(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(widgets::icon("chev-down", 9.0, design::text3))
+                    .child(view().w(px(7.0)).h(px(7.0)).rounded(px(4.0)).bg(move || {
+                        if active {
+                            design::accent()
+                        } else {
+                            design::text3()
+                        }
+                    }))
+                    .into_element(),
+            ),
+            vec![
+                text(count.to_string())
+                    .text_size(px(crate::ui::META))
+                    .text_color(move || design::text2())
+                    .into_element(),
+            ],
+            active,
+            false,
+            23.0,
+            move || set_active.set_active_changelist(active_name.clone()),
+        ));
 
+        let entries = tab.changes.clone();
+        let command_for_rows = cmd.clone();
+        let toggle_for_rows = toggle_stage.clone();
+        let discard_for_rows = discard_change.clone();
+        let copy_for_rows = copy_text.clone();
+        let open_for_rows = open_editor.clone();
+        let reveal_for_rows = reveal_path.clone();
+        let move_for_rows = move_to_changelist.clone();
+        let lists_for_rows = tab.changelists.clone();
+        let root_for_rows = tab.path.clone();
+        group = group.child(dynamic(move || -> AnyElement {
+            let needle = filter_query.get().trim().to_lowercase();
+            let tree_view = tree_mode.get();
+            let mut rows: Vec<AnyElement> = Vec::new();
+            let mut last_directory = String::new();
+            for index in indices.iter().copied() {
+                let Some(entry) = entries.get(index).cloned() else {
+                    continue;
+                };
+                if !needle.is_empty() && !entry.path.to_lowercase().contains(&needle) {
+                    continue;
+                }
+                if tree_view {
+                    let directory = entry.directory().to_string();
+                    let direct_files = entries
+                        .iter()
+                        .filter(|candidate| candidate.directory() == directory)
+                        .count();
+                    if !directory.is_empty()
+                        && directory != last_directory
+                        && tree.shows_directory(direct_files)
+                    {
+                        let directories = entries
+                            .iter()
+                            .map(|candidate| candidate.directory().to_string())
+                            .filter(|candidate| !candidate.is_empty())
+                            .collect::<Vec<_>>();
+                        rows.push(
+                            view()
+                                .w_full()
+                                .h(px(19.0))
+                                .pl(px(17.0))
+                                .flex_row()
+                                .items_center()
+                                .gap(px(5.0))
+                                .child(widgets::icon("folder", 10.0, design::text3))
+                                .child(
+                                    text(tree.compact_label(&directories, &directory))
+                                        .text_size(px(crate::ui::META))
+                                        .text_color(move || design::text3()),
+                                )
+                                .into_element(),
+                        );
+                        last_directory = directory;
+                    }
+                }
+
+                let path = entry.path.clone();
+                let filename = path.rsplit('/').next().unwrap_or(&path).to_string();
+                let source_list = entry.changelist.clone();
+                let status = entry.status_letter();
+                let select = command_for_rows.clone();
+                let toggle = command_for_rows.clone();
+                let drop_cmd = command_for_rows.clone();
+                let toggle_for_menu = toggle_for_rows.clone();
+                let discard_for_menu = discard_for_rows.clone();
+                let copy_for_menu = copy_for_rows.clone();
+                let open_for_menu = open_for_rows.clone();
+                let reveal_for_menu = reveal_for_rows.clone();
+                let move_for_menu = move_for_rows.clone();
+                let lists_for_menu = lists_for_rows.clone();
+                let root_for_menu = root_for_rows.clone();
+                let start_path = path.clone();
+                let end_path = path.clone();
+                let path_for_menu = path.clone();
+                let staged_for_menu = entry.staged;
+                let untracked_for_menu = entry.untracked;
+                let filename_for_row = filename.clone();
+                let selected_file = tab.selected_change == Some(index);
+                let source_for_style = source_list.clone();
+                let drag_start = dragged_path;
+                let drag_end = dragged_path;
+                let target_for_row = drop_target;
+                rows.push(
+                    view()
+                        .w_full()
+                        .h(px(28.0))
+                        .pl(px(if tree_view { 19.0 } else { 7.0 }))
+                        .pr(px(7.0))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .rounded(px(5.0))
+                        .bg(move || {
+                            if target_for_row.get() == Some(source_for_style.clone()) {
+                                design::accent_soft()
+                            } else if selected_file {
+                                design::selected()
+                            } else {
+                                design::content()
+                            }
+                        })
+                        .child(crate::ui::check::indicator_action(
+                            entry.staged,
+                            filename.clone(),
+                            move || toggle.toggle_stage(index),
+                        ))
+                        .child(view().flex_1().min_w_0().child(crate::ui::row::row_sized(
+                            move || filename_for_row.clone(),
+                            None,
+                            None,
+                            vec![
+                                    text(status.to_string())
+                                        .w(px(10.0))
+                                        .text_size(px(crate::ui::META))
+                                        .font_weight(FontWeight(700))
+                                        .text_color(move || status_color(status))
+                                        .into_element(),
+                                    text(format!("+{}", entry.additions))
+                                        .text_size(px(crate::ui::META))
+                                        .text_color(move || design::add_fg())
+                                        .into_element(),
+                                    text(format!("−{}", entry.deletions))
+                                        .text_size(px(crate::ui::META))
+                                        .text_color(move || design::del_fg())
+                                        .into_element(),
+                                ],
+                            selected_file,
+                            false,
+                            28.0,
+                            move || select.select_change(index),
+                        )))
+                        .on_pan_start(move |_: &PanEvent| {
+                            drag_start.set(Some(start_path.clone()));
+                            target_for_row.set(None);
+                        })
+                        .on_pan_end(move |event: &PanEvent| {
+                            if !event.cancelled
+                                && let Some(Some(target)) = target_for_row.get_untracked()
+                                && Some(target.clone()) != source_list
+                            {
+                                drop_cmd.move_to_changelist(end_path.clone(), Some(target));
+                            } else if !event.cancelled
+                                && let Some(None) = target_for_row.get_untracked()
+                                && source_list.is_some()
+                            {
+                                drop_cmd.move_to_changelist(end_path.clone(), None);
+                            }
+                            drag_end.set(None);
+                            target_for_row.set(None);
+                        })
+                        .on_context_menu(move |event: &ContextMenuEvent| {
+                            let items = file_menu(
+                                language,
+                                root_for_menu.as_str(),
+                                path_for_menu.as_str(),
+                                lists_for_menu.clone(),
+                                staged_for_menu,
+                                untracked_for_menu,
+                                index,
+                                toggle_for_menu.clone(),
+                                discard_for_menu.clone(),
+                                copy_for_menu.clone(),
+                                open_for_menu.clone(),
+                                reveal_for_menu.clone(),
+                                move_for_menu.clone(),
+                            );
+                            crate::ui::menu::popup_at(items, event.page_position);
+                        })
+                        .into_element(),
+                );
+            }
+            return view().w_full().flex_col().child(rows).into_element();
+        }));
+        group_views.push(group.into_element());
+    }
+
+    let manage_cmd = cmd.clone();
+    let tab_for_manage = tab.clone();
     return view()
         .w_full()
-        .h(px(LIST_H))
         .flex_shrink_0()
         .flex_col()
+        .rounded(px(7.0))
+        .border_1()
+        .border_color(move || design::line())
         .bg(move || design::content())
         .child(
             view()
                 .w_full()
-                .h(px(metrics::HIST_BAR_H))
+                .h(px(26.0))
+                .px(px(8.0))
                 .flex_row()
                 .items_center()
-                .gap(px(7.0))
-                .px(px(10.0))
+                .gap(px(6.0))
+                .rounded_t(px(7.0))
+                .bg(move || design::panel2())
                 .border_b_1()
                 .border_color(move || design::line_soft())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "shell.changes"))
-                        .text_size(px(crate::ui::BODY))
-                        .font_weight(FontWeight(600))
-                        .text_color(move || design::text()),
-                )
-                .child(crate::ui::row::row(
-                    move || {
-                        tab.active_changelist.clone().unwrap_or_else(|| {
-                            i18n::t(language.get().as_str(), "changelists.default")
-                        })
-                    },
-                    None,
-                    Some(
-                        view()
-                            .w(px(6.0))
-                            .h(px(6.0))
-                            .rounded(px(3.0))
-                            .bg(move || design::accent())
-                            .into_element(),
-                    ),
-                    vec![
-                        text(total.to_string())
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::text3())
-                            .into_element(),
-                    ],
-                    false,
-                    false,
-                    move || changelist_open.set(!changelist_open.get_untracked()),
+                .child(crate::ui::icon::icon_view(
+                    "branch",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text2,
                 ))
-                .child(view().flex_1())
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "changelists.title"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .font_weight(FontWeight(600))
+                        .text_color(move || design::text2()),
+                )
                 .child(
                     text(move || {
                         i18n::with_arguments(
                             language.get().as_str(),
-                            "changes.summary",
-                            &[
-                                ("staged", staged_count.to_string()),
-                                ("unstaged", (total - staged_count).to_string()),
-                            ],
+                            "changelists.files",
+                            &[("count", total.to_string())],
                         )
                     })
-                    .text_size(px(crate::ui::SECONDARY))
+                    .text_size(px(crate::ui::META))
                     .text_color(move || design::text3()),
+                )
+                .child(view().flex_1())
+                .child(tree_mode_controls(language, tree_mode))
+                .child(crate::ui::button::icon_button(
+                    "filter",
+                    move || i18n::t(language.get().as_str(), "changelists.filter"),
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || filter_open.set(!filter_open.get_untracked()),
+                )),
+        )
+        .child(dynamic(move || -> AnyElement {
+            if !filter_open.get() {
+                return view().w_full().h(px(0.0)).into_element();
+            }
+            return view()
+                .w_full()
+                .h(px(30.0))
+                .px(px(7.0))
+                .items_center()
+                .border_b_1()
+                .border_color(move || design::line_soft())
+                .child(crate::ui::text_input::text_input(
+                    filter_query,
+                    move || i18n::t(language.get().as_str(), "changelists.filter"),
+                    false,
+                    move |value| filter_query.set(value.to_string()),
+                ))
+                .into_element();
+        }))
+        .child(
+            scroll()
+                .w_full()
+                .h(px(list_height))
+                .child(view().w_full().flex_col().child(group_views)),
+        )
+        .child(
+            view()
+                .w_full()
+                .h(px(9.0))
+                .flex_row()
+                .items_center()
+                .justify_center()
+                .border_t_1()
+                .border_color(move || design::line_soft())
+                .bg(move || design::panel2())
+                .child(
+                    text("⠿")
+                        .text_size(px(crate::ui::META))
+                        .text_color(move || design::text3()),
                 ),
         )
         .child(
-            view().w_full().flex_1().min_h_0().child(
-                scroll()
-                    .w_full()
-                    .h_full()
-                    .child(view().w_full().flex_col().child(sections)),
-            ),
+            view()
+                .w_full()
+                .h(px(24.0))
+                .px(px(8.0))
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .child(
+                    text("⋯")
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "changelists.dragHint"))
+                        .flex_1()
+                        .text_size(px(crate::ui::META))
+                        .text_color(move || design::text3())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "changelists.manage"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || manage_open.set(!manage_open.get_untracked()),
+                )),
         )
         .child(
             view()
                 .absolute()
-                .top(px(metrics::HIST_BAR_H))
-                .left(px(10.0))
+                .top(px(30.0))
+                .right(px(8.0))
                 .child(dynamic(move || -> AnyElement {
-                    if !changelist_open.get() {
+                    if !manage_open.get() {
                         return view().w(px(0.0)).h(px(0.0)).into_element();
                     }
+                    let selected_path = tab_for_manage
+                        .selected_change
+                        .and_then(|index| tab_for_manage.changes.get(index))
+                        .map(|entry| entry.path.clone());
                     return changelist_pop(
                         language,
-                        tab_for_pop.clone(),
-                        changelist_open,
-                        &cmd_for_pop,
-                        selected_path.clone(),
+                        tab_for_manage.clone(),
+                        manage_open,
+                        &manage_cmd,
+                        selected_path,
                     )
                     .into_element();
                 })),
-        );
+        )
+        .into_element();
+}
+
+fn tree_mode_controls(language: Signal<SharedString>, tree_mode: Signal<bool>) -> AnyElement {
+    return dynamic(move || -> AnyElement {
+        let selected_tree = tree_mode.get();
+        let tree_variant = if selected_tree {
+            crate::ui::button::ButtonVariant::Secondary
+        } else {
+            crate::ui::button::ButtonVariant::Ghost
+        };
+        let flat_variant = if selected_tree {
+            crate::ui::button::ButtonVariant::Ghost
+        } else {
+            crate::ui::button::ButtonVariant::Secondary
+        };
+        return view()
+            .h(px(22.0))
+            .flex_row()
+            .items_center()
+            .gap(px(1.0))
+            .rounded(px(5.0))
+            .border_1()
+            .border_color(move || design::line_soft())
+            .bg(move || design::panel())
+            .child(crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "changelists.tree"),
+                tree_variant,
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || tree_mode.set(true),
+            ))
+            .child(crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "changelists.flat"),
+                flat_variant,
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || tree_mode.set(false),
+            ))
+            .into_element();
+    });
 }
 
 /// 文件行的右键菜单（设计板 10 的 `file-menu`）。
@@ -848,18 +872,6 @@ fn file_menu(
             }),
     );
     return items;
-}
-
-fn entries_count(tab: &Tab, staged: bool) -> usize {
-    return tab
-        .changes
-        .iter()
-        .filter(|entry| entry.staged == staged)
-        .count();
-}
-
-fn entry_is_staged(staged: bool) -> bool {
-    return staged;
 }
 
 fn status_color(status: char) -> AdaptiveColor {
@@ -1135,6 +1147,32 @@ fn changelist_pop(
         .child(
             view()
                 .w_full()
+                .flex_row()
+                .gap(px(4.0))
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "changes.stageAll"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
+                        let cmd = cmd.clone();
+                        move || cmd.stage_all()
+                    },
+                ))
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "changes.unstageAll"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
+                        let cmd = cmd.clone();
+                        move || cmd.unstage_all()
+                    },
+                )),
+        )
+        .child(
+            view()
+                .w_full()
                 .mt(px(2.0))
                 .pt(px(4.0))
                 .flex_row()
@@ -1184,52 +1222,4 @@ fn changelist_pop(
                 .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text3()),
         );
-}
-
-/// 表格里一行的含义。
-///
-/// 目录标题与文件行都是表格数据行（方案 A：目录分组保留，代价是键盘会经过
-/// 目录行）。行文本用前缀区分，因为 `data_table` 的每个格子只有一个字符串：
-/// - `d|<目录名>` —— 目录标题；
-/// - `f|<索引>` —— `tab.changes` 里的第 `<索引>` 项。
-#[derive(Debug, PartialEq, Eq)]
-#[allow(dead_code)] // 表格替换落地后即被 render / on_row_press 使用（见计划第 75 轮）。
-enum RowSpec {
-    Directory(String),
-    File(u32),
-}
-
-/// 解析一行表格数据；格式不对时返回 `None`（调用方画空行，不 panic）。
-#[allow(dead_code)] // 同上：表格替换落地后启用，单测已覆盖解析行为。
-fn rows_row(text: &str) -> Option<RowSpec> {
-    let (kind, rest) = text.split_once('|')?;
-    return match kind {
-        "d" => Some(RowSpec::Directory(rest.to_string())),
-        "f" => rest.parse().ok().map(RowSpec::File),
-        _ => None,
-    };
-}
-
-#[cfg(test)]
-mod row_spec_tests {
-    use super::*;
-
-    #[test]
-    fn directory_and_file_rows_parse() {
-        assert_eq!(
-            rows_row("d|src/widgets"),
-            Some(RowSpec::Directory("src/widgets".to_string()))
-        );
-        assert_eq!(rows_row("f|0"), Some(RowSpec::File(0)));
-        assert_eq!(rows_row("f|42"), Some(RowSpec::File(42)));
-    }
-
-    #[test]
-    fn malformed_rows_are_rejected_instead_of_panicking() {
-        // 前缀不认识、缺分隔符、索引不是数字：一律 None，由调用方画空行。
-        assert_eq!(rows_row("x|1"), None);
-        assert_eq!(rows_row("no-separator"), None);
-        assert_eq!(rows_row("f|abc"), None);
-        assert_eq!(rows_row(""), None);
-    }
 }

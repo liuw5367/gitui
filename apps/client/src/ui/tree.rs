@@ -21,7 +21,7 @@ use crate::ui;
 use nsh_base::SelectValue;
 use nsh_core::prelude::*;
 
-pub(crate) use nsh_base::TreeItem;
+pub(crate) use nsh_base::{TreeEntry, TreeItem};
 
 /// 一个节点。`children` 为空时是不可展开的叶子。
 pub(crate) fn node(
@@ -44,20 +44,65 @@ pub(crate) fn tree(
     selected: Option<SharedString>,
     on_select: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
+    return tree_inner(items, Vec::new(), None, selected, on_select, |_| {}, None);
+}
+
+/// 带应用内行内容的树。树的层级、选中、焦点与键盘样式仍由此公共组件统一处理。
+pub(crate) fn tree_with_renderer(
+    items: Vec<TreeItem>,
+    default_expanded: Vec<SharedString>,
+    expanded: Option<Vec<SharedString>>,
+    selected: Option<SharedString>,
+    on_select: impl Fn(&str) + 'static,
+    on_expanded: impl Fn(Vec<SharedString>) + 'static,
+    render_item: impl Fn(&TreeEntry) -> AnyElement + 'static,
+) -> impl IntoElement {
+    return tree_inner(
+        items,
+        default_expanded,
+        expanded,
+        selected,
+        on_select,
+        on_expanded,
+        Some(std::rc::Rc::new(render_item)),
+    );
+}
+
+fn tree_inner(
+    items: Vec<TreeItem>,
+    default_expanded: Vec<SharedString>,
+    expanded: Option<Vec<SharedString>>,
+    selected: Option<SharedString>,
+    on_select: impl Fn(&str) + 'static,
+    on_expanded: impl Fn(Vec<SharedString>) + 'static,
+    render_item: Option<std::rc::Rc<dyn Fn(&TreeEntry) -> AnyElement>>,
+) -> impl IntoElement {
     let on_select = std::rc::Rc::new(on_select);
-    return nsh_base::tree()
+    let on_expanded = std::rc::Rc::new(on_expanded);
+    let mut tree = nsh_base::tree()
         .items(items)
+        .expanded(expanded)
+        .default_expanded(default_expanded)
         .w_full()
         .h_full()
         .selected(SelectValue::from(selected))
+        .item_class(
+            "group rounded-md hover:bg-secondary selected:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
+        )
         .item_style(move |style| {
             style
                 .h(px(ui::ROW))
                 .px(px(ui::GAP))
                 .rounded(px(6.0))
+                .text_size(px(ui::BODY))
                 .text_color(move || design::text())
-        })
-        .on_selected_change(move |id: &SharedString| on_select(id.as_ref()));
+        });
+    if let Some(render_item) = render_item {
+        tree = tree.render_item(move |entry: &TreeEntry| render_item(entry));
+    }
+    return tree
+        .on_selected_change(move |id: &SharedString| on_select(id.as_ref()))
+        .on_expanded_change(move |ids: &Vec<SharedString>| on_expanded(ids.clone()));
 }
 
 #[cfg(test)]
