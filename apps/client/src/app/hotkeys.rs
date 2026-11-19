@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 /// 安装全部全局快捷键；`gallery_open` 是组件画廊的开关（⌘⇧D，调试入口）。
 pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
+    let auxiliary = handles.session.auxiliary;
     for combo in shortcuts::catalog() {
         let pressed = combo.clone();
         let settings_cmd = handles.settings.clone();
@@ -26,6 +27,9 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
                 return;
             }
             if let Some(id) = registry.get_untracked().action_for(pressed.as_str()) {
+                if auxiliary && id == "openPalette" {
+                    return;
+                }
                 run(id);
             }
         });

@@ -232,6 +232,7 @@ pub(crate) fn repository_tabs(
                                 text(move || tab.get().label())
                                     .text_size(px(ui::BODY))
                                     .line_height(px(ui::BODY_LINE))
+                                    .number_of_lines(1)
                                     .flex_1()
                                     .min_w_0()
                                     .text_color(move || {

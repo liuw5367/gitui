@@ -49,6 +49,32 @@ pub(crate) fn text_input_sized(
     );
 }
 
+/// 命令面板搜索框：融入 50pt 顶栏，不绘制独立字段底色或边框。
+pub(crate) fn palette_search_input(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    on_change: impl Fn(&str) + 'static,
+    auto_focus: bool,
+) -> impl IntoElement {
+    let placeholder: std::rc::Rc<dyn Fn() -> String> = std::rc::Rc::new(placeholder);
+    let label = placeholder.clone();
+    return nsh_base::input()
+        .value(value)
+        .placeholder(move || placeholder())
+        .on_change(move |text: &str| on_change(text))
+        .auto_focus(auto_focus)
+        .w_full()
+        .h_full()
+        .min_h_0()
+        .px(px(0.0))
+        .py(px(0.0))
+        .border_none()
+        .bg(AdaptiveColor::TRANSPARENT)
+        .text_size(px(ui::BODY))
+        .text_color(move || design::text())
+        .label(move || SharedString::from(label()));
+}
+
 /// 多行输入框（提交说明、附注、冲突结果）。
 pub(crate) fn text_area(
     value: Signal<String>,

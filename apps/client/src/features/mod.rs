@@ -279,7 +279,7 @@ impl SessionHandle {
         }
     }
 
-    /// 关闭指定标签页（原 `Actions::close_tab`）：有未提交改动时先确认。
+    /// 关闭指定标签页；未提交改动保留在磁盘上，不弹确认。
     pub(crate) fn close_tab(&self, index: usize) {
         let Some(tab) = self.tabs.get_untracked().get(index).cloned() else {
             return;
@@ -287,146 +287,37 @@ impl SessionHandle {
         self.close_tab_id(tab.id);
     }
 
-    /// 按运行期身份关闭标签，确认期间顺序变化也不会关闭另一家仓库。
+    /// 按运行期身份关闭标签，避免顺序变化时关闭错误的仓库。
     pub(crate) fn close_tab_id(&self, tab_id: u64) {
-        let tabs = self.tabs;
-        let active = self.active;
-        let store_dir = self.store_dir.clone();
-        let session = self.clone();
-        let language = self.language;
-        let perform: Arc<dyn Fn(u64)> = {
-            let tabs = tabs;
-            let active = active;
-            let store_dir = store_dir.clone();
-            let session = session.clone();
-            let persist_session = session.persist_session;
-            Arc::new(move |tab_id: u64| {
-                let mut list = tabs.get_untracked();
-                let Some(index) = list.iter().position(|tab| tab.id == tab_id) else {
-                    return;
-                };
-                let old_active = active.get_untracked().min(list.len().saturating_sub(1));
-                let removed_active = old_active == index;
-                list.remove(index);
-                let next_active = if list.is_empty() || removed_active {
-                    index.min(list.len().saturating_sub(1))
-                } else if index < old_active {
-                    old_active - 1
-                } else {
-                    old_active
-                };
-                tabs.set(list.clone());
-                active.set(next_active);
-                if list.is_empty() {
-                    if persist_session {
-                        crate::persist(&store_dir, active, tabs);
-                    }
-                    session.finish_empty_session();
-                } else {
-                    if persist_session {
-                        crate::persist(&store_dir, active, tabs);
-                    }
-                }
-            })
-        };
-        let list = tabs.get_untracked();
-        let Some(tab) = list.iter().find(|tab| tab.id == tab_id) else {
+        let mut list = self.tabs.get_untracked();
+        let Some(index) = list.iter().position(|tab| tab.id == tab_id) else {
             return;
         };
-        let changes = tab.status.len();
-        let name = tab.label();
-        if changes == 0 {
-            perform(tab_id);
-            return;
-        }
-        let language_now = language.get_untracked();
-        let pending = crate::interactions::confirm(
-            crate::i18n::with_arguments(
-                language_now.as_str(),
-                "confirm.closeTitle",
-                &[("name", name)],
-            ),
-            crate::i18n::with_arguments(
-                language_now.as_str(),
-                "confirm.closeMessage",
-                &[("count", changes.to_string())],
-            ),
-            "close",
-            crate::i18n::t(language_now.as_str(), "confirm.closeAction"),
-            crate::i18n::t(language_now.as_str(), "common.cancel"),
-            false,
-        );
-        let perform = perform.clone();
-        spawn(async move {
-            if pending.await {
-                perform(tab_id);
-            }
-        });
-    }
-
-    /// 关闭主窗口时把当前标签组一次性关闭，脏仓库共用一次确认。
-    pub(crate) fn close_workspace(&self) {
-        let snapshot = self.tabs.get_untracked();
-        let tab_ids: Vec<u64> = snapshot.iter().map(|tab| tab.id).collect();
-        let dirty_paths: Vec<String> = snapshot
-            .iter()
-            .filter(|tab| !tab.status.is_empty())
-            .map(|tab| tab.label())
-            .collect();
-        if dirty_paths.is_empty() {
-            self.finish_close_workspace(&tab_ids);
-            return;
-        }
-        let language = self.language.get_untracked();
-        let pending = crate::interactions::confirm(
-            crate::i18n::t(language.as_str(), "confirm.closeWorkspaceTitle"),
-            crate::i18n::with_arguments(
-                language.as_str(),
-                "confirm.closeWorkspaceMessage",
-                &[("repositories", dirty_paths.join(", "))],
-            ),
-            "close-workspace",
-            crate::i18n::t(language.as_str(), "confirm.closeWorkspaceAction"),
-            crate::i18n::t(language.as_str(), "common.cancel"),
-            false,
-        );
-        let session = self.clone();
-        spawn(async move {
-            if pending.await {
-                session.finish_close_workspace(&tab_ids);
-            }
-        });
-    }
-
-    fn finish_close_workspace(&self, closing_ids: &[u64]) {
-        let current = self.tabs.get_untracked();
-        let active_id = current.get(self.active.get_untracked()).map(|tab| tab.id);
-        let remaining: Vec<Tab> = current
-            .into_iter()
-            .filter(|tab| !closing_ids.contains(&tab.id))
-            .collect();
-        let next_active = if let Some(active_id) = active_id {
-            remaining
-                .iter()
-                .position(|tab| tab.id == active_id)
-                .unwrap_or_else(|| {
-                    self.active
-                        .get_untracked()
-                        .min(remaining.len().saturating_sub(1))
-                })
+        let old_active = self
+            .active
+            .get_untracked()
+            .min(list.len().saturating_sub(1));
+        let removed_active = old_active == index;
+        list.remove(index);
+        let next_active = if list.is_empty() || removed_active {
+            index.min(list.len().saturating_sub(1))
+        } else if index < old_active {
+            old_active - 1
         } else {
-            0
+            old_active
         };
-        self.tabs.set(remaining);
+        self.tabs.set(list);
         self.active.set(next_active);
+        self.persist();
         if self.tabs.get_untracked().is_empty() {
-            if self.persist_session {
-                crate::persist(&self.store_dir, self.active, self.tabs);
-            }
             self.finish_empty_session();
-        } else if self.persist_session {
-            crate::persist(&self.store_dir, self.active, self.tabs);
         }
+    }
+
+    /// 关闭主窗口时保存当前标签组，供下次启动恢复，然后关闭窗口。
+    pub(crate) fn close_workspace(&self) {
+        self.persist();
+        nsh_core::element::desktop::main_window().close();
     }
 
     /// 将指定标签放到新位置，并保持原活动仓库不变。

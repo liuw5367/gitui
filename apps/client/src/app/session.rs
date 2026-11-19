@@ -350,6 +350,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     let conflicts = repo.conflicts().unwrap_or_default();
     let remote_urls = repo.remote_urls().unwrap_or_default();
     let head = repo.head_state();
+    let sidebar_collapsed = initial_sidebar_collapsed(&refs);
     // 存储键统一用仓库根路径：入参可能是符号链接形式（macOS 的 /tmp → /private/tmp），
     // 与写入时用的 `repo.root()` 不一致会读不到清单。
     let changelists = store::load_changelists(
@@ -367,6 +368,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         commits,
         graph_commits,
         refs,
+        sidebar_collapsed,
         status,
         authors,
         changes,
@@ -383,6 +385,40 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         select_commit(&mut tab, 0);
     }
     return tab;
+}
+
+/// 新加载的仓库标签默认折叠内部引用组与 Tags；外层 Branches、Remotes 保持展开。
+fn initial_sidebar_collapsed(refs: &Refs) -> BTreeSet<String> {
+    let branch_names = refs
+        .branches
+        .iter()
+        .map(|branch| branch.name.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut collapsed = BTreeSet::from(["group:tags".to_string()]);
+    for branch in &refs.branches {
+        let mut prefix = String::new();
+        let mut segments = branch.name.split('/').peekable();
+        while let Some(segment) = segments.next() {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(segment);
+            // 前缀本身若是实际分支，会渲染为分支行而非可折叠组。
+            if segments.peek().is_some() && !branch_names.contains(prefix.as_str()) {
+                collapsed.insert(format!("branch-prefix:{prefix}"));
+            }
+        }
+    }
+    if refs.remote_info.is_empty() {
+        for remote in &refs.remotes {
+            collapsed.insert(format!("remote:{remote}"));
+        }
+    } else {
+        for remote in &refs.remote_info {
+            collapsed.insert(format!("remote:{}", remote.name));
+        }
+    }
+    return collapsed;
 }
 
 /// 生成一个「正在加载」的占位标签页：只有路径与名称，列表都是空的。
@@ -511,9 +547,64 @@ mod tests {
         assert_eq!(tab.selected, Some(0));
         assert_eq!(tab.selected_commit().expect("commit").summary, "first");
         assert!(!tab.refs.branches.is_empty());
+        assert!(tab.sidebar_collapsed.contains("group:tags"));
+        assert!(!tab.sidebar_collapsed.contains("group:branches"));
+        assert!(!tab.sidebar_collapsed.contains("group:remotes"));
         assert!(!tab.patch.lines.is_empty());
         assert_eq!(tab.files.len(), 1);
         assert_eq!(tab.authors[0].name, "Test");
+    }
+
+    #[test]
+    fn new_tabs_collapse_branch_groups_remotes_and_tags_by_default() {
+        let refs = Refs {
+            branches: vec![
+                git::Branch {
+                    name: "feature".to_string(),
+                    ..git::Branch::default()
+                },
+                git::Branch {
+                    name: "feature/ui".to_string(),
+                    ..git::Branch::default()
+                },
+                git::Branch {
+                    name: "feature/deep/leaf".to_string(),
+                    ..git::Branch::default()
+                },
+                git::Branch {
+                    name: "release/v1".to_string(),
+                    ..git::Branch::default()
+                },
+            ],
+            remote_info: vec![
+                git::RemoteInfo {
+                    name: "origin".to_string(),
+                    ..git::RemoteInfo::default()
+                },
+                git::RemoteInfo {
+                    name: "upstream".to_string(),
+                    ..git::RemoteInfo::default()
+                },
+            ],
+            ..Refs::default()
+        };
+        let collapsed = initial_sidebar_collapsed(&refs);
+        assert_eq!(
+            collapsed,
+            BTreeSet::from([
+                "branch-prefix:feature/deep".to_string(),
+                "branch-prefix:release".to_string(),
+                "group:tags".to_string(),
+                "remote:origin".to_string(),
+                "remote:upstream".to_string(),
+            ])
+        );
+
+        let refs = Refs {
+            remotes: vec!["origin".to_string()],
+            ..Refs::default()
+        };
+        assert!(initial_sidebar_collapsed(&refs).contains("remote:origin"));
     }
 
     #[test]

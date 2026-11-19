@@ -432,9 +432,14 @@ fn insert_branch(
 
 fn sort_branch_nodes(nodes: &mut [BranchNode]) {
     nodes.sort_by(|left, right| {
-        left.segment
-            .to_lowercase()
-            .cmp(&right.segment.to_lowercase())
+        left.branch
+            .is_some()
+            .cmp(&right.branch.is_some())
+            .then_with(|| {
+                left.segment
+                    .to_lowercase()
+                    .cmp(&right.segment.to_lowercase())
+            })
             .then_with(|| left.segment.cmp(&right.segment))
     });
     for node in nodes {
@@ -658,9 +663,14 @@ fn insert_remote_branch(
 
 fn sort_remote_branch_nodes(nodes: &mut [RemoteBranchNode]) {
     nodes.sort_by(|left, right| {
-        left.segment
-            .to_lowercase()
-            .cmp(&right.segment.to_lowercase())
+        left.branch
+            .is_some()
+            .cmp(&right.branch.is_some())
+            .then_with(|| {
+                left.segment
+                    .to_lowercase()
+                    .cmp(&right.segment.to_lowercase())
+            })
             .then_with(|| left.segment.cmp(&right.segment))
             .then_with(|| left.prefix.cmp(&right.prefix))
     });
@@ -2600,6 +2610,7 @@ mod sidebar_tests {
             branch("feature/z"),
             branch("Release/2.0"),
             branch("develop"),
+            branch("alpha"),
             branch("feature/a"),
             branch("feature/deep/one"),
         ]);
@@ -2608,7 +2619,7 @@ mod sidebar_tests {
             tree.iter()
                 .map(|node| node.segment.as_str())
                 .collect::<Vec<_>>(),
-            vec!["develop", "feature", "Release", "zeta"]
+            vec!["feature", "Release", "zeta", "alpha", "develop"]
         );
         let feature = tree.iter().find(|node| node.segment == "feature").unwrap();
         assert!(feature.branch.is_none());
@@ -2618,11 +2629,16 @@ mod sidebar_tests {
                 .iter()
                 .map(|node| node.segment.as_str())
                 .collect::<Vec<_>>(),
-            vec!["a", "deep", "z"]
+            vec!["deep", "a", "z"]
         );
-        assert_eq!(feature.children[1].prefix, "feature/deep");
-        assert!(feature.children[1].branch.is_none());
-        assert_eq!(feature.children[1].children[0].prefix, "feature/deep/one");
+        let deep = feature
+            .children
+            .iter()
+            .find(|node| node.segment == "deep")
+            .unwrap();
+        assert_eq!(deep.prefix, "feature/deep");
+        assert!(deep.branch.is_none());
+        assert_eq!(deep.children[0].prefix, "feature/deep/one");
     }
 
     #[test]
@@ -2656,6 +2672,7 @@ mod sidebar_tests {
             remote_branch("feature/z"),
             remote_branch("Release/2.0"),
             remote_branch("develop"),
+            remote_branch("alpha"),
             remote_branch("feature/a"),
             remote_branch("feature/deep/one"),
         ]);
@@ -2664,7 +2681,7 @@ mod sidebar_tests {
             tree.iter()
                 .map(|node| node.segment.as_str())
                 .collect::<Vec<_>>(),
-            vec!["develop", "feature", "Release", "zeta"]
+            vec!["feature", "Release", "zeta", "alpha", "develop"]
         );
         let feature = tree.iter().find(|node| node.segment == "feature").unwrap();
         assert_eq!(
@@ -2673,7 +2690,7 @@ mod sidebar_tests {
                 .iter()
                 .map(|node| node.segment.as_str())
                 .collect::<Vec<_>>(),
-            vec!["a", "deep", "z"]
+            vec!["deep", "a", "z"]
         );
         assert_eq!(
             remote_branch_descendant_fold_keys("origin", feature),

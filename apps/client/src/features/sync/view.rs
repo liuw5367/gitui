@@ -121,6 +121,7 @@ pub(crate) fn sync_dialog(
                     task,
                     target_tab_id,
                     target_path.clone(),
+                    dialog_state.remote.clone(),
                     result.clone(),
                 );
                 let left = action_panel(
@@ -149,6 +150,8 @@ pub(crate) fn sync_dialog(
                     task,
                     target_tab_id,
                     target_path,
+                    kind,
+                    dialog_state.remote.clone(),
                     on_close,
                 );
 
@@ -519,16 +522,22 @@ fn log_panel(
     task: Signal<Option<SyncTaskState>>,
     target_tab_id: Option<u64>,
     target_path: Option<String>,
+    target_remote: Option<String>,
     result: Option<Result<String, String>>,
 ) -> impl IntoElement {
     let status_result = result.clone();
     let status_task = task;
     let status_path = target_path.clone();
+    let status_remote = target_remote.clone();
     let color_result = result.clone();
     let color_task = task;
     let color_path = target_path.clone();
+    let color_remote = target_remote.clone();
+    let log_result = result.clone();
     let log_task = task;
     let log_path = target_path;
+    let log_remote = target_remote;
+    let log_scroll = element_ref();
     let mut content = view()
         .w(px(metrics::SYNC_SHEET_W / 2.0 - 1.0))
         .h_full()
@@ -565,9 +574,13 @@ fn log_panel(
                 .child(
                     text(move || {
                         let cancelled = status_task.get().is_some_and(|task| {
-                            target_tab_id == Some(task.target_tab_id)
-                                && status_path.as_deref() == Some(task.path.as_str())
-                                && task.cancelled
+                            sync_task_matches(
+                                &task,
+                                kind,
+                                target_tab_id,
+                                status_path.as_deref(),
+                                status_remote.as_deref(),
+                            ) && task.cancelled
                         });
                         let key = if cancelled {
                             "sync.cancelled"
@@ -587,9 +600,13 @@ fn log_panel(
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(move || {
                         let cancelled = color_task.get().is_some_and(|task| {
-                            target_tab_id == Some(task.target_tab_id)
-                                && color_path.as_deref() == Some(task.path.as_str())
-                                && task.cancelled
+                            sync_task_matches(
+                                &task,
+                                kind,
+                                target_tab_id,
+                                color_path.as_deref(),
+                                color_remote.as_deref(),
+                            ) && task.cancelled
                         });
                         if color_result.as_ref().is_some_and(Result::is_err) && !cancelled {
                             design::danger()
@@ -606,6 +623,7 @@ fn log_panel(
         })
         .child(
             scroll()
+                .element_ref(&log_scroll)
                 .w_full()
                 .flex_1()
                 .min_h_0()
@@ -618,18 +636,29 @@ fn log_panel(
                     let output = log_task
                         .get()
                         .filter(|task| {
-                            target_tab_id == Some(task.target_tab_id)
-                                && log_path.as_deref() == Some(task.path.as_str())
+                            sync_task_matches(
+                                task,
+                                kind,
+                                target_tab_id,
+                                log_path.as_deref(),
+                                log_remote.as_deref(),
+                            )
                         })
                         .map(|task| task.progress)
                         .unwrap_or_default();
-                    if output.trim().is_empty() {
-                        return text(move || i18n::t(language.get().as_str(), "sync.noOutput"))
+                    let Some(output) = sync_log_output(&output, log_result.as_ref()) else {
+                        let key = if log_result.is_some() {
+                            "sync.emptyOutput"
+                        } else {
+                            "sync.noOutput"
+                        };
+                        return text(move || i18n::t(language.get().as_str(), key))
                             .text_size(px(ui::SECONDARY))
                             .line_height(px(ui::SECONDARY_LINE))
                             .text_color(move || design::text3())
                             .into_element();
-                    }
+                    };
+                    log_scroll.scroll_to_end(false);
                     return text(output)
                         .text_size(px(ui::CODE))
                         .line_height(px(ui::CODE_LINE))
@@ -656,6 +685,31 @@ fn log_panel(
     return content;
 }
 
+fn sync_log_output(progress: &str, result: Option<&Result<String, String>>) -> Option<String> {
+    if !progress.trim().is_empty() {
+        return Some(progress.to_string());
+    }
+    return result.and_then(|result| {
+        let message = match result {
+            Ok(message) | Err(message) => message,
+        };
+        (!message.trim().is_empty()).then(|| message.clone())
+    });
+}
+
+fn sync_task_matches(
+    task: &SyncTaskState,
+    kind: Sync,
+    target_tab_id: Option<u64>,
+    target_path: Option<&str>,
+    target_remote: Option<&str>,
+) -> bool {
+    return task.kind == kind
+        && target_tab_id == Some(task.target_tab_id)
+        && target_path == Some(task.path.as_str())
+        && target_remote == task.remote.as_deref();
+}
+
 fn sync_log_title_key(kind: Sync) -> &'static str {
     return match kind {
         Sync::Fetch => "sync.remoteRefs",
@@ -673,12 +727,16 @@ fn sync_footer(
     task: Signal<Option<SyncTaskState>>,
     target_tab_id: Option<u64>,
     target_path: Option<String>,
+    kind: Sync,
+    target_remote: Option<String>,
     on_close: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     let status_task = task;
     let status_path = target_path.clone();
+    let status_remote = target_remote.clone();
     let color_task = task;
     let color_path = target_path;
+    let color_remote = target_remote;
     let color_result = result.clone();
     return view()
         .w_full()
@@ -694,9 +752,13 @@ fn sync_footer(
         .child(
             text(move || {
                 let cancelled = status_task.get().is_some_and(|task| {
-                    target_tab_id == Some(task.target_tab_id)
-                        && status_path.as_deref() == Some(task.path.as_str())
-                        && task.cancelled
+                    sync_task_matches(
+                        &task,
+                        kind,
+                        target_tab_id,
+                        status_path.as_deref(),
+                        status_remote.as_deref(),
+                    ) && task.cancelled
                 });
                 if cancelled {
                     return i18n::t(language.get().as_str(), "sync.cancelled");
@@ -717,9 +779,13 @@ fn sync_footer(
             .line_height(px(ui::SECONDARY_LINE))
             .text_color(move || {
                 let cancelled = color_task.get().is_some_and(|task| {
-                    target_tab_id == Some(task.target_tab_id)
-                        && color_path.as_deref() == Some(task.path.as_str())
-                        && task.cancelled
+                    sync_task_matches(
+                        &task,
+                        kind,
+                        target_tab_id,
+                        color_path.as_deref(),
+                        color_remote.as_deref(),
+                    ) && task.cancelled
                 });
                 if color_result.as_ref().is_some_and(Result::is_err) && !cancelled {
                     design::danger()
@@ -744,6 +810,96 @@ fn sync_kind_key(kind: Sync) -> &'static str {
         Sync::Pull => "sync.pull",
         Sync::Push => "sync.push",
     };
+}
+
+#[cfg(test)]
+mod log_panel_tests {
+    use super::{SyncTaskState, sync_log_output, sync_task_matches};
+    use crate::app::session::{Sync, SyncOptions};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    fn task(kind: Sync, remote: Option<&str>) -> SyncTaskState {
+        return SyncTaskState {
+            kind,
+            target_tab_id: 7,
+            path: "/repo".to_string(),
+            remote: remote.map(str::to_string),
+            options: SyncOptions::default(),
+            progress: "previous operation output".to_string(),
+            result: None,
+            cancelled: false,
+            follow_up_push: None,
+            retry_push: false,
+            cancel: Arc::new(AtomicBool::new(false)),
+        };
+    }
+
+    #[test]
+    fn progress_output_takes_precedence_over_completion_summary() {
+        let result = Ok("Fetch completed".to_string());
+
+        assert_eq!(
+            sync_log_output("Receiving objects: 100%", Some(&result)),
+            Some("Receiving objects: 100%".to_string())
+        );
+    }
+
+    #[test]
+    fn completion_summary_fills_an_empty_progress_panel() {
+        let result = Ok("Fetch completed".to_string());
+
+        assert_eq!(
+            sync_log_output("", Some(&result)),
+            Some("Fetch completed".to_string())
+        );
+    }
+
+    #[test]
+    fn empty_result_has_no_log_text() {
+        let result = Ok(String::new());
+
+        assert_eq!(sync_log_output("", Some(&result)), None);
+    }
+
+    #[test]
+    fn task_output_is_hidden_after_switching_sync_kind() {
+        let task = task(Sync::Fetch, Some("origin"));
+
+        assert!(!sync_task_matches(
+            &task,
+            Sync::Pull,
+            Some(7),
+            Some("/repo"),
+            Some("origin"),
+        ));
+    }
+
+    #[test]
+    fn task_output_is_hidden_after_switching_remote() {
+        let task = task(Sync::Fetch, Some("origin"));
+
+        assert!(!sync_task_matches(
+            &task,
+            Sync::Fetch,
+            Some(7),
+            Some("/repo"),
+            Some("upstream"),
+        ));
+    }
+
+    #[test]
+    fn task_output_matches_its_kind_and_target() {
+        let task = task(Sync::Fetch, Some("origin"));
+
+        assert!(sync_task_matches(
+            &task,
+            Sync::Fetch,
+            Some(7),
+            Some("/repo"),
+            Some("origin"),
+        ));
+    }
 }
 
 fn sync_hint_key(kind: Sync) -> &'static str {

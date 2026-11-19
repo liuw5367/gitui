@@ -66,6 +66,10 @@
 | 43 | History 组合筛选 | 画板以分支多选、单作者选择与日历范围呈现；作者没有身份标识说明 | 作者可多选并以 email 区分；日期端点用 `YYYY-MM-DD` 输入字段；分支与作者列表可滚动，包含本地和远端分支（`features/history/view.rs`、`filters.rs`） | 需求确认作者需要多选，同名作者应能区分；日期文本字段可精确键入，且避免在筛选浮层内再嵌一层日历弹层 | 是（可换为日历范围控件并缩窄作者显示） |
 | 44 | Merge 冲突代码显示 | Ours / Result / Theirs 以冲突块为单位并排标注来源行，冲突标记有单独着色 | 三侧直接展示 index stage 文件内容并用 NSH Editor 按路径语法高亮；Result 是独立可编辑文本（`features/merge/view.rs`、`ui/text_input.rs`） | NSH 没有三方合并 diff 组件；保持真实 stage 内容与可编辑 Result，避免把行级差异错当成可写回的结果 | 是（替换三侧显示组件） |
 | 45 | 引用比较条与端点选择 | 比较板未画 ref 选择器、工作区端点与空差异反馈 | 比较条提供本地/远端分支、tag、stash 选择，2-dot/3-dot、Swap、工作区切换与空态文案（`features/history/view.rs`、`app/workspace.rs`） | 完成 Compare 端点选择与退化状态，不让画板缺省组合限制可用的 Git 比较语义 | 是（需重做比较条与相应状态） |
+| 46 | 欢迎页路径输入提示 | Open 路径、Clone 目标目录、Init 目录各显示 `⌘V` 键帽 | 三个字段均不显示键帽（`features/welcome/view.rs`） | 按反馈减少输入框旁的快捷键提示；系统输入框仍支持粘贴 | 是（为三个字段恢复 `⌘V` 参数） |
+| 47 | 命令面板遮罩 | 画板为 18% 压暗并模糊 2px | 遮罩完全透明，不模糊底层（features/search/view.rs、ui/dialog.rs） | 按本次明确要求优先采用普通弹窗的透明遮罩，保留模态拦截与 Escape 关闭 | 是（改回画板遮罩） |
+| 48 | 命令面板空结果 | 画板未提供零匹配状态 | 居中搜索图标、未找到仓库或命令的提示和输入建议（features/search/view.rs、locales/*.json） | 按反馈明确搜索范围并改善无匹配时的反馈 | 是（按后续空态设计统一） |
+| 49 | 命令面板搜索结果与键盘滚动 | 画板最多展示 9 条结果，未定义列表滚动 | 输入搜索时显示全部匹配项，结果区可滚动；↑/↓ 选中移出可视区时自动滚入视图。空查询仍显示 5 条常用命令与最多 4 个最近/已打开仓库 | 按反馈移除搜索结果数量上限，并保证键盘导航可到达全部匹配项 | 是（恢复 9 条截断） |
 
 ## 3. 已澄清：不算偏离
 
@@ -78,7 +82,7 @@
 | 状态栏高 | 画板 24，实现 24，一致 | `.statusbar{height:24px}`；`native::STATUS` |
 | 提交行高 | 画板末次覆盖 28，实现 28，一致 | `.commit` 的四次声明依次为 38 / 32 / 30 / 28；`metrics::COMMIT_ROW_H` |
 | 弹窗圆角 | 画板 10，实现 10，一致 | `.dialog{border-radius:10px}`；`RADIUS_PANEL + 2`（`ui/dialog.rs`） |
-| #11 命令面板位置 | 已按画板恢复 620×512、距顶 92、水平居中及模糊背板 | `features/search/view.rs` 使用 `modal_open_with_blur` 与固定面板尺寸 |
+| #11 命令面板位置 | 位置按画板保持 620×512、距顶 92、水平居中；透明遮罩按 #47 记录 | `features/search/view.rs` 使用 `modal_open_transparent` 与固定面板尺寸 |
 | 侧栏材质 | 画板与实现都是纯色，未用 `macos_backdrop` | 全库无 `macos_backdrop` 调用；材质留待评估 |
 | 桌面渐变 `desk1` / `desk2` | 不进窗口内容，不移植 | 画板 `.desktop` 的背景，只属于画板外壳 |
 

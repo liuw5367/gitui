@@ -259,6 +259,67 @@ fn body(
                     )),
             ))
             .child(section(
+                "Command palette",
+                view()
+                    .w(px(620.0))
+                    .flex_col()
+                    .gap(px(ui::GAP_XS))
+                    .child(ui::section::palette_section_label(move || {
+                        "Commands".to_string()
+                    }))
+                    .child(
+                        view()
+                            .w_full()
+                            .h(px(50.0))
+                            .flex_row()
+                            .items_center()
+                            .gap(px(9.0))
+                            .px(px(14.0))
+                            .border_b_1()
+                            .border_color(move || design::line())
+                            .child(ui::icon::icon_view(
+                                "search",
+                                ui::icon::IconSize::Inline,
+                                design::text3,
+                            ))
+                            .child(view().flex_1().min_w_0().child(
+                                ui::text_input::palette_search_input(
+                                    input_value,
+                                    move || "Search repositories or run a command".to_string(),
+                                    move |text| input_value.set(text.to_string()),
+                                    false,
+                                ),
+                            ))
+                            .child(ui::badge::kbd("esc")),
+                    )
+                    .child(ui::row::palette_row(
+                        move || "New Branch…".to_string(),
+                        Some((Box::new(move || "Command · repository".to_string()), false)),
+                        Some(
+                            ui::icon::icon_view(
+                                "branch",
+                                ui::icon::IconSize::Inline,
+                                design::accent,
+                            )
+                            .into_element(),
+                        ),
+                        vec![ui::badge::kbd("⌘⇧B").into_element()],
+                        move || true,
+                        || {},
+                    ))
+                    .child(ui::row::palette_row(
+                        move || "Open Settings…".to_string(),
+                        Some((Box::new(move || "Command · global".to_string()), false)),
+                        Some(
+                            ui::icon::icon_view("gear", ui::icon::IconSize::Inline, design::text3)
+                                .into_element(),
+                        ),
+                        vec![ui::badge::kbd("⌘,").into_element()],
+                        move || false,
+                        || {},
+                    )),
+            ))
+            .child(section(
                 "Rows",
                 view()
                     .w_full()

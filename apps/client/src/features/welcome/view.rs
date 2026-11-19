@@ -742,7 +742,7 @@ fn open_form(
             ui::text_input::path_input_submit(
                 path,
                 move || "~/Developer/gitui".to_string(),
-                Some("⌘V"),
+                None,
                 move |text| path.set(text.to_string()),
                 move || submit.open_or_choose(),
             ),
@@ -822,7 +822,7 @@ fn clone_form(
                     ui::text_input::path_input(
                         set_destination,
                         move || "~/Developer/repo".to_string(),
-                        Some("⌘V"),
+                        None,
                         move |text| set_destination.set(text.to_string()),
                     ),
                     None,
@@ -1053,7 +1053,7 @@ fn init_form(
                     ui::text_input::path_input(
                         path,
                         move || "~/Developer/new-project".to_string(),
-                        Some("⌘V"),
+                        None,
                         move |text| path.set(text.to_string()),
                     ),
                     None,

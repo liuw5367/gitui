@@ -94,6 +94,8 @@ pub(crate) fn modal_open(
         move || cancel(),
         move || backdrop(),
         None,
+        false,
+        ModalAnimation::Fade,
     )
     .into_element();
 }
@@ -107,8 +109,39 @@ pub(crate) fn modal_open_with_blur(
 ) -> AnyElement {
     let on_dismiss = std::rc::Rc::new(on_dismiss);
     let cancel = on_dismiss.clone();
-    return modal_element(title, z_index, content, move || cancel(), || {}, Some(blur))
-        .into_element();
+    return modal_element(
+        title,
+        z_index,
+        content,
+        move || cancel(),
+        || {},
+        Some(blur),
+        false,
+        ModalAnimation::Fade,
+    )
+    .into_element();
+}
+
+/// 透明遮罩的模态层，保留对话框的键盘焦点与 Escape 关闭语义。
+pub(crate) fn modal_open_transparent(
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl IntoElement,
+    on_dismiss: impl Fn() + 'static,
+) -> AnyElement {
+    let on_dismiss = std::rc::Rc::new(on_dismiss);
+    let cancel = on_dismiss.clone();
+    return modal_element(
+        title,
+        z_index,
+        content,
+        move || cancel(),
+        || {},
+        None,
+        true,
+        ModalAnimation::None,
+    )
+    .into_element();
 }
 
 fn modal_element(
@@ -118,6 +151,8 @@ fn modal_element(
     on_cancel: impl Fn() + 'static,
     on_backdrop: impl Fn() + 'static,
     blur: Option<f32>,
+    transparent_backdrop: bool,
+    animation: ModalAnimation,
 ) -> impl IntoElement {
     let title = std::rc::Rc::new(title);
     let mut layer = view()
@@ -129,12 +164,18 @@ fn modal_element(
         .z_index(z_index)
         .items_center()
         .justify_center()
-        .bg(move || crate::design::token("overlay"));
+        .bg(move || {
+            if transparent_backdrop {
+                AdaptiveColor::TRANSPARENT
+            } else {
+                crate::design::token("overlay")
+            }
+        });
     if let Some(blur) = blur {
         layer = layer.backdrop_blur(px(blur));
     }
     return nsh_base::dialog()
-        .animation(ModalAnimation::Fade)
+        .animation(animation)
         .close_on_escape(true)
         // 遮罩由应用绘制，自己的点击处理负责关闭。
         .close_on_backdrop_press(false)

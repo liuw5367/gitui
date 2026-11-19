@@ -74,6 +74,24 @@ pub(crate) fn section_label_upper(caption: impl Fn() -> String + 'static) -> imp
         );
 }
 
+/// 命令面板的分组标题：保持画板高度与字距，收窄水平留白并使用三级文字色。
+pub(crate) fn palette_section_label(caption: impl Fn() -> String + 'static) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h(px(23.0))
+        .flex_row()
+        .items_center()
+        .px(px(8.0))
+        .child(
+            text(move || caption().to_uppercase())
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(23.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .letter_spacing(px(0.5))
+                .text_color(move || design::text3()),
+        );
+}
+
 /// 空态卡片：虚线描边 + 图标块 + 标题 + 说明 + 可选动作。
 ///
 /// 欢迎页画板 01b 的空列表用的就是这个形状（`.wside` 里 dashed 卡片）；与

@@ -3,6 +3,7 @@
 use domain::GitError;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -84,17 +85,23 @@ const MAX_SYNC_OUTPUT: usize = 256 * 1024;
 
 pub struct SyncRun {
     child: Child,
+    process_group: Option<u32>,
     args: String,
     output: Arc<Mutex<String>>,
+    stop_readers: Arc<AtomicBool>,
     readers: Vec<JoinHandle<()>>,
 }
 
 impl SyncRun {
     fn start(directory: &Path, args: &[String]) -> Result<SyncRun, GitError> {
-        let mut child = Command::new("git")
-            .arg("-C")
-            .arg(directory)
-            .args(args)
+        let mut command = Command::new("git");
+        command.arg("-C").arg(directory).args(args);
+        return Self::spawn(command, args);
+    }
+
+    fn spawn(mut command: Command, args: &[String]) -> Result<SyncRun, GitError> {
+        let process_group = configure_sync_process_group(&mut command);
+        let mut child = command
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -104,17 +111,28 @@ impl SyncRun {
                 reason: error.to_string(),
             })?;
         let output = Arc::new(Mutex::new(String::new()));
+        let stop_readers = Arc::new(AtomicBool::new(false));
         let mut readers = Vec::new();
         if let Some(stdout) = child.stdout.take() {
-            readers.push(read_sync_output(stdout, output.clone()));
+            readers.push(read_sync_output(
+                stdout,
+                output.clone(),
+                stop_readers.clone(),
+            ));
         }
         if let Some(stderr) = child.stderr.take() {
-            readers.push(read_sync_output(stderr, output.clone()));
+            readers.push(read_sync_output(
+                stderr,
+                output.clone(),
+                stop_readers.clone(),
+            ));
         }
         return Ok(SyncRun {
+            process_group: process_group.then(|| child.id()),
             child,
             args: args.join(" "),
             output,
+            stop_readers,
             readers,
         });
     }
@@ -137,6 +155,8 @@ impl SyncRun {
                 }));
             }
         }?;
+        self.terminate_remaining_processes();
+        self.stop_readers.store(true, Ordering::Release);
         self.join_readers();
         let output = self.progress();
         if status.success() {
@@ -151,10 +171,18 @@ impl SyncRun {
     }
 
     pub fn cancel(&mut self) -> String {
-        let _ = self.child.kill();
+        self.terminate_remaining_processes();
         let _ = self.child.wait();
+        self.stop_readers.store(true, Ordering::Release);
         self.join_readers();
         return self.progress();
+    }
+
+    fn terminate_remaining_processes(&mut self) {
+        if let Some(process_group) = self.process_group.take() {
+            terminate_sync_process_group(process_group);
+        }
+        let _ = self.child.kill();
     }
 
     fn join_readers(&mut self) {
@@ -164,33 +192,128 @@ impl SyncRun {
     }
 }
 
-fn read_sync_output<R>(pipe: R, output: Arc<Mutex<String>>) -> JoinHandle<()>
+fn configure_sync_process_group(command: &mut Command) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+        return true;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = command;
+        return false;
+    }
+}
+
+#[cfg(unix)]
+fn terminate_sync_process_group(process_group: u32) {
+    let process_group = process_group as libc::pid_t;
+    unsafe {
+        let _ = libc::kill(-process_group, libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_sync_process_group(_process_group: u32) {}
+
+#[cfg(unix)]
+fn read_sync_output<R>(pipe: R, output: Arc<Mutex<String>>, stop: Arc<AtomicBool>) -> JoinHandle<()>
 where
-    R: std::io::Read + Send + 'static,
+    R: std::io::Read + std::os::fd::AsRawFd + Send + 'static,
 {
     return std::thread::spawn(move || {
-        let mut reader = std::io::BufReader::new(pipe);
+        let fd = pipe.as_raw_fd();
+        let mut pipe = pipe;
         let mut chunk = [0u8; 1024];
+        let mut drained_after_stop = 0usize;
         loop {
-            let read = match std::io::Read::read(&mut reader, &mut chunk) {
-                Ok(0) | Err(_) => break,
+            let stopping = stop.load(Ordering::Acquire);
+            if !sync_output_ready(fd, if stopping { 0 } else { 100 }) {
+                if stopping {
+                    break;
+                }
+                continue;
+            }
+            let read = match std::io::Read::read(&mut pipe, &mut chunk) {
+                Ok(0) => break,
                 Ok(read) => read,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if stopping {
+                        break;
+                    }
+                    continue;
+                }
+                Err(_) => break,
             };
-            let text = String::from_utf8_lossy(&chunk[..read]).replace('\r', "\n");
-            if let Ok(mut output) = output.lock() {
-                output.push_str(&text);
-                if output.len() > MAX_SYNC_OUTPUT {
-                    let excess = output.len() - MAX_SYNC_OUTPUT;
-                    let boundary = output
-                        .char_indices()
-                        .find(|(index, _)| *index >= excess)
-                        .map(|(index, _)| index)
-                        .unwrap_or(output.len());
-                    output.drain(..boundary);
+            append_sync_output(&output, &chunk[..read]);
+            if stopping {
+                drained_after_stop = drained_after_stop.saturating_add(read);
+                if drained_after_stop >= MAX_SYNC_OUTPUT {
+                    break;
                 }
             }
         }
     });
+}
+
+#[cfg(unix)]
+fn sync_output_ready(fd: std::os::fd::RawFd, timeout_ms: i32) -> bool {
+    let mut descriptor = libc::pollfd {
+        fd,
+        events: libc::POLLIN | libc::POLLHUP | libc::POLLERR,
+        revents: 0,
+    };
+    loop {
+        let result = unsafe { libc::poll(&mut descriptor, 1, timeout_ms) };
+        if result > 0 {
+            return true;
+        }
+        if result == 0 {
+            return false;
+        }
+        if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            return false;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn read_sync_output<R>(pipe: R, output: Arc<Mutex<String>>, stop: Arc<AtomicBool>) -> JoinHandle<()>
+where
+    R: std::io::Read + Send + 'static,
+{
+    return std::thread::spawn(move || {
+        let mut pipe = pipe;
+        let mut chunk = [0u8; 1024];
+        loop {
+            if stop.load(Ordering::Acquire) {
+                break;
+            }
+            let read = match std::io::Read::read(&mut pipe, &mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => read,
+            };
+            append_sync_output(&output, &chunk[..read]);
+        }
+    });
+}
+
+fn append_sync_output(output: &Arc<Mutex<String>>, bytes: &[u8]) {
+    let text = String::from_utf8_lossy(bytes).replace('\r', "\n");
+    if let Ok(mut output) = output.lock() {
+        output.push_str(&text);
+        if output.len() > MAX_SYNC_OUTPUT {
+            let excess = output.len() - MAX_SYNC_OUTPUT;
+            let boundary = output
+                .char_indices()
+                .find(|(index, _)| *index >= excess)
+                .map(|(index, _)| index)
+                .unwrap_or(output.len());
+            output.drain(..boundary);
+        }
+    }
 }
 
 impl Repo {
@@ -873,6 +996,212 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(repo.root().join("b.txt")).expect("read"),
             "b\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_worker_does_not_wait_forever_for_output_after_git_exits() {
+        let helper = TempDir::new("sync-output-child");
+        let pid_file = helper.path().join("child.pid");
+        let script = helper.path().join("fake-git");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nsleep 60 &\necho $! > '{}'\nexit 0\n",
+                pid_file.display()
+            ),
+        )
+        .expect("write fake Git");
+        let mut permissions = std::fs::metadata(&script).expect("metadata").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&script, permissions).expect("make fake Git executable");
+
+        let mut run = SyncRun::spawn(Command::new(&script), &[]).expect("start fake Git");
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_cancel = cancel.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            loop {
+                if run.try_finish().is_some() {
+                    let _ = sender.send(());
+                    return;
+                }
+                if worker_cancel.load(std::sync::atomic::Ordering::Acquire) {
+                    run.cancel();
+                    let _ = sender.send(());
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+
+        for _ in 0..200 {
+            if pid_file.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(pid_file.exists(), "fake Git child should start");
+        cancel.store(true, std::sync::atomic::Ordering::Release);
+        let outcome = receiver.recv_timeout(std::time::Duration::from_millis(500));
+        if outcome.is_err() {
+            let pid = std::fs::read_to_string(&pid_file).expect("read child pid");
+            let _ = std::process::Command::new("/bin/kill")
+                .args(["-KILL", pid.trim()])
+                .status();
+            let _ = receiver.recv_timeout(std::time::Duration::from_secs(2));
+        }
+        assert!(
+            outcome.is_ok(),
+            "worker should not block joining output readers"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_cancel_terminates_descendants_holding_output_pipes() {
+        let helper = TempDir::new("sync-cancel-child");
+        let pid_file = helper.path().join("child.pid");
+        let script = helper.path().join("fake-git");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nsleep 60 &\necho $! > '{}'\nwait\n",
+                pid_file.display()
+            ),
+        )
+        .expect("write fake Git");
+        let mut permissions = std::fs::metadata(&script).expect("metadata").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&script, permissions).expect("make fake Git executable");
+
+        let run = SyncRun::spawn(Command::new(&script), &[]).expect("start fake Git");
+        for _ in 0..200 {
+            if pid_file.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(pid_file.exists(), "fake Git child should start");
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut run = run;
+            run.cancel();
+            let _ = sender.send(());
+        });
+        let outcome = receiver.recv_timeout(std::time::Duration::from_millis(500));
+        if outcome.is_err() {
+            let pid = std::fs::read_to_string(&pid_file).expect("read child pid");
+            let _ = std::process::Command::new("/bin/kill")
+                .args(["-KILL", pid.trim()])
+                .status();
+            let _ = receiver.recv_timeout(std::time::Duration::from_secs(2));
+        }
+        assert!(
+            outcome.is_ok(),
+            "cancel should close inherited output pipes"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_finish_does_not_wait_for_a_detached_output_descendant() {
+        let helper = TempDir::new("sync-detached-output-child");
+        let pid_file = helper.path().join("child.pid");
+        let script = helper.path().join("fake-git");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\npython3 -c 'import os,sys,time; os.setsid(); open(sys.argv[1], chr(119)).write(str(os.getpid())); time.sleep(60)' '{}' &\nwhile [ ! -f '{}' ]; do sleep 0.01; done\nexit 0\n",
+                pid_file.display(),
+                pid_file.display()
+            ),
+        )
+        .expect("write fake Git");
+        let mut permissions = std::fs::metadata(&script).expect("metadata").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&script, permissions).expect("make fake Git executable");
+
+        let mut run = SyncRun::spawn(Command::new(&script), &[]).expect("start fake Git");
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            loop {
+                if run.try_finish().is_some() {
+                    let _ = sender.send(());
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+
+        for _ in 0..200 {
+            if pid_file.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(pid_file.exists(), "detached Git child should start");
+        let outcome = receiver.recv_timeout(std::time::Duration::from_millis(500));
+        let pid = std::fs::read_to_string(&pid_file).expect("read child pid");
+        let _ = std::process::Command::new("/bin/kill")
+            .args(["-KILL", pid.trim()])
+            .status();
+        if outcome.is_err() {
+            let _ = receiver.recv_timeout(std::time::Duration::from_secs(2));
+        }
+        assert!(
+            outcome.is_ok(),
+            "try_finish should not block waiting for detached output descendants"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_cancel_stops_readers_for_a_detached_output_descendant() {
+        let helper = TempDir::new("sync-cancel-detached-output-child");
+        let pid_file = helper.path().join("child.pid");
+        let script = helper.path().join("fake-git");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\npython3 -c 'import os,sys,time; os.setsid(); open(sys.argv[1], chr(119)).write(str(os.getpid())); time.sleep(60)' '{}' &\nwhile [ ! -f '{}' ]; do sleep 0.01; done\nwait\n",
+                pid_file.display(),
+                pid_file.display()
+            ),
+        )
+        .expect("write fake Git");
+        let mut permissions = std::fs::metadata(&script).expect("metadata").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&script, permissions).expect("make fake Git executable");
+
+        let run = SyncRun::spawn(Command::new(&script), &[]).expect("start fake Git");
+        for _ in 0..200 {
+            if pid_file.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(pid_file.exists(), "detached Git child should start");
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut run = run;
+            run.cancel();
+            let _ = sender.send(());
+        });
+        let outcome = receiver.recv_timeout(std::time::Duration::from_millis(500));
+        let pid = std::fs::read_to_string(&pid_file).expect("read child pid");
+        let _ = std::process::Command::new("/bin/kill")
+            .args(["-KILL", pid.trim()])
+            .status();
+        if outcome.is_err() {
+            let _ = receiver.recv_timeout(std::time::Duration::from_secs(2));
+        }
+        assert!(
+            outcome.is_ok(),
+            "cancel should not join readers held by detached descendants"
         );
     }
 

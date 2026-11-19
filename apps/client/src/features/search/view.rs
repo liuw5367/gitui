@@ -15,7 +15,6 @@ use std::path::PathBuf;
 /// 面板宽度与高度（设计板 `.palette`）。
 const WIDTH: f32 = 620.0;
 const HEIGHT: f32 = 512.0;
-pub(crate) const MAX_ROWS: usize = 9;
 const DEFAULT_COMMAND_IDS: [&str; 5] = ["open", "refresh", "history", "changes", "settings"];
 
 /// 面板里的命令（顺序即显示顺序）。每条的 `id` 由 `SearchCommands::run_command` 处理；
@@ -84,6 +83,12 @@ pub(crate) enum RepoSource {
     Scanned,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum RepositoryIdentity {
+    FilesystemObject { device: u64, inode: u64 },
+    Path(PathBuf),
+}
+
 /// 空查询先显示常用命令，再显示最近仓库；输入后仍保持命令在仓库之前。
 pub(crate) fn rows(
     query: &str,
@@ -95,7 +100,7 @@ pub(crate) fn rows(
     let needle = query.trim().to_lowercase();
     let matches = |text: &str| needle.is_empty() || text.to_lowercase().contains(&needle);
     let mut rows: Vec<Row> = Vec::new();
-    let open_paths: HashSet<PathBuf> = open_repos
+    let open_paths: HashSet<RepositoryIdentity> = open_repos
         .iter()
         .map(|path| repository_identity(path))
         .collect();
@@ -132,7 +137,6 @@ pub(crate) fn rows(
             }
         }
         rows.extend(repositories);
-        rows.truncate(MAX_ROWS);
         return rows;
     }
 
@@ -141,14 +145,12 @@ pub(crate) fn rows(
             .into_iter()
             .filter(|command| {
                 let label = i18n::t(language, command.key).to_lowercase();
-                label.contains(&needle) || command.id.contains(&needle)
+                let id = command.id.to_lowercase();
+                label.contains(&needle) || id.contains(&needle)
             })
             .map(|command| Row::Command(command.id)),
     );
     for path in open_repos {
-        if rows.len() == MAX_ROWS {
-            break;
-        }
         let identity = repository_identity(path);
         if matches(path) && seen.insert(identity) {
             rows.push(Row::Repo {
@@ -159,9 +161,6 @@ pub(crate) fn rows(
         }
     }
     for path in recent {
-        if rows.len() == MAX_ROWS {
-            break;
-        }
         let identity = repository_identity(path);
         if matches(path) && seen.insert(identity) {
             rows.push(Row::Repo {
@@ -172,9 +171,6 @@ pub(crate) fn rows(
         }
     }
     for path in scanned {
-        if rows.len() == MAX_ROWS {
-            break;
-        }
         if matches(path) {
             let identity = repository_identity(path);
             if seen.insert(identity) {
@@ -186,13 +182,22 @@ pub(crate) fn rows(
             }
         }
     }
-    rows.truncate(MAX_ROWS);
     return rows;
 }
 
-fn repository_identity(path: &str) -> PathBuf {
+fn repository_identity(path: &str) -> RepositoryIdentity {
     let path = PathBuf::from(path);
-    return path.canonicalize().unwrap_or(path);
+    #[cfg(unix)]
+    if let Ok(metadata) = std::fs::metadata(&path) {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.ino() != 0 {
+            return RepositoryIdentity::FilesystemObject {
+                device: metadata.dev(),
+                inode: metadata.ino(),
+            };
+        }
+    }
+    return RepositoryIdentity::Path(path.canonicalize().unwrap_or(path));
 }
 
 /// 面板宽度内的结果表。面板按画板位置出现，点击遮罩不关闭。
@@ -219,218 +224,322 @@ pub(crate) fn palette(
         std::sync::Arc::new(move |path: String| cmd.session.open_path(path))
     };
     let open_signal = state.palette_open;
+    on_key_with(
+        "escape",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            repeat: false,
+            ..Default::default()
+        },
+        move |_| open_signal.set(false),
+    );
+    let move_down = cmd.clone();
+    on_key_with(
+        "down",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            repeat: true,
+            ..Default::default()
+        },
+        move |_| move_down.move_selection(true),
+    );
+    let move_up = cmd.clone();
+    on_key_with(
+        "up",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            repeat: true,
+            ..Default::default()
+        },
+        move |_| move_up.move_selection(false),
+    );
+    let activate = cmd.clone();
+    on_key_with(
+        "enter",
+        KeyOptions {
+            when: nsh_core::keymap::When::Always,
+            repeat: false,
+            ..Default::default()
+        },
+        move |_| activate.activate_selected(),
+    );
     let scan_selected = cmd.settings.state.scan_selected;
-    let list = dynamic(move || -> AnyElement {
-        let language_now = language_now.clone();
-        let language_for_empty = language_for_empty.clone();
-        let result = rows(
-            query.get().as_str(),
-            language_now.as_str(),
-            &open_repos,
-            &recent,
-            &scan_selected.get(),
-        );
-        let highlighted = selected.get().min(result.len().saturating_sub(1));
-        let mut children: Vec<AnyElement> = Vec::new();
-        let mut last_group = "";
-        for (index, row) in result.iter().enumerate() {
-            let group = match row {
-                Row::Repo {
-                    source: RepoSource::Open,
-                    ..
-                } => "palette.groupOpen",
-                Row::Repo {
-                    source: RepoSource::Recent,
-                    ..
-                } => "palette.groupRecent",
-                Row::Repo {
-                    source: RepoSource::Scanned,
-                    ..
-                } => "palette.groupScanned",
-                Row::Command(_) => "palette.groupCommands",
-            };
-            if group != last_group {
+    let results_scroll = element_ref();
+    let list = scroll()
+        .w_full()
+        .flex_1()
+        .min_h_0()
+        .element_ref(&results_scroll)
+        .child(dynamic(move || -> AnyElement {
+            let language_now = language_now.clone();
+            let language_for_empty = language_for_empty.clone();
+            let result = rows(
+                query.get().as_str(),
+                language_now.as_str(),
+                &open_repos,
+                &recent,
+                &scan_selected.get(),
+            );
+            let mut children: Vec<AnyElement> = Vec::new();
+            let mut row_refs = Vec::with_capacity(result.len());
+            let mut last_group = "";
+            for (index, row) in result.iter().enumerate() {
+                let row_ref = element_ref();
+                row_refs.push(row_ref);
+                let group = match row {
+                    Row::Repo {
+                        source: RepoSource::Open,
+                        ..
+                    } => "palette.groupOpen",
+                    Row::Repo {
+                        source: RepoSource::Recent,
+                        ..
+                    } => "palette.groupRecent",
+                    Row::Repo {
+                        source: RepoSource::Scanned,
+                        ..
+                    } => "palette.groupScanned",
+                    Row::Command(_) => "palette.groupCommands",
+                };
+                if group != last_group {
+                    children.push(
+                        crate::ui::section::palette_section_label({
+                            let language_now = language_now.clone();
+                            move || i18n::t(language_now.as_str(), group)
+                        })
+                        .into_element(),
+                    );
+                    last_group = group;
+                }
+                let element: AnyElement = match row {
+                    Row::Repo { path, open, source } => {
+                        let is_open = *open;
+                        let icon = match source {
+                            RepoSource::Open => "folder",
+                            RepoSource::Recent => {
+                                if is_open {
+                                    "folder"
+                                } else {
+                                    "clock"
+                                }
+                            }
+                            RepoSource::Scanned => "search",
+                        };
+                        let path = path.clone();
+                        let label = path.rsplit('/').next().unwrap_or(path.as_str()).to_string();
+                        let hint = path.clone();
+                        let run = open_repo.clone();
+                        let open_signal = open_signal;
+                        let leading = view()
+                            .w(px(26.0))
+                            .h(px(26.0))
+                            .flex_shrink_0()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.0))
+                            .border_1()
+                            .border_color(move || {
+                                if selected.get() == index {
+                                    design::line_strong()
+                                } else {
+                                    design::line()
+                                }
+                            })
+                            .bg(move || {
+                                if selected.get() == index {
+                                    design::content()
+                                } else {
+                                    design::panel()
+                                }
+                            })
+                            .child(crate::ui::icon::icon_view(
+                                icon,
+                                crate::ui::icon::IconSize::Inline,
+                                move || {
+                                    if selected.get() == index {
+                                        design::accent()
+                                    } else {
+                                        design::text3()
+                                    }
+                                },
+                            ))
+                            .into_element();
+                        let trailing = vec![
+                            dynamic(move || -> AnyElement {
+                                if selected.get() == index {
+                                    crate::ui::badge::kbd("↵").into_element()
+                                } else {
+                                    view().w(px(0.0)).h(px(0.0)).into_element()
+                                }
+                            })
+                            .into_element(),
+                        ];
+                        crate::ui::row::palette_row(
+                            move || label.clone(),
+                            Some((Box::new(move || hint.clone()), true)),
+                            Some(leading),
+                            trailing,
+                            move || selected.get() == index,
+                            move || {
+                                run(path.clone());
+                                open_signal.set(false);
+                            },
+                        )
+                        .into_element()
+                    }
+                    Row::Command(id) => {
+                        let command = commands()
+                            .into_iter()
+                            .find(|command| command.id == *id)
+                            .expect("命中结果里的命令一定存在");
+                        let run = run.clone();
+                        let id = command.id;
+                        let label = i18n::t(language_now.as_str(), command.key);
+                        let language_for_hint = language_now.clone();
+                        let shortcut = command.shortcut;
+                        let open_signal = open_signal;
+                        let icon = match id {
+                            "open" | "repoManager" => "folder",
+                            "openPalette" => "search",
+                            "closeTab" => "file",
+                            "refresh" => "refresh",
+                            "history" => "clock",
+                            "changes" => "diff",
+                            "inspector" => "sidebar",
+                            "compare" => "split",
+                            "fetch" | "pull" => "down",
+                            "push" => "up",
+                            "toggleLanguage" => "globe",
+                            "toggleTheme" => "sparkle",
+                            "settings" => "gear",
+                            _ => "search",
+                        };
+                        let leading = view()
+                            .w(px(26.0))
+                            .h(px(26.0))
+                            .flex_shrink_0()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.0))
+                            .border_1()
+                            .border_color(move || {
+                                if selected.get() == index {
+                                    design::line_strong()
+                                } else {
+                                    design::line()
+                                }
+                            })
+                            .bg(move || {
+                                if selected.get() == index {
+                                    design::content()
+                                } else {
+                                    design::panel()
+                                }
+                            })
+                            .child(crate::ui::icon::icon_view(
+                                icon,
+                                crate::ui::icon::IconSize::Inline,
+                                move || {
+                                    if selected.get() == index {
+                                        design::accent()
+                                    } else {
+                                        design::text3()
+                                    }
+                                },
+                            ))
+                            .into_element();
+                        let trailing = if shortcut.is_empty() {
+                            Vec::new()
+                        } else {
+                            vec![crate::ui::badge::kbd(shortcut).into_element()]
+                        };
+                        crate::ui::row::palette_row(
+                            move || label.clone(),
+                            Some((
+                                Box::new(move || {
+                                    i18n::t(language_for_hint.as_str(), "palette.commandHint")
+                                }),
+                                false,
+                            )),
+                            Some(leading),
+                            trailing,
+                            move || selected.get() == index,
+                            move || {
+                                run(id);
+                                open_signal.set(false);
+                            },
+                        )
+                        .into_element()
+                    }
+                };
                 children.push(
-                    crate::ui::section::section_label_upper({
-                        let language_now = language_now.clone();
-                        move || i18n::t(language_now.as_str(), group)
-                    })
-                    .into_element(),
+                    view()
+                        .w_full()
+                        .element_ref(&row_ref)
+                        .child(element)
+                        .into_element(),
                 );
-                last_group = group;
             }
-            let is_highlighted = index == highlighted;
-            let element: AnyElement = match row {
-                Row::Repo { path, open, source } => {
-                    let is_open = *open;
-                    let icon = match source {
-                        RepoSource::Open => "folder",
-                        RepoSource::Recent => {
-                            if is_open {
-                                "folder"
-                            } else {
-                                "clock"
-                            }
-                        }
-                        RepoSource::Scanned => "search",
-                    };
-                    let path = path.clone();
-                    let label = path.rsplit('/').next().unwrap_or(path.as_str()).to_string();
-                    let hint = path.clone();
-                    let run = open_repo.clone();
-                    let open_signal = open_signal;
-                    let leading = view()
-                        .w(px(26.0))
-                        .h(px(26.0))
-                        .flex_shrink_0()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(6.0))
-                        .border_1()
-                        .border_color(move || {
-                            if is_highlighted {
-                                design::line_strong()
-                            } else {
-                                design::line()
-                            }
-                        })
-                        .bg(move || {
-                            if is_highlighted {
-                                design::content()
-                            } else {
-                                design::panel()
-                            }
-                        })
-                        .child(crate::ui::icon::icon_view(
-                            icon,
-                            crate::ui::icon::IconSize::Inline,
-                            move || {
-                                if is_highlighted {
-                                    design::accent()
-                                } else {
-                                    design::text3()
-                                }
-                            },
-                        ))
-                        .into_element();
-                    let trailing = if is_highlighted {
-                        vec![crate::ui::badge::kbd("↵").into_element()]
-                    } else {
-                        Vec::new()
-                    };
-                    crate::ui::row::row(
-                        move || label.clone(),
-                        Some((Box::new(move || hint.clone()), true)),
-                        Some(leading),
-                        trailing,
-                        is_highlighted,
-                        false,
-                        move || {
-                            run(path.clone());
-                            open_signal.set(false);
-                        },
-                    )
-                    .into_element()
+            // 搜索框保持焦点时，上下键只更新高亮；选中行离开视口后立即滚入视图。
+            effect(move || {
+                if let Some(row_ref) = row_refs.get(selected.get()) {
+                    row_ref.reveal(
+                        nsh_core::RevealOptions::default()
+                            .vertical(nsh_core::ScrollAlignment::Nearest)
+                            .animated(false),
+                    );
                 }
-                Row::Command(id) => {
-                    let command = commands()
-                        .into_iter()
-                        .find(|command| command.id == *id)
-                        .expect("命中结果里的命令一定存在");
-                    let run = run.clone();
-                    let id = command.id;
-                    let label = i18n::t(language_now.as_str(), command.key);
-                    let language_for_hint = language_now.clone();
-                    let shortcut = command.shortcut;
-                    let open_signal = open_signal;
-                    let leading = view()
-                        .w(px(26.0))
-                        .h(px(26.0))
-                        .flex_shrink_0()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(6.0))
-                        .border_1()
-                        .border_color(move || {
-                            if is_highlighted {
-                                design::line_strong()
-                            } else {
-                                design::line()
-                            }
-                        })
-                        .bg(move || {
-                            if is_highlighted {
-                                design::content()
-                            } else {
-                                design::panel()
-                            }
-                        })
-                        .child(crate::ui::icon::icon_view(
-                            "search",
-                            crate::ui::icon::IconSize::Inline,
-                            move || {
-                                if is_highlighted {
-                                    design::accent()
-                                } else {
-                                    design::text3()
-                                }
-                            },
-                        ))
-                        .into_element();
-                    let trailing = if shortcut.is_empty() {
-                        Vec::new()
-                    } else {
-                        vec![crate::ui::badge::kbd(shortcut).into_element()]
-                    };
-                    crate::ui::row::row(
-                        move || label.clone(),
-                        Some((
-                            Box::new(move || {
-                                i18n::t(language_for_hint.as_str(), "palette.commandHint")
-                            }),
-                            false,
-                        )),
-                        Some(leading),
-                        trailing,
-                        is_highlighted,
-                        false,
-                        move || {
-                            run(id);
-                            open_signal.set(false);
-                        },
-                    )
-                    .into_element()
-                }
-            };
-            children.push(element);
-        }
-        if children.is_empty() {
-            children.push(
+            });
+            if children.is_empty() {
+                let language_for_empty_hint = language_for_empty.clone();
                 view()
                     .w_full()
-                    .h(px(30.0))
-                    .px(px(10.0))
+                    .h_full()
+                    .flex_col()
                     .items_center()
+                    .justify_center()
+                    .gap(px(ui::GAP_SM))
+                    .child(
+                        view()
+                            .w(px(40.0))
+                            .h(px(40.0))
+                            .mb(px(ui::GAP_XS))
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(10.0))
+                            .bg(move || design::panel2())
+                            .child(crate::ui::icon::icon_view(
+                                "search",
+                                crate::ui::icon::IconSize::Illustration,
+                                design::text3,
+                            )),
+                    )
                     .child(
                         text(move || i18n::t(language_for_empty.as_str(), "palette.empty"))
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::text3()),
+                            .text_size(px(ui::BODY))
+                            .line_height(px(ui::BODY_LINE))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(move || design::text2()),
                     )
-                    .into_element(),
-            );
-        }
-        return view()
-            .w_full()
-            .flex_col()
-            .child(
-                scroll()
+                    .child(
+                        text(move || {
+                            i18n::t(language_for_empty_hint.as_str(), "palette.emptyHint")
+                        })
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(move || design::text3()),
+                    )
+                    .into_element()
+            } else {
+                view()
                     .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .child(view().w_full().flex_col().child(children)),
-            )
-            .into_element();
-    });
+                    .flex_col()
+                    .px(px(ui::GAP))
+                    .py(px(ui::GAP_XS))
+                    .child(children)
+                    .into_element()
+            }
+        }));
 
     // 点外层不关闭，按页面画板只由 Esc 退出；面板自身截获按压事件。
     let dismiss = {
@@ -464,17 +573,21 @@ pub(crate) fn palette(
                         design::text3,
                     ))
                     .child(view().flex_1().min_w_0().child(
-                        crate::ui::text_input::text_input_sized(
+                        crate::ui::text_input::palette_search_input(
                             query,
                             move || i18n::t(language.get().as_str(), "palette.placeholder"),
-                            false,
-                            42.0,
-                            move |text: &str| query.set(text.to_string()),
+                            move |text: &str| {
+                                query.set(text.to_string());
+                                selected.set(0);
+                                // 新查询从第一条结果开始，也回到结果列表顶部。
+                                results_scroll.scroll_to_offset(px(0.0), false);
+                            },
+                            true,
                         ),
                     ))
                     .child(crate::ui::badge::kbd("esc")),
             )
-            .child(view().w_full().flex_1().min_h_0().child(list))
+            .child(view().w_full().flex_1().min_h_0().flex_col().child(list))
             .child(
                 view()
                     .w_full()
@@ -507,7 +620,7 @@ pub(crate) fn palette(
                     .child(crate::ui::badge::kbd("⌘P")),
             ),
     );
-    return crate::ui::dialog::modal_open_with_blur(
+    return crate::ui::dialog::modal_open_transparent(
         move || i18n::t(language.get().as_str(), "palette.placeholder"),
         100,
         view()
@@ -519,7 +632,6 @@ pub(crate) fn palette(
             .pt(px(92.0))
             .child(panel),
         dismiss,
-        2.0,
     );
 }
 
@@ -618,7 +730,7 @@ mod tests {
     fn empty_query_keeps_four_repositories_and_five_commands() {
         let recent: Vec<String> = (0..8).map(|index| format!("/work/repo-{index}")).collect();
         let all = rows("", "en", &[], &recent, &[]);
-        assert_eq!(all.len(), MAX_ROWS);
+        assert_eq!(all.len(), 9);
         assert_eq!(
             all.iter()
                 .filter(|row| matches!(row, Row::Repo { .. }))

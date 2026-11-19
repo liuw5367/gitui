@@ -7,6 +7,11 @@ use crate::design;
 use crate::ui;
 use nsh_core::prelude::*;
 
+const PALETTE_ROW_HEIGHT: f32 = 44.0;
+const PALETTE_ROW_GAP: f32 = 9.0;
+const PALETTE_ROW_PADDING: f32 = 9.0;
+const PALETTE_ROW_RADIUS: f32 = 7.0;
+
 /// 一行列表项。
 pub(crate) fn row(
     caption: impl Fn() -> String + 'static,
@@ -172,6 +177,83 @@ pub(crate) fn row_sized(
     );
     if let Some((hint, mono)) = subtitle {
         // 副标题只占一行，并且从左侧省略：路径的尾部（仓库目录名）比开头更有用。
+        let mut line = text(move || hint())
+            .text_size(px(ui::SECONDARY))
+            .line_height(px(ui::SECONDARY_LINE))
+            .text_color(move || design::text3())
+            .number_of_lines(1)
+            .text_overflow(nsh_core::EllipsizeMode::Head);
+        if mono {
+            line = line.font_family(ui::MONO);
+        }
+        labels = labels.child(line);
+    }
+    element = element.child(labels);
+    for item in trailing {
+        element = element.child(item);
+    }
+    return element;
+}
+
+/// 命令面板的双行结果：沿用列表行的语义与焦点行为，使用画板的间距和圆角。
+pub(crate) fn palette_row(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    trailing: Vec<AnyElement>,
+    is_selected: impl Fn() -> bool + 'static,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let is_selected: std::rc::Rc<dyn Fn() -> bool> = std::rc::Rc::new(is_selected);
+    let selected_for_background = is_selected.clone();
+    let mut element = nsh_base::button()
+        .w_full()
+        .h(px(PALETTE_ROW_HEIGHT))
+        .flex_row()
+        .items_center()
+        .gap(px(PALETTE_ROW_GAP))
+        .px(px(PALETTE_ROW_PADDING))
+        .rounded(px(PALETTE_ROW_RADIUS))
+        .bg(move || {
+            if selected_for_background() {
+                design::selected()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .hover({
+            let is_selected = is_selected.clone();
+            move |style| {
+                let is_selected = is_selected.clone();
+                style.bg(move || {
+                    if is_selected() {
+                        design::token("sel-strong")
+                    } else {
+                        design::hover()
+                    }
+                })
+            }
+        })
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .on_press(move |_: &()| on_press());
+    if let Some(leading) = leading {
+        element = element.child(leading);
+    }
+
+    let mut labels = view().flex_1().min_w_0().flex_col().child(
+        text(move || caption())
+            .text_size(px(ui::BODY))
+            .line_height(px(ui::BODY_LINE))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(move || design::text())
+            .number_of_lines(1)
+            .text_overflow(nsh_core::EllipsizeMode::Tail),
+    );
+    if let Some((hint, mono)) = subtitle {
         let mut line = text(move || hint())
             .text_size(px(ui::SECONDARY))
             .line_height(px(ui::SECONDARY_LINE))

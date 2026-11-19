@@ -301,178 +301,189 @@ impl SyncCommands {
         let language = self.language;
         let notice = self.notice;
         let commands = self.clone();
-        spawn(async move {
-            loop {
-                match receiver.try_recv() {
-                    Ok(SyncWorkerEvent::Progress(progress)) => {
-                        if let Some(mut task) = task_signal.get_untracked() {
-                            if task.target_tab_id == target_tab_id && task.path == path {
-                                task.progress = progress;
-                                task_signal.set(Some(task));
+        // 回调当前 owner 已销毁；监听器跨越弹窗生命周期，写回前仍按 tab id 和路径核对目标。
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(SyncWorkerEvent::Progress(progress)) => {
+                            if let Some(mut task) = task_signal.get_untracked() {
+                                if task.target_tab_id == target_tab_id && task.path == path {
+                                    task.progress = progress;
+                                    task_signal.set(Some(task));
+                                }
                             }
                         }
-                    }
-                    Ok(SyncWorkerEvent::Finished {
-                        result,
-                        output,
-                        cancelled,
-                    }) => {
-                        let language_now = language.get_untracked();
-                        let cancelled_key = match kind {
-                            Sync::Fetch => "sync.cancelledFetch",
-                            Sync::Pull => "sync.cancelledPull",
-                            Sync::Push => "sync.cancelledPush",
-                        };
-                        let cancelled_text = crate::i18n::t(language_now.as_str(), cancelled_key);
-                        let localized_failure = result.as_ref().and_then(|result| {
-                            result.as_ref().err().map(|error| {
-                                crate::features::welcome::commands::localized_error(
-                                    language_now.as_str(),
-                                    error,
-                                )
-                            })
-                        });
-                        let mut tabs_now = tabs.get_untracked();
-                        let target = tabs_now
-                            .iter_mut()
-                            .find(|tab| tab.id == target_tab_id && tab.path == path);
-                        let mut rejected = false;
-                        let outcome = if let Some(target) = target {
-                            if cancelled {
-                                ops::finish_sync_cancelled(target, cancelled_text.clone());
-                            } else if let Some(result) = result {
-                                ops::finish_sync_result(target, kind, result);
-                            }
-                            if let Some(message) = localized_failure.as_ref() {
-                                target.sync_message = Some(message.clone());
-                            }
-                            rejected = kind == Sync::Push
-                                && target.sync_failed
-                                && target.sync_fault == Some(domain::NetworkFault::Rejected);
-                            match (&target.sync_message, target.sync_failed, cancelled) {
-                                (_, _, true) => Err(cancelled_text.clone()),
-                                (Some(message), true, false) => Err(message.clone()),
-                                (Some(message), false, false) => Ok(message.clone()),
-                                (None, _, false) => Ok(String::new()),
-                            }
-                        } else if cancelled {
-                            Err(cancelled_text.clone())
-                        } else if let Some(message) = localized_failure {
-                            Err(message)
-                        } else {
-                            match result {
-                                Some(Ok(message)) => Ok(message),
-                                Some(Err(error)) => Err(error.detail()),
-                                None => Ok(String::new()),
-                            }
-                        };
-                        tabs.set(tabs_now);
-
-                        if let Some(mut task) = task_signal.get_untracked() {
-                            if task.target_tab_id == target_tab_id && task.path == path {
-                                task.progress = if output.trim().is_empty() {
-                                    task.progress
-                                } else {
-                                    output
-                                };
-                                task.result = Some(outcome.clone());
-                                task.cancelled = cancelled;
-                                task_signal.set(Some(task));
-                            }
-                        }
-                        if let Some(mut dialog) = dialog_signal.get_untracked()
-                            && dialog.target_tab_id == Some(target_tab_id)
-                        {
-                            dialog.running = false;
-                            dialog.result = Some(outcome.clone());
-                            dialog_signal.set(Some(dialog));
-                        }
-
-                        if let Some(push_options) = follow_up_push {
-                            if !cancelled && outcome.is_ok() {
-                                commands.start_sync_with(
-                                    Sync::Push,
-                                    target_tab_id,
-                                    remote,
-                                    push_options,
-                                    None,
-                                    true,
-                                );
-                            } else if let Err(message) = outcome {
-                                crate::interactions::notify(notice, message);
-                            }
-                            return;
-                        }
-                        if retry_push {
-                            if let Err(message) = outcome {
-                                crate::interactions::notify(notice, message);
+                        Ok(SyncWorkerEvent::Finished {
+                            result,
+                            output,
+                            cancelled,
+                        }) => {
+                            let language_now = language.get_untracked();
+                            let cancelled_key = match kind {
+                                Sync::Fetch => "sync.cancelledFetch",
+                                Sync::Pull => "sync.cancelledPull",
+                                Sync::Push => "sync.cancelledPush",
+                            };
+                            let cancelled_text =
+                                crate::i18n::t(language_now.as_str(), cancelled_key);
+                            let localized_failure = result.as_ref().and_then(|result| {
+                                result.as_ref().err().map(|error| {
+                                    crate::features::welcome::commands::localized_error(
+                                        language_now.as_str(),
+                                        error,
+                                    )
+                                })
+                            });
+                            let mut tabs_now = tabs.get_untracked();
+                            let target = tabs_now
+                                .iter_mut()
+                                .find(|tab| tab.id == target_tab_id && tab.path == path);
+                            let mut rejected = false;
+                            let outcome = if let Some(target) = target {
+                                if cancelled {
+                                    ops::finish_sync_cancelled(target, cancelled_text.clone());
+                                } else if let Some(result) = result {
+                                    ops::finish_sync_result(target, kind, result);
+                                }
+                                if let Some(message) = localized_failure.as_ref() {
+                                    target.sync_message = Some(message.clone());
+                                }
+                                rejected = kind == Sync::Push
+                                    && target.sync_failed
+                                    && target.sync_fault == Some(domain::NetworkFault::Rejected);
+                                match (&target.sync_message, target.sync_failed, cancelled) {
+                                    (_, _, true) => Err(cancelled_text.clone()),
+                                    (Some(message), true, false) => Err(message.clone()),
+                                    (Some(message), false, false) => Ok(message.clone()),
+                                    (None, _, false) => Ok(String::new()),
+                                }
+                            } else if cancelled {
+                                Err(cancelled_text.clone())
+                            } else if let Some(message) = localized_failure {
+                                Err(message)
                             } else {
-                                crate::interactions::notify(
-                                    notice,
-                                    crate::i18n::t(
-                                        language.get_untracked().as_str(),
-                                        "toast.pushed",
-                                    ),
-                                );
-                            }
-                            return;
-                        }
-                        if !rejected {
-                            return;
-                        }
+                                match result {
+                                    Some(Ok(message)) => Ok(message),
+                                    Some(Err(error)) => Err(error.detail()),
+                                    None => Ok(String::new()),
+                                }
+                            };
+                            tabs.set(tabs_now);
 
-                        let lang = language.get_untracked();
-                        let pending = crate::ui::dialog::alert_with_actions(
-                            crate::i18n::t(lang.as_str(), "confirm.nonFastForwardTitle"),
-                            crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMessage"),
-                            vec![
-                                (
-                                    "rebase",
-                                    crate::i18n::t(lang.as_str(), "confirm.nonFastForwardRebase"),
-                                ),
-                                (
-                                    "merge",
-                                    crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMerge"),
-                                ),
-                            ],
-                            None,
-                            crate::i18n::t(lang.as_str(), "common.cancel"),
-                        );
-                        let Ok(answer) = pending.await else {
-                            return;
-                        };
-                        let Some(action) = answer.action else {
-                            return;
-                        };
-                        if action.as_str() == "cancel" {
+                            if let Some(mut task) = task_signal.get_untracked() {
+                                if task.target_tab_id == target_tab_id && task.path == path {
+                                    task.progress = if output.trim().is_empty() {
+                                        task.progress
+                                    } else {
+                                        output
+                                    };
+                                    task.result = Some(outcome.clone());
+                                    task.cancelled = cancelled;
+                                    task_signal.set(Some(task));
+                                }
+                            }
+                            if let Some(mut dialog) = dialog_signal.get_untracked()
+                                && dialog.target_tab_id == Some(target_tab_id)
+                            {
+                                dialog.running = false;
+                                dialog.result = Some(outcome.clone());
+                                dialog_signal.set(Some(dialog));
+                            }
+
+                            if let Some(push_options) = follow_up_push {
+                                if !cancelled && outcome.is_ok() {
+                                    commands.start_sync_with(
+                                        Sync::Push,
+                                        target_tab_id,
+                                        remote,
+                                        push_options,
+                                        None,
+                                        true,
+                                    );
+                                } else if let Err(message) = outcome {
+                                    crate::interactions::notify(notice, message);
+                                }
+                                return;
+                            }
+                            if retry_push {
+                                if let Err(message) = outcome {
+                                    crate::interactions::notify(notice, message);
+                                } else {
+                                    crate::interactions::notify(
+                                        notice,
+                                        crate::i18n::t(
+                                            language.get_untracked().as_str(),
+                                            "toast.pushed",
+                                        ),
+                                    );
+                                }
+                                return;
+                            }
+                            if !rejected {
+                                return;
+                            }
+
+                            let lang = language.get_untracked();
+                            let pending = crate::ui::dialog::alert_with_actions(
+                                crate::i18n::t(lang.as_str(), "confirm.nonFastForwardTitle"),
+                                crate::i18n::t(lang.as_str(), "confirm.nonFastForwardMessage"),
+                                vec![
+                                    (
+                                        "rebase",
+                                        crate::i18n::t(
+                                            lang.as_str(),
+                                            "confirm.nonFastForwardRebase",
+                                        ),
+                                    ),
+                                    (
+                                        "merge",
+                                        crate::i18n::t(
+                                            lang.as_str(),
+                                            "confirm.nonFastForwardMerge",
+                                        ),
+                                    ),
+                                ],
+                                None,
+                                crate::i18n::t(lang.as_str(), "common.cancel"),
+                            );
+                            let Ok(answer) = pending.await else {
+                                return;
+                            };
+                            let Some(action) = answer.action else {
+                                return;
+                            };
+                            if action.as_str() == "cancel" {
+                                return;
+                            }
+                            let strategy = if action.as_str() == "rebase" {
+                                git::PullStrategy::Rebase
+                            } else {
+                                git::PullStrategy::Merge
+                            };
+                            let mut pull_options = options.clone();
+                            pull_options.pull.strategy = strategy;
+                            commands.start_sync_with(
+                                Sync::Pull,
+                                target_tab_id,
+                                remote,
+                                pull_options,
+                                Some(options),
+                                false,
+                            );
                             return;
                         }
-                        let strategy = if action.as_str() == "rebase" {
-                            git::PullStrategy::Rebase
-                        } else {
-                            git::PullStrategy::Merge
-                        };
-                        let mut pull_options = options.clone();
-                        pull_options.pull.strategy = strategy;
-                        commands.start_sync_with(
-                            Sync::Pull,
-                            target_tab_id,
-                            remote,
-                            pull_options,
-                            Some(options),
-                            false,
-                        );
-                        return;
+                        Err(mpsc::TryRecvError::Disconnected) => return,
+                        Err(mpsc::TryRecvError::Empty) => timer(Duration::from_millis(100)).await,
                     }
-                    Err(mpsc::TryRecvError::Disconnected) => return,
-                    Err(mpsc::TryRecvError::Empty) => timer(Duration::from_millis(100)).await,
                 }
-            }
+            });
         });
     }
 
     pub(crate) fn cancel_sync(&self) {
-        if let Some(task) = self.state.task.get_untracked()
+        let task = self.state.task.get_untracked();
+        if let Some(task) = task
             && task.result.is_none()
         {
             task.cancel.store(true, Ordering::Release);
