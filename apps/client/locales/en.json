@@ -379,9 +379,17 @@
     "moveTo": "Move to Changelist"
   },
   "operation": {
-    "banner": "%{operation} in progress · %{conflicts} conflicts",
+    "banner": "%{operation} in progress · %{files} unresolved files",
     "abort": "Abort",
-    "continue": "Continue"
+    "continue": "Continue",
+    "merge": "Merge",
+    "rebase": "Rebase",
+    "cherry-pick": "Cherry-pick",
+    "revert": "Revert",
+    "none": "No operation",
+    "changed": "The Git operation changed and its state was refreshed. Review it before trying again.",
+    "noLongerActive": "This Git operation has ended. Nothing was aborted.",
+    "aborted": "Git operation aborted."
   },
   "confirm": {
     "abortTitle": "Abort %{operation}?",
@@ -438,6 +446,7 @@
   },
   "conflicts": {
     "title": "Conflicted",
+    "stashApply": "Stash applied with conflicts. Resolve the files one by one in Changes.",
     "ours": "Ours",
     "theirs": "Theirs",
     "resolved": "Mark Resolved",

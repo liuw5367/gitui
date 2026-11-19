@@ -154,7 +154,14 @@ impl MergeCommands {
                         crate::i18n::t(lang.as_str(), "conflicts.noOperation"),
                     );
                 }
-                Err(ops::ContinueError::Git(detail)) => tab.error = Some(detail),
+                Err(ops::ContinueError::OperationChanged) => {
+                    let lang = language.get_untracked();
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(lang.as_str(), "operation.changed"),
+                    );
+                }
+                Err(ops::ContinueError::Git(detail)) => crate::interactions::notify(notice, detail),
             }
             tabs.set(list);
         }
@@ -190,11 +197,17 @@ impl MergeCommands {
         let active = self.session.active;
         let language = self.language;
         let language_now = language.get_untracked();
-        let operation = tabs
+        let Some((tab_id, expected_operation)) = tabs
             .get_untracked()
             .get(active.get_untracked())
-            .map(|tab| tab.operation.id().to_string())
-            .unwrap_or_default();
+            .map(|tab| (tab.id, tab.operation))
+        else {
+            return;
+        };
+        if expected_operation == git::Operation::None {
+            return;
+        }
+        let operation = ops::operation_label(language_now.as_str(), expected_operation);
         let pending = crate::interactions::confirm(
             crate::i18n::with_arguments(
                 language_now.as_str(),
@@ -207,14 +220,33 @@ impl MergeCommands {
             crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
+        let notice = self.notice;
         spawn(async move {
             if !pending.await {
                 return;
             }
-            let current = active.get_untracked();
             let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                ops::abort_operation(tab);
+            if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+                match ops::abort_operation(tab, expected_operation) {
+                    Ok(()) => crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(language.get_untracked().as_str(), "operation.aborted"),
+                    ),
+                    Err(ops::AbortError::NoOperation) => crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(
+                            language.get_untracked().as_str(),
+                            "operation.noLongerActive",
+                        ),
+                    ),
+                    Err(ops::AbortError::OperationChanged) => crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(language.get_untracked().as_str(), "operation.changed"),
+                    ),
+                    Err(ops::AbortError::Git(detail)) => {
+                        crate::interactions::notify(notice, detail)
+                    }
+                }
                 tabs.set(list);
             }
         });

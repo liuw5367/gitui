@@ -178,7 +178,7 @@ pub(crate) fn conflict_view(
             };
             let result_text = super::ops::conflict_result(&current);
             let has_markers = domain::conflict::has_markers(result_text.as_str());
-            let operation = current.operation.id().to_string();
+            let operation = current.operation;
             let can_continue = unresolved == 0
                 && current.conflict_drafts.is_empty()
                 && current.operation != git::Operation::None;
@@ -574,12 +574,15 @@ pub(crate) fn conflict_view(
                         ))
                         .child(crate::ui::button::button(
                             {
-                                let operation = operation.clone();
+                                let operation = operation;
                                 move || {
+                                    let language = language_value.get();
+                                    let operation =
+                                        super::ops::operation_label(language.as_str(), operation);
                                     i18n::with_arguments(
-                                        language_value.get().as_str(),
+                                        language.as_str(),
                                         "conflicts.applyContinue",
-                                        &[("operation", operation.clone())],
+                                        &[("operation", operation)],
                                     )
                                 }
                             },
@@ -593,12 +596,15 @@ pub(crate) fn conflict_view(
                         ))
                         .child(crate::ui::button::button(
                             {
-                                let operation = operation.clone();
+                                let operation = operation;
                                 move || {
+                                    let language = language_value.get();
+                                    let operation =
+                                        super::ops::operation_label(language.as_str(), operation);
                                     i18n::with_arguments(
-                                        language_value.get().as_str(),
+                                        language.as_str(),
                                         "conflicts.abort",
-                                        &[("operation", operation.clone())],
+                                        &[("operation", operation)],
                                     )
                                 }
                             },

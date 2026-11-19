@@ -379,9 +379,17 @@
     "moveTo": "移入变更清单"
   },
   "operation": {
-    "banner": "正在进行 %{operation} · %{conflicts} 个冲突",
+    "banner": "正在进行 %{operation} · %{files} 个未解决文件",
     "abort": "放弃",
-    "continue": "继续"
+    "continue": "继续",
+    "merge": "合并",
+    "rebase": "变基",
+    "cherry-pick": "拣选",
+    "revert": "回滚",
+    "none": "无操作",
+    "changed": "仓库中的 Git 操作已变化，状态已刷新，请重新检查后重试。",
+    "noLongerActive": "该 Git 操作已结束，没有执行放弃。",
+    "aborted": "Git 操作已放弃。"
   },
   "confirm": {
     "abortTitle": "放弃%{operation}？",
@@ -438,6 +446,7 @@
   },
   "conflicts": {
     "title": "冲突",
+    "stashApply": "贮藏已应用，但产生了冲突。请在 Changes 中逐个解决文件。",
     "ours": "当前分支",
     "theirs": "对方分支",
     "resolved": "标记已解决",

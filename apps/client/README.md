@@ -57,7 +57,7 @@ APP_HOME=/tmp/app-home nsh run
 
 History 默认中心区域展示所有分支与 tag 可达的提交、stash 列表中的每个提交，并按父提交绘制 branch graph；引用侧栏的分支、远端分支、tag、stash 叶行按完整 ref 或 stash OID 定位并滚动到目标提交。History 列表占满中栏剩余高度，由虚拟表格滚动。顶部的分支与作者下拉菜单支持多选并显示已选数量，工具栏快速搜索独立于筛选草稿。日期区间、文件/目录路径与消息子串通过筛选浮层组合设置。右侧检查器展示提交信息和文件变更目录树；点击提交只更新检查器，点击其中的变更文件后，中栏整栏切换为占满高度的 Diff，顶部返回按钮可回到 History 并保留当前提交。提交右键菜单也可显式显示整个提交的差异。Diff 使用 NSH DiffView 按文件路径自动识别语法，支持 Unified/Split、折叠、换行、显示空白、忽略空白差异、hunk 导航、复制与导出；差异基于第一父提交，根提交与空 tree 比较。Compare 支持连续提交、所有本地/远端分支、tag、stash 端点与工作区对比，并提供 2-dot/3-dot 语义和退化态反馈；工作区比较包含暂存和未暂存的 tracked 文件。
 
-Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并按文件路径语法高亮；可编辑 Result 草稿按冲突路径留在当前仓库会话中。缺失的 stage 表示该侧删除文件，二进制冲突通过选择一侧解决。标记解决只写入并暂存当前路径；有未解决文件或未处理草稿时不能继续，继续动作还会重新读取 Git 操作与冲突状态。详细交互见[合并冲突页说明](../../docs/pages/merge-conflict.md)。
+Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并按文件路径语法高亮；可编辑 Result 草稿按冲突路径留在当前仓库会话中。缺失的 stage 表示该侧删除文件，二进制冲突通过选择一侧解决。标记解决只写入并暂存当前路径；有未解决文件或未处理草稿时不能继续。Continue 会重读 Git 操作与冲突状态；若 Rebase 继续后产生下一轮冲突，会更新文件清单并打开冲突视图。Abort 也会核对确认时的操作类型，避免仓库状态改变后误放弃另一项操作。stash apply / pop 冲突作为普通 Changes 文件冲突显示，不出现操作级 Continue / Abort。详细交互见[合并冲突页说明](../../docs/pages/merge-conflict.md)。
 
 设计稿位于 [designs/graft-git](../../designs/graft-git/)，由 design 单独维护；页面实现只引用画板与共享样式，不把 HTML/CSS 或 WebView 带进应用。
 

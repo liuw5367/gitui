@@ -827,10 +827,13 @@ impl RefsCommands {
             match result {
                 Ok(()) => {
                     let lang = language.get_untracked();
-                    crate::interactions::notify(
-                        notice,
-                        crate::i18n::t(lang.as_str(), "toast.stashDone"),
-                    );
+                    let message =
+                        if tab.operation == git::Operation::None && !tab.conflicts.is_empty() {
+                            crate::i18n::t(lang.as_str(), "conflicts.stashApply")
+                        } else {
+                            crate::i18n::t(lang.as_str(), "toast.stashDone")
+                        };
+                    crate::interactions::notify(notice, message);
                 }
                 Err(detail) => tab.error = Some(detail),
             }
@@ -861,12 +864,18 @@ impl RefsCommands {
         } else {
             ops::pop_stash_by_oid(tab, oid.as_str())
         };
+        let has_conflict = tab.operation == git::Operation::None && !tab.conflicts.is_empty();
         tabs.set(list);
         match result {
-            Ok(true) => crate::interactions::notify(
-                notice,
-                crate::i18n::t(language.get_untracked().as_str(), "toast.stashDone"),
-            ),
+            Ok(true) => {
+                let lang = language.get_untracked();
+                let message = if has_conflict {
+                    crate::i18n::t(lang.as_str(), "conflicts.stashApply")
+                } else {
+                    crate::i18n::t(lang.as_str(), "toast.stashDone")
+                };
+                crate::interactions::notify(notice, message)
+            }
             Ok(false) => crate::interactions::notify(
                 notice,
                 crate::i18n::t(language.get_untracked().as_str(), "stash.targetChanged"),

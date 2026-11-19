@@ -6,7 +6,7 @@
 
 Result 的文本编辑随当前仓库 Tab、文件路径保存；切换冲突文件或关闭冲突面板不会丢弃草稿。接受 Ours/Theirs 会从对应 index stage 取内容；该侧不存在时 Result 记录为删除。二进制 Result 必须先选择一侧。Accept Both 仅在原工作区含标准冲突标记的文本文件上可用。
 
-Mark Resolved 会验证 Result 不含未解决标记，然后只写回并暂存当前路径；选择删除时用 `git rm` 暂存该路径。所有冲突解决后视图保留“全部解决”状态，Continue 可点击；操作横幅也提供 Resolve 或 Continue 入口，以便关闭视图后继续。Continue 会在执行前重新读取操作类型与未解决路径，并拒绝存在未解决文件或草稿的情况。成功继续或 Abort 后会清理冲突视图状态。
+Mark Resolved 会验证 Result 不含未解决标记，然后只写回并暂存当前路径；选择删除时用 `git rm` 暂存该路径。所有冲突解决后视图保留“全部解决”状态，Continue 可点击；操作横幅也提供 Resolve 或 Continue 入口，以便关闭视图后继续。Continue 会在执行前重新读取操作类型与未解决路径，并拒绝存在未解决文件或草稿的情况。若 Rebase Continue 进入后续冲突轮次，客户端会重新读取操作与冲突文件，刷新文件级计数并打开新冲突；其它 Git 错误会通过状态提示展示，同时保留操作上下文。Continue 和 Abort 都会核对页面所见操作与仓库现场操作，避免使用过期状态继续或放弃。stash apply / pop 的冲突没有 Merge / Rebase 等操作标记，留在 Changes 文件列表中逐文件解决，不显示操作级 Continue / Abort。操作成功结束或 Abort 后会清理冲突视图状态。
 
 - **画板**：14 Merge conflict（有 3 个冲突文件的第 1 个 · 有 Base 条 · 有 Files 浮层 · `Apply & Continue` 禁用；无已解决态、无失败态、无二进制冲突）
 - **来源**：`designs/graft-git/project/MergeConflict.dc.html` 与共享样式表 `assets/0a859d3b7b7fd8e4958bfb63b7af439a.bin`。只按画板描述目标，不取自实现。

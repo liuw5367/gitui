@@ -726,16 +726,18 @@ pub(crate) fn op_banner(
                 move || {
                     let operation = tab
                         .get()
-                        .map(|tab| tab.operation.id().to_string())
+                        .map(|tab| {
+                            crate::features::merge::ops::operation_label(
+                                language.get().as_str(),
+                                tab.operation,
+                            )
+                        })
                         .unwrap_or_default();
                     let conflicts = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
                     i18n::with_arguments(
                         language.get().as_str(),
                         "operation.banner",
-                        &[
-                            ("operation", operation),
-                            ("conflicts", conflicts.to_string()),
-                        ],
+                        &[("operation", operation), ("files", conflicts.to_string())],
                     )
                 },
                 vec![

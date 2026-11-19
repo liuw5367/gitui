@@ -391,6 +391,47 @@ mod tests {
     }
 
     #[test]
+    fn cherry_pick_and_revert_conflicts_can_be_resolved_and_continued() {
+        let (_guard, cherry_path) = fixture("cherry-conflict", &[("a.txt", "base\n")], "base");
+        let repo = Repo::open(&cherry_path).expect("open cherry repo");
+        let base = repo.log(1, "").expect("log")[0].sha.clone();
+        repo.checkout_new_branch("topic", base.as_str())
+            .expect("topic branch");
+        std::fs::write(repo.root().join("a.txt"), "topic\n").expect("write topic");
+        repo.stage_all().expect("stage topic");
+        let topic = repo.commit("topic change", "").expect("topic commit").sha;
+        run_git(repo.root(), &["checkout", "-q", "main"]).expect("checkout main");
+        std::fs::write(repo.root().join("a.txt"), "main\n").expect("write main");
+        repo.stage_all().expect("stage main");
+        repo.commit("main change", "").expect("main commit");
+
+        assert!(repo.cherry_pick(&topic).is_err());
+        assert_eq!(repo.operation(), Operation::CherryPick);
+        assert_eq!(repo.conflicts().expect("cherry conflicts"), vec!["a.txt"]);
+        repo.resolve_with("a.txt", false).expect("resolve cherry");
+        repo.continue_operation(Operation::CherryPick)
+            .expect("continue cherry-pick");
+        assert_eq!(repo.operation(), Operation::None);
+
+        let (_guard, revert_path) = fixture("revert-conflict", &[("a.txt", "base\n")], "base");
+        let repo = Repo::open(&revert_path).expect("open revert repo");
+        std::fs::write(repo.root().join("a.txt"), "target\n").expect("write target");
+        repo.stage_all().expect("stage target");
+        let target = repo.commit("target change", "").expect("target commit").sha;
+        std::fs::write(repo.root().join("a.txt"), "later\n").expect("write later");
+        repo.stage_all().expect("stage later");
+        repo.commit("later change", "").expect("later commit");
+
+        assert!(repo.revert(&target).is_err());
+        assert_eq!(repo.operation(), Operation::Revert);
+        assert_eq!(repo.conflicts().expect("revert conflicts"), vec!["a.txt"]);
+        repo.resolve_with("a.txt", false).expect("resolve revert");
+        repo.continue_operation(Operation::Revert)
+            .expect("continue revert");
+        assert_eq!(repo.operation(), Operation::None);
+    }
+
+    #[test]
     fn cherry_pick_copies_a_commit_and_revert_undoes_one() {
         let (_guard, path) = fixture("pick", &[("a.txt", "one\n")], "first");
         let repo = Repo::open(&path).expect("open");

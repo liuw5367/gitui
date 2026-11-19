@@ -178,10 +178,7 @@ pub(crate) fn apply_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, Strin
     {
         return Ok(false);
     }
-    repo.stash_apply(oid).map_err(|error| error.detail())?;
-    refresh_refs(tab, &repo);
-    refresh_changes(tab);
-    tab.stash_diff = None;
+    apply_stash_and_refresh(tab, &repo, oid)?;
     return Ok(true);
 }
 
@@ -196,10 +193,9 @@ pub(crate) fn pop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String>
     {
         return Ok(false);
     }
-    repo.stash_apply(oid).map_err(|error| error.detail())?;
-    refresh_refs(tab, &repo);
-    refresh_changes(tab);
-    tab.stash_diff = None;
+    if apply_stash_and_refresh(tab, &repo, oid)? {
+        return Ok(true);
+    }
     let reference = repo
         .refs()
         .map_err(|error| error.detail())?
@@ -287,11 +283,7 @@ pub(crate) fn push_tag_to_remote(
 /// 应用贮藏但保留条目。
 pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
-    repo.stash_apply(reference)
-        .map_err(|error| error.detail())?;
-    tab.refs = repo.refs().unwrap_or_default();
-    refresh_changes(tab);
-    tab.stash_diff = None;
+    apply_stash_and_refresh(tab, &repo, reference)?;
     return Ok(());
 }
 
@@ -299,13 +291,33 @@ pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> 
 pub(crate) fn pop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
     // `git stash pop` 只取最近一条；指定引用时用 `apply` + `drop` 组合，语义一致。
-    repo.stash_apply(reference)
-        .map_err(|error| error.detail())?;
+    if apply_stash_and_refresh(tab, &repo, reference)? {
+        return Ok(());
+    }
     repo.stash_drop(reference).map_err(|error| error.detail())?;
+    tab.refs = repo.refs().unwrap_or_default();
+    return Ok(());
+}
+
+/// Git 将 stash 冲突作为普通 unmerged 文件返回，不建立 merge/rebase 操作标记。
+/// 即使命令以冲突退出，也先刷新 Changes，让用户能用逐文件操作解决它。
+fn apply_stash_and_refresh(tab: &mut Tab, repo: &Repo, reference: &str) -> Result<bool, String> {
+    let had_conflicts = !repo.conflicts().map_err(|error| error.detail())?.is_empty();
+    let result = repo.stash_apply(reference);
     tab.refs = repo.refs().unwrap_or_default();
     refresh_changes(tab);
     tab.stash_diff = None;
-    return Ok(());
+    match result {
+        Ok(()) => Ok(false),
+        Err(_)
+            if !had_conflicts
+                && tab.operation == git::Operation::None
+                && !tab.conflicts.is_empty() =>
+        {
+            Ok(true)
+        }
+        Err(error) => Err(error.detail()),
+    }
 }
 
 /// 清掉仓库级身份，回到全局配置。
@@ -573,6 +585,45 @@ mod tests {
                 .iter()
                 .any(|(_, url)| url == "git@example.com:b.git")
         );
+    }
+
+    #[test]
+    fn stash_apply_and_pop_conflicts_remain_in_changes_without_operation_state() {
+        let repo = TempRepo::new("stash-conflict");
+        let path = repo.path.display().to_string();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(args)
+                .status()
+                .expect("git");
+            return status.success();
+        };
+        let mut tab = load_tab(&path, &LogFilter::default());
+
+        std::fs::write(repo.path.join("a.txt"), "stash change\n").expect("stash edit");
+        stash_changes(&mut tab, "conflicting", true).expect("stash changes");
+        let stash_oid = tab.refs.stashes[0].oid.clone();
+        std::fs::write(repo.path.join("a.txt"), "main change\n").expect("main edit");
+        assert!(run(&["commit", "-q", "-am", "main change"]));
+
+        assert!(apply_stash_by_oid(&mut tab, stash_oid.as_str()).expect("apply conflicting stash"));
+        assert_eq!(tab.operation, git::Operation::None);
+        assert_eq!(tab.conflicts, vec!["a.txt".to_string()]);
+        assert_eq!(tab.refs.stashes.len(), 1, "apply 保留 stash 条目");
+
+        Repo::open(&path)
+            .expect("open repo")
+            .resolve_with("a.txt", true)
+            .expect("resolve current side");
+        refresh_changes(&mut tab);
+        assert!(tab.conflicts.is_empty());
+
+        assert!(pop_stash_by_oid(&mut tab, stash_oid.as_str()).expect("pop conflicting stash"));
+        assert_eq!(tab.operation, git::Operation::None);
+        assert_eq!(tab.conflicts, vec!["a.txt".to_string()]);
+        assert_eq!(tab.refs.stashes.len(), 1, "冲突时 pop 不删除 stash");
     }
 
     #[test]
