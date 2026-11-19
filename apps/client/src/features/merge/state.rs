@@ -4,8 +4,19 @@
 
 use nsh_core::prelude::*;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ConflictFilesMode {
+    #[default]
+    Tree,
+    List,
+}
+
 #[derive(Clone)]
 pub(crate) struct MergeState {
     /// Base 区域是否展开。
     pub(crate) base_open: Signal<bool>,
+    /// Files 浮层开关。
+    pub(crate) files_open: Signal<bool>,
+    /// Files 浮层的树形/平铺模式。
+    pub(crate) files_mode: Signal<ConflictFilesMode>,
 }

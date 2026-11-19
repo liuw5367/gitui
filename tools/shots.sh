@@ -29,6 +29,8 @@
 #   GITUI_PENDING_KEY=<组合>  录制态下把该组合当「刚按下」回显在录制卡上（如 alt+shift+k）
 #   GITUI_RESTORE_CONFIRM=1   启动即打开设置页的「恢复默认快捷键」确认弹层
 #   GITUI_INSPECTOR=1   启动即展开右侧检查器（板 08 / 18）
+#   GITUI_CONFLICT=1    指定仓库有进行中的冲突时启动即打开冲突面板（板 14）
+#   GITUI_CONFLICT_FILES=1   同时打开冲突文件浮层（Tree/List）
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
 #   GITUI_NO_WELCOME=1  不打开欢迎窗口，避免截图时选中比画廊更小的欢迎窗口
 #   GITUI_WELCOME_FORM=open|clone|init   欢迎页初始分段
@@ -110,6 +112,8 @@ echo "启动应用（HOME=${home_dir}）…"
   GITUI_SETTINGS="${GITUI_SETTINGS:-0}" \
   GITUI_SETTINGS_SECTION="${GITUI_SETTINGS_SECTION:-}" \
   GITUI_INSPECTOR="${GITUI_INSPECTOR:-0}" \
+  GITUI_CONFLICT="${GITUI_CONFLICT:-0}" \
+  GITUI_CONFLICT_FILES="${GITUI_CONFLICT_FILES:-0}" \
   GITUI_WELCOME_FORM="${GITUI_WELCOME_FORM:-}" \
   GITUI_WELCOME_STATE="${GITUI_WELCOME_STATE:-}" \
   GITUI_WELCOME_RECENT="${GITUI_WELCOME_RECENT:-}" \

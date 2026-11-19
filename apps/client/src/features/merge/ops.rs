@@ -1,6 +1,6 @@
 //! 合并与冲突的操作：冲突视图的浏览、按侧解决、标记已解决与继续/放弃操作。
 
-use crate::app::session::{ConflictDraft, Tab, reload_after_history_change};
+use crate::app::session::{ConflictDraft, ResolvedConflict, Tab, reload_after_history_change};
 use crate::features::changes::ops::refresh_changes;
 use git::Repo;
 
@@ -41,13 +41,22 @@ pub(crate) fn operation_label(language: &str, operation: git::Operation) -> Stri
 /// 打开冲突视图，并载入第一个冲突文件的内容。
 pub(crate) fn open_conflict(tab: &mut Tab) {
     tab.conflict_open = true;
-    tab.conflict_index = 0;
+    for path in &tab.conflicts {
+        if !tab.conflict_paths.contains(path) {
+            tab.conflict_paths.push(path.clone());
+        }
+    }
+    tab.conflict_index = tab
+        .conflict_paths
+        .iter()
+        .position(|path| tab.conflicts.contains(path))
+        .unwrap_or(0);
     load_conflict_text(tab);
 }
 
 /// 切换到第 `index` 个冲突文件。
 pub(crate) fn select_conflict(tab: &mut Tab, index: usize) {
-    if index >= tab.conflicts.len() {
+    if index >= tab.conflict_paths.len() {
         return;
     }
     tab.conflict_index = index;
@@ -56,11 +65,11 @@ pub(crate) fn select_conflict(tab: &mut Tab, index: usize) {
 
 /// 前一个/后一个冲突文件（到头就停住，不回绕，避免误操作）。
 pub(crate) fn step_conflict(tab: &mut Tab, forward: bool) {
-    if tab.conflicts.is_empty() {
+    if tab.conflict_paths.is_empty() {
         return;
     }
     let next = if forward {
-        (tab.conflict_index + 1).min(tab.conflicts.len() - 1)
+        (tab.conflict_index + 1).min(tab.conflict_paths.len() - 1)
     } else {
         tab.conflict_index.saturating_sub(1)
     };
@@ -68,12 +77,24 @@ pub(crate) fn step_conflict(tab: &mut Tab, forward: bool) {
 }
 
 fn load_conflict_text(tab: &mut Tab) {
-    let Some(path) = tab.conflicts.get(tab.conflict_index).cloned() else {
+    let Some(path) = tab.conflict_paths.get(tab.conflict_index).cloned() else {
         tab.conflict_text.clear();
         tab.conflict_sides = None;
         tab.conflict_binary = false;
         return;
     };
+    if tab.conflicts.contains(&path) {
+        tab.resolved_conflicts.remove(&path);
+    }
+    if let Some(resolved) = tab.resolved_conflicts.get(&path) {
+        tab.conflict_sides = resolved.sides.clone();
+        tab.conflict_binary = matches!(resolved.result, ConflictDraft::Binary(_));
+        tab.conflict_text = match &resolved.result {
+            ConflictDraft::Text(value) => value.clone(),
+            ConflictDraft::Binary(_) | ConflictDraft::Delete => String::new(),
+        };
+        return;
+    }
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
@@ -107,11 +128,17 @@ fn load_conflict_text(tab: &mut Tab) {
         .unwrap_or_default();
 }
 
-/// 当前文件的结果值来自未解决草稿，初次打开时才来自工作区文件。
+/// 当前文件的结果值来自草稿、已解决快照或工作区文件。
 pub(crate) fn conflict_result(tab: &Tab) -> String {
-    let Some(path) = tab.conflicts.get(tab.conflict_index) else {
+    let Some(path) = tab.conflict_paths.get(tab.conflict_index) else {
         return String::new();
     };
+    if let Some(resolved) = tab.resolved_conflicts.get(path) {
+        return match &resolved.result {
+            ConflictDraft::Text(value) => value.clone(),
+            ConflictDraft::Binary(_) | ConflictDraft::Delete => String::new(),
+        };
+    }
     return match tab.conflict_drafts.get(path) {
         Some(ConflictDraft::Text(value)) => value.clone(),
         Some(ConflictDraft::Binary(_) | ConflictDraft::Delete) => String::new(),
@@ -121,17 +148,23 @@ pub(crate) fn conflict_result(tab: &Tab) -> String {
 
 /// 立即把编辑器变化写入当前仓库标签的路径草稿。
 pub(crate) fn update_conflict_result(tab: &mut Tab, value: String) {
-    let Some(path) = tab.conflicts.get(tab.conflict_index).cloned() else {
+    let Some(path) = tab.conflict_paths.get(tab.conflict_index).cloned() else {
         return;
     };
+    if !tab.conflicts.contains(&path) {
+        return;
+    }
     tab.conflict_drafts.insert(path, ConflictDraft::Text(value));
 }
 
 /// 把当前冲突文件的某一侧整体写进结果。
 pub(crate) fn conflict_take_side(tab: &mut Tab, side: domain::conflict::Side) -> String {
-    let Some(path) = tab.conflicts.get(tab.conflict_index).cloned() else {
+    let Some(path) = tab.conflict_paths.get(tab.conflict_index).cloned() else {
         return String::new();
     };
+    if !tab.conflicts.contains(&path) {
+        return String::new();
+    }
     let draft = match side {
         domain::conflict::Side::Both => {
             ConflictDraft::Text(domain::conflict::merge(tab.conflict_text.as_str(), side))
@@ -159,15 +192,23 @@ pub(crate) fn mark_conflict_resolved(
     tab: &mut Tab,
     resolved: &str,
 ) -> Result<(), MarkResolvedError> {
-    let Some(path) = tab.conflicts.get(tab.conflict_index).cloned() else {
+    let Some(path) = tab.conflict_paths.get(tab.conflict_index).cloned() else {
         return Ok(());
     };
+    if !tab.conflicts.contains(&path) {
+        return Ok(());
+    }
     let repo =
         Repo::open(tab.path.as_str()).map_err(|error| MarkResolvedError::Git(error.detail()))?;
-    match tab.conflict_drafts.get(&path) {
-        Some(ConflictDraft::Binary(bytes)) => repo.resolve_conflict_bytes(path.as_str(), bytes),
-        Some(ConflictDraft::Delete) => repo.resolve_conflict_delete(path.as_str()),
-        Some(ConflictDraft::Text(_)) | None => {
+    let result = tab
+        .conflict_drafts
+        .get(&path)
+        .cloned()
+        .unwrap_or_else(|| ConflictDraft::Text(resolved.to_string()));
+    match &result {
+        ConflictDraft::Binary(bytes) => repo.resolve_conflict_bytes(path.as_str(), bytes),
+        ConflictDraft::Delete => repo.resolve_conflict_delete(path.as_str()),
+        ConflictDraft::Text(_) => {
             if tab.conflict_binary && !tab.conflict_drafts.contains_key(&path) {
                 return Err(MarkResolvedError::BinaryNeedsSide);
             }
@@ -179,10 +220,28 @@ pub(crate) fn mark_conflict_resolved(
     }
     .map_err(|error| MarkResolvedError::Git(error.detail()))?;
     tab.conflict_drafts.remove(&path);
-    refresh_changes(tab);
-    if tab.conflict_index >= tab.conflicts.len() {
-        tab.conflict_index = tab.conflicts.len().saturating_sub(1);
+    let sides = tab.conflict_sides.clone();
+    tab.resolved_conflicts
+        .insert(path.clone(), ResolvedConflict { sides, result });
+    tab.conflicts = repo
+        .conflicts()
+        .map_err(|error| MarkResolvedError::Git(error.detail()))?;
+    for unresolved in &tab.conflicts {
+        if !tab.conflict_paths.contains(unresolved) {
+            tab.conflict_paths.push(unresolved.clone());
+        }
     }
+    refresh_changes(tab);
+    tab.conflict_index = tab
+        .conflict_paths
+        .iter()
+        .position(|candidate| tab.conflicts.contains(candidate))
+        .or_else(|| {
+            tab.conflict_paths
+                .iter()
+                .position(|candidate| candidate == &path)
+        })
+        .unwrap_or(0);
     load_conflict_text(tab);
     return Ok(());
 }
@@ -239,11 +298,52 @@ pub(crate) fn resolve_conflict(tab: &mut Tab, path: &str, ours: bool) {
             return;
         }
     };
+    let resolved_snapshot = if tab.operation == git::Operation::None {
+        None
+    } else {
+        repo.conflict_sides(path).ok().map(|sides| {
+            let bytes = if ours {
+                sides.ours.clone()
+            } else {
+                sides.theirs.clone()
+            };
+            let result = bytes
+                .map(|bytes| {
+                    conflict_text(&bytes)
+                        .map(ConflictDraft::Text)
+                        .unwrap_or(ConflictDraft::Binary(bytes))
+                })
+                .unwrap_or(ConflictDraft::Delete);
+            ResolvedConflict {
+                sides: Some(sides),
+                result,
+            }
+        })
+    };
     match repo.resolve_with(path, ours) {
         Ok(()) => {
             tab.conflict_drafts.remove(path);
+            if let Some(resolved) = resolved_snapshot {
+                tab.resolved_conflicts.insert(path.to_string(), resolved);
+                if !tab.conflict_paths.iter().any(|candidate| candidate == path) {
+                    tab.conflict_paths.push(path.to_string());
+                }
+            }
             refresh_changes(tab);
-            if let Some(index) = tab.conflicts.iter().position(|item| item == path) {
+            tab.conflicts = match repo.conflicts() {
+                Ok(conflicts) => conflicts,
+                Err(error) => {
+                    tab.error = Some(error.detail());
+                    return;
+                }
+            };
+            for unresolved in &tab.conflicts {
+                tab.resolved_conflicts.remove(unresolved);
+                if !tab.conflict_paths.contains(unresolved) {
+                    tab.conflict_paths.push(unresolved.clone());
+                }
+            }
+            if let Some(index) = tab.conflict_paths.iter().position(|item| item == path) {
                 tab.conflict_index = index;
                 load_conflict_text(tab);
             }
@@ -285,6 +385,15 @@ fn refresh_operation_state(
 ) -> Result<(), String> {
     let operation = repo.operation();
     let conflicts = repo.conflicts().map_err(|error| error.detail())?;
+    let previous_operation = tab.operation;
+    let selected_path = tab
+        .conflict_paths
+        .get(tab.conflict_index)
+        .filter(|selected| conflicts.contains(selected))
+        .cloned();
+    let previous_paths = tab.conflict_paths.clone();
+    let previous_resolved = tab.resolved_conflicts.clone();
+    let previous_drafts = tab.conflict_drafts.clone();
     if reload_history {
         reload_after_history_change(tab)?;
     } else {
@@ -292,21 +401,55 @@ fn refresh_operation_state(
     }
     tab.operation = operation;
     tab.conflicts = conflicts;
-    if clear_drafts {
+    if operation != previous_operation || operation == git::Operation::None {
+        tab.conflict_paths.clear();
+        tab.resolved_conflicts.clear();
         tab.conflict_drafts.clear();
     } else {
-        tab.conflict_drafts
-            .retain(|path, _| tab.conflicts.iter().any(|conflict| conflict == path));
+        tab.conflict_paths = previous_paths;
+        for path in &tab.conflicts {
+            tab.resolved_conflicts.remove(path);
+            if !tab.conflict_paths.contains(path) {
+                tab.conflict_paths.push(path.clone());
+            }
+        }
+        tab.resolved_conflicts = previous_resolved
+            .into_iter()
+            .filter(|(path, _)| !tab.conflicts.contains(path))
+            .collect();
+        tab.conflict_drafts = if clear_drafts {
+            Default::default()
+        } else {
+            previous_drafts
+                .into_iter()
+                .filter(|(path, _)| tab.conflicts.contains(path))
+                .collect()
+        };
+        tab.conflict_index = selected_path
+            .as_ref()
+            .and_then(|selected| tab.conflict_paths.iter().position(|path| path == selected))
+            .or_else(|| {
+                tab.conflict_paths
+                    .iter()
+                    .position(|path| tab.conflicts.contains(path))
+            })
+            .unwrap_or(0);
     }
     sync_conflict_editor(tab, open_conflicts);
     return Ok(());
 }
 
 fn sync_conflict_editor(tab: &mut Tab, open_conflicts: bool) {
-    let selected_path = tab.conflicts.get(tab.conflict_index).cloned();
+    let selected_path = tab
+        .conflict_paths
+        .get(tab.conflict_index)
+        .filter(|selected| tab.conflicts.contains(selected))
+        .cloned();
     let was_open = tab.conflict_open;
     if tab.operation == git::Operation::None {
         tab.conflict_open = false;
+        tab.conflict_paths.clear();
+        tab.resolved_conflicts.clear();
         tab.conflict_drafts.clear();
         tab.conflict_index = 0;
         tab.conflict_text.clear();
@@ -314,17 +457,20 @@ fn sync_conflict_editor(tab: &mut Tab, open_conflicts: bool) {
         tab.conflict_binary = false;
         return;
     }
-    if tab.conflicts.is_empty() {
-        tab.conflict_index = 0;
-        tab.conflict_text.clear();
-        tab.conflict_sides = None;
-        tab.conflict_binary = false;
-        tab.conflict_open = was_open;
-        return;
+    for path in &tab.conflicts {
+        tab.resolved_conflicts.remove(path);
+        if !tab.conflict_paths.contains(path) {
+            tab.conflict_paths.push(path.clone());
+        }
     }
     tab.conflict_index = selected_path
         .as_ref()
-        .and_then(|selected| tab.conflicts.iter().position(|path| path == selected))
+        .and_then(|selected| tab.conflict_paths.iter().position(|path| path == selected))
+        .or_else(|| {
+            tab.conflict_paths
+                .iter()
+                .position(|path| tab.conflicts.contains(path))
+        })
         .unwrap_or(0);
     tab.conflict_open = was_open || open_conflicts;
     load_conflict_text(tab);
@@ -379,6 +525,9 @@ mod tests {
         assert!(!domain::conflict::has_markers(merged.as_str()));
         mark_conflict_resolved(&mut tab, merged.as_str()).expect("mark resolved");
         assert!(tab.conflicts.is_empty(), "标记后不应再有冲突");
+        assert_eq!(tab.conflict_paths, vec!["a.txt".to_string()]);
+        assert_eq!(conflict_result(&tab), "side\n");
+        assert!(tab.resolved_conflicts.contains_key("a.txt"));
         assert!(tab.conflict_open, "全部解决后保留视图以继续当前操作");
         assert_eq!(
             std::fs::read_to_string(repo.path.join("a.txt")).expect("read"),
@@ -417,6 +566,8 @@ mod tests {
 
         resolve_conflict(&mut tab, "a.txt", true);
         assert!(tab.conflicts.is_empty(), "解决后不应再有冲突");
+        assert_eq!(tab.conflict_paths, vec!["a.txt".to_string()]);
+        assert_eq!(conflict_result(&tab), "main\n");
         assert_eq!(
             std::fs::read_to_string(repo.path.join("a.txt")).expect("read"),
             "main\n"
@@ -480,7 +631,12 @@ mod tests {
         assert_eq!(tab.operation, git::Operation::Rebase);
         assert_eq!(tab.conflicts, vec!["b.txt".to_string()]);
         assert!(tab.conflict_open, "下一轮冲突应留在冲突视图中");
-        assert_eq!(tab.conflict_index, 0);
+        assert_eq!(
+            tab.conflict_paths
+                .get(tab.conflict_index)
+                .map(String::as_str),
+            Some("b.txt")
+        );
         assert!(tab.conflict_text.contains("<<<<<<<"));
 
         abort_operation(&mut tab, git::Operation::Rebase).expect("abort remaining rebase");

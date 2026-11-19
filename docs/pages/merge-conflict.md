@@ -2,7 +2,9 @@
 
 ## 当前实现
 
-实现从 Git index 读取每个未解决路径的 stage 1（Base）、stage 2（Ours）与 stage 3（Theirs），不再从工作区冲突标记解析左右内容。每侧按原始字节读取；缺失 stage 显示“此侧删除了该文件”，二进制侧提示无法预览。三侧文本与 Result 都使用 NSH 原生 Editor，并依据路径扩展名启用语法高亮。
+实现按设计板 14 使用顶部操作徽章与目标分支、紧凑工具条、可折叠 Base 条、Ours / Result / Theirs 三列和底部 Abort / Apply & Continue。Files 是支持 Tree / List 切换的浮层，点击外部区域或按 Escape 关闭；列表用 U / R 标记未解决与已解决路径。当前操作期间保留已见冲突文件与已解决结果快照，解决后的文件可重新选中查看，但以只读方式显示。截图验收可设 `GITUI_REPO` 指向正在冲突的仓库，并运行 `GITUI_CONFLICT=1 tools/shots.sh merge-conflict`；追加 `GITUI_CONFLICT_FILES=1` 会打开 Files 浮层。
+
+从 Git index 读取每个未解决路径的 stage 1（Base）、stage 2（Ours）与 stage 3（Theirs），不再从工作区冲突标记解析左右内容。每侧按原始字节读取；缺失 stage 显示“此侧删除了该文件”，二进制侧提示无法预览。三侧文本与 Result 都使用 NSH 原生 Editor，并依据路径扩展名启用语法高亮。工具条导航按文件切换；Git 不提供冲突块数量，因此计数显示文件数与未解决文件数，不伪报 hunk 数。
 
 Result 的文本编辑随当前仓库 Tab、文件路径保存；切换冲突文件或关闭冲突面板不会丢弃草稿。接受 Ours/Theirs 会从对应 index stage 取内容；该侧不存在时 Result 记录为删除。二进制 Result 必须先选择一侧。Accept Both 仅在原工作区含标准冲突标记的文本文件上可用。
 

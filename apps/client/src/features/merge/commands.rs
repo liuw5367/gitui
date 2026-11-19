@@ -22,6 +22,7 @@ pub(crate) struct MergeCommands {
 impl MergeCommands {
     /// 打开冲突视图并载入第一个冲突文件（原 `open_conflict`）。
     pub(crate) fn open_conflict(&self) {
+        self.state.files_open.set(false);
         let tabs = self.session.tabs;
         let active = self.session.active;
         let current = active.get_untracked();
@@ -169,6 +170,7 @@ impl MergeCommands {
 
     /// 关闭冲突视图（原 `close_conflict`）。
     pub(crate) fn close_conflict(&self) {
+        self.state.files_open.set(false);
         let tabs = self.session.tabs;
         let active = self.session.active;
         let current = active.get_untracked();

@@ -90,6 +90,10 @@ pub(crate) struct Tab {
     pub(crate) operation: git::Operation,
     /// 冲突文件路径。
     pub(crate) conflicts: Vec<String>,
+    /// 当前多步操作期间出现过的全部冲突文件，包含已经解决的路径。
+    pub(crate) conflict_paths: Vec<String>,
+    /// 已解决文件的阶段快照与最终结果，供 Files 列表回看。
+    pub(crate) resolved_conflicts: BTreeMap<String, ResolvedConflict>,
     /// 最近一次同步（fetch/pull/push）的结果；`None` 表示还没同步过。
     pub(crate) sync_message: Option<String>,
     /// 最近一次同步是否失败。
@@ -146,6 +150,13 @@ pub(crate) struct Tab {
     pub(crate) conflict_drafts: BTreeMap<String, ConflictDraft>,
     /// 打开失败时的错误详情；成功时为 `None`。
     pub(crate) error: Option<String>,
+}
+
+/// 已解决冲突的只读快照；只在多步 Git 操作仍进行时保留。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ResolvedConflict {
+    pub(crate) sides: Option<domain::conflict::ConflictSides>,
+    pub(crate) result: ConflictDraft,
 }
 
 /// 一条工作区变更。
@@ -381,6 +392,9 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         filter: filter.clone(),
         ..Tab::default()
     };
+    if tab.operation != git::Operation::None {
+        tab.conflict_paths = tab.conflicts.clone();
+    }
     if !tab.commits.is_empty() {
         select_commit(&mut tab, 0);
     }
@@ -474,6 +488,12 @@ pub(crate) fn reload_after_history_change(tab: &mut Tab) -> Result<String, Strin
     tab.branch = refreshed.branch.clone();
     tab.operation = refreshed.operation;
     tab.conflicts = refreshed.conflicts;
+    tab.conflict_paths = if refreshed.operation == git::Operation::None {
+        Vec::new()
+    } else {
+        tab.conflicts.clone()
+    };
+    tab.resolved_conflicts.clear();
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;
     tab.selected = None;

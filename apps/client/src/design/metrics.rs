@@ -80,10 +80,6 @@ pub const MERGE_LAYER_PAD: (f32, f32) = (22.0, 34.0);
 pub const MERGE_HEAD_H: f32 = 46.0;
 pub const MERGE_TOOLBAR_H: f32 = 38.0;
 pub const MERGE_FOOT_H: f32 = 46.0;
-/// `.conflict-list` 宽 224、`.conflict-row` 高 27、`.conflict-head` 高 30。
-pub const MERGE_LIST_W: f32 = 224.0;
-pub const MERGE_LIST_ROW_H: f32 = 27.0;
-pub const MERGE_LIST_HEAD_H: f32 = 30.0;
 /// `.merge-base` 高 62。
 pub const MERGE_BASE_H: f32 = 62.0;
 /// `.merge-code` 字号 10、行高 18。

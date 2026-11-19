@@ -110,6 +110,8 @@ pub(crate) fn app() -> impl IntoElement {
     let reflog_query = signal(String::new());
     // 冲突视图的 Base 区域显隐。
     let conflict_base_open = signal(false);
+    let conflict_files_open = signal(false);
+    let conflict_files_mode = signal(features::merge::state::ConflictFilesMode::Tree);
     // 验收开关：`GITUI_SYNC=1` 启动即打开同步面板，用于截图核对弹层外观
     // （遮罩深浅、圆角、阴影、关闭行为）。与 GITUI_GALLERY 同思路。
     let sync_state = signal(if acceptance::flag("GITUI_SYNC") {
@@ -196,6 +198,18 @@ pub(crate) fn app() -> impl IntoElement {
     // 根本不会渲染，截图只能看到欢迎页。
     if let Some(path) = acceptance::value("GITUI_REPO") {
         initial_tabs = vec![crate::app::session::load_tab(&path, &initial_filter)];
+    }
+    let preview_conflict = acceptance::flag("GITUI_CONFLICT");
+    let preview_conflict_files = acceptance::flag("GITUI_CONFLICT_FILES");
+    if (preview_conflict || preview_conflict_files)
+        && let Some(tab) = initial_tabs
+            .first_mut()
+            .filter(|tab| tab.operation != git::Operation::None && !tab.conflicts.is_empty())
+    {
+        features::merge::ops::open_conflict(tab);
+        if preview_conflict_files {
+            conflict_files_open.set(true);
+        }
     }
     // 验收开关：`GITUI_SETTINGS=1` 启动即打开设置窗口，用于截图核对。
     let settings_open = signal(acceptance::flag("GITUI_SETTINGS"));
@@ -371,6 +385,8 @@ pub(crate) fn app() -> impl IntoElement {
     let merge_commands = features::merge::commands::MergeCommands {
         state: features::merge::state::MergeState {
             base_open: conflict_base_open,
+            files_open: conflict_files_open,
+            files_mode: conflict_files_mode,
         },
         session: session.clone(),
         language,
