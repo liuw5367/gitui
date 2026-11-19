@@ -76,6 +76,73 @@ impl HistoryCommands {
         }
     }
 
+    /// Enter the Blame / file history page for the selected commit file.
+    pub(crate) fn open_blame(&self) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.get_mut(current) else {
+            return;
+        };
+        if tab.blame_path.is_empty() && !tab.files.is_empty() {
+            let file_index = tab.selected_file.unwrap_or(0);
+            ops::select_file(tab, file_index);
+        }
+        if tab.blame_path.is_empty() {
+            return;
+        }
+        tab.blame_return_mode = Some(crate::Mode::History);
+        self.mode.set(crate::Mode::Blame);
+        self.session.tabs.set(list);
+    }
+
+    pub(crate) fn select_blame_history(&self, sha: String) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            ops::select_blame_history(tab, sha.as_str());
+            self.session.tabs.set(list);
+        }
+    }
+
+    pub(crate) fn focus_blame_commit(&self, sha: String, line: u32) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            ops::focus_blame_commit(tab, sha, line);
+            self.session.tabs.set(list);
+        }
+    }
+
+    pub(crate) fn toggle_blame_diff(&self, show_diff: bool) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            tab.blame_show_diff = show_diff;
+            self.session.tabs.set(list);
+        }
+    }
+
+    /// Leave the blame page and return to its originating workbench context.
+    pub(crate) fn return_from_blame(&self) {
+        let current = self.session.active.get_untracked();
+        let target = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .map(|tab| {
+                tab.blame_return_mode.unwrap_or_else(|| {
+                    if tab.blame_revision == "HEAD" {
+                        crate::Mode::Changes
+                    } else {
+                        crate::Mode::History
+                    }
+                })
+            })
+            .unwrap_or(crate::Mode::History);
+        self.mode.set(target);
+    }
+
     /// 左侧分支、远端分支或 tag 按完整 ref 定位，stash 直接传 OID。
     pub(crate) fn show_reference_at(&self, tab_id: u64, reference: String) {
         let Some(path) = self

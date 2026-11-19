@@ -133,8 +133,7 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
     tab.patch = repo.patch(&sha).unwrap_or_default();
     tab.files = repo.numstat(&sha).unwrap_or_default();
     tab.details = repo.commit_details(&sha).ok();
-    tab.blame.clear();
-    tab.file_history.clear();
+    clear_blame(tab);
     tab.error = None;
 }
 
@@ -167,8 +166,7 @@ pub(crate) fn return_to_history(tab: &mut Tab) {
         tab.patch = domain::diff::Patch::default();
         tab.files.clear();
         tab.details = None;
-        tab.blame.clear();
-        tab.file_history.clear();
+        clear_blame(tab);
     }
 }
 
@@ -177,8 +175,7 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     let Some(path) = path else {
         tab.selected_file = None;
         tab.file_patch = None;
-        tab.blame.clear();
-        tab.file_history.clear();
+        clear_blame(tab);
         return;
     };
     let Some(index) = tab.files.iter().position(|file| file.path == path) else {
@@ -190,11 +187,12 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     let sha = commit.sha.clone();
     tab.selected_file = Some(index);
     tab.file_patch = None;
-    tab.blame_path = path.to_string();
     match Repo::open(tab.path.as_str()) {
         Ok(repo) => {
-            tab.blame = repo.blame(path).unwrap_or_default();
-            tab.file_history = repo.file_history(path, 50).unwrap_or_default();
+            let history = repo
+                .file_history(path, sha.as_str(), 50)
+                .unwrap_or_default();
+            load_blame_data(tab, &repo, path, sha.as_str(), history, Some(sha.clone()));
             tab.error = None;
         }
         Err(error) => {
@@ -209,6 +207,114 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     {
         tab.selected_file = None;
     }
+}
+
+/// Prepare the Blame / file history page for a commit file or a current worktree file.
+pub(crate) fn open_blame(tab: &mut Tab, path: &str, revision: &str, return_mode: crate::Mode) {
+    tab.blame_return_mode = Some(return_mode);
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            clear_blame(tab);
+            tab.blame_path = path.to_string();
+            tab.blame_revision = revision.to_string();
+            tab.blame_error = Some(error.detail());
+            return;
+        }
+    };
+    let history = repo.file_history(path, revision, 50).unwrap_or_default();
+    if revision == "HEAD" {
+        tab.selected_file = None;
+        tab.file_patch = None;
+        tab.show_commit_diff = false;
+        tab.stash_diff = None;
+    }
+    load_blame_data(tab, &repo, path, revision, history, None);
+}
+
+/// Select a file-history commit and display blame for the file version at that revision.
+pub(crate) fn select_blame_history(tab: &mut Tab, sha: &str) {
+    let Some(entry) = tab
+        .file_history
+        .iter()
+        .find(|entry| entry.commit.sha == sha)
+        .cloned()
+    else {
+        return;
+    };
+    let Ok(repo) = Repo::open(tab.path.as_str()) else {
+        tab.blame_error = Some("Could not open repository".to_string());
+        return;
+    };
+    let path = entry.path.clone();
+    let revision = entry.commit.sha.clone();
+    let history = tab.file_history.clone();
+    load_blame_data(
+        tab,
+        &repo,
+        path.as_str(),
+        revision.as_str(),
+        history,
+        Some(revision.clone()),
+    );
+}
+
+pub(crate) fn focus_blame_commit(tab: &mut Tab, sha: String, line: u32) {
+    tab.blame_focus_sha = Some(sha);
+    tab.blame_selected_line = Some(line);
+}
+
+fn load_blame_data(
+    tab: &mut Tab,
+    repo: &Repo,
+    path: &str,
+    revision: &str,
+    history: Vec<git::FileHistoryEntry>,
+    focus_sha: Option<String>,
+) {
+    let entry = history.iter().find(|entry| entry.commit.sha == revision);
+    let path_at_revision = entry.map_or_else(|| path.to_string(), |entry| entry.path.clone());
+    let content_revision = entry
+        .filter(|entry| entry.deleted)
+        .and_then(|entry| entry.commit.parents.first())
+        .cloned()
+        .unwrap_or_else(|| revision.to_string());
+    let focus_sha = focus_sha
+        .or_else(|| entry.map(|entry| entry.commit.sha.clone()))
+        .or_else(|| history.first().map(|entry| entry.commit.sha.clone()));
+    let patch = repo
+        .patch_for_path(revision, path_at_revision.as_str())
+        .unwrap_or_default();
+    match repo.blame(path_at_revision.as_str(), content_revision.as_str()) {
+        Ok(lines) => {
+            tab.blame = lines;
+            tab.blame_error = None;
+        }
+        Err(error) => {
+            tab.blame.clear();
+            tab.blame_error = Some(error.detail());
+        }
+    }
+    tab.blame_path = path_at_revision;
+    tab.blame_revision = revision.to_string();
+    tab.blame_focus_sha = focus_sha;
+    tab.blame_selected_line = None;
+    tab.file_history = history;
+    tab.blame_show_diff = false;
+    tab.blame_patch = patch;
+}
+
+fn clear_blame(tab: &mut Tab) {
+    tab.blame.clear();
+    tab.blame_path.clear();
+    tab.blame_revision.clear();
+    tab.blame_return_mode = None;
+    tab.blame_focus_sha = None;
+    tab.blame_selected_line = None;
+    tab.blame_show_diff = false;
+    tab.blame_patch = domain::diff::Patch::default();
+    tab.blame_error = None;
+    tab.file_history.clear();
 }
 
 /// 当前历史差异的展示补丁。忽略空白只改变 Git 生成的可见差异，调用方仍保留普通补丁
@@ -265,13 +371,14 @@ pub(crate) fn visible_commit_indices(
 
 /// 选中某个文件并读取它在当前提交里的补丁。
 pub(crate) fn select_file(tab: &mut Tab, index: usize) {
-    let Some(commit_index) = tab.selected else {
+    let Some(file_path) = tab.files.get(index).map(|file| file.path.clone()) else {
         return;
     };
-    let Some(file) = tab.files.get(index) else {
-        return;
-    };
-    let Some(commit) = tab.commits.get(commit_index) else {
+    let Some(commit_sha) = tab
+        .selected
+        .and_then(|commit_index| tab.commits.get(commit_index))
+        .map(|commit| commit.sha.clone())
+    else {
         return;
     };
     let repo = match Repo::open(tab.path.as_str()) {
@@ -281,16 +388,21 @@ pub(crate) fn select_file(tab: &mut Tab, index: usize) {
             return;
         }
     };
-    match repo.patch_for_path(&commit.sha, file.path.as_str()) {
+    match repo.patch_for_path(commit_sha.as_str(), file_path.as_str()) {
         Ok(patch) => {
             tab.selected_file = Some(index);
-            tab.file_patch = Some((file.path.clone(), patch));
-            // blame 与文件历史只读，失败时留空而不是报错（例如文件在新提交里不存在）。
-            tab.blame_path = file.path.clone();
-            tab.blame = repo.blame(file.path.as_str()).unwrap_or_default();
-            tab.file_history = repo
-                .file_history(file.path.as_str(), 50)
+            tab.file_patch = Some((file_path.clone(), patch));
+            let history = repo
+                .file_history(file_path.as_str(), commit_sha.as_str(), 50)
                 .unwrap_or_default();
+            load_blame_data(
+                tab,
+                &repo,
+                file_path.as_str(),
+                commit_sha.as_str(),
+                history,
+                Some(commit_sha.clone()),
+            );
         }
         Err(error) => tab.error = Some(error.detail()),
     }
@@ -414,8 +526,7 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
         tab.patch = refreshed.patch;
         tab.files = refreshed.files;
         tab.details = refreshed.details;
-        tab.blame = refreshed.blame;
-        tab.file_history = refreshed.file_history;
+        clear_blame(tab);
         tab.selected_file = None;
         tab.file_patch = None;
         tab.compare.clear();
@@ -462,8 +573,7 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
                 tab.patch = domain::diff::Patch::default();
                 tab.files.clear();
                 tab.details = None;
-                tab.blame.clear();
-                tab.file_history.clear();
+                clear_blame(tab);
             }
             tab.error = None;
         }
@@ -502,8 +612,7 @@ pub(crate) fn reload_with_filter(tab: &Tab, filter: &LogFilter) -> Tab {
             next.patch = domain::diff::Patch::default();
             next.files.clear();
             next.details = None;
-            next.blame.clear();
-            next.file_history.clear();
+            clear_blame(&mut next);
         }
     } else {
         next.compare_base = tab.compare_base.clone();
@@ -646,10 +755,102 @@ mod tests {
         let path = repo.path.display().to_string();
         let mut tab = load_tab(&path, &LogFilter::default());
         assert!(!tab.files.is_empty());
+        let selected_sha = tab.selected_commit().expect("selected commit").sha.clone();
         select_file(&mut tab, 0);
         assert!(!tab.blame.is_empty(), "选中文件后应有 blame 行");
         assert_eq!(tab.blame[0].text, "one");
         assert!(!tab.file_history.is_empty(), "选中文件后应有文件历史");
+        assert_eq!(tab.blame_revision, selected_sha);
+        assert_eq!(
+            tab.blame_focus_sha.as_deref(),
+            Some(tab.file_history[0].commit.sha.as_str())
+        );
+    }
+
+    #[test]
+    fn worktree_blame_keeps_its_return_context_after_history_navigation() {
+        let repo = TempRepo::new("blame-return");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let first_sha = tab.commits[0].sha.clone();
+        std::fs::write(repo.path.join("a.txt"), "one\ntwo\n").expect("write");
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["commit", "-q", "-am", "second"])
+            .status()
+            .expect("git");
+        assert!(status.success());
+        tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        open_blame(&mut tab, "a.txt", "HEAD", crate::Mode::Changes);
+        assert_eq!(tab.blame_return_mode, Some(crate::Mode::Changes));
+        select_blame_history(&mut tab, first_sha.as_str());
+        assert_eq!(tab.blame_revision, first_sha);
+        assert_eq!(tab.blame_return_mode, Some(crate::Mode::Changes));
+    }
+
+    #[test]
+    fn blame_history_switches_revision_and_tracks_renamed_paths() {
+        let repo = TempRepo::new("blame-rename");
+        let first = Repo::open(repo.path.display().to_string().as_str())
+            .expect("open")
+            .log(1, "")
+            .expect("first commit")
+            .remove(0);
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo.path)
+                .args(args)
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {:?}", args);
+        };
+        std::fs::write(repo.path.join("a.txt"), "one\ntwo\n").expect("write");
+        run(&["commit", "-q", "-am", "add line"]);
+        std::fs::rename(repo.path.join("a.txt"), repo.path.join("renamed.txt")).expect("rename");
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "rename file"]);
+        std::fs::remove_file(repo.path.join("renamed.txt")).expect("delete");
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "delete file"]);
+
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert_eq!(
+            tab.selected_commit().map(|commit| commit.summary.as_str()),
+            Some("delete file")
+        );
+        select_file(&mut tab, 0);
+        assert_eq!(
+            tab.blame_revision,
+            tab.selected_commit().expect("delete commit").sha
+        );
+        assert_eq!(tab.blame_path, "renamed.txt");
+        assert_eq!(
+            tab.blame
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            ["one", "two"]
+        );
+
+        select_blame_history(&mut tab, first.sha.as_str());
+        assert_eq!(tab.blame_revision, first.sha);
+        assert_eq!(tab.blame_path, "a.txt");
+        assert_eq!(
+            tab.blame
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            ["one"]
+        );
+        assert_eq!(tab.blame_focus_sha.as_deref(), Some(first.sha.as_str()));
+        focus_blame_commit(&mut tab, first.sha.clone(), 1);
+        assert_eq!(tab.blame_selected_line, Some(1));
+        assert_eq!(tab.blame_revision, first.sha);
+        assert_eq!(
+            tab.selected_commit().map(|commit| commit.summary.as_str()),
+            Some("delete file")
+        );
     }
 
     #[test]

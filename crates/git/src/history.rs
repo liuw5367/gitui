@@ -8,6 +8,8 @@ use crate::query::Repo;
 
 const LOG_FORMAT: &str =
     "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%B%x1f%D%x1f%P%x1e";
+const FILE_HISTORY_FORMAT: &str =
+    "--pretty=format:%x1e%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%B%x1f%D%x1f%P";
 
 /// An author identity from the repository history.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -47,6 +49,15 @@ pub struct BlameLine {
     /// 行号（从 1 开始）。
     pub line: u32,
     pub text: String,
+}
+
+/// A file's change in its history: the path as it existed at that commit.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FileHistoryEntry {
+    pub commit: Commit,
+    pub path: String,
+    /// True when the commit removed this path. Blame for this entry uses its first parent.
+    pub deleted: bool,
 }
 
 /// 一条 reflog 记录。
@@ -308,9 +319,19 @@ impl Repo {
         return parse_log(&String::from_utf8_lossy(&output));
     }
 
-    /// 一个文件的逐行归属（`git blame --line-porcelain`）。
-    pub fn blame(&self, path: &str) -> Result<Vec<BlameLine>, GitError> {
-        let output = run_git(&self.root, &["blame", "--line-porcelain", "--", path])?;
+    /// A file's line attribution at `revision`; `--follow` tracks renames backward.
+    pub fn blame(&self, path: &str, revision: &str) -> Result<Vec<BlameLine>, GitError> {
+        let output = run_git(
+            &self.root,
+            &[
+                "blame",
+                "--line-porcelain",
+                "--follow",
+                revision,
+                "--",
+                path,
+            ],
+        )?;
         let text = String::from_utf8_lossy(&output);
         let mut lines: Vec<BlameLine> = Vec::new();
         let mut sha = String::new();
@@ -352,22 +373,30 @@ impl Repo {
         return Ok(lines);
     }
 
-    /// 一个文件的历史（跟随重命名）。
-    pub fn file_history(&self, path: &str, limit: usize) -> Result<Vec<Commit>, GitError> {
+    /// A file's history through `revision` (following renames), with the path at every commit.
+    pub fn file_history(
+        &self,
+        path: &str,
+        revision: &str,
+        limit: usize,
+    ) -> Result<Vec<FileHistoryEntry>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
         let output = run_git(
             &self.root,
             &[
                 "log",
                 "--follow",
+                "--name-status",
+                "-z",
                 "--date=unix",
                 limit_arg.as_str(),
-                LOG_FORMAT,
+                FILE_HISTORY_FORMAT,
+                revision,
                 "--",
                 path,
             ],
         )?;
-        return parse_log(&String::from_utf8_lossy(&output));
+        return parse_file_history(&String::from_utf8_lossy(&output), path);
     }
 
     /// 读取当前分支的 reflog（最近的在前）。
@@ -410,6 +439,68 @@ impl Repo {
         }
         return Ok(entries);
     }
+}
+
+fn parse_file_history(output: &str, initial_path: &str) -> Result<Vec<FileHistoryEntry>, GitError> {
+    let tokens: Vec<&str> = output.split('\0').collect();
+    let mut entries = Vec::new();
+    let mut current_path = initial_path.to_string();
+    let mut index = 0;
+    while index < tokens.len() {
+        let token = tokens[index].trim_start_matches('\n');
+        if !token.starts_with('\u{1e}') {
+            index += 1;
+            continue;
+        }
+        let (record, status) = token.rsplit_once('\n').unwrap_or((token, ""));
+        let status = status.trim_start_matches('\n');
+        let mut commit = parse_log(record)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| GitError::Parse {
+                context: "git file history".to_string(),
+                detail: "提交记录为空".to_string(),
+            })?;
+        let status_kind = status.as_bytes().first().copied().unwrap_or_default();
+        let first_path = tokens.get(index + 1).copied().unwrap_or_default();
+        let (commit_path, deleted, old_path, new_path, consumed) = match status_kind {
+            b'R' | b'C' => {
+                let second_path = tokens.get(index + 2).copied().unwrap_or_default();
+                (
+                    second_path.to_string(),
+                    false,
+                    Some(first_path),
+                    Some(second_path),
+                    4,
+                )
+            }
+            b'M' | b'A' | b'D' | b'T' | b'U' | b'X' | b'B' => {
+                (current_path.clone(), status_kind == b'D', None, None, 3)
+            }
+            _ => (current_path.clone(), false, None, None, 1),
+        };
+        if let (Some(old), Some(new)) = (old_path, new_path)
+            && new == current_path
+        {
+            current_path = old.to_string();
+        }
+        // Keep the subject in sync with the normal log parser if the format ever changes.
+        if commit.summary.is_empty() && !commit.message.is_empty() {
+            commit.summary = commit
+                .message
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string();
+        }
+        entries.push(FileHistoryEntry {
+            commit,
+            path: commit_path,
+            deleted,
+        });
+        index += consumed;
+    }
+    return Ok(entries);
 }
 
 fn history_args(
@@ -695,11 +786,12 @@ mod tests {
     fn blame_reports_lines_and_authors() {
         let (_guard, path) = fixture("blame", &[("a.txt", "one\ntwo\n")], "first");
         let repo = Repo::open(&path).expect("open");
+        let first = repo.log(1, "").expect("first commit").remove(0);
         std::fs::write(repo.root().join("a.txt"), "one\ntwo\nthree\n").expect("write");
         repo.stage_all().expect("stage");
         repo.commit("add third", "").expect("commit");
 
-        let lines = repo.blame("a.txt").expect("blame");
+        let lines = repo.blame("a.txt", "HEAD").expect("current blame");
         assert_eq!(lines.len(), 3);
         assert_eq!(lines[0].text, "one");
         assert_eq!(lines[2].text, "three");
@@ -710,6 +802,10 @@ mod tests {
         assert!(lines[0].timestamp > 0);
         // 第三行来自后一次提交，SHA 应与前两行不同。
         assert_ne!(lines[0].sha, lines[2].sha);
+
+        let old_lines = repo.blame("a.txt", &first.sha).expect("historical blame");
+        assert_eq!(old_lines.len(), 2);
+        assert!(old_lines.iter().all(|line| line.text != "three"));
     }
 
     #[test]
@@ -720,11 +816,33 @@ mod tests {
         std::fs::write(repo.root().join("b.txt"), "b\nc\n").expect("write");
         repo.stage_all().expect("stage");
         repo.commit("touch both", "").expect("commit");
+        std::fs::rename(repo.root().join("a.txt"), repo.root().join("renamed.txt"))
+            .expect("rename");
+        repo.stage_all().expect("stage rename");
+        repo.commit("rename file", "").expect("rename commit");
+        std::fs::remove_file(repo.root().join("renamed.txt")).expect("delete");
+        repo.stage_all().expect("stage delete");
+        repo.commit("delete file", "").expect("delete commit");
 
-        let history = repo.file_history("a.txt", 10).expect("history");
-        assert_eq!(history.len(), 2);
-        assert_eq!(history[0].summary, "touch both");
-        assert_eq!(history[1].summary, "first");
+        let head = repo.log(1, "").expect("head").remove(0).sha;
+        let history = repo
+            .file_history("renamed.txt", &head, 10)
+            .expect("history");
+        assert_eq!(history.len(), 4);
+        assert_eq!(history[0].commit.summary, "delete file");
+        assert!(history[0].deleted);
+        assert_eq!(history[0].path, "renamed.txt");
+        assert_eq!(history[1].commit.summary, "rename file");
+        assert_eq!(history[1].path, "renamed.txt");
+        assert_eq!(history[2].commit.summary, "touch both");
+        assert_eq!(history[2].path, "a.txt");
+        assert_eq!(history[3].commit.summary, "first");
+        assert_eq!(history[3].path, "a.txt");
+
+        let rename_lines = repo
+            .blame("a.txt", history[2].commit.sha.as_str())
+            .expect("blame before rename");
+        assert_eq!(rename_lines.len(), 2);
     }
 
     #[test]

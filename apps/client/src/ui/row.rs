@@ -195,6 +195,103 @@ pub(crate) fn row_sized(
     return element;
 }
 
+/// A selectable blame source line. The code column stays monospaced while the author gutter
+/// can truncate independently inside the fixed width reserved by the blame board.
+pub(crate) fn blame_line(
+    short: String,
+    author: String,
+    line: u32,
+    code: String,
+    selected: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let mut row = nsh_base::button()
+        .w_full()
+        .h(px(ui::CODE_LINE))
+        .flex_row()
+        .items_center()
+        .px(px(ui::GAP_SM))
+        .bg(move || {
+            if selected {
+                design::selected()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .hover(move |style| {
+            if selected {
+                style
+            } else {
+                style.bg(move || design::hover())
+            }
+        })
+        .focus_visible(move |style| {
+            style
+                .outline(px(ui::FOCUS_WIDTH))
+                .outline_color(move || ui::focus_color())
+        })
+        .on_press(move |_: &()| on_press());
+
+    row = row.child(view().w(px(2.0)).h_full().flex_shrink_0().bg(move || {
+        if selected {
+            design::accent()
+        } else {
+            AdaptiveColor::TRANSPARENT
+        }
+    }));
+    row = row.child(
+        view()
+            .w(px(124.0))
+            .h_full()
+            .flex_shrink_0()
+            .flex_row()
+            .items_center()
+            .gap(px(ui::GAP_XS))
+            .pr(px(ui::GAP_SM))
+            .border_r_1()
+            .border_color(move || design::line_soft())
+            .child(
+                text(short)
+                    .w(px(48.0))
+                    .flex_shrink_0()
+                    .font_family(ui::MONO)
+                    .text_size(px(ui::META))
+                    .line_height(px(ui::CODE_LINE))
+                    .text_color(move || design::text2())
+                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+            )
+            .child(
+                text(author)
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(ui::META))
+                    .line_height(px(ui::CODE_LINE))
+                    .text_color(move || design::text3())
+                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+            ),
+    );
+    row = row.child(
+        text(line.to_string())
+            .w(px(32.0))
+            .flex_shrink_0()
+            .pr(px(ui::GAP_SM))
+            .font_family(ui::MONO)
+            .text_size(px(ui::META))
+            .line_height(px(ui::CODE_LINE))
+            .text_color(move || design::text3()),
+    );
+    return row.child(
+        text(code)
+            .flex_1()
+            .min_w_0()
+            .font_family(ui::MONO)
+            .text_size(px(ui::CODE))
+            .line_height(px(ui::CODE_LINE))
+            .text_color(move || design::text())
+            .text_overflow(nsh_core::EllipsizeMode::Clip),
+    );
+}
+
 /// 命令面板的双行结果：沿用列表行的语义与焦点行为，使用画板的间距和圆角。
 pub(crate) fn palette_row(
     caption: impl Fn() -> String + 'static,

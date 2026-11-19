@@ -1,208 +1,343 @@
-//! 单文件的 blame + 文件历史（板 19）。
+//! 单文件 Blame / File History（设计板 19）。
 //!
-//! 左侧是文件历史（`.fhist`），右侧是 blame 主体：`.blamebar` 一行摘要 + 按钮，
-//! `.blamecode` 逐行显示「提交 / 作者 | 行号 | 代码」。
-//!
-//! 这个视图不占工具栏的分段——画板的入口是 `.blamebar` 里的 Files 按钮，从检查器
-//! 的 Blame 页或文件行进来。
+//! Blame 占用完整中栏，文件版本历史放在右侧检查器。选历史行切换当前 blame revision；
+//! 选源码行只聚焦右侧对应提交，保持当前文件版本不变。
 
+use super::commands::HistoryCommands;
 use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::ui;
 use nsh_core::prelude::*;
 
-/// 左栏宽：与画板的 `.fhist` 一致。
-const HISTORY_W: f32 = 260.0;
-/// 行高：与 diff 正文相同的 18。
-const ROW_H: f32 = 18.0;
-
 pub(crate) fn blame_view(
     language: Signal<SharedString>,
     tab: Tab,
-    notice: Signal<Option<String>>,
+    cmd: HistoryCommands,
 ) -> impl IntoElement {
+    let selected_mode = if tab.blame_show_diff { "diff" } else { "blame" };
+    let back_key = if tab.blame_return_mode == Some(crate::Mode::Changes) {
+        "blame.backToChanges"
+    } else {
+        "history.backToList"
+    };
+    let line_count = tab.blame.len();
+    let last_change = tab
+        .file_history
+        .first()
+        .and_then(|entry| entry.commit.date.parse::<i64>().ok());
+    let segment_cmd = cmd.clone();
+    let mut header = view()
+        .w_full()
+        .h(px(metrics::DIFF_RETURN_H))
+        .flex_shrink_0()
+        .px(px(ui::GAP_LG))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP))
+        .border_b_1()
+        .border_color(move || design::line())
+        .bg(move || design::panel())
+        .child(ui::button::button_icon(
+            move || i18n::t(language.get().as_str(), back_key),
+            "chev-left",
+            ui::button::ButtonVariant::Secondary,
+            ui::button::ButtonSize::Small,
+            false,
+            {
+                let cmd = cmd.clone();
+                move || cmd.return_from_blame()
+            },
+        ))
+        .child(
+            text(tab.blame_path.clone())
+                .flex_1()
+                .min_w_0()
+                .font_family(ui::MONO)
+                .text_size(px(ui::CODE))
+                .text_color(move || design::text())
+                .text_overflow(nsh_core::EllipsizeMode::Head),
+        )
+        .child(ui::badge::badge(
+            {
+                let revision = revision_label(tab.blame_revision.as_str());
+                move || revision.clone()
+            },
+            ui::badge::Tone::Neutral,
+        ))
+        .child(dynamic(move || -> AnyElement {
+            let cmd = segment_cmd.clone();
+            ui::segmented::segmented(
+                vec![
+                    ui::segmented::Segment {
+                        id: "blame",
+                        label: Box::new({
+                            let language = language;
+                            move || i18n::t(language.get().as_str(), "blame.blame")
+                        }),
+                    },
+                    ui::segmented::Segment {
+                        id: "diff",
+                        label: Box::new({
+                            let language = language;
+                            move || i18n::t(language.get().as_str(), "blame.diff")
+                        }),
+                    },
+                ],
+                selected_mode,
+                {
+                    let cmd = cmd.clone();
+                    move |id| cmd.toggle_blame_diff(id == "diff")
+                },
+            )
+            .into_element()
+        }))
+        .child(
+            text(move || {
+                let language_now = language.get();
+                if let Some(timestamp) = last_change {
+                    i18n::with_arguments(
+                        language_now.as_str(),
+                        "blame.lastChange",
+                        &[
+                            ("count", line_count.to_string()),
+                            (
+                                "date",
+                                crate::dates::format(
+                                    language_now.as_str(),
+                                    timestamp,
+                                    store::now_unix(),
+                                ),
+                            ),
+                        ],
+                    )
+                } else {
+                    i18n::with_arguments(
+                        language_now.as_str(),
+                        "blame.lines",
+                        &[("count", line_count.to_string())],
+                    )
+                }
+            })
+            .text_size(px(ui::META))
+            .text_color(move || design::text3()),
+        );
+
+    let controls_cmd = cmd.clone();
+    let raw_patch = tab.blame_patch.raw.clone();
+    let show_diff = tab.blame_show_diff;
+    header = header.child(dynamic(move || -> AnyElement {
+        if !show_diff {
+            return view().into_element();
+        }
+        let options = controls_cmd.diff.state.options.get();
+        let split = controls_cmd.diff.state.split.get();
+        diff_controls(&controls_cmd, language, options, split, raw_patch.clone())
+    }));
+
+    let body_cmd = cmd.clone();
+    let body_tab = tab.clone();
+    let body = dynamic(move || -> AnyElement {
+        if body_tab.blame_error.is_some() {
+            return centered_message(i18n::t(language.get().as_str(), "blame.error"));
+        }
+        if body_tab.blame_show_diff {
+            return blame_diff(language, &body_cmd, &body_tab);
+        }
+        if body_tab.blame.is_empty() {
+            return centered_message(i18n::t(language.get().as_str(), "blame.empty"));
+        }
+        return blame_lines(&body_cmd, &body_tab);
+    });
+
     return view()
         .w_full()
-        .flex_1()
-        .min_h_0()
-        .flex_row()
-        .child(history_side(language, tab.clone()))
-        .child(pane(language, tab, notice));
-}
-
-/// 左栏：文件历史列表。
-fn history_side(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for commit in tab.file_history.iter().take(40) {
-        let short = commit.short.clone();
-        let message = commit.summary.clone();
-        let author = commit.author.clone();
-        rows.push(
-            view()
-                .w_full()
-                .h(px(44.0))
-                .px(px(ui::GAP))
-                .flex_col()
-                .justify_center()
-                .gap(px(2.0))
-                .child(
-                    text(message)
-                        .w_full()
-                        .text_size(px(ui::SECONDARY))
-                        .line_height(px(ui::SECONDARY_LINE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(move || format!("{short} · {author}"))
-                        .text_size(px(ui::META))
-                        .text_color(move || design::text3()),
-                )
-                .into_element(),
-        );
-    }
-    return view()
-        .w(px(HISTORY_W))
         .h_full()
-        .flex_shrink_0()
-        .flex_col()
-        .bg(move || design::panel())
-        .border_r_1()
-        .border_color(move || design::line())
-        .child(
-            view()
-                .w_full()
-                .h(px(ui::ROW))
-                .flex_shrink_0()
-                .px(px(ui::GAP))
-                .flex_row()
-                .items_center()
-                .border_b_1()
-                .border_color(move || design::line_soft())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "blame.history"))
-                        .text_size(px(ui::SECONDARY))
-                        .font_weight(FontWeight(600))
-                        .text_color(move || design::text2()),
-                ),
-        )
-        .child(
-            view().w_full().flex_1().min_h_0().child(
-                scroll()
-                    .w_full()
-                    .h_full()
-                    .child(view().w_full().flex_col().children(rows)),
-            ),
-        );
-}
-
-/// 右栏：`.blamebar` + `.blamecode`。
-fn pane(
-    language: Signal<SharedString>,
-    tab: Tab,
-    notice: Signal<Option<String>>,
-) -> impl IntoElement {
-    let path = tab.blame_path.clone();
-    let count = tab.blame.len();
-    let copy_source = tab.blame_text();
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for line in &tab.blame {
-        let short = line.short.clone();
-        let author = line.author.clone();
-        let number = line.line.to_string();
-        let text_value = line.text.clone();
-        rows.push(
-            view()
-                .w_full()
-                .h(px(ROW_H))
-                .flex_row()
-                .items_center()
-                .child(
-                    view()
-                        .w(px(150.0))
-                        .flex_shrink_0()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(ui::GAP_SM))
-                        .pl(px(ui::GAP))
-                        .child(
-                            text(short)
-                                .text_size(px(ui::CODE))
-                                .line_height(px(ui::CODE_LINE))
-                                .text_color(move || design::text3()),
-                        )
-                        .child(
-                            text(author)
-                                .text_size(px(ui::SECONDARY))
-                                .line_height(px(ui::SECONDARY_LINE))
-                                .text_color(move || design::text2())
-                                .text_overflow(nsh_core::EllipsizeMode::Tail),
-                        ),
-                )
-                .child(
-                    text(number)
-                        .w(px(44.0))
-                        .flex_shrink_0()
-                        .text_size(px(ui::CODE))
-                        .line_height(px(ui::CODE_LINE))
-                        .text_color(move || design::text3()),
-                )
-                .child(
-                    text(text_value)
-                        .flex_1()
-                        .text_size(px(ui::CODE))
-                        .line_height(px(ui::CODE_LINE))
-                        .text_color(move || design::text()),
-                )
-                .into_element(),
-        );
-    }
-    return view()
-        .flex_1()
         .min_w_0()
-        .h_full()
+        .min_h_0()
         .flex_col()
+        .bg(move || design::content())
+        .child(header)
+        .child(view().w_full().flex_1().min_h_0().child(body));
+}
+
+fn revision_label(revision: &str) -> String {
+    if revision == "HEAD" {
+        return "HEAD".to_string();
+    }
+    return revision.chars().take(7).collect();
+}
+
+fn diff_controls(
+    cmd: &HistoryCommands,
+    language: Signal<SharedString>,
+    options: crate::shared::diff::DiffOptions,
+    split: bool,
+    patch: String,
+) -> AnyElement {
+    let cmd = cmd.clone();
+    let layout_cmd = cmd.clone();
+    let mut controls = view()
+        .h_full()
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP_SM))
+        .child(toolbar_separator())
+        .child(ui::segmented::segmented(
+            vec![
+                ui::segmented::Segment {
+                    id: "split",
+                    label: Box::new({
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "history.split")
+                    }),
+                },
+                ui::segmented::Segment {
+                    id: "unified",
+                    label: Box::new({
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "history.unified")
+                    }),
+                },
+            ],
+            if split { "split" } else { "unified" },
+            move |id| layout_cmd.diff.set_diff_split(id == "split"),
+        ));
+    let fold_active = options.fold;
+    controls = controls
+        .child(crate::ui::button::icon_button(
+            if fold_active { "fold" } else { "unfold" },
+            {
+                let language = language;
+                move || {
+                    let key = if fold_active {
+                        "diff.unfold"
+                    } else {
+                        "diff.fold"
+                    };
+                    i18n::t(language.get().as_str(), key)
+                }
+            },
+            ui::button::ButtonSize::Small,
+            false,
+            {
+                let cmd = cmd.clone();
+                move || cmd.diff.toggle_diff_option("fold")
+            },
+        ))
+        .child(crate::ui::button::icon_button(
+            "wrap",
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.wrap")
+            },
+            ui::button::ButtonSize::Small,
+            false,
+            {
+                let cmd = cmd.clone();
+                move || cmd.diff.toggle_diff_option("wrap")
+            },
+        ))
+        .child(crate::ui::button::icon_button(
+            "copy",
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.copy")
+            },
+            ui::button::ButtonSize::Small,
+            patch.trim().is_empty(),
+            {
+                let notice = cmd.notice;
+                move || crate::shared::os::copy_text(notice, language, patch.clone())
+            },
+        ));
+    return controls.into_element();
+}
+
+fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
+    let rows = tab
+        .blame
+        .iter()
+        .map(|line| {
+            let sha = line.sha.clone();
+            ui::row::blame_line(
+                line.short.clone(),
+                line.author.clone(),
+                line.line,
+                line.text.clone(),
+                tab.blame_selected_line == Some(line.line),
+                {
+                    let cmd = cmd.clone();
+                    let line = line.line;
+                    move || cmd.focus_blame_commit(sha.clone(), line)
+                },
+            )
+            .into_element()
+        })
+        .collect::<Vec<_>>();
+    return scroll()
+        .w_full()
+        .h_full()
+        .child(view().w_full().flex_col().children(rows))
+        .into_element();
+}
+
+fn blame_diff(language: Signal<SharedString>, cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
+    let patch = tab.blame_patch.clone();
+    if patch.raw.trim().is_empty() {
+        return centered_message(i18n::t(language.get().as_str(), "history.diffEmpty"))
+            .into_element();
+    }
+    if !patch
+        .lines
+        .iter()
+        .any(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+    {
+        return centered_message(i18n::t(language.get().as_str(), "diff.noTextChanges"))
+            .into_element();
+    }
+    let handle = crate::ui::diff_surface::DiffHandle::new();
+    let options = cmd.diff.state.options.get();
+    let layout = if cmd.diff.state.split.get() {
+        crate::ui::diff_surface::Layout::Split
+    } else {
+        crate::ui::diff_surface::Layout::Unified
+    };
+    let notice = cmd.notice;
+    let on_hunk_copy = crate::shared::diff::copy_hunk_handler(patch.raw.as_str(), notice, language);
+    return crate::ui::diff_surface::diff_surface(
+        SharedString::from(patch.raw),
+        layout,
+        options.wrap,
+        !options.fold,
+        &handle,
+        language,
+        on_hunk_copy,
+    )
+    .into_element();
+}
+
+fn centered_message(message: String) -> AnyElement {
+    return view()
+        .w_full()
+        .h_full()
+        .items_center()
+        .justify_center()
+        .px(px(ui::GAP_LG))
         .child(
-            view()
-                .w_full()
-                .h(px(metrics::TOOLBAR_H))
-                .flex_shrink_0()
-                .px(px(ui::GAP_LG))
-                .flex_row()
-                .items_center()
-                .gap(px(ui::GAP))
-                .border_b_1()
-                .border_color(move || design::line())
-                .child(ui::badge::badge(
-                    move || i18n::t(language.get().as_str(), "files.blame"),
-                    ui::badge::Tone::Accent,
-                ))
-                .child(
-                    text(path)
-                        .text_size(px(ui::SECONDARY))
-                        .text_color(move || design::text()),
-                )
-                .child(view().flex_1())
-                .child(
-                    text(format!("{count} lines"))
-                        .text_size(px(ui::META))
-                        .text_color(move || design::text3()),
-                )
-                .child(ui::button::button(
-                    move || i18n::t(language.get().as_str(), "common.copy"),
-                    ui::button::ButtonVariant::Secondary,
-                    ui::button::ButtonSize::Small,
-                    false,
-                    move || crate::shared::os::copy_text(notice, language, copy_source.clone()),
-                )),
+            text(message)
+                .text_size(px(ui::SECONDARY))
+                .text_color(move || design::text3()),
         )
-        .child(
-            view().w_full().flex_1().min_h_0().child(
-                scroll()
-                    .w_full()
-                    .h_full()
-                    .child(view().w_full().flex_col().children(rows)),
-            ),
-        );
+        .into_element();
+}
+
+pub(crate) mod panel;
+pub(crate) use panel::blame_history_panel;
+
+fn toolbar_separator() -> impl IntoElement {
+    return view()
+        .w(px(1.0))
+        .h(px(ui::CONTROL_SMALL))
+        .bg(move || design::line_soft());
 }

@@ -46,8 +46,8 @@ pub(crate) fn app() -> impl IntoElement {
     let history_query = signal(String::new());
     let filter_draft = signal(FilterDraft::default());
     let filter_open = signal(false);
-    // 验收开关：`GITUI_MODE=history|changes|refs|agent` 指定启动时的主视图，
-    // 用于逐个巡检各页渲染；未指定时默认进入 Changes + Commit。
+    // 验收开关：`GITUI_MODE=history|changes|refs|agent|blame` 指定启动主视图；
+    // blame 模式会预选首个可追溯文件；未指定时默认进入 Changes + Commit。
     let mode = signal(match acceptance::value("GITUI_MODE").as_deref() {
         Some("history") => Mode::History,
         Some("changes") => Mode::Changes,
@@ -59,8 +59,10 @@ pub(crate) fn app() -> impl IntoElement {
     // 默认打开左侧引用栏；右栏默认显示 Changes 对应的 Commit 面板。
     // GITUI_MODE 可覆盖主视图，History 验收时用 GITUI_INSPECTOR=1 展开 Inspector。
     let sidebar_open = signal(true);
-    let right_panel_open =
-        signal(mode.get_untracked() == Mode::Changes || acceptance::flag("GITUI_INSPECTOR"));
+    let right_panel_open = signal(
+        matches!(mode.get_untracked(), Mode::Changes | Mode::Blame)
+            || acceptance::flag("GITUI_INSPECTOR"),
+    );
     let compare_mode = signal(false);
     let commit_summary = signal(String::new());
     let commit_description = signal(String::new());
@@ -198,6 +200,18 @@ pub(crate) fn app() -> impl IntoElement {
     // 根本不会渲染，截图只能看到欢迎页。
     if let Some(path) = acceptance::value("GITUI_REPO") {
         initial_tabs = vec![crate::app::session::load_tab(&path, &initial_filter)];
+    }
+    if mode.get_untracked() == Mode::Blame
+        && let Some(tab) = initial_tabs.first_mut()
+        && tab.error.is_none()
+    {
+        if !tab.files.is_empty() {
+            features::history::ops::select_file(tab, 0);
+            tab.blame_return_mode = Some(Mode::History);
+        } else if let Some(change) = tab.changes.first() {
+            let path = change.path.clone();
+            features::history::ops::open_blame(tab, path.as_str(), "HEAD", Mode::Changes);
+        }
     }
     let preview_conflict = acceptance::flag("GITUI_CONFLICT");
     let preview_conflict_files = acceptance::flag("GITUI_CONFLICT_FILES");
@@ -438,6 +452,7 @@ pub(crate) fn app() -> impl IntoElement {
         session: session.clone(),
         language,
         notice,
+        mode,
         merge: merge_commands.clone(),
     };
 

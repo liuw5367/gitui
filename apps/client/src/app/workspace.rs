@@ -194,7 +194,6 @@ fn center_content(
     let mode = search.state.mode;
     // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
     let refs_tab = signal(refs::state::RefsTab::Refs);
-    let notice = history.notice;
     let refresh = history.clone();
     return view()
         .w_full()
@@ -343,7 +342,7 @@ fn center_content(
                 }
                 crate::Mode::Agent => view().w_full().flex_1().min_h_0().into_element(),
                 crate::Mode::Blame => {
-                    crate::features::history::blame_view(language, tab_for_history, notice)
+                    crate::features::history::blame_view(language, tab_for_history, history.clone())
                         .into_element()
                 }
                 crate::Mode::Refs => refs::view::refs_view(
@@ -460,7 +459,13 @@ fn right_content(
                     )
                     .into_element()
                 }
-                crate::Mode::Refs | crate::Mode::Blame => {
+                crate::Mode::Blame => crate::features::history::blame::blame_history_panel(
+                    language,
+                    tab,
+                    history.clone(),
+                )
+                .into_element(),
+                crate::Mode::Refs => {
                     let ask_agent: std::sync::Arc<dyn Fn()> = {
                         let agent = agent.clone();
                         let mode = mode;

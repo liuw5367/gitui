@@ -12,14 +12,13 @@ pub(crate) mod session;
 pub(crate) mod windows;
 pub(crate) mod workspace;
 
-/// 工作区主区的两种模式（工具栏的 History / Changes 分段）。
+/// 工作区主区模式；Blame 是 History / Changes 之外的单文件追溯页。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
     History,
     Changes,
     Refs,
     Agent,
-    /// 单文件的 blame + 文件历史（板 19）。从检查器的 Blame 页或文件行进入，
-    /// 不占工具栏的分段——画板的入口是 `.blamebar` 里的 Files 按钮。
+    /// 单文件的 blame + 文件历史（板 19），从提交文件或工作区 diff 进入。
     Blame,
 }

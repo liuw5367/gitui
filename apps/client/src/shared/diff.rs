@@ -10,6 +10,7 @@ use crate::design::{self, metrics};
 use crate::features::SessionHandle;
 use crate::i18n;
 use domain::diff::Patch;
+use nsh_base::DiffHunk;
 use nsh_core::prelude::*;
 
 /// diff 的显示开关：布局、上下文折叠/展开、换行与空白处理。
@@ -510,6 +511,20 @@ fn raw_hunks(patch: &str) -> Vec<String> {
         hunks.push(hunk);
     }
     return hunks;
+}
+
+/// Build the standard clipboard action used by read-only `DiffView` instances.
+pub(crate) fn copy_hunk_handler(
+    patch: &str,
+    notice: Signal<Option<String>>,
+    language: Signal<SharedString>,
+) -> std::sync::Arc<dyn Fn(&DiffHunk)> {
+    let hunk_patches = raw_hunks(patch);
+    return std::sync::Arc::new(move |hunk: &DiffHunk| {
+        if let Some(raw) = hunk_patches.get(hunk.index as usize) {
+            crate::shared::os::copy_text(notice, language, raw.clone());
+        }
+    });
 }
 
 #[cfg(test)]

@@ -396,6 +396,28 @@ fn body(
                     )),
             ))
             .child(section(
+                "Blame source rows",
+                view()
+                    .w_full()
+                    .flex_col()
+                    .child(ui::row::blame_line(
+                        "3f2a1c9".to_string(),
+                        "Mia Chen".to_string(),
+                        22,
+                        "if (isChanged) {".to_string(),
+                        true,
+                        || {},
+                    ))
+                    .child(ui::row::blame_line(
+                        "a37c6b1".to_string(),
+                        "Jonas Weber".to_string(),
+                        23,
+                        "  hunks.push(entry);".to_string(),
+                        false,
+                        || {},
+                    )),
+            ))
+            .child(section(
                 "Selection",
                 view()
                     .w_full()

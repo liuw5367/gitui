@@ -18,12 +18,29 @@ pub(crate) struct ChangesCommands {
     pub(crate) language: Signal<SharedString>,
     /// 状态栏短提示（按 hunk/行应用成功后的提示）。
     pub(crate) notice: Signal<Option<String>>,
+    /// Main view mode, used to open the blame page for a worktree file.
+    pub(crate) mode: Signal<crate::Mode>,
     /// 冲突解决功能的用例：变更列表里冲突文件的「用 ours/theirs 解决」与
     /// 「解决冲突」是冲突视图的入口。
     pub(crate) merge: MergeCommands,
 }
 
 impl ChangesCommands {
+    pub(crate) fn open_blame(&self, path: String) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            crate::features::history::ops::open_blame(
+                tab,
+                path.as_str(),
+                "HEAD",
+                crate::Mode::Changes,
+            );
+            self.session.tabs.set(list);
+            self.mode.set(crate::Mode::Blame);
+        }
+    }
+
     /// 选中第 `index` 个变更并读它的补丁（原 `select_change`）。
     pub(crate) fn select_change(&self, index: usize) {
         let current = self.session.active.get_untracked();

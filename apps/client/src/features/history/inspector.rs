@@ -1,9 +1,9 @@
-//! 提交检查器（设计板 08 / 18 / 19）：Files / Info / Blame 三个页签。
+//! 提交检查器（设计板 08 / 18）：Files / Info 两个页签；Blame 是独立主区视图。
 //!
 //! - Files：按目录展示提交改动的文件（numstat，含 +/−），选中文件以启用路径动作；
 //! - Info：提交元信息（SHA、tree、父提交、作者/提交者与时间、引用）与动作入口
 //!   （当前只有复制 SHA 之外的入口标注未实现）；
-//! - Blame：选中文件的逐行归属，同时列出该文件的历史。
+//! Blame 入口切换到统一的 board 19 主区视图，不在检查器内嵌一个静态预览。
 //!
 //! 宽度由工作区分栏调整，初始宽度与 Commit 面板一致。入口 `inspector` 收本功能的状态与用例；
 //! 拣选/回滚走 `cmd.recovery`，复制与编辑器打开走 `shared::os` 的自由函数。
@@ -16,12 +16,11 @@ use crate::features::recovery::commands::RecoveryCommands;
 use crate::i18n;
 use nsh_core::prelude::*;
 
-/// 检查器的页签（设计板 08 / 18 / 19）。
+/// 检查器的页签（设计板 08 / 18）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum InspectorTab {
     Files,
     Info,
-    Blame,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,6 +87,7 @@ pub(crate) fn inspector(
     let additions = tab.files.iter().map(|file| file.additions).sum::<u32>();
     let deletions = tab.files.iter().map(|file| file.deletions).sum::<u32>();
     let file_count = tab.files.len();
+    let open_blame = cmd.clone();
     return view()
         .w_full()
         .min_w_0()
@@ -230,6 +230,7 @@ pub(crate) fn inspector(
                 ),
         )
         .child(dynamic(move || -> AnyElement {
+            let open_blame = open_blame.clone();
             view()
                 .w_full()
                 .h(px(crate::ui::ROW))
@@ -261,14 +262,11 @@ pub(crate) fn inspector(
                     match selected_tab.get() {
                         InspectorTab::Files => "files",
                         InspectorTab::Info => "info",
-                        InspectorTab::Blame => "blame",
                     },
-                    move |id| {
-                        selected_tab.set(match id {
-                            "info" => InspectorTab::Info,
-                            "blame" => InspectorTab::Blame,
-                            _ => InspectorTab::Files,
-                        })
+                    move |id| match id {
+                        "info" => selected_tab.set(InspectorTab::Info),
+                        "blame" => open_blame.open_blame(),
+                        _ => selected_tab.set(InspectorTab::Files),
                     },
                 ))
                 .into_element()
@@ -290,7 +288,6 @@ pub(crate) fn inspector(
                     recovery_for_body.clone(),
                 )
                 .into_element(),
-                InspectorTab::Blame => blame_body(language, tab_for_body.clone()).into_element(),
             }
         }))
         .child(
@@ -806,123 +803,4 @@ fn info_body(
                 ),
         )
         .into_element();
-}
-
-fn blame_body(language: Signal<SharedString>, tab: Tab) -> impl IntoElement {
-    let now = store::now_unix();
-    let lines = tab.blame.clone();
-    let history = tab.file_history.clone();
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for line in &lines {
-        let short = line.short.clone();
-        let author = line.author.clone();
-        let timestamp = line.timestamp;
-        let number = line.line;
-        let text_value = line.text.clone();
-        rows.push(
-            view()
-                .w_full()
-                .h(px(18.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    text(short)
-                        .w(px(52.0))
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(12.0))
-                        .text_color(move || design::text3()),
-                )
-                .child(
-                    text(number.to_string())
-                        .w(px(26.0))
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(12.0))
-                        .text_color(move || design::text3()),
-                )
-                .child(
-                    text(text_value)
-                        .flex_1()
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(13.0))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Clip),
-                )
-                .into_element(),
-        );
-        let _ = (author, timestamp);
-    }
-    let mut history_rows: Vec<AnyElement> = Vec::new();
-    for commit in history.iter().take(12) {
-        let summary = commit.summary.clone();
-        let short = commit.short.clone();
-        let timestamp = commit.date.parse::<i64>().unwrap_or(0);
-        history_rows.push(
-            view()
-                .w_full()
-                .h(px(20.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    text(short)
-                        .text_size(px(crate::ui::CODE))
-                        .line_height(px(12.0))
-                        .text_color(move || design::text3()),
-                )
-                .child(
-                    text(summary)
-                        .flex_1()
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(move || crate::dates::format(language.get().as_str(), timestamp, now))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3()),
-                )
-                .into_element(),
-        );
-    }
-    if lines.is_empty() {
-        return scroll().w_full().h_full().child(
-            view()
-                .w_full()
-                .h(px(40.0))
-                .items_center()
-                .justify_center()
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "files.blameHint"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || design::text3()),
-                ),
-        );
-    }
-    return scroll().w_full().h_full().child(
-        view()
-            .w_full()
-            .px(px(6.0))
-            .py(px(4.0))
-            .flex_col()
-            .child(rows)
-            .child(
-                view()
-                    .w_full()
-                    .mt(px(6.0))
-                    .pt(px(4.0))
-                    .border_t_1()
-                    .border_color(move || design::line())
-                    .child(
-                        text(move || i18n::t(language.get().as_str(), "files.history"))
-                            .text_size(px(crate::ui::SECONDARY))
-                            .font_weight(FontWeight(600))
-                            .line_height(px(13.0))
-                            .text_color(move || design::text3()),
-                    )
-                    .child(history_rows),
-            ),
-    );
 }

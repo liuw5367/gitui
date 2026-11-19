@@ -46,6 +46,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 `log_all` 返回所有引用可达的完整历史，并把 `git stash list` 中的每个 stash OID 加入范围。`log_history` 默认从全部引用与 stash 读取；`LogFilter.references` 可用多个本地或远端 ref 做 OR 范围，旧的单引用 `reference` 仍可用。它支持多作者 email、日期端点、literal 文件/目录 pathspec 与提交消息子串；条件维度之间按 AND 组合。`log_history_graph` 只应用引用范围，给筛选后的提交图重连祖先使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`authors_with_email` 返回按 email 去重的作者身份，`authors` 保留只取显示名的接口。日志解析包含 author email 和完整提交消息；`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
 
+`Repo::blame(path, revision)` 按给定 revision 读取行归属，并用 `--follow` 回溯重命名。`Repo::file_history(path, revision, limit)` 同样限定 revision 并跟随重命名，返回 `FileHistoryEntry`：`path` 是该提交中实际存在的路径，`deleted` 标记该提交是否删除了文件。界面查看删除提交时，内容 blame 使用该提交的第一父版本；其他历史项使用提交本身。工作区入口明确传 `HEAD`，不会把历史提交文件误读成当前版本。
+
 ## 选项
 
 | 结构 | 字段 |

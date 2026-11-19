@@ -1,6 +1,6 @@
 # 逐行追溯与文件历史 — 布局、状态与按钮
 
-- **画板**：19 Blame & file history（有第 22 行选中 · 有 6 条文件历史 · 有 `16 lines · last change 2h ago`；无 Diff 视图、无过滤弹层、无重命名跟踪）
+- **画板**：19 Blame & file history（有第 22 行选中 · 有 6 条文件历史 · 有 `16 lines · last change 2h ago`；未展示 Diff 内容、过滤弹层与重命名追踪）
 - **来源**：`designs/graft-git/project/BlameHistory.dc.html` 与共享样式表 `assets/0a859d3b7b7fd8e4958bfb63b7af439a.bin`。只按画板描述目标，不取自实现。
 - **实现差异**：见 [../design/DEVIATIONS.md](../design/DEVIATIONS.md)，本文不重复。
 
@@ -84,20 +84,26 @@ blame 区 708 = 742 − 34；源码列 640 = 798 − 126 − 32，去掉左右�
 
 ```
 进入：18 的 Blame 分段项 → 本板（CommitFiles.dc.html 的唯一入链）
-切换：Blame ⇄ Diff 换中列；点历史行本应定位/过滤 blame，画板没有表现
+切换：Blame ⇄ Diff 换中列；点历史行按该 revision 重算 blame，点源码行聚焦右侧 commit
 离开：Commits chip → 04；Changes 7 → 18
 ```
 
 ## 6. 画板没覆盖的组合（待补设计）
 
-1. **Diff 视图**：`Diff` 按钮没有内容，也没有说与 04b / 06 的 diff 是否同一套。
-2. **历史与 blame 的联动**：点某条历史后 blame 是滚动定位、过滤成该提交的行，还是整段重算，没画。
-3. **范围之外的行**：只画 18–33 共 16 行，向上/向下滚动、文件首尾的边界行没有。
-4. **blame 选项**：忽略空白（`-w`）、重命名跟踪（`--follow`）、按提交合并相邻行都没画。
-5. **`Collapse all hunks`**：blame 里没有 hunk，按钮语义与位置都不对。
-6. **长名字**：gutter 固定 126，作者名与 sha 各占多少、如何省略没写；`77e2a90` 这类 7 位 sha 正好占满。
-7. **空历史 / 单行文件**：`0 commits` 或只有一行时的样子没画。
-8. **路径字号**：本板 `fp` 落到 13 号正文，18 的同一路径是 mono 11，两页不一致。
+实现采用以下明确行为，画板本身没有覆盖这些状态：
+
+- **Diff 视图**：`Diff` 切换在中栏用共享 `DiffView` 显示当前文件版本的提交差异；保留并排/合并、折叠、换行与复制 patch / hunk。
+- **历史与 blame 的联动**：点文件历史行会按该提交和当时的文件路径重新读取整份 blame；点 blame 行只选中右侧对应提交，不更改当前文件 revision。
+- **revision 边界**：从 History 检查器进入时用选中提交 SHA；从工作区 Diff 进入时用 `HEAD`。历史列表按该 revision 截断并使用 `--follow` 跟踪重命名。选择删除文件的提交时，blame 内容读该提交的第一父版本。
+
+尚未覆盖的设计组合：
+
+1. **范围之外的行**：只画 18–33 共 16 行，向上/向下滚动、文件首尾的边界行没有。
+2. **blame 选项**：忽略空白（`-w`）和按提交合并相邻行都没画；重命名跟踪由 Git `--follow` 提供。
+3. **文件历史过滤**：画板漏斗没有展开态与筛选规则，当前不显示这个无行为控件。
+4. **长名字**：gutter 固定 126，作者名与 sha 各占多少、如何省略没写；`77e2a90` 这类 7 位 sha 正好占满。
+5. **空历史 / 单行文件**：`0 commits` 或只有一行时的样子没画。
+6. **路径字号**：本板 `fp` 落到 13 号正文，18 的同一路径是 mono 11，两页不一致。
 
 ## 7. 按钮与链接清单
 
@@ -108,16 +114,16 @@ blame 区 708 = 742 − 34；源码列 640 = 798 − 126 − 32，去掉左右�
 | 3 | 工具条 | `History` / `Changes 12` | 分段项 22 高 | 切仓库视图 | `History` 当前 |
 | 4 | 工具条 | `Agent` | `tbtn` 26 高 + `accent-soft` | 去 12 | 本板是链接 |
 | 5 | 顶栏左 | `Commits`（`aria-label=Back to commit list`） | chip 22 高 | 回 04 | 常驻 |
-| 6 | 顶栏右 | `Blame` / `Diff` | 分段项 21 高 | 逐行追溯 / 差异 | `Blame` 当前，`Diff` 无目标 |
-| 7 | 顶栏右 | 折叠（`aria-label=Collapse all hunks`） | 图标 24×24 | 收起 hunk | 对象不存在 |
-| 8 | 顶栏右 | 换行（`aria-label=Toggle word wrap`） | 图标 24×24 | 源码折行 | 无按下态 |
+| 6 | 顶栏右 | `Blame` / `Diff` | 分段项 | 逐行追溯 / 当前文件 revision 差异 | `Blame` 当前 |
+| 7 | Diff 顶栏右 | 折叠 | 图标按钮 | 折叠/展开未改动上下文 | 仅 Diff 视图显示 |
+| 8 | Diff 顶栏右 | 换行 | 图标按钮 | 切换软换行 | 仅 Diff 视图显示 |
 | 9 | 检查器页签 | `Changes 7` | 页签 12 | 回 18 | 带计数，链 18 |
 | 10 | 检查器页签 | `History` | 页签 12 | 本列表 | 当前项 600 + 2px 下划线 |
 | 11 | 检查器页签右 | 漏斗（`aria-label=Filter file history`） | 图标 24×24 | 过滤文件历史 | 无展开态 |
 | 12 | 检查器脚 | `Open in Editor` | `btn small` 22 高 + 外链 12 | 外部编辑器打开 | 常驻 |
 | 13 | 检查器脚 | 复制（`aria-label=Copy file path`） | 图标 24×24 | 复制文件路径 | 常驻 |
 
-- **整行可点**：16 行 blame（选中行只标 `on`）与 6 行文件历史；两者都是 `<button>`。
+- **整行可点**：blame 行与文件历史行都使用公共 `ui::row` 按钮组件；选中 blame 行聚焦右侧对应提交，选中历史行重算当前 revision。
 - 顶部搜索框（176×26、`Search commits`）在本板仍占位，与 blame 内容没有关系。
 
 ## 8. 文案要点

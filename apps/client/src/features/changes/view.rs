@@ -26,6 +26,8 @@ pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.path.clone())
         .unwrap_or_default();
+    let blame_cmd = cmd.clone();
+    let blame_path = label.clone();
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
     let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
     // 逐行走一遍，记住当前在第几个 hunk、hunk 内第几行，供行级操作定位。
@@ -116,6 +118,13 @@ pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "files.blame"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    blame_path.is_empty(),
+                    move || blame_cmd.open_blame(blame_path.clone()),
+                ))
                 .child(
                     text(format!("+{} −{}", additions, deletions))
                         .text_size(px(crate::ui::CODE))

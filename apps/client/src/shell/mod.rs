@@ -266,7 +266,9 @@ pub(crate) fn toolbar(
                 .child(mode_tab(
                     language,
                     "shell.history",
-                    Arc::new(move || mode.get() == crate::Mode::History),
+                    Arc::new(move || {
+                        matches!(mode.get(), crate::Mode::History | crate::Mode::Blame)
+                    }),
                     move || set_history(),
                     None,
                 ))

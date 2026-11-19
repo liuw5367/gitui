@@ -314,6 +314,18 @@
     "revert": "Revert",
     "revealInFinder": "Reveal in Finder"
   },
+  "blame": {
+    "blame": "Blame",
+    "diff": "Diff",
+    "backToChanges": "Changes",
+    "changesCount": "Changes %{count}",
+    "lines": "%{count} lines",
+    "lastChange": "%{count} lines · last change %{date}",
+    "commits": "%{count} commits",
+    "empty": "No blame lines at this revision",
+    "error": "Could not load blame for this revision",
+    "noHistory": "No file history is available"
+  },
   "changes": {
     "staged": "Staged",
     "unstaged": "Unstaged",

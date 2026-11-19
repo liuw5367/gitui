@@ -57,6 +57,8 @@ APP_HOME=/tmp/app-home nsh run
 
 History 默认中心区域展示所有分支与 tag 可达的提交、stash 列表中的每个提交，并按父提交绘制 branch graph；引用侧栏的分支、远端分支、tag、stash 叶行按完整 ref 或 stash OID 定位并滚动到目标提交。History 列表占满中栏剩余高度，由虚拟表格滚动。顶部的分支与作者下拉菜单支持多选并显示已选数量，工具栏快速搜索独立于筛选草稿。日期区间、文件/目录路径与消息子串通过筛选浮层组合设置。右侧检查器展示提交信息和文件变更目录树；点击提交只更新检查器，点击其中的变更文件后，中栏整栏切换为占满高度的 Diff，顶部返回按钮可回到 History 并保留当前提交。提交右键菜单也可显式显示整个提交的差异。Diff 使用 NSH DiffView 按文件路径自动识别语法，支持 Unified/Split、折叠、换行、显示空白、忽略空白差异、hunk 导航、复制与导出；差异基于第一父提交，根提交与空 tree 比较。Compare 支持连续提交、所有本地/远端分支、tag、stash 端点与工作区对比，并提供 2-dot/3-dot 语义和退化态反馈；工作区比较包含暂存和未暂存的 tracked 文件。
 
+History 检查器的 Blame 入口进入独立的 Blame / File History 页面：中栏显示逐行提交归属，也可切换到该 revision 的 Diff；右侧 Changes 返回来源视图，History 按文件版本列出提交。历史文件按所选 commit 读取，工作区文件按 HEAD 读取；文件历史跟踪重命名，删除提交显示其第一父版本内容。Blame 行聚焦右侧对应提交，文件历史行则切换 blame revision。
+
 Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并按文件路径语法高亮；可编辑 Result 草稿按冲突路径留在当前仓库会话中。缺失的 stage 表示该侧删除文件，二进制冲突通过选择一侧解决。标记解决只写入并暂存当前路径；有未解决文件或未处理草稿时不能继续。Continue 会重读 Git 操作与冲突状态；若 Rebase 继续后产生下一轮冲突，会更新文件清单并打开冲突视图。Abort 也会核对确认时的操作类型，避免仓库状态改变后误放弃另一项操作。stash apply / pop 冲突作为普通 Changes 文件冲突显示，不出现操作级 Continue / Abort。详细交互见[合并冲突页说明](../../docs/pages/merge-conflict.md)。
 
 设计稿位于 [designs/graft-git](../../designs/graft-git/)，由 design 单独维护；页面实现只引用画板与共享样式，不把 HTML/CSS 或 WebView 带进应用。
@@ -70,7 +72,7 @@ Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并�
 - 语言：`src/i18n.rs` 用进程内信号保存当前语言，设置页切换后立即生效；缺键时回退英文，再缺失则返回键名。`locales` 两边的键集合由测试保证一致。
 - 主题：`theme.json` 提供 light/dark token，经 `theme_overrides` 注入；深色模式与浅色模式各有一组值，`theme_tests` 与设计 CSS 逐键比对。
 - 存储：会话、成功打开过的最近仓库、Git 扫描发现结果及命令面板的扫描搜索资格、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；扫描结果与最近打开历史分开保存。欢迎页查询全部扫描结果，命令面板查询由 Git 设置启用的扫描结果。文件格式见 [crates/store/README.md](../../crates/store/README.md)。
-- 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；产物写入 `files.local/shots/`（已被 `.gitignore` 排除，不提交）。`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME`、`GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT` 可以直接进入指定页面或浮层，完整列表见脚本头注释。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
+- 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；产物写入 `files.local/shots/`（已被 `.gitignore` 排除，不提交）。`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME`、`GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT` 可以直接进入指定页面或浮层，完整列表见脚本头注释。`GITUI_MODE=blame` 会在仓库标签页里预选第一个提交文件，便于检查 Board 19。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
 
 ## 测试
 

@@ -104,10 +104,23 @@ pub(crate) struct Tab {
     pub(crate) details: Option<git::CommitDetails>,
     /// 选中文件的 blame 行。
     pub(crate) blame: Vec<git::BlameLine>,
-    /// 正在看的 blame 文件路径（板 19 的 `.blamebar` 要显示它）。
+    /// 当前 blame 的文件路径（重命名以前会指向历史路径）。
     pub(crate) blame_path: String,
-    /// 选中文件的历史。
-    pub(crate) file_history: Vec<Commit>,
+    /// blame 的逻辑 revision；`HEAD` 表示从工作区打开。
+    pub(crate) blame_revision: String,
+    /// 打开 blame 前所在的主区，历史 revision 切换后仍按原入口返回。
+    pub(crate) blame_return_mode: Option<crate::Mode>,
+    /// 当前聚焦的文件历史提交，点 blame 行时更新但不改代码 revision。
+    pub(crate) blame_focus_sha: Option<String>,
+    /// 当前点选的 blame 行；只高亮这一行，提交聚焦由 `blame_focus_sha` 表示。
+    pub(crate) blame_selected_line: Option<u32>,
+    /// 是否在 blame 页内显示当前 revision 的文件 patch。
+    pub(crate) blame_show_diff: bool,
+    pub(crate) blame_patch: domain::diff::Patch,
+    /// 当前 blame 失败时的可读原因。
+    pub(crate) blame_error: Option<String>,
+    /// 文件历史项含该提交时实际存在的路径。
+    pub(crate) file_history: Vec<git::FileHistoryEntry>,
     /// 对比引用的起点（`None` 表示未开启 Compare refs）。
     pub(crate) compare_base: Option<String>,
     /// 对比引用的终点。
@@ -278,18 +291,6 @@ fn normalise_status(status: char) -> char {
 }
 
 impl Tab {
-    /// blame 的纯文本（复制按钮用）：`短hash 作者 行号 代码`。
-    pub(crate) fn blame_text(&self) -> String {
-        let mut out = String::new();
-        for line in &self.blame {
-            out.push_str(&format!(
-                "{} {} {} {}\n",
-                line.short, line.author, line.line, line.text
-            ));
-        }
-        return out;
-    }
-
     /// 当前选中的提交。
     pub(crate) fn selected_commit(&self) -> Option<&Commit> {
         return self.selected.and_then(|index| self.commits.get(index));
