@@ -1,8 +1,9 @@
 //! 本模块负责多步操作：合并、拣选、回滚、冲突读写与继续/放弃。
 
-use domain::GitError;
+use domain::{GitError, conflict::ConflictSides};
+use std::path::PathBuf;
 
-use crate::exec::{run_git, run_git_combined, run_git_combined_with_env};
+use crate::exec::{run_git, run_git_combined, run_git_combined_with_env, run_git_full};
 use crate::parse::summarise;
 use crate::query::Repo;
 
@@ -71,7 +72,16 @@ impl Repo {
     /// `CHERRY_PICK_HEAD`、`REVERT_HEAD`。顺序上合并优先于拣选，因为合并也可以由
     /// 拣选触发。
     pub fn operation(&self) -> Operation {
-        let git_dir = self.root.join(".git");
+        let output = match run_git(&self.root, &["rev-parse", "--git-dir"]) {
+            Ok(output) => output,
+            Err(_) => return Operation::None,
+        };
+        let git_dir = PathBuf::from(String::from_utf8_lossy(&output).trim());
+        let git_dir = if git_dir.is_absolute() {
+            git_dir
+        } else {
+            self.root.join(git_dir)
+        };
         if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() {
             return Operation::Rebase;
         }
@@ -141,18 +151,96 @@ impl Repo {
             .collect());
     }
 
-    /// 读取冲突文件当前内容（含冲突标记）。
+    /// 读取冲突文件在 index stage 1/2/3 中的内容。
     ///
-    /// 只读工作区文件；文件不存在时返回空串，交给界面提示而不是报错。
-    pub fn conflict_content(&self, path: &str) -> String {
+    /// Add/add 与 delete/modify 冲突会缺少对应 stage，因此每侧分别可空；内容按原始
+    /// bytes 返回，避免把二进制冲突改写成 lossy UTF-8。
+    pub fn conflict_sides(&self, path: &str) -> Result<ConflictSides, GitError> {
+        let pathspec = format!(":(top,literal){path}");
+        let output = run_git_full(
+            &self.root,
+            &["ls-files", "-u", "-z", "--", pathspec.as_str()],
+        )?;
+        let mut sides = ConflictSides {
+            path: path.to_string(),
+            ..ConflictSides::default()
+        };
+        for record in output
+            .split(|byte| *byte == 0)
+            .filter(|record| !record.is_empty())
+        {
+            let Some(separator) = record.iter().position(|byte| *byte == b'\t') else {
+                return Err(GitError::Parse {
+                    context: "git ls-files -u".to_string(),
+                    detail: String::from_utf8_lossy(record).to_string(),
+                });
+            };
+            let metadata = String::from_utf8_lossy(&record[..separator]);
+            let mut fields = metadata.split_ascii_whitespace();
+            let _mode = fields.next();
+            let Some(oid) = fields.next() else {
+                return Err(GitError::Parse {
+                    context: "git ls-files -u".to_string(),
+                    detail: metadata.to_string(),
+                });
+            };
+            let Some(stage) = fields.next() else {
+                return Err(GitError::Parse {
+                    context: "git ls-files -u".to_string(),
+                    detail: metadata.to_string(),
+                });
+            };
+            let record_path = String::from_utf8_lossy(&record[separator + 1..]);
+            if record_path != path {
+                continue;
+            }
+            let content = run_git_full(&self.root, &["cat-file", "blob", oid])?;
+            let target = match stage {
+                "1" => &mut sides.base,
+                "2" => &mut sides.ours,
+                "3" => &mut sides.theirs,
+                _ => {
+                    return Err(GitError::Parse {
+                        context: "git ls-files -u".to_string(),
+                        detail: format!("未知冲突 stage：{stage}"),
+                    });
+                }
+            };
+            *target = Some(content);
+        }
+        return Ok(sides);
+    }
+
+    /// 读取冲突文件当前工作区内容。删除冲突侧可能对应不存在的路径。
+    pub fn conflict_worktree_content(&self, path: &str) -> Result<Option<Vec<u8>>, GitError> {
         let target = self.root.join(path);
-        return std::fs::read_to_string(target).unwrap_or_default();
+        match std::fs::read(&target) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(GitError::Unreadable {
+                path: target.display().to_string(),
+                reason: error.to_string(),
+            }),
+        }
+    }
+
+    /// 读取冲突文件当前内容（含冲突标记）；二进制内容按 lossy UTF-8 供旧调用方展示。
+    pub fn conflict_content(&self, path: &str) -> String {
+        let Ok(Some(bytes)) = self.conflict_worktree_content(path) else {
+            return String::new();
+        };
+        return String::from_utf8_lossy(&bytes).into_owned();
     }
 
     /// 写入解决后的内容并标记为已解决（`git add`）。
     ///
     /// 写盘失败直接把原因当错误返回，避免「看起来已解决但文件没变」。
     pub fn resolve_conflict(&self, path: &str, content: &str) -> Result<(), GitError> {
+        return self.resolve_conflict_bytes(path, content.as_bytes());
+    }
+
+    /// 写入解决后的原始内容并标记为已解决（只暂存指定路径）。
+    pub fn resolve_conflict_bytes(&self, path: &str, content: &[u8]) -> Result<(), GitError> {
         let target = self.root.join(path);
         std::fs::write(&target, content).map_err(|error| GitError::Unreadable {
             path: target.display().to_string(),
@@ -162,8 +250,23 @@ impl Repo {
         return Ok(());
     }
 
-    /// 用一侧的内容解决冲突：`ours` 为真取当前分支，否则取对方。
+    /// 以删除该路径的方式解决冲突。
+    pub fn resolve_conflict_delete(&self, path: &str) -> Result<(), GitError> {
+        run_git(&self.root, &["rm", "--force", "--", path])?;
+        return Ok(());
+    }
+
+    /// 用一侧解决冲突：该侧有 stage 时检出其内容，缺少 stage 时把路径标记为删除。
     pub fn resolve_with(&self, path: &str, ours: bool) -> Result<(), GitError> {
+        let sides = self.conflict_sides(path)?;
+        let side_exists = if ours {
+            sides.ours.is_some()
+        } else {
+            sides.theirs.is_some()
+        };
+        if !side_exists {
+            return self.resolve_conflict_delete(path);
+        }
         let flag = if ours { "--ours" } else { "--theirs" };
         run_git(&self.root, &["checkout", flag, "--", path])?;
         run_git(&self.root, &["add", "--", path])?;

@@ -108,8 +108,7 @@ pub(crate) fn app() -> impl IntoElement {
         signal(acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()));
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
-    // 冲突视图：可编辑的结果区与 base 显隐。
-    let conflict_result = signal(String::new());
+    // 冲突视图的 Base 区域显隐。
     let conflict_base_open = signal(false);
     // 验收开关：`GITUI_SYNC=1` 启动即打开同步面板，用于截图核对弹层外观
     // （遮罩深浅、圆角、阴影、关闭行为）。与 GITUI_GALLERY 同思路。
@@ -368,7 +367,6 @@ pub(crate) fn app() -> impl IntoElement {
     // MergeCommands；变更列表的冲突行要用它，所以先于 ChangesCommands 建。
     let merge_commands = features::merge::commands::MergeCommands {
         state: features::merge::state::MergeState {
-            result: conflict_result,
             base_open: conflict_base_open,
         },
         session: session.clone(),

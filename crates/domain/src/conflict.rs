@@ -4,6 +4,18 @@
 //! 冲突文件就是这种形态，`|||||||` 段只在配置了 `merge.conflictStyle=diff3` 时出现。
 //! 解析结果是「片段序列」，合并时按选择逐段替换，未冲突的行原样保留。
 
+/// Git index 中某个 unmerged 路径的三个 stage 内容。
+///
+/// stage 1 是共同祖先，stage 2 是 ours，stage 3 是 theirs。Add/add、delete/modify
+/// 等冲突可能缺少其中一侧，因此使用 `Option` 表示路径不存在于该侧。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ConflictSides {
+    pub path: String,
+    pub base: Option<Vec<u8>>,
+    pub ours: Option<Vec<u8>>,
+    pub theirs: Option<Vec<u8>>,
+}
+
 /// 冲突文件的一个片段。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Segment {

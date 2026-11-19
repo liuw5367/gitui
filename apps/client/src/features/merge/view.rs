@@ -11,11 +11,40 @@ use super::state::MergeState;
 use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
-use domain::conflict::{self, Side};
+use domain::conflict::Side;
 use nsh_core::prelude::*;
 
-/// 受控的只读文本块：带底色和等宽字体，长内容可滚动。
-fn pane(language: Signal<SharedString>, title_key: &'static str, body: String) -> AnyElement {
+/// A read-only stage pane. Missing stages and binary blobs get an explicit state.
+fn pane(
+    language: Signal<SharedString>,
+    title_key: &'static str,
+    path: String,
+    bytes: Option<&[u8]>,
+) -> AnyElement {
+    let body = match bytes {
+        None => crate::ui::text_input::code_view(
+            path,
+            String::new(),
+            i18n::t(language.get_untracked().as_str(), "conflicts.sideDeleted"),
+        )
+        .into_element(),
+        Some(bytes) => match conflict_text(bytes) {
+            Some(value) => {
+                crate::ui::text_input::code_view(path, value, String::new()).into_element()
+            }
+            None => view()
+                .w_full()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "conflicts.binaryPane"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
+                )
+                .into_element(),
+        },
+    };
     return view()
         .flex_1()
         .min_w_0()
@@ -41,53 +70,15 @@ fn pane(language: Signal<SharedString>, title_key: &'static str, body: String) -
                         .text_color(move || design::text3()),
                 ),
         )
-        .child(
-            view().w_full().flex_1().min_h_0().child(
-                scroll().w_full().h_full().child(
-                    view().w_full().p(px(7.0)).child(
-                        text(body)
-                            .text_size(px(crate::ui::CODE))
-                            .line_height(px(crate::ui::CODE_LINE))
-                            .text_color(move || design::text2()),
-                    ),
-                ),
-            ),
-        )
+        .child(view().w_full().flex_1().min_h_0().child(body))
         .into_element();
 }
 
-/// 从冲突文件文本里取某一侧的展示内容。
-fn side_text(text: &str, side: Side) -> String {
-    let segments = conflict::parse(text);
-    let mut out: Vec<String> = Vec::new();
-    for segment in segments {
-        match segment {
-            conflict::Segment::Common(lines) => out.extend(lines),
-            conflict::Segment::Conflict { ours, theirs, .. } => match side {
-                Side::Ours => out.extend(ours),
-                Side::Theirs => out.extend(theirs),
-                Side::Both => {
-                    out.extend(ours);
-                    out.extend(theirs);
-                }
-            },
-        }
+fn conflict_text(bytes: &[u8]) -> Option<String> {
+    if bytes.contains(&0) {
+        return None;
     }
-    return out.join("\n");
-}
-
-/// base 侧内容（diff3 风格才有）。
-fn base_text(text: &str) -> String {
-    let mut out: Vec<String> = Vec::new();
-    for segment in conflict::parse(text) {
-        match segment {
-            conflict::Segment::Common(lines) => out.extend(lines),
-            conflict::Segment::Conflict { base, ours, .. } => {
-                out.extend(base.unwrap_or(ours));
-            }
-        }
-    }
-    return out.join("\n");
+    return String::from_utf8(bytes.to_vec()).ok();
 }
 
 /// 入口 `conflict_view` 收本功能的状态与用例；语言与当前仓库单独传。
@@ -97,7 +88,6 @@ pub(crate) fn conflict_view(
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
 ) -> impl IntoElement {
-    let result = state.result;
     let base_open = state.base_open;
     // 视图回调要 `'static`，这里把本功能的命令各包一层。
     let close = {
@@ -111,6 +101,10 @@ pub(crate) fn conflict_view(
     let apply_side = {
         let cmd = cmd.clone();
         move |side: Side| cmd.apply_side(side)
+    };
+    let update_result: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |value| cmd.update_result(value))
     };
     let mark = {
         let cmd = cmd.clone();
@@ -163,14 +157,43 @@ pub(crate) fn conflict_view(
             let paths = current.conflicts.clone();
             let index = current.conflict_index;
             let total = paths.len();
-            let conflict_text = current.conflict_text.clone();
             let unresolved = total;
+            let selected_path = paths.get(index).cloned();
+            let selected_draft = selected_path
+                .as_ref()
+                .and_then(|path| current.conflict_drafts.get(path))
+                .cloned();
+            let conflict_sides = current.conflict_sides.clone();
+            let result_is_delete = matches!(
+                selected_draft.as_ref(),
+                Some(crate::app::session::ConflictDraft::Delete)
+            );
+            let result_is_binary = match selected_draft.as_ref() {
+                Some(crate::app::session::ConflictDraft::Binary(_)) => true,
+                Some(
+                    crate::app::session::ConflictDraft::Text(_)
+                    | crate::app::session::ConflictDraft::Delete,
+                ) => false,
+                None => current.conflict_binary,
+            };
+            let result_text = super::ops::conflict_result(&current);
+            let has_markers = domain::conflict::has_markers(result_text.as_str());
             let operation = current.operation.id().to_string();
-            let can_continue = unresolved == 0;
+            let can_continue = unresolved == 0
+                && current.conflict_drafts.is_empty()
+                && current.operation != git::Operation::None;
+            let can_mark = selected_path.is_some()
+                && !has_markers
+                && (!result_is_binary
+                    || matches!(
+                        selected_draft.as_ref(),
+                        Some(crate::app::session::ConflictDraft::Binary(_))
+                    ));
             let language_value = language;
             let close = close.clone();
             let select = select.clone();
             let apply_side = apply_side.clone();
+            let update_result = update_result.clone();
             let mark = mark.clone();
             let step = step.clone();
             let continue_op = continue_op.clone();
@@ -182,7 +205,7 @@ pub(crate) fn conflict_view(
                 .map(|(chip_index, path)| {
                     let select = select.clone();
                     let active = chip_index == index;
-                    let name = path.rsplit('/').next().unwrap_or(path).to_string();
+                    let name = path.clone();
                     let variant = if active {
                         crate::ui::button::ButtonVariant::Secondary
                     } else {
@@ -198,6 +221,144 @@ pub(crate) fn conflict_view(
                     .into_element();
                 })
                 .collect();
+
+            let detail: AnyElement = if let Some(path) = selected_path.clone() {
+                let sides = conflict_sides.clone();
+                let ours = pane(
+                    language,
+                    "conflicts.ours",
+                    path.clone(),
+                    sides.as_ref().and_then(|sides| sides.ours.as_deref()),
+                );
+                let sides = conflict_sides.clone();
+                let theirs = pane(
+                    language,
+                    "conflicts.theirs",
+                    path.clone(),
+                    sides.as_ref().and_then(|sides| sides.theirs.as_deref()),
+                );
+                let result_body: AnyElement = if result_is_binary {
+                    view()
+                        .w_full()
+                        .flex_1()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            text(move || {
+                                let key = if matches!(
+                                    selected_draft.as_ref(),
+                                    Some(crate::app::session::ConflictDraft::Binary(_))
+                                ) {
+                                    "conflicts.binarySelected"
+                                } else {
+                                    "conflicts.binaryChooseSide"
+                                };
+                                i18n::t(language_value.get().as_str(), key)
+                            })
+                            .text_size(px(crate::ui::SECONDARY))
+                            .text_color(move || design::text3()),
+                        )
+                        .into_element()
+                } else {
+                    let placeholder_key = if result_is_delete {
+                        "conflicts.resultWillDelete"
+                    } else {
+                        "conflicts.resultPlaceholder"
+                    };
+                    let result_tab = tab.clone();
+                    let update_result = update_result.clone();
+                    crate::ui::text_input::code_editor(
+                        path.clone(),
+                        move || {
+                            result_tab
+                                .get()
+                                .map(|tab| super::ops::conflict_result(&tab))
+                                .unwrap_or_default()
+                        },
+                        i18n::t(language_value.get_untracked().as_str(), placeholder_key),
+                        move |value| update_result(value.to_string()),
+                    )
+                    .into_element()
+                };
+                view()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .p(px(12.0))
+                    .child(crate::ui::split::horizontal(vec![
+                        crate::ui::split::Pane::flex(ours),
+                        crate::ui::split::Pane::flex(
+                            view()
+                                .flex_1()
+                                .min_w_0()
+                                .h_full()
+                                .flex_col()
+                                .rounded(px(metrics::RADIUS_CONTROL))
+                                .border_1()
+                                .border_color(move || design::line())
+                                .bg(move || design::field())
+                                .child(
+                                    view()
+                                        .w_full()
+                                        .h(px(22.0))
+                                        .px(px(8.0))
+                                        .flex_row()
+                                        .items_center()
+                                        .border_b_1()
+                                        .border_color(move || design::line_soft())
+                                        .child(
+                                            text(move || {
+                                                i18n::t(
+                                                    language_value.get().as_str(),
+                                                    "conflicts.result",
+                                                )
+                                            })
+                                            .text_size(px(crate::ui::SECONDARY))
+                                            .line_height(px(crate::ui::SECONDARY_LINE))
+                                            .text_color(move || design::text2()),
+                                        ),
+                                )
+                                .child(view().w_full().flex_1().min_h_0().child(result_body)),
+                        ),
+                        crate::ui::split::Pane::flex(theirs),
+                    ]))
+                    .into_element()
+            } else {
+                view()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        text(move || {
+                            i18n::t(language_value.get().as_str(), "conflicts.allResolved")
+                        })
+                        .text_size(px(crate::ui::BODY))
+                        .text_color(move || design::text2()),
+                    )
+                    .into_element()
+            };
+            let base_pane = if base_open.get() && selected_path.is_some() {
+                let path = selected_path.clone().unwrap_or_default();
+                let base = pane(
+                    language,
+                    "conflicts.basePane",
+                    path,
+                    conflict_sides
+                        .as_ref()
+                        .and_then(|sides| sides.base.as_deref()),
+                );
+                view()
+                    .w_full()
+                    .h(px(metrics::MERGE_BASE_H))
+                    .px(px(12.0))
+                    .pb(px(8.0))
+                    .child(base)
+                    .into_element()
+            } else {
+                view().h(px(0.0)).into_element()
+            };
 
             return view()
                 .w_full()
@@ -256,30 +417,36 @@ pub(crate) fn conflict_view(
                                     },
                                     crate::ui::button::ButtonVariant::Secondary,
                                     crate::ui::button::ButtonSize::Small,
-                                    false,
+                                    selected_path.is_none(),
                                     move || base_open.set(!base_open.get_untracked()),
                                 ))
                                 .child(crate::ui::button::button(
                                     move || "‹".to_string(),
                                     crate::ui::button::ButtonVariant::Secondary,
                                     crate::ui::button::ButtonSize::Small,
-                                    false,
+                                    index == 0,
                                     {
                                         let step = step.clone();
                                         move || step(false)
                                     },
                                 ))
                                 .child(
-                                    text(move || format!("{} / {}", index + 1, total.max(1)))
-                                        .text_size(px(crate::ui::CODE))
-                                        .line_height(px(crate::ui::CODE_LINE))
-                                        .text_color(move || design::text3()),
+                                    text(move || {
+                                        if total == 0 {
+                                            "0 / 0".to_string()
+                                        } else {
+                                            format!("{} / {}", index + 1, total)
+                                        }
+                                    })
+                                    .text_size(px(crate::ui::CODE))
+                                    .line_height(px(crate::ui::CODE_LINE))
+                                    .text_color(move || design::text3()),
                                 )
                                 .child(crate::ui::button::button(
                                     move || "›".to_string(),
                                     crate::ui::button::ButtonVariant::Secondary,
                                     crate::ui::button::ButtonSize::Small,
-                                    false,
+                                    total == 0 || index + 1 >= total,
                                     {
                                         let step = step.clone();
                                         move || step(true)
@@ -332,7 +499,7 @@ pub(crate) fn conflict_view(
                                             })
                                             .text_size(px(crate::ui::SECONDARY))
                                             .font_weight(FontWeight(600))
-                                            .line_height(px(12.0))
+                                            .line_height(px(crate::ui::SECONDARY_LINE))
                                             .text_color(move || design::text2()),
                                         ),
                                 )
@@ -342,98 +509,12 @@ pub(crate) fn conflict_view(
                                     ),
                                 )),
                         )
-                        .child(view().flex_1().min_w_0().h_full().p(px(12.0)).child(
-                            crate::ui::split::horizontal(vec![
-                                    crate::ui::split::Pane::flex(pane(
-                                        language,
-                                        "conflicts.ours",
-                                        side_text(conflict_text.as_str(), Side::Ours),
-                                    )),
-                                    crate::ui::split::Pane::flex(
-                            view()
-                                .flex_1()
-                                .min_w_0()
-                                .h_full()
-                                .flex_col()
-                                .rounded(px(metrics::RADIUS_CONTROL))
-                                .border_1()
-                                .border_color(move || design::line())
-                                .bg(move || design::field())
-                                .child(
-                                    view()
-                                        .w_full()
-                                        .h(px(22.0))
-                                        .px(px(8.0))
-                                        .flex_row()
-                                        .items_center()
-                                        .border_b_1()
-                                        .border_color(move || design::line_soft())
-                                        .child(
-                                            text(move || {
-                                                i18n::t(
-                                                    language_value.get().as_str(),
-                                                    "conflicts.result",
-                                                )
-                                            })
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                            .text_color(move || design::text2()),
-                                        ),
-                                )
-                                .child(
-                                    view().w_full().flex_1().min_h_0().p(px(7.0)).child(
-                                        scroll().w_full().h_full().child(
-                                            crate::ui::text_input::code_text_area(
-                                                result,
-                                                move |value| result.set(value.to_string()),
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                                    crate::ui::split::Pane::flex(pane(
-                                        language,
-                                        "conflicts.theirs",
-                                        side_text(conflict_text.as_str(), Side::Theirs),
-                                    )),
-                                ]),
-                        )),
+                        .child(view().flex_1().min_w_0().h_full().p(px(12.0)).child(detail)),
                 )
-                // base 条：只在 diff3 风格有内容，且需要用户展开。
-                .child(view().w_full().px(px(12.0)).when(base_open.get(), |this| {
-                    let base = base_text(conflict_text.as_str());
-                    this.child(
-                        view()
-                            .w_full()
-                            .h(px(metrics::MERGE_BASE_H))
-                            .flex_col()
-                            .rounded(px(metrics::RADIUS_CONTROL))
-                            .border_1()
-                            .border_color(move || design::line_soft())
-                            .bg(move || design::content())
-                            .child(
-                                text(move || {
-                                    i18n::t(language_value.get().as_str(), "conflicts.basePane")
-                                })
-                                .text_size(px(crate::ui::SECONDARY))
-                                .px(px(8.0))
-                                .py(px(4.0))
-                                .text_color(move || design::text3()),
-                            )
-                            .child(
-                                view().w_full().p(px(7.0)).child(
-                                    text(base)
-                                        .text_size(px(crate::ui::CODE))
-                                        .line_height(px(crate::ui::CODE_LINE))
-                                        .text_color(move || design::text2()),
-                                ),
-                            ),
-                    )
-                }))
+                .child(base_pane)
                 // 底部：接受一侧、标记、继续、放弃。
                 .child(
                     view()
-                        .w_full()
                         .w_full()
                         .h(px(metrics::MERGE_FOOT_H))
                         .flex_shrink_0()
@@ -448,7 +529,7 @@ pub(crate) fn conflict_view(
                             move || i18n::t(language_value.get().as_str(), "conflicts.acceptOurs"),
                             crate::ui::button::ButtonVariant::Secondary,
                             crate::ui::button::ButtonSize::Small,
-                            false,
+                            selected_path.is_none(),
                             {
                                 let apply_side = apply_side.clone();
                                 move || apply_side(Side::Ours)
@@ -460,7 +541,7 @@ pub(crate) fn conflict_view(
                             },
                             crate::ui::button::ButtonVariant::Secondary,
                             crate::ui::button::ButtonSize::Small,
-                            false,
+                            selected_path.is_none(),
                             {
                                 let apply_side = apply_side.clone();
                                 move || apply_side(Side::Theirs)
@@ -470,7 +551,9 @@ pub(crate) fn conflict_view(
                             move || i18n::t(language_value.get().as_str(), "conflicts.acceptBoth"),
                             crate::ui::button::ButtonVariant::Secondary,
                             crate::ui::button::ButtonSize::Small,
-                            false,
+                            selected_path.is_none()
+                                || result_is_binary
+                                || !domain::conflict::has_markers(current.conflict_text.as_str()),
                             {
                                 let apply_side = apply_side.clone();
                                 move || apply_side(Side::Both)
@@ -483,7 +566,7 @@ pub(crate) fn conflict_view(
                             },
                             crate::ui::button::ButtonVariant::Secondary,
                             crate::ui::button::ButtonSize::Small,
-                            false,
+                            !can_mark,
                             {
                                 let mark = mark.clone();
                                 move || mark()
@@ -502,14 +585,10 @@ pub(crate) fn conflict_view(
                             },
                             crate::ui::button::ButtonVariant::Primary,
                             crate::ui::button::ButtonSize::Regular,
-                            false,
+                            !can_continue,
                             {
                                 let continue_op = continue_op.clone();
-                                move || {
-                                    if can_continue {
-                                        continue_op();
-                                    }
-                                }
+                                move || continue_op()
                             },
                         ))
                         .child(crate::ui::button::button(

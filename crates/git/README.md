@@ -30,7 +30,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 子模块 | `SubmoduleInfo`、`update_submodule`、`sync_submodule`、`remove_submodule` |
 | 工作树 | `WorktreeInfo`、`add_worktree`、`remove_worktree`、`prune_worktrees` |
 | 同步 | `fetch`、`fetch_with`、`start_fetch_with`、`pull`、`pull_with`、`start_pull_with`、`pull_remote_branch`、`push`、`push_with`、`start_push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming`、`SyncRun` |
-| 冲突与多步操作 | `operation`、`conflict_content`、`conflicts`、`resolve_conflict`、`resolve_with`、`continue_operation`、`abort_operation` |
+| 冲突与多步操作 | `operation`、`conflict_content`、`conflict_worktree_content`、`conflict_sides`、`conflicts`、`resolve_conflict`、`resolve_conflict_bytes`、`resolve_conflict_delete`、`resolve_with`、`continue_operation`、`abort_operation` |
 | 克隆与初始化 | `clone`、`clone_with`、`start_clone`、`init_repository`、`init_with` |
 | 本机信息与底层执行 | `info`、`credential_helper`、`run_git` |
 
@@ -39,6 +39,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 `Repo::refs` 返回 `Refs { branches, remotes, remote_info, remote_branches, tags, stashes, submodules, worktrees }`。`RemoteInfo` 保存全部 fetch/push URL；`RemoteBranch` 分开保存远端名和远端内的分支名，`full_name()` 返回 `origin/feature/topic` 形式。远端 HEAD 符号别名不会作为远端分支返回。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 保存显示序号 `reference`、提交 OID `oid` 与摘要，操作可按 OID 在序号变化后重新定位。`SubmoduleInfo` 保存 `.gitmodules` 的路径、URL、可选跟踪分支，以及初始化状态、当前提交、父仓库 index 中的 gitlink 提交和子模块自身是否有改动。`update_submodule(path, false)` 初始化并检出父仓库记录的版本，`update_submodule(path, true)` 要求配置跟踪分支并按 `--remote` 更新；`sync_submodule` 同步配置 URL，`remove_submodule` 会拒绝删除含本地改动或未记录提交的已初始化子模块。`WorktreeInfo` 记录关联工作树路径、主工作树标记、分支、锁定、失效登记、目录存在状态及工作区是否干净；`add_worktree` 可检出现有分支或从起点新建分支，`remove_worktree` 只移除干净、未锁定、非主工作树的登记路径且不使用强制选项，`prune_worktrees` 立即清理 Git 标为失效的登记。`stash_push_selected` 以 literal pathspec 只保存指定路径，`stash_show` 可读取包含未跟踪文件的差异。
 
 `rebase_onto` 把当前分支变基到指定引用；若 Git 因冲突退出，仓库会保留 rebase 状态供界面继续解决。`checkout_tracking_branch` 创建并检出跟踪指定远端分支的本地分支。`pull_remote_branch` 拉取指定远端分支并合入当前分支。`push_branch` 推送指定本地分支到远端同名分支，不要求当前检出该分支；`delete_remote_branch` 通过非强制删除 refspec 移除服务器分支。
+
+`conflict_sides(path)` 从 `git ls-files -u` 读取 index stage 1/2/3，再用对象 ID 读取各侧原始 blob；缺失 stage 返回 `None`，不把删除侧伪装成空文件。`conflict_worktree_content` 读取当前工作区字节。解决文本或二进制内容时，`resolve_conflict_bytes` 只写回并暂存给定路径；`resolve_conflict_delete` 以 `git rm` 暂存删除。`operation()` 通过 `git rev-parse --git-dir` 查找操作标记，因此也适用于 `.git` 是文件的关联工作树。
 
 `log_all` 返回所有引用可达的完整历史。`log_history` 默认从全部引用读取；`LogFilter.references` 可用多个本地或远端 ref 做 OR 范围，旧的单引用 `reference` 仍可用。它支持多作者 email、日期端点、literal 文件/目录 pathspec 与提交消息子串；条件维度之间按 AND 组合。`log_history_graph` 只应用引用范围，给筛选后的提交图重连祖先使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`authors_with_email` 返回按 email 去重的作者身份，`authors` 保留只取显示名的接口。日志解析包含 author email 和完整提交消息；`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
 

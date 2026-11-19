@@ -675,6 +675,16 @@ pub(crate) fn op_banner(
         );
     };
     let abort_for_view = abort.clone();
+    let open_conflicts: std::sync::Arc<dyn Fn()> = {
+        let merge = merge.clone();
+        std::sync::Arc::new(move || merge.open_conflict())
+    };
+    let continue_operation: std::sync::Arc<dyn Fn()> = {
+        let merge = merge.clone();
+        std::sync::Arc::new(move || merge.continue_op())
+    };
+    let open_conflicts_for_view = open_conflicts.clone();
+    let continue_for_view = continue_operation.clone();
     // 无进行中的操作时整条横幅高度为 0；有操作时走 ui 层横幅（28 高、tag-bg、
     // 前置 info 图标），与另外两条横幅共用同一套外观。
     return view()
@@ -686,6 +696,29 @@ pub(crate) fn op_banner(
                 return view().w_full().h(px(0.0)).into_element();
             }
             let abort = abort_for_view.clone();
+            let conflict_count = tab.get().map(|tab| tab.conflicts.len()).unwrap_or(0);
+            let has_pending_drafts = tab.get().is_some_and(|tab| !tab.conflict_drafts.is_empty());
+            let action = if conflict_count > 0 {
+                let open_conflicts = open_conflicts_for_view.clone();
+                crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "conflicts.resolve"),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || open_conflicts(),
+                )
+                .into_element()
+            } else {
+                let continue_operation = continue_for_view.clone();
+                crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "operation.continue"),
+                    crate::ui::button::ButtonVariant::Primary,
+                    crate::ui::button::ButtonSize::Small,
+                    has_pending_drafts,
+                    move || continue_operation(),
+                )
+                .into_element()
+            };
             return crate::ui::feedback::banner_sized(
                 crate::ui::feedback::BannerTone::Accent,
                 28.0,
@@ -706,6 +739,7 @@ pub(crate) fn op_banner(
                     )
                 },
                 vec![
+                    action,
                     crate::ui::button::button(
                         move || i18n::t(language.get().as_str(), "operation.abort"),
                         crate::ui::button::ButtonVariant::Secondary,

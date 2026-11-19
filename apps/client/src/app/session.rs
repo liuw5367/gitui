@@ -4,7 +4,7 @@ use crate::features::changes::ops::{load_changes, refresh_changes};
 use crate::features::history::ops::select_commit;
 use domain::{Commit, DiffStat, StatusEntry};
 use git::{LogFilter, Refs, Repo};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(1);
@@ -23,6 +23,14 @@ pub(crate) enum RepoProblem {
     NotFound,
     /// 目录在，但不是 Git 仓库。
     NotARepository,
+}
+
+/// 尚未标记解决的冲突结果。删除侧作为明确的选择保存，不能与空文件混为一谈。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ConflictDraft {
+    Text(String),
+    Binary(Vec<u8>),
+    Delete,
 }
 
 /// 一个仓库标签页的全部界面状态。
@@ -126,6 +134,12 @@ pub(crate) struct Tab {
     pub(crate) conflict_open: bool,
     /// 冲突文件当前内容（含标记）。
     pub(crate) conflict_text: String,
+    /// 当前冲突路径在 index stage 1/2/3 中的原始内容。
+    pub(crate) conflict_sides: Option<domain::conflict::ConflictSides>,
+    /// 当前工作区冲突内容是否为二进制，二进制 Result 必须先选择一侧。
+    pub(crate) conflict_binary: bool,
+    /// 按仓库路径保存的未解决结果，切换文件或关闭视图不会丢失。
+    pub(crate) conflict_drafts: BTreeMap<String, ConflictDraft>,
     /// 打开失败时的错误详情；成功时为 `None`。
     pub(crate) error: Option<String>,
 }
@@ -423,6 +437,12 @@ pub(crate) fn reload_after_history_change(tab: &mut Tab) -> Result<String, Strin
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;
     tab.selected = None;
+    tab.conflict_index = 0;
+    tab.conflict_open = false;
+    tab.conflict_text.clear();
+    tab.conflict_sides = None;
+    tab.conflict_binary = false;
+    tab.conflict_drafts.clear();
     if !tab.commits.is_empty() {
         select_commit(tab, 0);
     }

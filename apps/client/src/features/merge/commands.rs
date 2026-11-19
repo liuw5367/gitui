@@ -24,12 +24,10 @@ impl MergeCommands {
     pub(crate) fn open_conflict(&self) {
         let tabs = self.session.tabs;
         let active = self.session.active;
-        let conflict_result = self.state.result;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             ops::open_conflict(tab);
-            conflict_result.set(tab.conflict_text.clone());
             tabs.set(list);
         }
     }
@@ -38,12 +36,10 @@ impl MergeCommands {
     pub(crate) fn select_conflict(&self, index: usize) {
         let tabs = self.session.tabs;
         let active = self.session.active;
-        let conflict_result = self.state.result;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             ops::select_conflict(tab, index);
-            conflict_result.set(tab.conflict_text.clone());
             tabs.set(list);
         }
     }
@@ -52,13 +48,21 @@ impl MergeCommands {
     pub(crate) fn step_conflict(&self, forward: bool) {
         let tabs = self.session.tabs;
         let active = self.session.active;
-        let conflict_result = self.state.result;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             ops::step_conflict(tab, forward);
-            conflict_result.set(tab.conflict_text.clone());
             tabs.set(list);
+        }
+    }
+
+    /// 更新 Result 并马上按文件路径保存草稿。
+    pub(crate) fn update_result(&self, value: String) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            ops::update_conflict_result(tab, value);
+            self.session.tabs.set(list);
         }
     }
 
@@ -66,12 +70,10 @@ impl MergeCommands {
     pub(crate) fn apply_side(&self, side: Side) {
         let tabs = self.session.tabs;
         let active = self.session.active;
-        let conflict_result = self.state.result;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            let merged = ops::conflict_take_side(tab, side);
-            conflict_result.set(merged);
+            ops::conflict_take_side(tab, side);
             tabs.set(list);
         }
     }
@@ -80,23 +82,35 @@ impl MergeCommands {
     pub(crate) fn mark_resolved(&self) {
         let tabs = self.session.tabs;
         let active = self.session.active;
-        let conflict_result = self.state.result;
         let notice = self.notice;
         let language = self.language;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            let resolved = conflict_result.get_untracked();
+            let resolved = ops::conflict_result(tab);
             match ops::mark_conflict_resolved(tab, resolved.as_str()) {
                 Ok(()) => {
-                    conflict_result.set(tab.conflict_text.clone());
                     let lang = language.get_untracked();
                     crate::interactions::notify(
                         notice,
                         crate::i18n::t(lang.as_str(), "conflicts.marked"),
                     );
                 }
-                Err(detail) => tab.error = Some(detail),
+                Err(ops::MarkResolvedError::UnresolvedMarkers) => {
+                    let lang = language.get_untracked();
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(lang.as_str(), "conflicts.markersRemain"),
+                    );
+                }
+                Err(ops::MarkResolvedError::BinaryNeedsSide) => {
+                    let lang = language.get_untracked();
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(lang.as_str(), "conflicts.binaryChooseSide"),
+                    );
+                }
+                Err(ops::MarkResolvedError::Git(detail)) => tab.error = Some(detail),
             }
             tabs.set(list);
         }
@@ -119,7 +133,28 @@ impl MergeCommands {
                         crate::i18n::t(lang.as_str(), "toast.historyDone"),
                     );
                 }
-                Err(detail) => tab.error = Some(detail),
+                Err(ops::ContinueError::UnresolvedConflicts) => {
+                    let lang = language.get_untracked();
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(lang.as_str(), "conflicts.continueHasConflicts"),
+                    );
+                }
+                Err(ops::ContinueError::PendingDrafts) => {
+                    let lang = language.get_untracked();
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(lang.as_str(), "conflicts.continueHasDrafts"),
+                    );
+                }
+                Err(ops::ContinueError::NoOperation) => {
+                    let lang = language.get_untracked();
+                    crate::interactions::notify(
+                        notice,
+                        crate::i18n::t(lang.as_str(), "conflicts.noOperation"),
+                    );
+                }
+                Err(ops::ContinueError::Git(detail)) => tab.error = Some(detail),
             }
             tabs.set(list);
         }

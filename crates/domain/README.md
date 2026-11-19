@@ -9,7 +9,7 @@
 | `src/lib.rs` | `GitError`、`NetworkFault`、`Commit`、`StatusEntry`、`DiffStat`、`RepoSummary`；状态分类 |
 | `src/diff.rs` | 解析 unified diff：`Patch::parse`、行分类与行号、文件统计、原始文本 `Patch::raw`、并排配对 `split_rows` |
 | `src/stage.rs` | 把补丁切成文件与 hunk：`Sections::parse`、`hunk_patch`、`line_patch` |
-| `src/conflict.rs` | 冲突标记解析、单侧合并、冲突计数 |
+| `src/conflict.rs` | Git index 三侧内容模型、冲突标记解析、单侧合并、冲突计数 |
 
 ## 主要类型
 
@@ -18,12 +18,13 @@
 - `Commit`、`StatusEntry`、`DiffStat`、`RepoSummary`：历史、状态、统计与仓库摘要的共用结构。`StatusEntry::is_staged` 与 `is_unstaged` 按 index/worktree 字符判断。
 - `Patch`、`DiffLine`、`DiffFile`、`SplitRow`：渲染 diff 需要的行、文件区间与并排行。`Patch::raw` 是解析时的原始文本，导出与复制用它可以做到字节一致。
 - `Sections`、`FileSection`、`Hunk`：生成单 hunk 或单行补丁所需的原始片段。
+- `conflict::ConflictSides`：Git index stage 1/2/3 的原始字节内容；每一侧均可缺失，用于表达 add/add、delete/modify 等冲突里的文件创建或删除。
 
 ## 约定
 
 - 解析器只处理字符串与数据结构，不判断业务语义；diff 解析把无法识别的行归入 `DiffLineKind::Meta`，stage 解析保留 hunk 里的原始行，未识别的前置行并入文件头。
 - 生成 hunk 补丁与单行补丁时必须带完整文件头，hunk 头按实际行数重算；单行补丁的旧侧起始行落在目标行上。
-- 冲突解析保留 base 段，`merge` 可以取 ours、theirs 或两侧拼接。
+- 冲突解析保留 base 段，`merge` 可以取 ours、theirs 或两侧拼接。stage 数据用原始字节，不在领域层假定文本编码。
 - 网络失败分类是启发式判断（在 `crates/git` 的 `error` 模块）；没有命中特征串时保持未知，不给出猜测结论。
 
 ## 使用方

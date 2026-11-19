@@ -70,21 +70,41 @@ pub(crate) fn text_area(
     );
 }
 
-/// 用等宽字号编辑冲突文件结果，内部布局由父容器决定高度。
-pub(crate) fn code_text_area(
-    value: Signal<String>,
+/// Syntax-highlighted, controlled code editor used by the merge result pane.
+pub(crate) fn code_editor(
+    path: String,
+    get: impl Fn() -> String + 'static,
+    placeholder: impl Into<String>,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
-    return style_input(
-        nsh_base::input()
-            .multiline(true)
-            .value(value)
-            .on_change(move |text: &str| on_change(text)),
-        false,
-        None,
-        ui::CODE,
-        Some(ui::CODE_LINE),
-    );
+    return nsh_base::editor()
+        .language(path)
+        .value(move || SharedString::from(get()))
+        .placeholder(placeholder.into())
+        .line_numbers(true)
+        .soft_wrap(false)
+        .font_size(px(ui::CODE))
+        .line_height(px(ui::CODE_LINE))
+        .on_change(move |text: &SharedString| on_change(text.as_ref()))
+        .size_full();
+}
+
+/// Syntax-highlighted read-only code pane for merge base/ours/theirs.
+pub(crate) fn code_view(
+    path: String,
+    value: String,
+    placeholder: impl Into<String>,
+) -> impl IntoElement {
+    return nsh_base::editor()
+        .language(path)
+        .default_value(value)
+        .placeholder(placeholder.into())
+        .read_only(true)
+        .line_numbers(true)
+        .soft_wrap(false)
+        .font_size(px(ui::CODE))
+        .line_height(px(ui::CODE_LINE))
+        .size_full();
 }
 
 /// 值由结构体信号承载时的输入框（`get`/`set` 各自闭包）。

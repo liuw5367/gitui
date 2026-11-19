@@ -358,7 +358,8 @@
   },
   "operation": {
     "banner": "正在进行 %{operation} · %{conflicts} 个冲突",
-    "abort": "放弃"
+    "abort": "放弃",
+    "continue": "继续"
   },
   "confirm": {
     "abortTitle": "放弃%{operation}？",
@@ -436,7 +437,18 @@
     "abort": "放弃 %{operation}",
     "resolve": "解决…",
     "marked": "文件已标记为解决",
-    "files": "冲突文件"
+    "files": "冲突文件",
+    "sideDeleted": "此侧删除了该文件",
+    "binaryPane": "二进制文件 · 无法预览",
+    "binarySelected": "已选择二进制版本。点击“标记已解决”暂存该版本。",
+    "binaryChooseSide": "二进制文件请选择当前分支或对方分支版本。",
+    "resultWillDelete": "标记已解决时将删除该文件。",
+    "resultPlaceholder": "编辑解决后的文件内容",
+    "allResolved": "冲突已全部解决。准备好后继续当前操作。",
+    "markersRemain": "请先移除所有冲突标记，再标记文件已解决。",
+    "continueHasConflicts": "请先解决所有冲突文件，再继续操作。",
+    "continueHasDrafts": "请先标记或丢弃未处理的冲突编辑，再继续操作。",
+    "noOperation": "当前没有可继续的操作。"
   },
   "palette": {
     "placeholder": "搜索仓库或运行命令",

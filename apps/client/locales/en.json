@@ -358,7 +358,8 @@
   },
   "operation": {
     "banner": "%{operation} in progress · %{conflicts} conflicts",
-    "abort": "Abort"
+    "abort": "Abort",
+    "continue": "Continue"
   },
   "confirm": {
     "abortTitle": "Abort %{operation}?",
@@ -436,7 +437,18 @@
     "abort": "Abort %{operation}",
     "resolve": "Resolve…",
     "marked": "File marked resolved",
-    "files": "Conflicted files"
+    "files": "Conflicted files",
+    "sideDeleted": "This side deletes the file",
+    "binaryPane": "Binary file · preview unavailable",
+    "binarySelected": "Binary version selected. Mark Resolved to stage it.",
+    "binaryChooseSide": "Choose Ours or Theirs to resolve this binary file.",
+    "resultWillDelete": "The file will be deleted when marked resolved.",
+    "resultPlaceholder": "Edit the resolved file contents",
+    "allResolved": "All conflicts are resolved. Continue the operation when ready.",
+    "markersRemain": "Remove all conflict markers before marking this file resolved.",
+    "continueHasConflicts": "Resolve all conflicted files before continuing.",
+    "continueHasDrafts": "Mark or discard pending conflict edits before continuing.",
+    "noOperation": "There is no operation to continue."
   },
   "palette": {
     "placeholder": "Search repositories or run a command",
