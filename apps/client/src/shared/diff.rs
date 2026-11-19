@@ -123,7 +123,6 @@ pub(crate) fn diff(
     state: &DiffState,
     cmd: &DiffCommands,
     language: Signal<SharedString>,
-    label: String,
     patch: Patch,
     raw_patch: Patch,
     empty_feedback: Option<&'static str>,
@@ -263,21 +262,26 @@ pub(crate) fn diff(
                 ))
                 .child(
                     text(file_label)
+                        .flex_1()
+                        .min_w_0()
                         .text_size(px(crate::ui::CODE))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
-                    text(label)
+                    text(format!("+{additions}"))
+                        .font_family(crate::ui::MONO)
                         .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text3()),
+                        .text_color(move || design::add_fg()),
                 )
                 .child(
-                    text(format!("+{} −{}", additions, deletions))
+                    text(format!("−{deletions}"))
+                        .font_family(crate::ui::MONO)
                         .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text3()),
+                        .text_color(move || design::del_fg()),
                 )
-                .child(view().flex_1())
+                .child(mode_toggle(language, split_view, set_split_mode.clone()))
+                .child(toolbar_separator())
                 .child(fold_toggle(language, options, toggle_option.clone()))
                 .child(wrap_toggle(language, options, toggle_option.clone()))
                 .child(space_toggle(language, options, toggle_option.clone()))
@@ -286,10 +290,17 @@ pub(crate) fn diff(
                     ignore_whitespace,
                     toggle_option.clone(),
                 ))
+                .child(toolbar_separator())
                 .child(
                     text(move || {
-                        let position = hunk_position.get().unwrap_or(0);
-                        format!("{} / {}", position, hunk_count)
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "diff.changePosition",
+                            &[
+                                ("current", hunk_position.get().unwrap_or(0).to_string()),
+                                ("total", hunk_count.to_string()),
+                            ],
+                        )
                     })
                     .text_size(px(crate::ui::CODE))
                     .text_color(move || design::text3()),
@@ -314,6 +325,7 @@ pub(crate) fn diff(
                     hunk_count == 0,
                     move || next_hunk(),
                 ))
+                .child(toolbar_separator())
                 .child(crate::ui::button::button(
                     {
                         let language = language;
@@ -324,7 +336,6 @@ pub(crate) fn diff(
                     false,
                     move || export_patch(),
                 ))
-                .child(mode_toggle(language, split_view, set_split_mode.clone()))
                 .child(crate::ui::button::icon_button(
                     "copy",
                     {
@@ -372,6 +383,13 @@ pub(crate) fn diff(
         );
 }
 
+fn toolbar_separator() -> impl IntoElement {
+    return view()
+        .w(px(1.0))
+        .h(px(18.0))
+        .bg(move || design::line_soft());
+}
+
 /// 一个图标开关（fold / wrap / whitespace），开启时用强调色。
 fn diff_toggle(
     language: Signal<SharedString>,
@@ -381,6 +399,7 @@ fn diff_toggle(
     toggle: std::sync::Arc<dyn Fn(&'static str)>,
 ) -> impl IntoElement {
     let label_key = match hint_key {
+        "fold" if active => "diff.unfold",
         "fold" => "diff.fold",
         "wrap" => "diff.wrap",
         "whitespace" => "diff.showWhitespace",
@@ -491,6 +510,34 @@ fn raw_hunks(patch: &str) -> Vec<String> {
         hunks.push(hunk);
     }
     return hunks;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{raw_hunks, show_whitespace};
+
+    #[test]
+    fn whitespace_display_keeps_patch_headers_and_marks_code_lines() {
+        let patch = "diff --git a/src.rs b/src.rs\n@@ -1 +1 @@ fn main()\n-    let old = \"a b\";\n+    let new = \"a\tb\";\n";
+
+        assert_eq!(
+            show_whitespace(patch),
+            "diff --git a/src.rs b/src.rs\n@@ -1 +1 @@ fn main()\n-····let·old·=·\"a·b\";\n+····let·new·=·\"a⇥b\";\n"
+        );
+    }
+
+    #[test]
+    fn copied_hunks_keep_their_file_header_and_do_not_include_other_files() {
+        let patch = "diff --git a/a.rs b/a.rs\nindex 1..2\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/b.ts b/b.ts\nindex 3..4\n@@ -2 +2 @@\n-before\n+after\n";
+
+        assert_eq!(
+            raw_hunks(patch),
+            vec![
+                "@@ -1 +1 @@\n-old\n+new\n",
+                "@@ -2 +2 @@\n-before\n+after\n"
+            ]
+        );
+    }
 }
 
 /// 空补丁提示（无改动或读取失败）。

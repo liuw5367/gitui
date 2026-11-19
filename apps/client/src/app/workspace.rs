@@ -321,7 +321,6 @@ fn center_content(
                                 &history.diff.state,
                                 &history.diff,
                                 language,
-                                label,
                                 patch,
                                 raw_patch,
                                 compare_feedback,
