@@ -6,8 +6,8 @@
 use crate::app::handles::AppHandles;
 use crate::app::session::Tab;
 use crate::brand::ThemeMode;
-use crate::filters::When;
-use crate::{Mode, acceptance, brand, design, features, filters, i18n, shortcuts, ui};
+use crate::filters::FilterDraft;
+use crate::{Mode, acceptance, brand, design, features, i18n, shortcuts, ui};
 use git::LogFilter;
 use nsh_base::theme_overrides;
 use nsh_core::desktop::{CloseReason, TitleBarOptions, TitleBarStyle, WindowAttributes};
@@ -42,11 +42,9 @@ pub(crate) fn app() -> impl IntoElement {
         store::load_language(&store_dir).unwrap_or_else(|| i18n::DEFAULT_LANGUAGE.to_string()),
     ));
 
-    // 历史筛选：关键字在工具栏搜索框，其余条件在 History 的筛选浮层。
+    // 历史快速搜索与筛选浮层草稿分开；草稿在应用前不影响历史结果。
     let history_query = signal(String::new());
-    let filter_reference = signal(String::new());
-    let filter_author = signal(String::new());
-    let filter_when = signal(SharedString::from(When::All.id()));
+    let filter_draft = signal(FilterDraft::default());
     let filter_open = signal(false);
     // 验收开关：`GITUI_MODE=history|changes|refs|agent` 指定启动时的主视图，
     // 用于逐个巡检各页渲染；未指定时默认进入 Changes + Commit。
@@ -182,8 +180,6 @@ pub(crate) fn app() -> impl IntoElement {
             .as_str(),
     ));
     nsh_core::element::set_color_scheme(theme_mode.get_untracked().appearance());
-    let now = store::now_unix();
-
     let session = store::load_session(&store_dir);
     let initial_settings = settings_state.get_untracked();
     let initial_filter = LogFilter::default();
@@ -284,18 +280,14 @@ pub(crate) fn app() -> impl IntoElement {
     let welcome_search_ref = element_ref();
 
     let current_filter: Arc<dyn Fn() -> LogFilter> = {
-        let history_query = history_query;
-        let filter_reference = filter_reference;
-        let filter_author = filter_author;
-        let filter_when = filter_when;
+        let tabs = tabs;
+        let active = active;
         Arc::new(move || {
-            return filters::build(
-                history_query.get_untracked().as_str(),
-                filter_reference.get_untracked().as_str(),
-                filter_author.get_untracked().as_str(),
-                When::from_key(filter_when.get_untracked().as_str()),
-                now,
-            );
+            return tabs
+                .get_untracked()
+                .get(active.get_untracked())
+                .map(|tab| tab.filter.clone())
+                .unwrap_or_default();
         })
     };
 
@@ -354,9 +346,7 @@ pub(crate) fn app() -> impl IntoElement {
     // 提交历史（P2 竖切的第一片）：信号收进 HistoryState，用例收进 HistoryCommands。
     let history_state = features::history::state::HistoryState {
         query: history_query,
-        reference: filter_reference,
-        author: filter_author,
-        when: filter_when,
+        draft: filter_draft,
         filter_open,
         compare_mode,
         table_ref: component_ref(),

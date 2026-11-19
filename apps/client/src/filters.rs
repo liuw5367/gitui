@@ -1,22 +1,28 @@
-//! 历史筛选：把界面上的选项翻译成 `git log` 的条件。
-//!
-//! 时间预设以“天”为单位换算成 `--since`，用注入的 `now` 计算，便于测试。
+//! History filters: draft state and its translation to Git log conditions.
 
 use git::LogFilter;
 
-/// 时间预设的标识，与 `locales` 的 `filter.when.*` 对应。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Preset dates are localized by `filter.when.*`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum When {
+    #[default]
     All,
     Today,
     Week,
     Month,
     Year,
+    Custom,
 }
 
 impl When {
-    /// 界面上可选的顺序。
-    pub const ALL: [When; 5] = [When::All, When::Today, When::Week, When::Month, When::Year];
+    pub const ALL: [When; 6] = [
+        When::All,
+        When::Today,
+        When::Week,
+        When::Month,
+        When::Year,
+        When::Custom,
+    ];
 
     pub fn key(self) -> &'static str {
         return match self {
@@ -25,21 +31,23 @@ impl When {
             When::Week => "filter.when.week",
             When::Month => "filter.when.month",
             When::Year => "filter.when.year",
+            When::Custom => "filter.when.custom",
         };
     }
 
-    /// 从标识还原；未知值按“全部”处理。
+    #[cfg(test)]
     pub fn from_key(key: &str) -> When {
         return match key {
             "today" => When::Today,
             "week" => When::Week,
             "month" => When::Month,
             "year" => When::Year,
+            "custom" => When::Custom,
             _ => When::All,
         };
     }
 
-    /// 存储用的短标识。
+    #[cfg(test)]
     pub fn id(self) -> &'static str {
         return match self {
             When::All => "all",
@@ -47,29 +55,89 @@ impl When {
             When::Week => "week",
             When::Month => "month",
             When::Year => "year",
-        };
-    }
-
-    /// 距今天数；`None` 表示不限制。
-    pub fn days(self) -> Option<i64> {
-        return match self {
-            When::All => None,
-            When::Today => Some(1),
-            When::Week => Some(7),
-            When::Month => Some(30),
-            When::Year => Some(365),
+            When::Custom => "custom",
         };
     }
 }
 
-/// 组装 `LogFilter`。
-///
-/// - `reference`：只在该分支/标签上读取；空字符串表示全部引用可达的历史。
-/// - `author`：空字符串表示不限。
-/// - `when`：时间预设。
-pub fn build(query: &str, reference: &str, author: &str, when: When, now: i64) -> LogFilter {
+/// Values being edited in the filter popover. They only affect history after Apply.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FilterDraft {
+    pub(crate) references: Vec<String>,
+    pub(crate) authors: Vec<String>,
+    pub(crate) when: When,
+    pub(crate) since: String,
+    pub(crate) until: String,
+    pub(crate) path: String,
+    pub(crate) message: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FilterError {
+    InvalidSince,
+    InvalidUntil,
+    ReversedRange,
+}
+
+/// Convert the draft into conditions. Git parses date-only values in the user's local timezone;
+/// custom boundaries are explicit and inclusive to the second.
+pub(crate) fn build_draft(draft: &FilterDraft) -> Result<LogFilter, FilterError> {
+    let (since, until) = match draft.when {
+        When::All => (None, None),
+        When::Today => (Some("midnight".to_string()), None),
+        When::Week => (Some("7 days ago".to_string()), None),
+        When::Month => (Some("30 days ago".to_string()), None),
+        When::Year => (Some("365 days ago".to_string()), None),
+        When::Custom => {
+            let since = clean(&draft.since);
+            let until = clean(&draft.until);
+            if since.as_deref().is_some_and(|date| !valid_date(date)) {
+                return Err(FilterError::InvalidSince);
+            }
+            if until.as_deref().is_some_and(|date| !valid_date(date)) {
+                return Err(FilterError::InvalidUntil);
+            }
+            if let (Some(since), Some(until)) = (since.as_deref(), until.as_deref())
+                && days_since_epoch(since) > days_since_epoch(until)
+            {
+                return Err(FilterError::ReversedRange);
+            }
+            (
+                since.map(|date| format!("{date} 00:00:00")),
+                until.map(|date| format!("{date} 23:59:59")),
+            )
+        }
+    };
+
+    let mut references = clean_all(&draft.references);
+    references.sort();
+    references.dedup();
+    let mut authors = clean_all(&draft.authors);
+    authors.sort();
+    authors.dedup();
+    return Ok(LogFilter {
+        since,
+        until,
+        references,
+        authors,
+        path: clean(&draft.path),
+        message: draft.message.trim().to_string(),
+        ..LogFilter::default()
+    });
+}
+
+/// Kept for the existing quick-filter conversion callers and tests.
+#[cfg(test)]
+fn build(query: &str, reference: &str, author: &str, when: When, _now: i64) -> LogFilter {
     let reference = reference.trim();
     let author = author.trim();
+    let since = match when {
+        When::All | When::Custom => None,
+        When::Today => Some("midnight".to_string()),
+        When::Week => Some("7 days ago".to_string()),
+        When::Month => Some("30 days ago".to_string()),
+        When::Year => Some("365 days ago".to_string()),
+    };
     return LogFilter {
         query: query.trim().to_string(),
         author: if author.is_empty() {
@@ -77,44 +145,73 @@ pub fn build(query: &str, reference: &str, author: &str, when: When, now: i64) -
         } else {
             Some(author.to_string())
         },
-        since: when.days().map(|days| date_days_before(now, days)),
-        until: None,
+        since,
         reference: if reference.is_empty() {
             None
         } else {
             Some(reference.to_string())
         },
+        ..LogFilter::default()
     };
 }
 
-/// `now` 之前 `days` 天的日期，`YYYY-MM-DD`。
-fn date_days_before(now: i64, days: i64) -> String {
-    let target = now - days * 86_400;
-    let (year, month, day) = civil(target);
-    return format!("{:04}-{:02}-{:02}", year, month, day);
+fn clean(value: &str) -> Option<String> {
+    let value = value.trim();
+    return (!value.is_empty()).then(|| value.to_string());
 }
 
-/// UTC 秒转 (年, 月, 日)。
-fn civil(timestamp: i64) -> (i64, i64, i64) {
-    let days = timestamp.div_euclid(86_400);
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if m <= 2 { y + 1 } else { y };
-    return (year, m, d);
+fn clean_all(values: &[String]) -> Vec<String> {
+    return values.iter().filter_map(|value| clean(value)).collect();
+}
+
+fn valid_date(value: &str) -> bool {
+    let mut fields = value.split('-');
+    let Some(year) = fields.next().and_then(|part| part.parse::<i64>().ok()) else {
+        return false;
+    };
+    let Some(month) = fields.next().and_then(|part| part.parse::<i64>().ok()) else {
+        return false;
+    };
+    let Some(day) = fields.next().and_then(|part| part.parse::<i64>().ok()) else {
+        return false;
+    };
+    if fields.next().is_some() || year < 1 || !(1..=12).contains(&month) {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    return (1..=days).contains(&day) && value.len() == 10;
+}
+
+fn days_since_epoch(value: &str) -> i64 {
+    let mut fields = value.split('-').filter_map(|part| part.parse::<i64>().ok());
+    let Some(mut year) = fields.next() else {
+        return 0;
+    };
+    let Some(month) = fields.next() else {
+        return 0;
+    };
+    let Some(day) = fields.next() else {
+        return 0;
+    };
+    year -= i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let yoe = year - era * 400;
+    let adjusted_month = month + if month > 2 { -3 } else { 9 };
+    let doy = (153 * adjusted_month + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146_097 + doe - 719_468;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// 2026-11-14T00:00:00Z
     const NOW: i64 = 1_794_614_400;
 
     #[test]
@@ -132,12 +229,12 @@ mod tests {
     }
 
     #[test]
-    fn week_preset_subtracts_seven_days() {
+    fn week_preset_uses_a_git_relative_boundary() {
         let filter = build("fix", "main", "Mia Chen", When::Week, NOW);
         assert_eq!(filter.query, "fix");
         assert_eq!(filter.reference.as_deref(), Some("main"));
         assert_eq!(filter.author.as_deref(), Some("Mia Chen"));
-        assert_eq!(filter.since.as_deref(), Some("2026-11-07"));
+        assert_eq!(filter.since.as_deref(), Some("7 days ago"));
     }
 
     #[test]
@@ -146,14 +243,5 @@ mod tests {
             assert_eq!(When::from_key(when.id()), when);
         }
         assert_eq!(When::from_key("nonsense"), When::All);
-    }
-
-    #[test]
-    fn preset_days_match_their_names() {
-        assert_eq!(When::Today.days(), Some(1));
-        assert_eq!(When::Week.days(), Some(7));
-        assert_eq!(When::Month.days(), Some(30));
-        assert_eq!(When::Year.days(), Some(365));
-        assert_eq!(When::All.days(), None);
     }
 }

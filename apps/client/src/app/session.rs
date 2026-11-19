@@ -40,6 +40,8 @@ pub(crate) struct Tab {
     pub(crate) ahead: u32,
     pub(crate) behind: u32,
     pub(crate) commits: Vec<Commit>,
+    /// Ancestors retained to reconnect graph lanes after non-branch filters hide commits.
+    pub(crate) graph_commits: Vec<Commit>,
     /// 普通 History 浏览只显示提交图；右键菜单可临时切到提交补丁。
     pub(crate) show_commit_diff: bool,
     pub(crate) refs: Refs,
@@ -47,7 +49,7 @@ pub(crate) struct Tab {
     pub(crate) sidebar_collapsed: BTreeSet<String>,
     pub(crate) status: Vec<StatusEntry>,
     /// 历史里出现过的作者（按最近提交顺序）。
-    pub(crate) authors: Vec<String>,
+    pub(crate) authors: Vec<git::Author>,
     /// 当前生效的筛选条件。
     pub(crate) filter: LogFilter,
     /// 选中的提交下标；空仓库时为 `None`。
@@ -308,9 +310,22 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     };
     let summary = repo.summary().unwrap_or_default();
     let commits = repo.log_history(filter).unwrap_or_default();
+    let graph_commits = if filter.query.is_empty()
+        && filter.author.is_none()
+        && filter.authors.is_empty()
+        && filter.since.is_none()
+        && filter.until.is_none()
+        && filter.path.is_none()
+        && filter.message.is_empty()
+    {
+        commits.clone()
+    } else {
+        repo.log_history_graph(filter)
+            .unwrap_or_else(|_| commits.clone())
+    };
     let refs = repo.refs().unwrap_or_default();
     let status = repo.status().unwrap_or_default();
-    let authors = repo.authors().unwrap_or_default();
+    let authors = repo.authors_with_email().unwrap_or_default();
     let changes = load_changes(&repo);
     let operation = repo.operation();
     let reflog = repo.reflog(100).unwrap_or_default();
@@ -332,6 +347,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         ahead: summary.ahead,
         behind: summary.behind,
         commits,
+        graph_commits,
         refs,
         status,
         authors,
@@ -473,7 +489,7 @@ mod tests {
         assert!(!tab.refs.branches.is_empty());
         assert!(!tab.patch.lines.is_empty());
         assert_eq!(tab.files.len(), 1);
-        assert_eq!(tab.authors, vec!["Test".to_string()]);
+        assert_eq!(tab.authors[0].name, "Test");
     }
 
     #[test]

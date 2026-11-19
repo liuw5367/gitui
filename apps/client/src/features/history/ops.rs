@@ -18,7 +18,9 @@ pub(crate) fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
         .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
         .collect::<Vec<_>>();
     if let Ok(commits) = Repo::open(tab.path.as_str()).and_then(|repo| repo.log_all()) {
+        tab.graph_commits = commits.clone();
         tab.commits = commits;
+        tab.filter = LogFilter::default();
         tab.compare = compare_shas
             .iter()
             .filter_map(|sha| tab.commits.iter().position(|commit| commit.sha == *sha))
@@ -31,7 +33,7 @@ pub(crate) fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
     return false;
 }
 
-/// 引用导航在全部引用中按 SHA 选择目标，并保留可兼容的其它筛选与 Compare 状态。
+/// 引用导航按 SHA 选择目标。调用方只在目标被已应用条件隐藏时传入空筛选。
 pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter) -> bool {
     let compare_shas = tab
         .compare
@@ -43,14 +45,17 @@ pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter)
     let Ok(repo) = Repo::open(tab.path.as_str()) else {
         return false;
     };
-    // 引用导航必须跨所有分支定位。作者/时间筛选仍应用；关键字留给表格处理，
-    // 这样目标即使不匹配关键字也能作为当前选中行滚入视口。
+    // 引用导航必须跨所有分支定位。关键字留给表格处理，目标会作为当前选中行滚入视口。
     let mut all_branches_filter = filter.clone();
     all_branches_filter.reference = None;
+    all_branches_filter.references.clear();
     all_branches_filter.query.clear();
     let Ok(mut commits) = repo.log_history(&all_branches_filter) else {
         return false;
     };
+    let mut graph_commits = repo
+        .log_history_graph(&all_branches_filter)
+        .unwrap_or_else(|_| commits.clone());
     let mut required_shas = compare_shas.clone();
     required_shas.push(sha.to_string());
     if required_shas
@@ -77,15 +82,18 @@ pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter)
                 commits.push(commit.clone());
             }
         }
+        graph_commits = all_commits;
         commits.sort_by_key(|commit| order_by_sha.get(&commit.sha).copied().unwrap_or(usize::MAX));
     }
     tab.commits = commits;
+    tab.graph_commits = graph_commits;
     tab.compare = compare_shas
         .iter()
         .filter_map(|sha| tab.commits.iter().position(|commit| commit.sha == *sha))
         .collect();
     tab.filter = filter.clone();
     tab.filter.reference = None;
+    tab.filter.references.clear();
     if let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) {
         select_commit(tab, index);
         if tab.compare.len() >= 2 {
@@ -210,6 +218,7 @@ pub(crate) fn visible_commit_indices(
         .enumerate()
         .filter_map(|(index, commit)| {
             let matches = needle.is_empty()
+                || commit.message.to_lowercase().contains(&needle)
                 || commit.summary.to_lowercase().contains(&needle)
                 || commit.author.to_lowercase().contains(&needle)
                 || commit.short.contains(&needle)

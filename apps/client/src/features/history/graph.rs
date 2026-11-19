@@ -1,7 +1,7 @@
 //! 根据提交 SHA 与 parents 为历史列表计算 DAG 泳道。
 
 use domain::Commit;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GraphRow {
@@ -101,4 +101,64 @@ pub(crate) fn layout(commits: &[Commit]) -> Vec<GraphRow> {
     }
 
     return rows;
+}
+
+/// Reconnect visible commits through ancestors omitted by date, author, path, message or quick
+/// search filters. Each visible parent is connected to the nearest visible ancestors on that path.
+pub(crate) fn layout_filtered(visible: &[Commit], ancestors: &[Commit]) -> Vec<GraphRow> {
+    if visible.is_empty() {
+        return Vec::new();
+    }
+    let visible_shas = visible
+        .iter()
+        .map(|commit| commit.sha.as_str())
+        .collect::<HashSet<_>>();
+    let ancestors_by_sha = ancestors
+        .iter()
+        .map(|commit| (commit.sha.as_str(), commit))
+        .collect::<HashMap<_, _>>();
+    let projected = visible
+        .iter()
+        .map(|commit| {
+            let mut projected = commit.clone();
+            let mut parents = Vec::new();
+            let mut visited = HashSet::new();
+            for parent in &commit.parents {
+                connect_visible_ancestors(
+                    parent,
+                    &visible_shas,
+                    &ancestors_by_sha,
+                    &mut visited,
+                    &mut parents,
+                );
+            }
+            projected.parents = parents;
+            projected
+        })
+        .collect::<Vec<_>>();
+    return layout(&projected);
+}
+
+fn connect_visible_ancestors(
+    sha: &str,
+    visible_shas: &HashSet<&str>,
+    ancestors_by_sha: &HashMap<&str, &Commit>,
+    visited: &mut HashSet<String>,
+    output: &mut Vec<String>,
+) {
+    if visible_shas.contains(sha) {
+        if !output.iter().any(|ancestor| ancestor == sha) {
+            output.push(sha.to_string());
+        }
+        return;
+    }
+    if !visited.insert(sha.to_string()) {
+        return;
+    }
+    let Some(commit) = ancestors_by_sha.get(sha) else {
+        return;
+    };
+    for parent in &commit.parents {
+        connect_visible_ancestors(parent, visible_shas, ancestors_by_sha, visited, output);
+    }
 }

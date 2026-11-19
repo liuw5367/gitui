@@ -8,9 +8,9 @@ use super::state::HistoryState;
 use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::recovery::commands::RecoveryCommands;
-use crate::filters::When;
+use crate::filters::{self, FilterError};
 use crate::shared::diff::DiffCommands;
-use git::Repo;
+use git::{LogFilter, Repo};
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -100,11 +100,14 @@ impl HistoryCommands {
             return;
         };
         let tab = &mut list[index];
-        let mut filter = (self.state.filter)();
-        filter.reference = None;
-        if !ops::select_reference_sha(tab, sha.as_str(), &filter) {
-            self.notify_reference_not_found();
-            return;
+        let hidden_by_filter = !tab.commits.iter().any(|commit| commit.sha == sha);
+        if hidden_by_filter {
+            if !ops::select_reference_sha(tab, sha.as_str(), &LogFilter::default()) {
+                self.notify_reference_not_found();
+                return;
+            }
+        } else if let Some(commit_index) = tab.commits.iter().position(|commit| commit.sha == sha) {
+            ops::select_commit(tab, commit_index);
         }
         let selected = tab.selected.unwrap_or(0);
         let visible = ops::visible_commit_indices(
@@ -116,7 +119,6 @@ impl HistoryCommands {
             self.notify_reference_not_found();
             return;
         };
-        self.state.reference.set(String::new());
         self.state.scroll_request.set(Some(row));
         self.session.tabs.set(list);
         self.session.active.set(index);
@@ -185,28 +187,47 @@ impl HistoryCommands {
     }
 
     /// 按当前条件重新读一遍当前仓库（原 `reload`）。
-    fn reload(&self) {
+    fn reload_with_filter(&self, filter: &LogFilter) {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get(current).cloned() {
-            list[current] = ops::reload_with_filter(&tab, &(self.state.filter)());
+            list[current] = ops::reload_with_filter(&tab, filter);
             self.session.tabs.set(list);
         }
     }
 
+    fn reload(&self) {
+        self.reload_with_filter(&(self.state.filter)());
+    }
+
     /// 应用筛选条件并收起浮层（原 `apply_filter`）。
     pub(crate) fn apply_filter(&self) {
+        let filter = match filters::build_draft(&self.state.draft.get_untracked()) {
+            Ok(filter) => filter,
+            Err(error) => {
+                self.notify_filter_error(error);
+                return;
+            }
+        };
         self.state.filter_open.set(false);
-        self.reload();
+        self.reload_with_filter(&filter);
     }
 
     /// 清掉全部筛选条件并重读（原 `clear_filter`）。
     pub(crate) fn clear_filter(&self) {
-        self.state.query.set(String::new());
-        self.state.reference.set(String::new());
-        self.state.author.set(String::new());
-        self.state.when.set(SharedString::from(When::All.id()));
-        self.reload();
+        self.state.draft.set(filters::FilterDraft::default());
+        self.state.filter_open.set(false);
+        self.reload_with_filter(&LogFilter::default());
+    }
+
+    fn notify_filter_error(&self, error: FilterError) {
+        let key = match error {
+            FilterError::InvalidSince => "filter.invalidStartDate",
+            FilterError::InvalidUntil => "filter.invalidEndDate",
+            FilterError::ReversedRange => "filter.invalidDateRange",
+        };
+        let lang = self.language.get_untracked();
+        crate::interactions::notify(self.notice, crate::i18n::t(lang.as_str(), key));
     }
 
     /// 刷新当前仓库（原 `refresh`）。

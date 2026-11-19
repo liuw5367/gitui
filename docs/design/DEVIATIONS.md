@@ -63,6 +63,7 @@
 
 | 41 | History 提交浏览与检查器 | History 画板把提交列表、选中提交 diff 和平铺文件列表并列显示；文件树没有完整设计 | 默认中心区只显示提交列表与 branch graph；右侧检查器在 Files 页签按目录显示变更文件，提交右键菜单可显式打开提交补丁；左侧本地分支、远端分支、tag、stash 定位到相应 commit，点击文件显示该文件的提交补丁（`features/history/view.rs`、`inspector.rs`、`app/workspace.rs`） | 以 commit 浏览和提交信息为主要工作流；提交图依据 Git parents 绘制，树结构补足画板未定义的层级 | 是（恢复默认提交补丁面板与文件平铺补丁选择） |
 | 42 | Diff 空白筛选 | File diff / Commit info 画板只有一个 `Show whitespace` 图标 | 除显示空格与 tab 的开关外，再提供独立 `Ignore whitespace changes` 开关；后者通过 Git `--ignore-all-space` 重新生成展示差异，复制、导出与统计仍用原始 patch（`shared/diff.rs`、`crates/git/src/diff.rs`） | 可视化空白与忽略空白影响的是不同数据：一个只改显示文本，一个改变 Git 差异匹配；把两者合并会造成筛选含义不清 | 是（移除单独图标并保留 Git 查询能力） |
+| 43 | History 组合筛选 | 画板以分支多选、单作者选择与日历范围呈现；作者没有身份标识说明 | 作者可多选并以 email 区分；日期端点用 `YYYY-MM-DD` 输入字段；分支与作者列表可滚动，包含本地和远端分支（`features/history/view.rs`、`filters.rs`） | 需求确认作者需要多选，同名作者应能区分；日期文本字段可精确键入，且避免在筛选浮层内再嵌一层日历弹层 | 是（可换为日历范围控件并缩窄作者显示） |
 
 ## 3. 已澄清：不算偏离
 

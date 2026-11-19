@@ -40,7 +40,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 `rebase_onto` 把当前分支变基到指定引用；若 Git 因冲突退出，仓库会保留 rebase 状态供界面继续解决。`checkout_tracking_branch` 创建并检出跟踪指定远端分支的本地分支。`pull_remote_branch` 拉取指定远端分支并合入当前分支。`push_branch` 推送指定本地分支到远端同名分支，不要求当前检出该分支；`delete_remote_branch` 通过非强制删除 refspec 移除服务器分支。
 
-`log_all` 返回所有引用可达的完整历史，`log_history` 默认从全部引用读取并按拓扑顺序排列，指定 `LogFilter.reference` 时限制到该引用；两者不应用 `log_filtered` 的条数上限。`authors` 也从全部引用收集作者，供全引用历史筛选使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
+`log_all` 返回所有引用可达的完整历史。`log_history` 默认从全部引用读取；`LogFilter.references` 可用多个本地或远端 ref 做 OR 范围，旧的单引用 `reference` 仍可用。它支持多作者 email、日期端点、literal 文件/目录 pathspec 与提交消息子串；条件维度之间按 AND 组合。`log_history_graph` 只应用引用范围，给筛选后的提交图重连祖先使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`authors_with_email` 返回按 email 去重的作者身份，`authors` 保留只取显示名的接口。日志解析包含 author email 和完整提交消息；`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
 
 ## 选项
 
@@ -52,7 +52,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | `PushOptions` | `tags`、`force_with_lease`、`all_branches` |
 | `CloneOptions` | `branch`、`depth`（0 表示完整克隆）、`recurse_submodules` |
 | `InitOptions` | `gitignore`、`readme`、`license`、`name`、`branch` |
-| `LogFilter` | `query`、`author`、`since`、`until`、`reference` |
+| `LogFilter` | 快速查询、单引用/多引用、单作者/多作者 email、since/until、literal path、消息子串 |
 
 `PushOptions::force_with_lease` 对应 `--force-with-lease`，远端被别人改动时拒绝覆盖。`PullOptions::strategy` 对应 `--no-rebase`、`--rebase` 与 `--ff-only`。
 

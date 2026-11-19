@@ -107,6 +107,10 @@ pub struct Commit {
     pub short: String,
     pub summary: String,
     pub author: String,
+    /// Author email, used as a stable filter identity when names collide.
+    pub author_email: String,
+    /// Full commit message, including the body.
+    pub message: String,
     pub date: String,
     /// `%D` 解析后的引用名：`main`、`tag: v1.4.0`、`origin/main`。
     pub refs: Vec<String>,

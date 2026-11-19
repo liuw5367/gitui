@@ -6,6 +6,16 @@ use crate::exec::{portable_separator, run_git, run_git_full};
 use crate::parse::parse_log;
 use crate::query::Repo;
 
+const LOG_FORMAT: &str =
+    "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%B%x1f%D%x1f%P%x1e";
+
+/// An author identity from the repository history.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Author {
+    pub name: String,
+    pub email: String,
+}
+
 /// 一个提交的完整元信息（设计板 08 的 Info 页）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CommitDetails {
@@ -67,15 +77,22 @@ pub struct LogFilter {
     pub until: Option<String>,
     /// 只在该引用（分支、标签、`origin/main`）上读取。
     pub reference: Option<String>,
+    /// 多引用范围；提交只出现一次，即使可从多个引用到达。
+    pub references: Vec<String>,
+    /// 精确作者 email，作者之间按 OR 匹配。
+    pub authors: Vec<String>,
+    /// 提交消息子串（subject 与 body）。
+    pub message: String,
+    /// 仓库相对路径或目录前缀。
+    pub path: Option<String>,
 }
 
 impl Repo {
     /// 全部引用可达的提交，按拓扑顺序返回完整历史。
     pub fn log_all(&self) -> Result<Vec<Commit>, GitError> {
-        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
         let output = run_git_full(
             &self.root,
-            &["log", "--all", "--topo-order", "--date=unix", format],
+            &["log", "--all", "--topo-order", "--date=unix", LOG_FORMAT],
         )?;
         return parse_log(&String::from_utf8_lossy(&output));
     }
@@ -83,30 +100,21 @@ impl Repo {
     /// 历史页使用的完整提交列表。没有引用过滤时遍历所有引用；指定引用时保留
     /// `LogFilter` 的范围语义，但不截断历史长度。
     pub fn log_history(&self, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
-        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
-        let mut args = vec!["log".to_string(), "--topo-order".to_string()];
-        let reference = filter.reference.as_deref().unwrap_or_default();
-        if reference.is_empty() {
-            args.push("--all".to_string());
-        } else {
-            args.push(reference.to_string());
-        }
-        args.push("--date=unix".to_string());
-        args.push(format.to_string());
-        if let Some(since) = filter.since.as_ref() {
-            args.push(format!("--since={since}"));
-        }
-        if let Some(until) = filter.until.as_ref() {
-            args.push(format!("--until={until}"));
-        }
-        if let Some(author) = filter.author.as_ref().filter(|author| !author.is_empty()) {
-            args.push(format!("--author={author}"));
-        }
+        let args = history_args(filter, true);
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
         let output = run_git_full(&self.root, &args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         filter_query(&mut commits, &filter.query);
+        filter_message_and_authors(&mut commits, filter);
         return Ok(commits);
+    }
+
+    /// 图形布局使用的未筛选祖先集合，只受分支范围限制。
+    pub fn log_history_graph(&self, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
+        let args = history_args(filter, false);
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let output = run_git_full(&self.root, &args)?;
+        return parse_log(&String::from_utf8_lossy(&output));
     }
 
     /// 将完整引用解析为提交 SHA。`^{commit}` 同时支持轻量与 annotated tag。
@@ -129,10 +137,9 @@ impl Repo {
         let limit_arg = format!("-{}", limit.max(1));
         // 字段分隔符用单元分隔符（U+001F），记录分隔符用记录分隔符（U+001E），
         // 避免摘要里的标点与分隔符冲突。
-        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
         let output = run_git(
             &self.root,
-            &["log", limit_arg.as_str(), "--date=unix", format],
+            &["log", limit_arg.as_str(), "--date=unix", LOG_FORMAT],
         )?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         filter_query(&mut commits, query);
@@ -145,12 +152,13 @@ impl Repo {
     /// 避免把整个历史读进内存。
     pub fn log_filtered(&self, limit: usize, filter: &LogFilter) -> Result<Vec<Commit>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
-        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
-        let mut args: Vec<&str> = vec!["log", limit_arg.as_str(), "--date=unix", format];
-        let reference = filter.reference.clone().unwrap_or_default();
-        if !reference.is_empty() {
-            args.push(reference.as_str());
-        }
+        let mut args = vec![
+            "log".to_string(),
+            limit_arg,
+            "--date=unix".to_string(),
+            LOG_FORMAT.to_string(),
+        ];
+        push_revisions(&mut args, filter);
         let since_arg = filter
             .since
             .as_ref()
@@ -165,17 +173,20 @@ impl Repo {
             .filter(|author| !author.is_empty())
             .map(|author| format!("--author={}", author));
         if let Some(value) = since_arg.as_deref() {
-            args.push(value);
+            args.push(value.to_string());
         }
         if let Some(value) = until_arg.as_deref() {
-            args.push(value);
+            args.push(value.to_string());
         }
         if let Some(value) = author_arg.as_deref() {
-            args.push(value);
+            args.push(value.to_string());
         }
+        push_path(&mut args, filter.path.as_deref());
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
         let output = run_git(&self.root, &args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         filter_query(&mut commits, &filter.query);
+        filter_message_and_authors(&mut commits, filter);
         return Ok(commits);
     }
 
@@ -190,6 +201,31 @@ impl Repo {
             }
             if !authors.iter().any(|existing| existing == name) {
                 authors.push(name.to_string());
+            }
+        }
+        return Ok(authors);
+    }
+
+    /// 历史里出现过的作者身份，按最近提交先后按 email 去重。
+    pub fn authors_with_email(&self) -> Result<Vec<Author>, GitError> {
+        let output = run_git(&self.root, &["log", "--all", "--format=%an%x1f%ae"])?;
+        let mut authors: Vec<Author> = Vec::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let Some((name, email)) = line.split_once('\u{1f}') else {
+                continue;
+            };
+            let author = Author {
+                name: name.trim().to_string(),
+                email: email.trim().to_string(),
+            };
+            if author.email.is_empty() || author.name.is_empty() {
+                continue;
+            }
+            if !authors
+                .iter()
+                .any(|existing| existing.email == author.email)
+            {
+                authors.push(author);
             }
         }
         return Ok(authors);
@@ -230,8 +266,10 @@ impl Repo {
     /// 两个引用之间的提交列表（`base..target`，包含 target 一侧）。
     pub fn commits_between(&self, base: &str, target: &str) -> Result<Vec<Commit>, GitError> {
         let range = format!("{}..{}", base, target);
-        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
-        let output = run_git(&self.root, &["log", "--date=unix", format, range.as_str()])?;
+        let output = run_git(
+            &self.root,
+            &["log", "--date=unix", LOG_FORMAT, range.as_str()],
+        )?;
         return parse_log(&String::from_utf8_lossy(&output));
     }
 
@@ -282,7 +320,6 @@ impl Repo {
     /// 一个文件的历史（跟随重命名）。
     pub fn file_history(&self, path: &str, limit: usize) -> Result<Vec<Commit>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
-        let format = "--pretty=format:%H%x1f%h%x1f%an%x1f%at%x1f%s%x1f%D%x1f%P%x1e";
         let output = run_git(
             &self.root,
             &[
@@ -290,7 +327,7 @@ impl Repo {
                 "--follow",
                 "--date=unix",
                 limit_arg.as_str(),
-                format,
+                LOG_FORMAT,
                 "--",
                 path,
             ],
@@ -340,13 +377,76 @@ impl Repo {
     }
 }
 
+fn history_args(filter: &LogFilter, include_filters: bool) -> Vec<String> {
+    let mut args = vec![
+        "log".to_string(),
+        "--topo-order".to_string(),
+        "--date=unix".to_string(),
+        LOG_FORMAT.to_string(),
+    ];
+    push_revisions(&mut args, filter);
+    if include_filters {
+        if let Some(since) = filter.since.as_ref() {
+            args.push(format!("--since={since}"));
+        }
+        if let Some(until) = filter.until.as_ref() {
+            args.push(format!("--until={until}"));
+        }
+        if let Some(author) = filter.author.as_ref().filter(|author| !author.is_empty()) {
+            args.push(format!("--author={author}"));
+        }
+        push_path(&mut args, filter.path.as_deref());
+    }
+    return args;
+}
+
+fn push_revisions(args: &mut Vec<String>, filter: &LogFilter) {
+    let references = if filter.references.is_empty() {
+        filter.reference.iter().cloned().collect::<Vec<_>>()
+    } else {
+        filter.references.clone()
+    }
+    .into_iter()
+    .filter(|reference| !reference.is_empty())
+    .collect::<Vec<_>>();
+    if references.is_empty() {
+        args.push("--all".to_string());
+    } else {
+        args.extend(references);
+    }
+}
+
+fn push_path(args: &mut Vec<String>, path: Option<&str>) {
+    let Some(path) = path.map(str::trim).filter(|path| !path.is_empty()) else {
+        return;
+    };
+    args.push("--".to_string());
+    args.push(format!(":(top,literal){path}"));
+}
+
+fn filter_message_and_authors(commits: &mut Vec<Commit>, filter: &LogFilter) {
+    if !filter.authors.is_empty() {
+        commits.retain(|commit| {
+            filter
+                .authors
+                .iter()
+                .any(|email| email.eq_ignore_ascii_case(&commit.author_email))
+        });
+    }
+    let message = filter.message.trim().to_lowercase();
+    if !message.is_empty() {
+        commits.retain(|commit| commit.message.to_lowercase().contains(&message));
+    }
+}
+
 fn filter_query(commits: &mut Vec<Commit>, query: &str) {
     if query.is_empty() {
         return;
     }
     let needle = query.to_lowercase();
     commits.retain(|commit| {
-        commit.summary.to_lowercase().contains(&needle)
+        commit.message.to_lowercase().contains(&needle)
+            || commit.summary.to_lowercase().contains(&needle)
             || commit.author.to_lowercase().contains(&needle)
             || commit.short.contains(&needle)
             || commit

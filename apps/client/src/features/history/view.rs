@@ -28,7 +28,14 @@ const DATE_W: f32 = 58.0;
 const GRAPH_LANE_W: f32 = 10.0;
 
 /// 浮层宽度（设计板 `.filter-pop`）。
-const POP_W: f32 = 268.0;
+const POP_W: f32 = 432.0;
+
+#[derive(Clone)]
+struct FilterBranch {
+    label: String,
+    reference: String,
+    remote: bool,
+}
 
 /// `use<>`：返回的元素只持有克隆出来的信号，不借用入参（edition 2024 的
 /// `impl Trait` 默认捕获入参生命周期，这里显式声明不捕获）。
@@ -42,7 +49,7 @@ pub(crate) fn history(
     let language = cmd.language;
     let commits = tab.commits.clone();
     let selected = tab.selected;
-    let graph_rows = graph::layout(&commits);
+    let graph_rows = graph::layout_filtered(&commits, &tab.graph_commits);
     let graph_width = graph_rows
         .iter()
         .map(|row| row.lane_count)
@@ -127,12 +134,23 @@ pub(crate) fn history(
                 .collect::<Vec<_>>();
         })
     };
-    let branches: Vec<String> = tab
+    let mut branches = tab
         .refs
         .branches
         .iter()
-        .map(|branch| branch.name.clone())
-        .collect();
+        .map(|branch| FilterBranch {
+            label: branch.name.clone(),
+            reference: format!("refs/heads/{}", branch.name),
+            remote: false,
+        })
+        .collect::<Vec<_>>();
+    branches.extend(tab.refs.remote_branches.iter().map(|branch| FilterBranch {
+        label: branch.full_name(),
+        reference: format!("refs/remotes/{}/{}", branch.remote, branch.name),
+        remote: true,
+    }));
+    branches.sort_by(|left, right| left.label.cmp(&right.label));
+    branches.dedup_by(|left, right| left.reference == right.reference);
     let authors = tab.authors.clone();
     let language_value = language;
     let filter_open = state.filter_open;
@@ -140,6 +158,7 @@ pub(crate) fn history(
     // 筛选浮层在 `dynamic` 里渲染，参数要能反复取用，因此这里各留一份克隆。
     let filter_state = state.clone();
     let filter_cmd = cmd.clone();
+    let graph_ancestors = tab.graph_commits.clone();
     let table_ref = state.table_ref;
     let scroll_request = state.scroll_request;
 
@@ -254,7 +273,12 @@ pub(crate) fn history(
                                     .collect();
                                 let commits_for_render = rows_snapshot.clone();
                                 let compare_for_render = compare_for_rows.clone();
-                                let graphs_for_render = graph_rows.clone();
+                                let visible_commits = rows_snapshot
+                                    .iter()
+                                    .map(|(_, commit)| commit.clone())
+                                    .collect::<Vec<_>>();
+                                let graphs_for_render =
+                                    graph::layout_filtered(&visible_commits, &graph_ancestors);
                                 let select_for_press = select.clone();
                                 let toggle_for_press = toggle_compare.clone();
                                 let compare_mode_for_press = compare_mode;
@@ -293,7 +317,7 @@ pub(crate) fn history(
                                             let in_compare = compare_for_render.contains(&index);
                                             let has_refs = !commit.refs.is_empty();
                                             let graph_row = graphs_for_render
-                                                .get(index)
+                                                .get(row as usize)
                                                 .cloned()
                                                 .unwrap_or_default();
                                             return view()
@@ -518,13 +542,19 @@ fn hist_bar(
     cmd: &HistoryCommands,
     tab: &Tab,
 ) -> impl IntoElement + use<> {
-    let filter_reference = state.reference;
-    let filter_author = state.author;
-    let filter_when = state.when;
     let filter_open = state.filter_open;
     let compare_mode = state.compare_mode;
     let branch = tab.branch.clone();
     let total = tab.commits.len();
+    let applied = tab.filter.clone();
+    let applied_branches = if applied.references.is_empty() {
+        applied.reference.clone().into_iter().collect::<Vec<_>>()
+    } else {
+        applied.references.clone()
+    };
+    let has_dates = applied.since.is_some() || applied.until.is_some();
+    let has_refine = applied.path.is_some() || !applied.message.is_empty();
+    let author_count = applied.authors.len();
     // Compare refs 的可选项：当前分支 + 本地分支 + 远程 + 标签。
     let mut refs_list: Vec<String> = Vec::new();
     for branch in &tab.refs.branches {
@@ -571,13 +601,16 @@ fn hist_bar(
             move || true,
             {
                 let branch = branch.clone();
+                let selected_count = applied_branches.len();
                 move || {
-                    let reference = filter_reference.get();
-                    if reference.is_empty() {
-                        branch.clone()
-                    } else {
-                        reference
+                    if selected_count > 0 {
+                        return i18n::with_arguments(
+                            language.get().as_str(),
+                            "filter.branchCount",
+                            &[("count", selected_count.to_string())],
+                        );
                     }
+                    branch.clone()
                 }
             },
             design::branch_bg,
@@ -595,19 +628,26 @@ fn hist_bar(
             .text_color(move || design::text3()),
         )
         .child(chip(
-            move || When::from_key(filter_when.get().as_str()) != When::All,
+            move || has_dates,
+            move || i18n::t(language.get().as_str(), "filter.dateActive"),
+            design::panel2,
+            design::text2,
+        ))
+        .child(chip(
+            move || author_count > 0,
             move || {
-                i18n::t(
+                i18n::with_arguments(
                     language.get().as_str(),
-                    When::from_key(filter_when.get().as_str()).key(),
+                    "filter.authorCount",
+                    &[("count", author_count.to_string())],
                 )
             },
             design::panel2,
             design::text2,
         ))
         .child(chip(
-            move || !filter_author.get().is_empty(),
-            move || filter_author.get(),
+            move || has_refine,
+            move || i18n::t(language.get().as_str(), "filter.refineActive"),
             design::panel2,
             design::text2,
         ))
@@ -928,14 +968,12 @@ fn commit_menu(
 
 fn filter_pop(
     language: Signal<SharedString>,
-    branches: Vec<String>,
-    authors: Vec<String>,
+    branches: Vec<FilterBranch>,
+    authors: Vec<git::Author>,
     state: HistoryState,
     cmd: HistoryCommands,
 ) -> impl IntoElement + use<> {
-    let filter_reference = state.reference;
-    let filter_author = state.author;
-    let filter_when = state.when;
+    let draft = state.draft;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let apply: std::sync::Arc<dyn Fn()> = {
         let cmd = cmd.clone();
@@ -945,92 +983,249 @@ fn filter_pop(
         let cmd = cmd.clone();
         std::sync::Arc::new(move || cmd.clear_filter())
     };
-    let mut branch_rows: Vec<AnyElement> = Vec::new();
-    branch_rows.push(choice_row(
+    let all_branches = std::sync::Arc::new(move || draft.update(|value| value.references.clear()));
+    let branch_values = branches
+        .iter()
+        .map(|branch| branch.reference.clone())
+        .collect::<Vec<_>>();
+    let select_all_branches = std::sync::Arc::new(move || {
+        draft.update(|value| value.references = branch_values.clone());
+    });
+    let mut branch_rows = vec![filter_choice_row(
         language,
-        "filter.allBranches".to_string(),
-        move || filter_reference.get().is_empty(),
-        {
-            let filter_reference = filter_reference;
-            move || filter_reference.set(String::new())
-        },
-    ));
-    for branch in branches.iter().take(8) {
-        let name = branch.clone();
-        let value = branch.clone();
-        branch_rows.push(choice_row(
-            language,
-            name,
-            move || filter_reference.get() == value,
-            {
-                let filter_reference = filter_reference;
-                let value = branch.clone();
-                move || filter_reference.set(value.clone())
-            },
-        ));
+        "filter.allBranches",
+        std::sync::Arc::new(move || draft.get().references.is_empty()),
+        all_branches,
+    )];
+    for branch in &branches {
+        let branch_value = branch.reference.clone();
+        let selected_value = branch_value.clone();
+        let label = if branch.remote {
+            format!(
+                "{} · {}",
+                branch.label,
+                i18n::t(language.get_untracked().as_str(), "filter.remote")
+            )
+        } else {
+            branch.label.clone()
+        };
+        let checked = std::sync::Arc::new(move || {
+            draft
+                .get()
+                .references
+                .iter()
+                .any(|reference| reference == &selected_value)
+        });
+        branch_rows.push(
+            view()
+                .w_full()
+                .h(px(24.0))
+                .flex_row()
+                .items_center()
+                .child(crate::ui::check::check_inline(
+                    move || label.clone(),
+                    move || checked(),
+                    24.0,
+                    14.0,
+                    false,
+                    move |checked| {
+                        draft.update(|value| {
+                            if checked {
+                                if !value.references.contains(&branch_value) {
+                                    value.references.push(branch_value.clone());
+                                }
+                            } else {
+                                value.references.retain(|item| item != &branch_value);
+                            }
+                        });
+                    },
+                ))
+                .into_element(),
+        );
     }
 
-    let mut author_rows: Vec<AnyElement> = Vec::new();
-    author_rows.push(choice_row(
+    let all_authors = std::sync::Arc::new(move || draft.update(|value| value.authors.clear()));
+    let mut author_rows = vec![filter_choice_row(
         language,
-        i18n::t(language.get_untracked().as_str(), "filter.allAuthors"),
-        move || filter_author.get().is_empty(),
-        {
-            let filter_author = filter_author;
-            move || filter_author.set(String::new())
-        },
-    ));
-    for author in authors.iter().take(8) {
-        let label = author.clone();
-        let value = author.clone();
-        author_rows.push(choice_row(
-            language,
-            label,
-            move || filter_author.get() == value,
-            {
-                let filter_author = filter_author;
-                let value = author.clone();
-                move || filter_author.set(value.clone())
-            },
-        ));
+        "filter.allAuthors",
+        std::sync::Arc::new(move || draft.get().authors.is_empty()),
+        all_authors,
+    )];
+    for author in &authors {
+        let email = author.email.clone();
+        let selected_email = email.clone();
+        let label = format!("{} <{}>", author.name, author.email);
+        let checked = std::sync::Arc::new(move || {
+            draft
+                .get()
+                .authors
+                .iter()
+                .any(|selected| selected == &selected_email)
+        });
+        author_rows.push(
+            crate::ui::check::check_inline(
+                move || label.clone(),
+                move || checked(),
+                24.0,
+                14.0,
+                false,
+                move |checked| {
+                    draft.update(|value| {
+                        if checked {
+                            if !value.authors.contains(&email) {
+                                value.authors.push(email.clone());
+                            }
+                        } else {
+                            value.authors.retain(|item| item != &email);
+                        }
+                    });
+                },
+            )
+            .into_element(),
+        );
     }
 
-    let when_rows: Vec<AnyElement> = When::ALL
+    let when_rows = When::ALL
         .iter()
         .map(|when| {
             let when = *when;
-            choice_row(
+            filter_choice_row(
                 language,
-                i18n::t(language.get_untracked().as_str(), when.key()),
-                move || When::from_key(filter_when.get().as_str()) == when,
-                {
-                    let filter_when = filter_when;
-                    move || filter_when.set(SharedString::from(when.id()))
-                },
+                when.key(),
+                std::sync::Arc::new(move || draft.get().when == when),
+                std::sync::Arc::new(move || draft.update(|value| value.when = when)),
             )
         })
-        .collect();
+        .collect::<Vec<_>>();
+
+    let branch_select_all = crate::ui::button::button(
+        move || i18n::t(language.get().as_str(), "filter.selectAll"),
+        crate::ui::button::ButtonVariant::Ghost,
+        crate::ui::button::ButtonSize::Small,
+        false,
+        move || select_all_branches(),
+    );
+    let custom_dates =
+        {
+            let draft = draft;
+            dynamic(move || -> AnyElement {
+                if draft.get().when != When::Custom {
+                    return view().h(px(0.0)).into_element();
+                }
+                let since_get = move || draft.get().since.clone();
+                let since_set = move |value: String| {
+                    draft.update(|state| state.since = value);
+                };
+                let until_get = move || draft.get().until.clone();
+                let until_set = move |value: String| {
+                    draft.update(|state| state.until = value);
+                };
+                return view()
+                    .w_full()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(view().flex_1().min_w_0().child(
+                        crate::ui::text_input::text_input_bound(
+                            since_get,
+                            move || i18n::t(language.get().as_str(), "filter.startDate"),
+                            false,
+                            since_set,
+                        ),
+                    ))
+                    .child(text("→").text_color(move || design::text3()))
+                    .child(view().flex_1().min_w_0().child(
+                        crate::ui::text_input::text_input_bound(
+                            until_get,
+                            move || i18n::t(language.get().as_str(), "filter.endDate"),
+                            false,
+                            until_set,
+                        ),
+                    ))
+                    .into_element();
+            })
+        };
+    let path_input = crate::ui::text_input::text_input_bound(
+        move || draft.get().path.clone(),
+        move || i18n::t(language.get().as_str(), "filter.pathPlaceholder"),
+        false,
+        move |value| draft.update(|state| state.path = value),
+    );
+    let message_input = crate::ui::text_input::text_input_bound(
+        move || draft.get().message.clone(),
+        move || i18n::t(language.get().as_str(), "filter.messagePlaceholder"),
+        false,
+        move |value| draft.update(|state| state.message = value),
+    );
 
     return view()
         .w(px(POP_W))
-        .p(px(6.0))
+        .max_h(px(560.0))
+        .p(px(10.0))
         .flex_col()
-        .gap(px(2.0))
+        .gap(px(6.0))
         .rounded(px(metrics::RADIUS_PANEL))
         .border_1()
         .border_color(move || design::line())
         .bg(move || design::token("popover"))
-        .child(section_label(language, "filter.branch"))
-        .child(branch_rows)
-        .child(section_label(language, "filter.author"))
-        .child(author_rows)
-        .child(section_label(language, "filter.when"))
-        .child(when_rows)
         .child(
             view()
                 .w_full()
-                .mt(px(4.0))
-                .pt(px(6.0))
+                .flex_row()
+                .items_center()
+                .child(
+                    view()
+                        .flex_1()
+                        .child(section_label(language, "filter.branch")),
+                )
+                .child(branch_select_all),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    view()
+                        .w(px(120.0))
+                        .h(px(24.0))
+                        .flex_shrink_0()
+                        .child(branch_rows.remove(0)),
+                )
+                .child(
+                    scroll()
+                        .w_full()
+                        .h(px(120.0))
+                        .child(view().w_full().flex_col().child(branch_rows)),
+                ),
+        )
+        .child(section_label(language, "filter.author"))
+        .child(
+            scroll()
+                .w_full()
+                .h(px(96.0))
+                .child(view().w_full().flex_col().child(author_rows)),
+        )
+        .child(section_label(language, "filter.when"))
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .flex_wrap()
+                .gap(px(4.0))
+                .child(when_rows),
+        )
+        .child(custom_dates)
+        .child(section_label(language, "filter.path"))
+        .child(path_input)
+        .child(section_label(language, "filter.message"))
+        .child(message_input)
+        .child(
+            view()
+                .w_full()
+                .mt(px(2.0))
+                .pt(px(8.0))
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
@@ -1047,7 +1242,7 @@ fn filter_pop(
                     },
                 ))
                 .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "filter.clear"),
+                    move || i18n::t(language.get().as_str(), "filter.reset"),
                     crate::ui::button::ButtonVariant::Secondary,
                     crate::ui::button::ButtonSize::Small,
                     false,
@@ -1065,27 +1260,28 @@ fn section_label(language: Signal<SharedString>, key: &'static str) -> impl Into
     return crate::ui::section::section_label(move || i18n::t(language.get().as_str(), key));
 }
 
-fn choice_row(
+fn filter_choice_row(
     language: Signal<SharedString>,
-    label: String,
-    selected: impl Fn() -> bool + 'static,
-    on_press: impl Fn() + 'static,
+    label_key: &'static str,
+    selected: std::sync::Arc<dyn Fn() -> bool>,
+    on_press: std::sync::Arc<dyn Fn()>,
 ) -> AnyElement {
-    let _ = language;
-    let label = label;
-    // 选中的 chip 用 Secondary 表达，未选中用 Ghost。
-    let variant = if selected() {
-        crate::ui::button::ButtonVariant::Secondary
-    } else {
-        crate::ui::button::ButtonVariant::Ghost
-    };
-    return crate::ui::button::button(
-        move || label.clone(),
-        variant,
-        crate::ui::button::ButtonSize::Small,
-        false,
-        on_press,
-    )
+    return dynamic(move || -> AnyElement {
+        let variant = if selected() {
+            crate::ui::button::ButtonVariant::Secondary
+        } else {
+            crate::ui::button::ButtonVariant::Ghost
+        };
+        let press = on_press.clone();
+        return crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), label_key),
+            variant,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || press(),
+        )
+        .into_element();
+    })
     .into_element();
 }
 

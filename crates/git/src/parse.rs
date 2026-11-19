@@ -42,32 +42,30 @@ pub(crate) fn parse_log(text: &str) -> Result<Vec<Commit>, GitError> {
             continue;
         }
         let fields: Vec<&str> = record.split('\u{1f}').collect();
-        if fields.len() < 6 {
+        if fields.len() < 9 {
             return Err(GitError::Parse {
                 context: "git log".to_string(),
                 detail: format!("字段数量为 {}：{}", fields.len(), record),
             });
         }
-        let refs = fields[5]
+        let refs = fields[7]
             .split(',')
             .map(|reference| reference.trim().to_string())
             .filter(|reference| !reference.is_empty())
             .collect::<Vec<_>>();
-        let parents = fields
-            .get(6)
-            .map(|parents| {
-                parents
-                    .split_whitespace()
-                    .map(|parent| parent.to_string())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let parents = fields[8..]
+            .join("\u{1f}")
+            .split_whitespace()
+            .map(|parent| parent.to_string())
+            .collect::<Vec<_>>();
         commits.push(Commit {
             sha: fields[0].to_string(),
             short: fields[1].to_string(),
             author: fields[2].to_string(),
-            date: fields[3].to_string(),
-            summary: fields[4].to_string(),
+            author_email: fields[3].to_string(),
+            date: fields[4].to_string(),
+            summary: fields[5].to_string(),
+            message: fields[6].trim_end_matches('\n').to_string(),
             refs,
             parents,
         });

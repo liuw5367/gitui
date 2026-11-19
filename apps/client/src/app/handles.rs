@@ -46,15 +46,28 @@ pub(crate) struct AppHandles {
 impl AppHandles {
     /// Fork workspace state for an auxiliary one-repo worktree window.
     pub(crate) fn for_worktree(&self) -> Self {
+        let tabs = signal(Vec::<crate::app::session::Tab>::new());
+        let active = signal(0);
+        let filter: Arc<dyn Fn() -> git::LogFilter> = {
+            let tabs = tabs;
+            let active = active;
+            Arc::new(move || {
+                return tabs
+                    .get_untracked()
+                    .get(active.get_untracked())
+                    .map(|tab| tab.filter.clone())
+                    .unwrap_or_default();
+            })
+        };
         let session = crate::features::SessionHandle {
-            tabs: signal(Vec::new()),
-            active: signal(0),
+            tabs,
+            active,
             task_owner: self.session.task_owner,
             welcome_open: self.session.welcome_open,
             settings_open: self.session.settings_open,
             recent: self.session.recent,
             store_dir: self.session.store_dir.clone(),
-            filter: self.session.filter.clone(),
+            filter: filter.clone(),
             notice: signal(None),
             language: self.language,
             auxiliary: true,
@@ -86,33 +99,15 @@ impl AppHandles {
         handles.history.recovery = handles.recovery.clone();
         handles.history.mode = signal(crate::Mode::History);
         let query = signal(handles.history.state.query.get_untracked());
-        let reference = signal(handles.history.state.reference.get_untracked());
-        let author = signal(handles.history.state.author.get_untracked());
-        let when = signal(handles.history.state.when.get_untracked());
-        let filter_now = store::now_unix();
-        let filter_query = query;
-        let filter_reference = reference;
-        let filter_author = author;
-        let filter_when = when;
-        let filter: Arc<dyn Fn() -> git::LogFilter> = Arc::new(move || {
-            return crate::filters::build(
-                filter_query.get_untracked().as_str(),
-                filter_reference.get_untracked().as_str(),
-                filter_author.get_untracked().as_str(),
-                crate::filters::When::from_key(filter_when.get_untracked().as_str()),
-                filter_now,
-            );
-        });
+        let draft = signal(handles.history.state.draft.get_untracked());
         handles.history.state = crate::features::history::state::HistoryState {
             query,
-            reference,
-            author,
-            when,
+            draft,
             filter_open: signal(false),
             compare_mode: signal(false),
             table_ref: component_ref(),
             scroll_request: signal(None),
-            filter,
+            filter: filter.clone(),
         };
         handles.sync.session = session.clone();
         handles.sync.state.dialog = signal(None);
