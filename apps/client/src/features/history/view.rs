@@ -37,6 +37,12 @@ struct FilterBranch {
     remote: bool,
 }
 
+#[derive(Clone)]
+struct CompareRef {
+    label: String,
+    value: String,
+}
+
 /// `use<>`：返回的元素只持有克隆出来的信号，不借用入参（edition 2024 的
 /// `impl Trait` 默认捕获入参生命周期，这里显式声明不捕获）。
 pub(crate) fn history(
@@ -49,6 +55,8 @@ pub(crate) fn history(
     let language = cmd.language;
     let commits = tab.commits.clone();
     let selected = tab.selected;
+    let compare_refs_empty =
+        tab.compare_base.is_some() && tab.compare_target.is_some() && tab.commits.is_empty();
     let graph_rows = graph::layout_filtered(&commits, &tab.graph_commits);
     let graph_width = graph_rows
         .iter()
@@ -228,7 +236,9 @@ pub(crate) fn history(
                                                         &[("branch", branch_for_empty.clone())],
                                                     );
                                                 }
-                                                let key = if total == 0 {
+                                                let key = if compare_refs_empty {
+                                                    "compare.noCommits"
+                                                } else if total == 0 {
                                                     "history.empty"
                                                 } else {
                                                     "history.noMatch"
@@ -555,18 +565,52 @@ fn hist_bar(
     let has_dates = applied.since.is_some() || applied.until.is_some();
     let has_refine = applied.path.is_some() || !applied.message.is_empty();
     let author_count = applied.authors.len();
-    // Compare refs 的可选项：当前分支 + 本地分支 + 远程 + 标签。
-    let mut refs_list: Vec<String> = Vec::new();
+    // Compare refs 提供所有本地分支、远端跟踪分支与 tag；value 使用限定 ref 避免同名歧义。
+    let mut refs_list: Vec<CompareRef> = Vec::new();
+    let language_value = language.get_untracked();
     for branch in &tab.refs.branches {
-        refs_list.push(branch.name.clone());
+        refs_list.push(CompareRef {
+            label: i18n::with_arguments(
+                language_value.as_str(),
+                "compare.localBranch",
+                &[("name", branch.name.clone())],
+            ),
+            value: format!("refs/heads/{}", branch.name),
+        });
     }
-    for remote in &tab.refs.remotes {
-        refs_list.push(remote.clone());
+    for branch in &tab.refs.remote_branches {
+        refs_list.push(CompareRef {
+            label: i18n::with_arguments(
+                language_value.as_str(),
+                "compare.remoteBranch",
+                &[("name", branch.full_name())],
+            ),
+            value: format!("refs/remotes/{}", branch.full_name()),
+        });
     }
     for tag in &tab.refs.tags {
-        refs_list.push(tag.clone());
+        refs_list.push(CompareRef {
+            label: i18n::with_arguments(
+                language_value.as_str(),
+                "compare.tagRef",
+                &[("name", tag.clone())],
+            ),
+            value: format!("refs/tags/{tag}"),
+        });
+    }
+    for stash in &tab.refs.stashes {
+        refs_list.push(CompareRef {
+            label: i18n::with_arguments(
+                language_value.as_str(),
+                "compare.stashRef",
+                &[("name", stash.summary.clone())],
+            ),
+            value: stash.oid.clone(),
+        });
     }
     let compare_pair = (tab.compare_base.clone(), tab.compare_target.clone());
+    let compare_three_dot = tab.compare_three_dot;
+    let compare_worktree = tab.compare_worktree;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
         let cmd = cmd.clone();
@@ -577,6 +621,14 @@ fn hist_bar(
     let set_compare_mode: std::sync::Arc<dyn Fn(bool)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |enabled: bool| cmd.set_compare_mode(enabled))
+    };
+    let set_compare_three_dot: std::sync::Arc<dyn Fn(bool)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |enabled| cmd.set_compare_three_dot(enabled))
+    };
+    let set_compare_worktree: std::sync::Arc<dyn Fn(bool)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |enabled| cmd.set_compare_worktree(enabled))
     };
     let clear: std::sync::Arc<dyn Fn()> = {
         let cmd = cmd.clone();
@@ -673,7 +725,11 @@ fn hist_bar(
             language,
             refs_list,
             compare_pair,
+            compare_three_dot,
+            compare_worktree,
             set_compare_refs,
+            set_compare_three_dot,
+            set_compare_worktree,
         ))
         .child(crate::ui::button::button(
             move || i18n::t(language.get().as_str(), "filter.clear"),
@@ -1332,61 +1388,68 @@ fn ref_chips(refs: Vec<String>) -> impl IntoElement {
 /// Compare refs 控件（设计板 07）：起点、终点与交换；未选择时提示从哪些引用里挑。
 fn compare_refs(
     language: Signal<SharedString>,
-    refs: Vec<String>,
+    refs: Vec<CompareRef>,
     pair: (Option<String>, Option<String>),
+    three_dot: bool,
+    compare_worktree: bool,
     set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
+    set_three_dot: std::sync::Arc<dyn Fn(bool)>,
+    set_worktree: std::sync::Arc<dyn Fn(bool)>,
 ) -> impl IntoElement {
     let (base, target) = pair;
-    let base_value = base.clone();
-    let target_value = target.clone();
     let has_pair = base.is_some() && target.is_some();
     let swap_base = base.clone();
     let swap_target = target.clone();
     let clear_refs = set_compare_refs.clone();
-
-    // 起点、终点各用一个横向的引用列表选择：点一下循环到下一个（引用数量通常不多）。
-    let mut base_picker: Vec<AnyElement> = Vec::new();
-    let mut target_picker: Vec<AnyElement> = Vec::new();
-    for reference in refs.iter().take(6) {
-        let pick_base = set_compare_refs.clone();
-        let pick_target = set_compare_refs.clone();
-        let base_name = reference.clone();
-        let target_name = reference.clone();
-        let base_label = reference.clone();
-        let target_label = reference.clone();
-        let base_target = target_value.clone();
-        let target_base = base_value.clone();
-        let is_base = base_value.as_deref() == Some(reference.as_str());
-        let is_target = target_value.as_deref() == Some(reference.as_str());
-        base_picker.push(
-            crate::ui::button::button(
-                move || base_label.clone(),
-                if is_base {
-                    crate::ui::button::ButtonVariant::Secondary
-                } else {
-                    crate::ui::button::ButtonVariant::Ghost
-                },
-                crate::ui::button::ButtonSize::Small,
-                false,
-                move || pick_base(Some(base_name.clone()), base_target.clone()),
-            )
-            .into_element(),
-        );
-        target_picker.push(
-            crate::ui::button::button(
-                move || target_label.clone(),
-                if is_target {
-                    crate::ui::button::ButtonVariant::Secondary
-                } else {
-                    crate::ui::button::ButtonVariant::Ghost
-                },
-                crate::ui::button::ButtonSize::Small,
-                false,
-                move || pick_target(target_base.clone(), Some(target_name.clone())),
-            )
-            .into_element(),
-        );
-    }
+    let base_options = refs.clone();
+    let target_options = refs.clone();
+    let base_label_options = refs.clone();
+    let target_label_options = refs.clone();
+    let base_value = base.clone();
+    let target_value = target.clone();
+    let base_target = target.clone();
+    let target_base = base.clone();
+    let base_action = set_compare_refs.clone();
+    let target_action = set_compare_refs.clone();
+    let base_picker = crate::ui::menu::menu_button(
+        move || {
+            compare_ref_label(&base_label_options, base_value.as_deref())
+                .unwrap_or_else(|| i18n::t(language.get().as_str(), "compare.base"))
+        },
+        Some("chev-down"),
+        move || {
+            let mut items = Vec::new();
+            for option in base_options.clone() {
+                let action = base_action.clone();
+                let value = option.value.clone();
+                let target = base_target.clone();
+                items.push(crate::ui::menu::action(option.label, true, move || {
+                    action(Some(value.clone()), target.clone());
+                }));
+            }
+            return items;
+        },
+    );
+    let target_picker = crate::ui::menu::menu_button(
+        move || {
+            compare_ref_label(&target_label_options, target_value.as_deref())
+                .unwrap_or_else(|| i18n::t(language.get().as_str(), "compare.target"))
+        },
+        Some("chev-down"),
+        move || {
+            let mut items = Vec::new();
+            for option in target_options.clone() {
+                let action = target_action.clone();
+                let value = option.value.clone();
+                let base = target_base.clone();
+                items.push(crate::ui::menu::action(option.label, true, move || {
+                    action(base.clone(), Some(value.clone()));
+                }));
+            }
+            return items;
+        },
+    );
+    let clear_disabled = base.is_none() && target.is_none() && !compare_worktree;
 
     return view()
         .flex_row()
@@ -1396,8 +1459,8 @@ fn compare_refs(
             text(move || {
                 i18n::t(
                     language.get().as_str(),
-                    if has_pair {
-                        "compare.range"
+                    if has_pair || compare_worktree {
+                        "compare.refsActive"
                     } else {
                         "compare.pick"
                     },
@@ -1406,47 +1469,71 @@ fn compare_refs(
             .text_size(px(crate::ui::SECONDARY))
             .text_color(move || design::text3()),
         )
-        .child(
-            view()
-                .h(px(18.0))
-                .px(px(4.0))
-                .flex_row()
-                .items_center()
-                .gap(px(2.0))
-                .rounded(px(4.0))
-                .border_1()
-                .border_color(move || design::line_soft())
-                .child(base_picker),
-        )
+        .child(base_picker)
         .child(
             text("→")
                 .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3()),
         )
-        .child(
-            view()
-                .h(px(18.0))
-                .px(px(4.0))
-                .flex_row()
-                .items_center()
-                .gap(px(2.0))
-                .rounded(px(4.0))
-                .border_1()
-                .border_color(move || design::line_soft())
-                .child(target_picker),
-        )
+        .child(target_picker)
         .child(crate::ui::button::button(
             move || i18n::t(language.get().as_str(), "compare.swap"),
             crate::ui::button::ButtonVariant::Ghost,
             crate::ui::button::ButtonSize::Small,
-            false,
+            !has_pair || compare_worktree,
             move || set_compare_refs(swap_target.clone(), swap_base.clone()),
+        ))
+        .child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.twoDot"),
+            if three_dot {
+                crate::ui::button::ButtonVariant::Ghost
+            } else {
+                crate::ui::button::ButtonVariant::Secondary
+            },
+            crate::ui::button::ButtonSize::Small,
+            false,
+            {
+                let set_three_dot = set_three_dot.clone();
+                move || set_three_dot(false)
+            },
+        ))
+        .child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.threeDot"),
+            if three_dot {
+                crate::ui::button::ButtonVariant::Secondary
+            } else {
+                crate::ui::button::ButtonVariant::Ghost
+            },
+            crate::ui::button::ButtonSize::Small,
+            compare_worktree,
+            {
+                let set_three_dot = set_three_dot.clone();
+                move || set_three_dot(true)
+            },
+        ))
+        .child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.withWorkingTree"),
+            if compare_worktree {
+                crate::ui::button::ButtonVariant::Secondary
+            } else {
+                crate::ui::button::ButtonVariant::Ghost
+            },
+            crate::ui::button::ButtonSize::Small,
+            target.is_none(),
+            move || set_worktree(!compare_worktree),
         ))
         .child(crate::ui::button::button(
             move || i18n::t(language.get().as_str(), "compare.clear"),
             crate::ui::button::ButtonVariant::Ghost,
             crate::ui::button::ButtonSize::Small,
-            false,
+            clear_disabled,
             move || clear_refs(None, None),
         ));
+}
+
+fn compare_ref_label(refs: &[CompareRef], selected: Option<&str>) -> Option<String> {
+    return refs
+        .iter()
+        .find(|reference| Some(reference.value.as_str()) == selected)
+        .map(|reference| reference.label.clone());
 }

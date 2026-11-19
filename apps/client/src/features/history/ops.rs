@@ -2,6 +2,13 @@
 
 use crate::app::session::{Tab, load_tab};
 use git::{LogFilter, Repo};
+use std::collections::HashSet;
+
+pub(crate) enum CompareFailure {
+    IdenticalEndpoints,
+    UnrelatedHistories,
+    Git,
+}
 
 /// 按 SHA 选中一个提交（reflog 的「在历史中显示」）。
 ///
@@ -179,18 +186,15 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
 /// 当前历史差异的展示补丁。忽略空白只改变 Git 生成的可见差异，调用方仍保留普通补丁
 /// 作为复制、导出和统计的数据来源。
 pub(crate) fn diff_patch_for_tab(tab: &Tab, ignore_whitespace: bool) -> domain::diff::Patch {
+    if tab.compare_range().is_some()
+        || (tab.compare_base.is_some() && tab.compare_target.is_some())
+        || (tab.compare_worktree && tab.compare_target.is_some())
+    {
+        return comparison_patch(tab, ignore_whitespace).unwrap_or_default();
+    }
     let Ok(repo) = Repo::open(tab.path.as_str()) else {
         return domain::diff::Patch::default();
     };
-    if let Some((from, to)) = tab.compare_range() {
-        let (Some(from), Some(to)) = (tab.commits.get(from), tab.commits.get(to)) else {
-            return domain::diff::Patch::default();
-        };
-        let range = format!("{}^", from.sha);
-        return repo
-            .diff_between_with_whitespace(range.as_str(), to.sha.as_str(), ignore_whitespace)
-            .unwrap_or_default();
-    }
     if let Some((path, _)) = &tab.file_patch
         && let Some(commit) = tab.selected_commit()
     {
@@ -266,41 +270,136 @@ pub(crate) fn select_file(tab: &mut Tab, index: usize) {
 
 /// 把第 `index` 个提交加入或移出对比集合。
 pub(crate) fn toggle_compare(tab: &mut Tab, index: usize) {
-    if let Some(position) = tab.compare.iter().position(|value| *value == index) {
-        tab.compare.remove(position);
+    if index >= tab.commits.len() {
+        return;
+    }
+    if tab.compare_base.is_some() || tab.compare_target.is_some() {
+        tab.compare_base = None;
+        tab.compare_target = None;
+        tab.compare_worktree = false;
+    }
+    if tab.compare.contains(&index) {
+        let Some((first, last)) = tab.compare_range() else {
+            tab.compare.clear();
+            tab.patch = domain::diff::Patch::default();
+            return;
+        };
+        if first == last {
+            tab.compare.clear();
+        } else if index == first {
+            tab.compare = (first + 1..=last).collect();
+        } else if index == last {
+            tab.compare = (first..last).collect();
+        } else {
+            tab.compare = vec![index];
+        }
     } else {
-        tab.compare.push(index);
-        tab.compare.sort_unstable();
+        if let Some((first, last)) = tab.compare_range() {
+            let low = first.min(index);
+            let high = last.max(index);
+            tab.compare = (low..=high).collect();
+        } else {
+            tab.compare = vec![index];
+        }
     }
     tab.patch = compare_patch(tab).unwrap_or_default();
 }
 
-/// 对比模式下要显示的补丁：区间 diff；不足两个提交时为 `None`。
-pub(crate) fn compare_patch(tab: &Tab) -> Option<domain::diff::Patch> {
-    let (from, to) = tab.compare_range()?;
-    let from_sha = tab.commits.get(from)?.sha.clone();
-    let to_sha = tab.commits.get(to)?.sha.clone();
-    // 区间 diff 包含 `from` 之后的提交到 `to`，因此起点取 `from` 的父提交。
-    let repo = Repo::open(tab.path.as_str()).ok()?;
-    let range = format!("{}^", from_sha);
-    return repo.diff_between(&range, &to_sha).ok();
+/// Compare 的实际补丁。提交与引用使用相同端点语义；工作区模式以右端引用为基准。
+pub(crate) fn comparison_patch(
+    tab: &Tab,
+    ignore_whitespace: bool,
+) -> Result<domain::diff::Patch, CompareFailure> {
+    let repo = Repo::open(tab.path.as_str()).map_err(|_| CompareFailure::Git)?;
+    if tab.compare_worktree {
+        let target = tab.compare_target.as_deref().ok_or(CompareFailure::Git)?;
+        let target = repo
+            .resolve_commit(target)
+            .map_err(|_| CompareFailure::Git)?;
+        return repo
+            .diff_worktree_with_whitespace(target.as_str(), ignore_whitespace)
+            .map_err(|_| CompareFailure::Git);
+    }
+    let (base, target) = if let (Some(base), Some(target)) =
+        (tab.compare_base.as_deref(), tab.compare_target.as_deref())
+    {
+        (base.to_string(), target.to_string())
+    } else {
+        let (newer, older) = tab.compare_range().ok_or(CompareFailure::Git)?;
+        let base = tab
+            .commits
+            .get(older)
+            .ok_or(CompareFailure::Git)?
+            .sha
+            .clone();
+        let target = tab
+            .commits
+            .get(newer)
+            .ok_or(CompareFailure::Git)?
+            .sha
+            .clone();
+        (base, target)
+    };
+    let base = repo
+        .resolve_commit(base.as_str())
+        .map_err(|_| CompareFailure::Git)?;
+    let target = repo
+        .resolve_commit(target.as_str())
+        .map_err(|_| CompareFailure::Git)?;
+    if base == target {
+        return Err(CompareFailure::IdenticalEndpoints);
+    }
+    let base = if tab.compare_three_dot {
+        repo.merge_base(base.as_str(), target.as_str())
+            .map_err(|_| CompareFailure::Git)?
+            .ok_or(CompareFailure::UnrelatedHistories)?
+    } else {
+        base
+    };
+    return repo
+        .diff_trees_with_whitespace(base.as_str(), target.as_str(), ignore_whitespace)
+        .map_err(|_| CompareFailure::Git);
 }
 
-/// 设置对比引用的两端；任一端为空表示关闭对比。
+/// Commit comparison patch. Fewer than two selected commits means no range.
+pub(crate) fn compare_patch(tab: &Tab) -> Option<domain::diff::Patch> {
+    tab.compare_range()?;
+    return comparison_patch(tab, false).ok();
+}
+
+/// 设置对比引用端点；空值可用于先选一个端点，两个端点都空时退出比较。
 pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Option<String>) {
-    let (Some(base), Some(target)) = (base.clone(), target.clone()) else {
+    if base.is_none() && target.is_none() {
         // 任一端为空表示退出对比：把历史恢复到当前分支的完整列表。
         tab.compare_base = None;
         tab.compare_target = None;
+        tab.compare_worktree = false;
         let filter = tab.filter.clone();
         let refreshed = load_tab(tab.path.as_str(), &filter);
         tab.commits = refreshed.commits;
+        tab.graph_commits = refreshed.graph_commits;
         tab.selected = refreshed.selected;
         tab.patch = refreshed.patch;
         tab.files = refreshed.files;
         tab.details = refreshed.details;
         tab.blame = refreshed.blame;
         tab.file_history = refreshed.file_history;
+        tab.selected_file = None;
+        tab.file_patch = None;
+        tab.compare.clear();
+        return;
+    }
+    let (Some(base), Some(target)) = (base.clone(), target.clone()) else {
+        tab.compare_base = base;
+        tab.compare_target = target;
+        tab.compare.clear();
+        tab.show_commit_diff = false;
+        tab.patch = domain::diff::Patch::default();
+        tab.selected_file = None;
+        tab.file_patch = None;
+        if tab.compare_target.is_none() {
+            tab.compare_worktree = false;
+        }
         return;
     };
     let repo = match Repo::open(tab.path.as_str()) {
@@ -313,8 +412,13 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
     match repo.commits_between(base.as_str(), target.as_str()) {
         Ok(commits) => {
             tab.commits = commits;
+            tab.compare.clear();
+            tab.show_commit_diff = false;
+            tab.compare_worktree = false;
             tab.compare_base = Some(base);
             tab.compare_target = Some(target);
+            tab.selected_file = None;
+            tab.file_patch = None;
             tab.selected = if tab.commits.is_empty() {
                 None
             } else {
@@ -322,6 +426,12 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
             };
             if let Some(index) = tab.selected {
                 select_commit(tab, index);
+            } else {
+                tab.patch = domain::diff::Patch::default();
+                tab.files.clear();
+                tab.details = None;
+                tab.blame.clear();
+                tab.file_history.clear();
             }
             tab.error = None;
         }
@@ -334,6 +444,53 @@ pub(crate) fn reload_with_filter(tab: &Tab, filter: &LogFilter) -> Tab {
     let mut next = load_tab(tab.path.as_str(), filter);
     next.comparing = tab.comparing;
     next.sidebar_collapsed = tab.sidebar_collapsed.clone();
+    next.compare_three_dot = tab.compare_three_dot;
+
+    if tab.compare_base.is_some() && tab.compare_target.is_some() {
+        let visible_shas = next
+            .commits
+            .iter()
+            .map(|commit| commit.sha.clone())
+            .collect::<HashSet<_>>();
+        set_compare_refs(
+            &mut next,
+            tab.compare_base.clone(),
+            tab.compare_target.clone(),
+        );
+        next.commits
+            .retain(|commit| visible_shas.contains(&commit.sha));
+        next.selected = if next.commits.is_empty() {
+            None
+        } else {
+            Some(0)
+        };
+        if let Some(index) = next.selected {
+            select_commit(&mut next, index);
+        } else {
+            next.patch = domain::diff::Patch::default();
+            next.files.clear();
+            next.details = None;
+            next.blame.clear();
+            next.file_history.clear();
+        }
+    } else {
+        next.compare_base = tab.compare_base.clone();
+        next.compare_target = tab.compare_target.clone();
+        next.compare_worktree = tab.compare_worktree;
+        let selected_shas = tab
+            .compare
+            .iter()
+            .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
+            .collect::<Vec<_>>();
+        next.compare = selected_shas
+            .iter()
+            .filter_map(|sha| next.commits.iter().position(|commit| commit.sha == *sha))
+            .collect();
+        if let Some((first, last)) = next.compare_range() {
+            next.compare = (first..=last).collect();
+            next.patch = compare_patch(&next).unwrap_or_default();
+        }
+    }
     return next;
 }
 

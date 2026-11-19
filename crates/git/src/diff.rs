@@ -11,28 +11,66 @@ use crate::exec::run_git;
 use crate::query::Repo;
 
 impl Repo {
-    /// 两个提交之间的区间 diff（`from..to`）。
-    ///
-    /// 用于多提交对比：`from` 为空时表示与工作区比较（`to` 作为起点）。
+    /// 比较两个 tree-ish 端点；`from` 为空时以 `to` 为基准比较当前工作区。
     ///
     /// 需要原始文本时用返回值的 [`Patch::raw`]。
     pub fn diff_between(&self, from: &str, to: &str) -> Result<Patch, GitError> {
         return self.diff_between_with_whitespace(from, to, false);
     }
 
-    /// 比较两个 revision，可选择忽略空白变化。
+    /// 比较两个 revision/tree-ish 端点，可选择忽略空白变化。
     pub fn diff_between_with_whitespace(
         &self,
         from: &str,
         to: &str,
         ignore_whitespace: bool,
     ) -> Result<Patch, GitError> {
-        let range = format!("{}..{}", from, to);
+        if from.is_empty() {
+            return self.diff_worktree_with_whitespace(to, ignore_whitespace);
+        }
         let mut args = vec!["diff", "--no-color"];
         if ignore_whitespace {
             args.push("--ignore-all-space");
         }
-        args.push(range.as_str());
+        args.push(from);
+        args.push(to);
+        let output = run_git(&self.root, &args)?;
+        let text = String::from_utf8_lossy(&output).to_string();
+        return Ok(Patch::parse(text.as_str()));
+    }
+
+    /// Merge base for two commits. Unrelated histories return `Ok(None)`.
+    pub fn merge_base(&self, left: &str, right: &str) -> Result<Option<String>, GitError> {
+        let output = match run_git(&self.root, &["merge-base", left, right]) {
+            Ok(output) => output,
+            Err(GitError::CommandFailed { code: Some(1), .. }) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        return Ok(Some(String::from_utf8_lossy(&output).trim().to_string()));
+    }
+
+    /// Compare two tree-ish endpoints directly (2-dot semantics).
+    pub fn diff_trees_with_whitespace(
+        &self,
+        base: &str,
+        target: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        return self.diff_between_with_whitespace(base, target, ignore_whitespace);
+    }
+
+    /// Compare a commit or ref with the current working tree, including staged and unstaged
+    /// tracked changes. Git's regular `diff <revision>` does not include untracked files.
+    pub fn diff_worktree_with_whitespace(
+        &self,
+        revision: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        let mut args = vec!["diff", "--no-color"];
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push(revision);
         let output = run_git(&self.root, &args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));

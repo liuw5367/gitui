@@ -108,6 +108,10 @@ pub(crate) struct Tab {
     pub(crate) compare_base: Option<String>,
     /// 对比引用的终点。
     pub(crate) compare_target: Option<String>,
+    /// 对比 tree 时是否采用 merge-base 到右端的三点语义。
+    pub(crate) compare_three_dot: bool,
+    /// 对比右端引用与当前工作区（包括暂存和未暂存的 tracked 变更）。
+    pub(crate) compare_worktree: bool,
     /// 提交说明的两段文本。
     pub(crate) summary: String,
     pub(crate) description: String,
@@ -289,7 +293,7 @@ impl Tab {
         };
     }
 
-    /// 对比区间的起止提交：`(from, to)`，按历史位置排序。
+    /// 对比选区的提交索引：`(较新, 较旧)`，列表按新到旧排列。
     pub(crate) fn compare_range(&self) -> Option<(usize, usize)> {
         if self.compare.len() < 2 {
             return None;

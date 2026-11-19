@@ -126,6 +126,7 @@ pub(crate) fn diff(
     label: String,
     patch: Patch,
     raw_patch: Patch,
+    empty_feedback: Option<&'static str>,
 ) -> impl IntoElement {
     // 只改展示文本；复制、导出与统计都取未转换的原始补丁。
     let options = state.options.get();
@@ -300,6 +301,9 @@ pub(crate) fn diff(
                 .min_h_0()
                 .child(dynamic(move || -> AnyElement {
                     if raw_patch.raw.trim().is_empty() {
+                        if let Some(key) = empty_feedback {
+                            return feedback_state(language, key).into_element();
+                        }
                         return empty_state(language).into_element();
                     }
                     if patch.raw.trim().is_empty() || hunk_count == 0 {
@@ -456,6 +460,19 @@ fn empty_state(language: Signal<SharedString>) -> impl IntoElement {
         .justify_center()
         .child(
             text(move || i18n::t(language.get().as_str(), "history.diffEmpty"))
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::text3()),
+        );
+}
+
+fn feedback_state(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h(px(60.0))
+        .items_center()
+        .justify_center()
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
                 .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3()),
         );

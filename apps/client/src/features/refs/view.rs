@@ -841,6 +841,7 @@ fn remote_branch_row(
     let prefix_menu_descendants = prefix_descendants.clone();
     let history_cmd = cmd.history.clone();
     let history_ref = format!("refs/remotes/{full_name}");
+    let compare_ref = history_ref.clone();
     let label = branch_item_label(branch_name.as_str()).to_string();
     let row = view()
         .w_full()
@@ -863,11 +864,12 @@ fn remote_branch_row(
             ));
             items.push(ui::menu::divider());
             let compare_history = menu_cmd.history.clone();
-            let compare_base = menu_current.clone();
-            let compare_target = menu_full_name.clone();
+            let compare_base = format!("refs/heads/{}", menu_current);
+            let compare_target = compare_ref.clone();
+            let can_compare = !menu_current.is_empty();
             items.push(ui::menu::action(
                 i18n::t(language.get().as_str(), "remote.compareCurrent"),
-                !compare_base.is_empty(),
+                can_compare,
                 move || {
                     compare_history.set_compare_refs_at(
                         tab_id,
@@ -1155,7 +1157,6 @@ fn branch_row(
     let current = branch.current;
     let branch_checkout = branch.name.clone();
     let branch_new = branch.name.clone();
-    let branch_compare = branch.name.clone();
     let branch_rebase = branch.name.clone();
     let branch_merge = branch.name.clone();
     let branch_new_tag = branch.name.clone();
@@ -1165,6 +1166,7 @@ fn branch_row(
     let branch_push = branch.name.clone();
     let history_cmd = cmd.history.clone();
     let history_ref = format!("refs/heads/{}", branch.name);
+    let compare_ref = history_ref.clone();
     let can_compare = !current && !current_branch.is_empty();
     let menu_cmd = cmd.clone();
     let menu_current_branch = current_branch.to_string();
@@ -1199,8 +1201,8 @@ fn branch_row(
             ));
             items.push(ui::menu::divider());
             let compare_history = menu_cmd.history.clone();
-            let current_for_compare = menu_current_branch.clone();
-            let compare_name = branch_compare.clone();
+            let current_for_compare = format!("refs/heads/{}", menu_current_branch);
+            let compare_name = compare_ref.clone();
             items.push(ui::menu::action(
                 i18n::t(language.get().as_str(), "branch.compareCurrent"),
                 can_compare,
@@ -1894,6 +1896,10 @@ fn refs_table(
             history.set_compare_refs(base, target)
         })
     };
+    let current_compare_base = match &tab.head {
+        git::HeadState::Branch(name) => Some(format!("refs/heads/{name}")),
+        git::HeadState::Detached { .. } | git::HeadState::Unborn { .. } => None,
+    };
     let checkout: std::sync::Arc<dyn Fn(String)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |name: String| cmd.checkout_branch(name))
@@ -1959,10 +1965,15 @@ fn refs_table(
         let checkout_new = checkout_new.clone();
         let merge = merge.clone();
         let compare = compare_refs.clone();
+        let compare_base = current_compare_base.clone();
         let open_form = open_form_from.clone();
         let delete = delete.clone();
         let copy_text = copy_text.clone();
         let name_for_menu = name.clone();
+        let compare_target = format!("refs/heads/{name}");
+        let can_open_compare = compare_base
+            .as_deref()
+            .is_some_and(|base| base != compare_target.as_str());
         let items = vec![
             ui::menu::action(
                 i18n::t(language.get_untracked().as_str(), "branch.checkout"),
@@ -1985,11 +1996,12 @@ fn refs_table(
             ui::menu::divider(),
             ui::menu::action(
                 i18n::t(language.get_untracked().as_str(), "menu.openCompare"),
-                true,
+                can_open_compare,
                 {
                     let compare = compare.clone();
-                    let name = name_for_menu.clone();
-                    move || compare(None, Some(name.clone()))
+                    let target = compare_target;
+                    let base = compare_base.clone();
+                    move || compare(base.clone(), Some(target.clone()))
                 },
             ),
             ui::menu::action(

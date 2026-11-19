@@ -149,6 +149,9 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
+            if enabled && (tab.compare_base.is_some() || tab.compare_target.is_some()) {
+                ops::set_compare_refs(tab, None, None);
+            }
             tab.comparing = enabled;
             if !enabled {
                 tab.compare.clear();
@@ -178,11 +181,33 @@ impl HistoryCommands {
         base: Option<String>,
         target: Option<String>,
     ) {
+        self.state.compare_mode.set(false);
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+            tab.comparing = false;
             ops::set_compare_refs(tab, base, target);
             self.session.tabs.set(list);
             self.mode.set(crate::Mode::History);
+        }
+    }
+
+    /// Select two-dot or three-dot comparison semantics.
+    pub(crate) fn set_compare_three_dot(&self, enabled: bool) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            tab.compare_three_dot = enabled;
+            self.session.tabs.set(list);
+        }
+    }
+
+    /// Compare the target ref with the current working tree.
+    pub(crate) fn set_compare_worktree(&self, enabled: bool) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            tab.compare_worktree = enabled && tab.compare_target.is_some();
+            self.session.tabs.set(list);
         }
     }
 

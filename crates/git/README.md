@@ -23,7 +23,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 分组 | 方法 |
 |---|---|
 | 打开与状态 | `Repo::open`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs` |
-| 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`diff_between`、`diff_between_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog` |
+| 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`merge_base`、`diff_between`、`diff_between_with_whitespace`、`diff_trees_with_whitespace`、`diff_worktree_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog` |
 | 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_pop`、`stash_apply`、`stash_drop` |
@@ -35,6 +35,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 本机信息与底层执行 | `info`、`credential_helper`、`run_git` |
 
 `diff_between`、`patch`、`patch_for_path`、`file_diff` 返回已解析的 `domain::diff::Patch`；Git 的原始文本保存在 `Patch::raw` 里，导出 patch 与复制直接用它，保证字节一致。带 `with_whitespace` 的方法可附加 Git `--ignore-all-space`，只改变展示查询；提交差异固定以第一父提交为基准，根提交与空 tree 比较，merge commit 不使用 combined diff。
+
+`diff_between_with_whitespace(base, target, ...)` 用 `git diff <base> <target>` 比较两端 tree；它不计算 `git log base..target` 的提交集合。`diff_trees_with_whitespace` 是这项 tree 比较的明确入口。`merge_base(left, right)` 返回共同祖先 OID，无共同祖先时返回 `None`。`diff_worktree_with_whitespace(revision, ...)` 比较指定 revision 与当前 index/工作区，覆盖已暂存和未暂存的 tracked 文件；Git diff 不包含未跟踪文件。
 
 `Repo::refs` 返回 `Refs { branches, remotes, remote_info, remote_branches, tags, stashes, submodules, worktrees }`。`RemoteInfo` 保存全部 fetch/push URL；`RemoteBranch` 分开保存远端名和远端内的分支名，`full_name()` 返回 `origin/feature/topic` 形式。远端 HEAD 符号别名不会作为远端分支返回。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 保存显示序号 `reference`、提交 OID `oid` 与摘要，操作可按 OID 在序号变化后重新定位。`SubmoduleInfo` 保存 `.gitmodules` 的路径、URL、可选跟踪分支，以及初始化状态、当前提交、父仓库 index 中的 gitlink 提交和子模块自身是否有改动。`update_submodule(path, false)` 初始化并检出父仓库记录的版本，`update_submodule(path, true)` 要求配置跟踪分支并按 `--remote` 更新；`sync_submodule` 同步配置 URL，`remove_submodule` 会拒绝删除含本地改动或未记录提交的已初始化子模块。`WorktreeInfo` 记录关联工作树路径、主工作树标记、分支、锁定、失效登记、目录存在状态及工作区是否干净；`add_worktree` 可检出现有分支或从起点新建分支，`remove_worktree` 只移除干净、未锁定、非主工作树的登记路径且不使用强制选项，`prune_worktrees` 立即清理 Git 标为失效的登记。`stash_push_selected` 以 literal pathspec 只保存指定路径，`stash_show` 可读取包含未跟踪文件的差异。
 

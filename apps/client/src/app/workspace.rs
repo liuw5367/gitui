@@ -214,37 +214,76 @@ fn center_content(
                 return error_panel(language, detail, retry, session).into_element();
             }
 
-            // diff 区展示的内容：区间对比 > 单文件补丁 > 提交补丁。
-            let (label, raw_patch) = match tab.compare_range() {
-                Some((from, to)) => {
-                    let from_short = tab
-                        .commits
-                        .get(from)
-                        .map(|commit| commit.short.clone())
-                        .unwrap_or_default();
-                    let to_short = tab
-                        .commits
-                        .get(to)
-                        .map(|commit| commit.short.clone())
-                        .unwrap_or_default();
+            let reference_compare = tab.compare_base.is_some() && tab.compare_target.is_some();
+            let worktree_compare = tab.compare_worktree && tab.compare_target.is_some();
+            let compare_range = tab.compare_range();
+            let compare_active = reference_compare || worktree_compare || compare_range.is_some();
+            let (label, raw_patch, compare_feedback) = if compare_active {
+                let lang = language.get_untracked();
+                let (from, to) = if let Some((newer, older)) = compare_range {
                     (
-                        i18n::with_arguments(
-                            language.get_untracked().as_str(),
-                            "compare.range",
-                            &[("from", from_short), ("to", to_short)],
-                        ),
-                        crate::features::history::ops::compare_patch(&tab).unwrap_or_default(),
+                        tab.commits
+                            .get(older)
+                            .map(|commit| commit.short.clone())
+                            .unwrap_or_default(),
+                        tab.commits
+                            .get(newer)
+                            .map(|commit| commit.short.clone())
+                            .unwrap_or_default(),
                     )
-                }
-                None => match tab.file_patch.clone() {
-                    Some((path, patch)) => (path, patch),
+                } else {
+                    (
+                        tab.compare_base
+                            .as_deref()
+                            .map(|reference| {
+                                comparison_endpoint_label(&tab, lang.as_str(), reference)
+                            })
+                            .unwrap_or_default(),
+                        tab.compare_target
+                            .as_deref()
+                            .map(|reference| {
+                                comparison_endpoint_label(&tab, lang.as_str(), reference)
+                            })
+                            .unwrap_or_default(),
+                    )
+                };
+                let label = if worktree_compare {
+                    i18n::with_arguments(lang.as_str(), "compare.worktreeRange", &[("target", to)])
+                } else {
+                    i18n::with_arguments(
+                        lang.as_str(),
+                        "compare.range",
+                        &[("from", from), ("to", to)],
+                    )
+                };
+                let (patch, feedback) =
+                    match crate::features::history::ops::comparison_patch(&tab, false) {
+                        Ok(patch) if patch.raw.trim().is_empty() => {
+                            (patch, Some("compare.noChanges"))
+                        }
+                        Ok(patch) => (patch, None),
+                        Err(crate::features::history::ops::CompareFailure::IdenticalEndpoints) => {
+                            (domain::diff::Patch::default(), Some("compare.sameEndpoint"))
+                        }
+                        Err(crate::features::history::ops::CompareFailure::UnrelatedHistories) => {
+                            (domain::diff::Patch::default(), Some("compare.unrelated"))
+                        }
+                        Err(crate::features::history::ops::CompareFailure::Git) => {
+                            (domain::diff::Patch::default(), Some("compare.failed"))
+                        }
+                    };
+                (label, patch, feedback)
+            } else {
+                match tab.file_patch.clone() {
+                    Some((path, patch)) => (path, patch, None),
                     None => (
                         tab.selected_commit()
                             .map(|commit| commit.short.clone())
                             .unwrap_or_default(),
                         tab.patch.clone(),
+                        None,
                     ),
-                },
+                }
             };
             // 忽略空白用 Git 重新生成展示补丁；原始补丁仍供统计、复制与导出使用。
             let ignore_whitespace = history.diff.state.ignore_whitespace.get();
@@ -258,10 +297,8 @@ fn center_content(
             let search_for_body = search.clone();
             return match mode.get() {
                 crate::Mode::History => {
-                    let show_diff = tab.show_commit_diff
-                        || tab.compare_range().is_some()
-                        || (tab.compare_base.is_some() && tab.compare_target.is_some())
-                        || tab.file_patch.is_some();
+                    let show_diff =
+                        tab.show_commit_diff || compare_active || tab.file_patch.is_some();
                     let mut center =
                         view()
                             .w_full()
@@ -283,6 +320,7 @@ fn center_content(
                             label,
                             patch,
                             raw_patch,
+                            compare_feedback,
                         ));
                     }
                     center.into_element()
@@ -311,6 +349,34 @@ fn center_content(
                 .into_element(),
             };
         }));
+}
+
+fn comparison_endpoint_label(tab: &Tab, language: &str, endpoint: &str) -> String {
+    if let Some(name) = endpoint.strip_prefix("refs/heads/") {
+        return i18n::with_arguments(
+            language,
+            "compare.localBranch",
+            &[("name", name.to_string())],
+        );
+    }
+    if let Some(name) = endpoint.strip_prefix("refs/remotes/") {
+        return i18n::with_arguments(
+            language,
+            "compare.remoteBranch",
+            &[("name", name.to_string())],
+        );
+    }
+    if let Some(name) = endpoint.strip_prefix("refs/tags/") {
+        return i18n::with_arguments(language, "compare.tagRef", &[("name", name.to_string())]);
+    }
+    if let Some(stash) = tab.refs.stashes.iter().find(|stash| stash.oid == endpoint) {
+        return i18n::with_arguments(
+            language,
+            "compare.stashRef",
+            &[("name", stash.summary.clone())],
+        );
+    }
+    return endpoint.chars().take(10).collect();
 }
 
 #[allow(clippy::too_many_arguments)]

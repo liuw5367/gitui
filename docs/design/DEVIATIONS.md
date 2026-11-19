@@ -65,6 +65,7 @@
 | 42 | Diff 空白筛选 | File diff / Commit info 画板只有一个 `Show whitespace` 图标 | 除显示空格与 tab 的开关外，再提供独立 `Ignore whitespace changes` 开关；后者通过 Git `--ignore-all-space` 重新生成展示差异，复制、导出与统计仍用原始 patch（`shared/diff.rs`、`crates/git/src/diff.rs`） | 可视化空白与忽略空白影响的是不同数据：一个只改显示文本，一个改变 Git 差异匹配；把两者合并会造成筛选含义不清 | 是（移除单独图标并保留 Git 查询能力） |
 | 43 | History 组合筛选 | 画板以分支多选、单作者选择与日历范围呈现；作者没有身份标识说明 | 作者可多选并以 email 区分；日期端点用 `YYYY-MM-DD` 输入字段；分支与作者列表可滚动，包含本地和远端分支（`features/history/view.rs`、`filters.rs`） | 需求确认作者需要多选，同名作者应能区分；日期文本字段可精确键入，且避免在筛选浮层内再嵌一层日历弹层 | 是（可换为日历范围控件并缩窄作者显示） |
 | 44 | Merge 冲突代码显示 | Ours / Result / Theirs 以冲突块为单位并排标注来源行，冲突标记有单独着色 | 三侧直接展示 index stage 文件内容并用 NSH Editor 按路径语法高亮；Result 是独立可编辑文本（`features/merge/view.rs`、`ui/text_input.rs`） | NSH 没有三方合并 diff 组件；保持真实 stage 内容与可编辑 Result，避免把行级差异错当成可写回的结果 | 是（替换三侧显示组件） |
+| 45 | 引用比较条与端点选择 | 比较板未画 ref 选择器、工作区端点与空差异反馈 | 比较条提供本地/远端分支、tag、stash 选择，2-dot/3-dot、Swap、工作区切换与空态文案（`features/history/view.rs`、`app/workspace.rs`） | 完成 Compare 端点选择与退化状态，不让画板缺省组合限制可用的 Git 比较语义 | 是（需重做比较条与相应状态） |
 
 ## 3. 已澄清：不算偏离
 
