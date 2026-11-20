@@ -114,6 +114,29 @@ pub(crate) fn menu_button_tuned_at(
     icon: Option<&'static str>,
     on_press: impl Fn(Point<Points>) + 'static,
 ) -> impl IntoElement {
+    return menu_button_at(label, active, icon, false, move |position, _local| {
+        on_press(position)
+    });
+}
+
+/// History filters use a tighter label padding and need both root and local coordinates to
+/// anchor their custom popovers directly below the triggering button.
+pub(crate) fn menu_button_anchored_at(
+    label: impl Fn() -> String + 'static,
+    active: impl Fn() -> bool + 'static,
+    icon: Option<&'static str>,
+    on_press: impl Fn(Point<Points>, Point<Points>) + 'static,
+) -> impl IntoElement {
+    return menu_button_at(label, active, icon, true, on_press);
+}
+
+fn menu_button_at(
+    label: impl Fn() -> String + 'static,
+    active: impl Fn() -> bool + 'static,
+    icon: Option<&'static str>,
+    compact: bool,
+    on_press: impl Fn(Point<Points>, Point<Points>) + 'static,
+) -> impl IntoElement {
     let active = std::rc::Rc::new(active);
     let accessibility_label = label();
     let active_for_bg = active.clone();
@@ -122,10 +145,18 @@ pub(crate) fn menu_button_tuned_at(
     let active_for_text = active.clone();
     let mut content = view()
         .h(px(crate::ui::CONTROL_SMALL))
-        .px(px(crate::ui::GAP))
+        .px(px(if compact {
+            crate::ui::GAP_SM
+        } else {
+            crate::ui::GAP
+        }))
         .flex_row()
         .items_center()
-        .gap(px(crate::ui::GAP_SM))
+        .gap(px(if compact {
+            crate::ui::GAP_XS
+        } else {
+            crate::ui::GAP_SM
+        }))
         .rounded(px(crate::design::metrics::RADIUS_CONTROL))
         .role(AccessibilityRole::Button)
         .label(SharedString::from(accessibility_label))
@@ -151,7 +182,7 @@ pub(crate) fn menu_button_tuned_at(
                 .outline(px(crate::ui::FOCUS_WIDTH))
                 .outline_color(move || crate::ui::focus_color())
         })
-        .on_press(move |event: &PressEvent| on_press(event.page_position));
+        .on_press(move |event: &PressEvent| on_press(event.page_position, event.position));
     if let Some(name) = icon {
         content = content.child(crate::ui::icon::icon_view(
             name,

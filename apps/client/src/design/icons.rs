@@ -11,6 +11,9 @@ pub fn icon(name: &str) -> Option<ImageSrc> {
         "branch" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.9v6.2"></path><circle cx="4.5" cy="3.3" r="1.6"></circle><circle cx="11.5" cy="5.1" r="1.6"></circle><path d="M11.5 6.7c0 2.5-2.1 3.7-6 4.2"></path></g></svg>"#
         }
+        "tree" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v10M4 5h4.2a3.2 3.2 0 0 0 3.2-3.2M4 11h4.2a3.2 3.2 0 0 1 3.2 3.2"></path><circle cx="4" cy="3" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="11.4" cy="2" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="11.4" cy="14" r="1.2" fill="currentColor" stroke="none"></circle></g></svg>"#
+        }
         "clock" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.9v3.3l2.2 1.3"></path></g></svg>"#
         }

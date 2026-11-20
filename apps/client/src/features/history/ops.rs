@@ -239,6 +239,38 @@ pub(crate) fn load_commit_selection(
     });
 }
 
+/// 合并多个提交的文件统计。输入按新提交到旧提交排序，文件状态保留最近一次变更。
+pub(crate) fn aggregate_commit_file_stats(
+    commits: impl IntoIterator<Item = Vec<domain::DiffStat>>,
+) -> Vec<domain::DiffStat> {
+    let mut files = std::collections::BTreeMap::<String, domain::DiffStat>::new();
+    for commit_files in commits {
+        for file in commit_files {
+            files
+                .entry(file.path.clone())
+                .and_modify(|existing| {
+                    existing.additions = existing.additions.saturating_add(file.additions);
+                    existing.deletions = existing.deletions.saturating_add(file.deletions);
+                })
+                .or_insert(file);
+        }
+    }
+    return files.into_values().collect();
+}
+
+/// 在线程中读取多个提交的文件统计并合并重复路径。
+pub(crate) fn load_multi_commit_files(
+    path: &str,
+    shas: &[String],
+) -> Result<Vec<domain::DiffStat>, String> {
+    let repo = Repo::open(path).map_err(|error| error.detail())?;
+    let mut commit_files = Vec::with_capacity(shas.len());
+    for sha in shas {
+        commit_files.push(repo.numstat(sha).map_err(|error| error.detail())?);
+    }
+    return Ok(aggregate_commit_file_stats(commit_files));
+}
+
 pub(crate) fn apply_commit_selection(tab: &mut Tab, data: CommitSelectionData) {
     tab.patch = data.patch;
     tab.files = data.files;
@@ -953,6 +985,28 @@ mod tests {
     use crate::app::session::load_tab;
     use crate::test_support::TempRepo;
     use git::LogFilter;
+
+    #[test]
+    fn multi_commit_file_stats_sum_paths_and_keep_latest_status() {
+        let files = aggregate_commit_file_stats([
+            vec![domain::DiffStat {
+                status: 'D',
+                path: String::from("src/a.rs"),
+                additions: 0,
+                deletions: 4,
+            }],
+            vec![domain::DiffStat {
+                status: 'A',
+                path: String::from("src/a.rs"),
+                additions: 4,
+                deletions: 0,
+            }],
+        ]);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].status, 'D');
+        assert_eq!(files[0].additions, 4);
+        assert_eq!(files[0].deletions, 4);
+    }
 
     #[test]
     fn compare_range_sorts_and_needs_two_commits() {

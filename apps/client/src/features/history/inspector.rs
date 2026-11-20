@@ -36,6 +36,9 @@ pub(crate) fn inspector(
 ) -> impl IntoElement + use<> {
     let file_tree_expanded = state.file_tree_expanded;
     let commit_info_loading = state.commit_info_loading;
+    let fast_selection = state.fast_selection;
+    let multi_commit_selection = state.multi_commit_selection;
+    let multi_commit_files = state.multi_commit_files;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let select_file: std::sync::Arc<dyn Fn(String)> = {
         let cmd = cmd.clone();
@@ -80,8 +83,18 @@ pub(crate) fn inspector(
         .take(2)
         .collect::<String>()
         .to_uppercase();
-    let tab_for_files = tab.clone();
     let tab_for_info = tab.clone();
+    let tab_id = tab.id;
+    let repo_path = tab.path.clone();
+    let file_list_files = tab.files.clone();
+    let selected_path = tab
+        .selected_file
+        .and_then(|index| tab.files.get(index))
+        .map(|file| file.path.clone());
+    let retry_multi_files: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || cmd.retry_multi_commit_files())
+    };
     let recovery = cmd.recovery.clone();
     return view()
         .w_full()
@@ -175,21 +188,64 @@ pub(crate) fn inspector(
                         )),
                 ),
         )
-        .child(view().w_full().flex_1().min_h_0().child(files_body(
-            language,
-            tab_for_files,
-            select_file,
-            file_list_mode,
-            tree,
-            file_tree_expanded,
-            notice,
-        )))
+        .child(
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .child(dynamic(move || -> AnyElement {
+                    let selection = multi_commit_selection
+                        .get()
+                        .filter(|selection| selection.tab_id == tab_id);
+                    if let Some(selection) = selection {
+                        let data = multi_commit_files
+                            .get()
+                            .filter(|files| files.tab_id == tab_id && files.shas == selection.shas);
+                        let (files, loading, failed) = data
+                            .map(|data| (data.files, data.loading, data.failed))
+                            .unwrap_or_else(|| (Vec::new(), true, false));
+                        return files_body(
+                            language,
+                            files,
+                            String::new(),
+                            None,
+                            std::sync::Arc::new(|_| {}),
+                            file_list_mode,
+                            tree,
+                            file_tree_expanded,
+                            notice,
+                            Some(selection.shas.len()),
+                            loading,
+                            failed,
+                            retry_multi_files.clone(),
+                        );
+                    }
+                    return files_body(
+                        language,
+                        file_list_files.clone(),
+                        repo_path.clone(),
+                        selected_path.clone(),
+                        select_file.clone(),
+                        file_list_mode,
+                        tree,
+                        file_tree_expanded,
+                        notice,
+                        None,
+                        false,
+                        false,
+                        std::sync::Arc::new(|| {}),
+                    );
+                })),
+        )
         .child(dynamic(move || -> AnyElement {
-            let loading = tab_for_info.selected_commit().is_some_and(|commit| {
-                commit_info_loading
-                    .get()
-                    .contains(&(tab_for_info.id, commit.sha.clone()))
-            });
+            let loading =
+                tab_for_info.selected_commit().is_some_and(|commit| {
+                    fast_selection.get().as_ref().is_some_and(|(tab_id, sha)| {
+                        *tab_id == tab_for_info.id && sha == &commit.sha
+                    }) || commit_info_loading
+                        .get()
+                        .contains(&(tab_for_info.id, commit.sha.clone()))
+                });
             let fields = info_fields(language, tab_for_info.clone(), loading);
             return view()
                 .w_full()
@@ -199,20 +255,6 @@ pub(crate) fn inspector(
                 .flex_col()
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(crate::ui::ROW))
-                        .px(px(12.0))
-                        .flex_row()
-                        .items_center()
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), "files.infoTab"))
-                                .text_size(px(crate::ui::SECONDARY))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(move || design::text2()),
-                        ),
-                )
                 .child(scroll().w_full().flex_1().min_h_0().child(fields))
                 .child(info_actions(
                     language,
@@ -228,23 +270,22 @@ pub(crate) fn inspector(
 
 fn files_body(
     language: Signal<SharedString>,
-    tab: Tab,
+    files: Vec<domain::DiffStat>,
+    root_path: String,
+    selected_path: Option<String>,
     select_file: std::sync::Arc<dyn Fn(String)>,
     file_list_mode: Signal<FileListMode>,
     tree: crate::app::session::TreeOptions,
     file_tree_expanded: Signal<Option<Vec<SharedString>>>,
     notice: Signal<Option<String>>,
+    multi_commit_count: Option<usize>,
+    loading: bool,
+    failed: bool,
+    retry: std::sync::Arc<dyn Fn()>,
 ) -> AnyElement {
-    let files = tab.files.clone();
-    let selected_path = tab
-        .selected_file
-        .and_then(|index| files.get(index))
-        .map(|file| file.path.clone());
-    let root_path = tab.path.clone();
-    let selected_id = tab
-        .selected_file
-        .and_then(|index| files.get(index))
-        .map(|file| SharedString::from(format!("file:{}", file.path)));
+    let selected_id = selected_path
+        .as_ref()
+        .map(|path| SharedString::from(format!("file:{path}")));
     let (items, expanded) = file_tree(&files, tree);
     let additions = files.iter().map(|file| file.additions).sum::<u32>();
     let deletions = files.iter().map(|file| file.deletions).sum::<u32>();
@@ -267,6 +308,16 @@ fn files_body(
                 .border_color(move || design::line_soft())
                 .child(
                     text(move || {
+                        if let Some(commits) = multi_commit_count {
+                            return i18n::with_arguments(
+                                language.get().as_str(),
+                                "files.multiChangedCount",
+                                &[
+                                    ("commits", commits.to_string()),
+                                    ("count", count.to_string()),
+                                ],
+                            );
+                        }
                         i18n::with_arguments(
                             language.get().as_str(),
                             "files.changedCount",
@@ -287,7 +338,7 @@ fn files_body(
                         .text_size(px(crate::ui::META))
                         .text_color(move || design::del_fg()),
                 )
-                .child(crate::ui::button::icon_button(
+                .child(crate::ui::button::icon_button_tip(
                     "copy",
                     {
                         let language = language;
@@ -295,6 +346,10 @@ fn files_body(
                     },
                     crate::ui::button::ButtonSize::Small,
                     selected_path.is_none(),
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.copyPath")
+                    },
                     {
                         let root = root_path.clone();
                         let relative = selected_path.clone();
@@ -309,7 +364,7 @@ fn files_body(
                         }
                     },
                 ))
-                .child(crate::ui::button::icon_button(
+                .child(crate::ui::button::icon_button_tip(
                     "external",
                     {
                         let language = language;
@@ -317,6 +372,10 @@ fn files_body(
                     },
                     crate::ui::button::ButtonSize::Small,
                     selected_path.is_none(),
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.openInEditor")
+                    },
                     {
                         let root = root_path.clone();
                         let relative = selected_path.clone();
@@ -353,6 +412,36 @@ fn files_body(
                 .flex_1()
                 .min_h_0()
                 .child(dynamic(move || -> AnyElement {
+                    if loading || failed {
+                        let message_key = if failed {
+                            "files.multiFilesFailed"
+                        } else {
+                            "files.multiFilesLoading"
+                        };
+                        let mut message = view()
+                            .w_full()
+                            .h_full()
+                            .items_center()
+                            .justify_center()
+                            .flex_col()
+                            .gap(px(crate::ui::GAP_SM))
+                            .child(
+                                text(move || i18n::t(language.get().as_str(), message_key))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .text_color(move || design::text3()),
+                            );
+                        if failed {
+                            let retry = retry.clone();
+                            message = message.child(crate::ui::button::button(
+                                move || i18n::t(language.get().as_str(), "files.retry"),
+                                crate::ui::button::ButtonVariant::Secondary,
+                                crate::ui::button::ButtonSize::Small,
+                                false,
+                                move || retry(),
+                            ));
+                        }
+                        return message.into_element();
+                    }
                     if files_for_list.is_empty() {
                         return view()
                             .w_full()
@@ -706,68 +795,48 @@ fn info_actions(
         .gap(px(crate::ui::GAP_SM))
         .border_t_1()
         .border_color(move || design::line())
-        .child(
-            view()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .justify_center()
-                .child(crate::ui::button::button(
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "files.copySha")
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    disabled,
-                    {
-                        let sha = sha_for_actions.clone();
-                        move || crate::shared::os::copy_text(notice, language, sha.clone())
-                    },
-                )),
-        )
-        .child(
-            view()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .justify_center()
-                .child(crate::ui::button::button(
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "files.cherryPick")
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    disabled,
-                    {
-                        let cherry_pick = recovery.clone();
-                        let sha = sha_for_actions.clone();
-                        move || cherry_pick.cherry_pick(sha.clone())
-                    },
-                )),
-        )
-        .child(
-            view()
-                .flex_1()
-                .min_w_0()
-                .items_center()
-                .justify_center()
-                .child(crate::ui::button::button(
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "files.revert")
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    disabled,
-                    {
-                        let revert_commit = recovery.clone();
-                        let sha = sha_for_actions.clone();
-                        move || revert_commit.revert_commit(sha.clone())
-                    },
-                )),
-        )
+        .child(crate::ui::button::button(
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "files.cherryPick")
+            },
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            disabled,
+            {
+                let cherry_pick = recovery.clone();
+                let sha = sha_for_actions.clone();
+                move || cherry_pick.cherry_pick(sha.clone())
+            },
+        ))
+        .child(crate::ui::button::button(
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "files.revert")
+            },
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            disabled,
+            {
+                let revert_commit = recovery.clone();
+                let sha = sha_for_actions.clone();
+                move || revert_commit.revert_commit(sha.clone())
+            },
+        ))
+        .child(view().flex_1())
+        .child(crate::ui::button::button(
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "files.copySha")
+            },
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            disabled,
+            {
+                let sha = sha_for_actions.clone();
+                move || crate::shared::os::copy_text(notice, language, sha.clone())
+            },
+        ))
         .into_element();
 }
 

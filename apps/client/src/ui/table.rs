@@ -88,6 +88,15 @@ pub(crate) fn table_with_scroll(
     return table_inner(spec, Some((table_ref, scroll_request)));
 }
 
+/// 直接更新虚拟表格的活动行，避免为了高亮一个 commit 重建整张表。
+pub(crate) fn select_row(table_ref: ComponentRef<nsh_base::DataTable>, row: u32) {
+    if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
+        let mut selection = DataTableSelection::default();
+        selection.row = Some(row);
+        api.select(Some(selection));
+    }
+}
+
 fn table_inner(
     spec: TableSpec,
     scroll: Option<(ComponentRef<nsh_base::DataTable>, Signal<Option<usize>>)>,

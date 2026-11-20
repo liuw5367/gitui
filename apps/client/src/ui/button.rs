@@ -266,7 +266,7 @@ pub(crate) fn icon_button_tuned_at(
     icon_size_override: Option<IconSize>,
     foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
     disabled: bool,
-    on_press: impl Fn(Point<Points>) + 'static,
+    on_press: impl Fn(Point<Points>, Point<Points>) + 'static,
 ) -> impl IntoElement {
     let icon_size = icon_size_override.unwrap_or(match size {
         ButtonSize::Small => IconSize::Button,
@@ -296,7 +296,7 @@ pub(crate) fn icon_button_tuned_at(
                 .outline(px(FOCUS_WIDTH))
                 .outline_color(move || focus_color())
         })
-        .on_press(move |event: &PressEvent| on_press(event.page_position))
+        .on_press(move |event: &PressEvent| on_press(event.page_position, event.position))
         .child(icon_view(name, icon_size, move || match &foreground {
             Some(color) => color(),
             None => design::text2(),
@@ -406,7 +406,7 @@ pub(crate) fn file_list_toggle(
         )
     };
     icon_button_tip(
-        if tree { "branch" } else { "unified" },
+        if tree { "tree" } else { "unified" },
         label,
         ButtonSize::Small,
         false,

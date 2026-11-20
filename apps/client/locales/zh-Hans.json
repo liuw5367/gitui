@@ -301,6 +301,10 @@
     "title": "文件",
     "infoTab": "信息",
     "changedCount": "%{count} 个文件",
+    "multiChangedCount": "%{commits} 个提交，共 %{count} 个文件",
+    "multiFilesLoading": "正在加载所选提交的文件…",
+    "multiFilesFailed": "无法加载所选提交的文件。",
+    "retry": "重试",
     "changes": "改动",
     "info": {
       "sha": "提交",

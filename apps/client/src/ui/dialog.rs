@@ -223,11 +223,74 @@ pub(crate) fn dialog(
     footer: Vec<AnyElement>,
     on_dismiss: impl Fn() + 'static,
 ) -> AnyElement {
+    return dialog_inner(open, width, title, None, body, footer, on_dismiss);
+}
+
+/// Compare refs 等需要显式关闭控件的对话框；Escape 仍由 `modal_open` 处理。
+pub(crate) fn dialog_with_close(
+    open: bool,
+    width: f32,
+    title: impl Fn() -> String + 'static,
+    close_label: impl Fn() -> String + 'static,
+    body: impl IntoElement,
+    footer: Vec<AnyElement>,
+    on_dismiss: impl Fn() + 'static,
+) -> AnyElement {
+    return dialog_inner(
+        open,
+        width,
+        title,
+        Some(std::rc::Rc::new(close_label)),
+        body,
+        footer,
+        on_dismiss,
+    );
+}
+
+fn dialog_inner(
+    open: bool,
+    width: f32,
+    title: impl Fn() -> String + 'static,
+    close_label: Option<std::rc::Rc<dyn Fn() -> String>>,
+    body: impl IntoElement,
+    footer: Vec<AnyElement>,
+    on_dismiss: impl Fn() + 'static,
+) -> AnyElement {
     if !open {
         return view().w(px(0.0)).h(px(0.0)).into_element();
     }
     let title = std::rc::Rc::new(title);
     let panel_title = title.clone();
+    let dismiss = std::rc::Rc::new(on_dismiss);
+    let dismiss_from_close = dismiss.clone();
+    let mut header = view()
+        .w_full()
+        .h(px(44.0))
+        .flex_row()
+        .items_center()
+        .gap(px(ui::GAP))
+        .px(px(ui::GAP_XL))
+        .border_b_1()
+        .border_color(move || design::line())
+        .child(
+            text(move || panel_title())
+                .flex_1()
+                .min_w_0()
+                .text_size(px(ui::BODY))
+                .line_height(px(44.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(move || design::text())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        );
+    if let Some(close_label) = close_label {
+        header = header.child(crate::ui::button::icon_button(
+            "x",
+            move || close_label(),
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || dismiss_from_close(),
+        ));
+    }
     let mut panel = view()
         .w(px(width))
         .max_h(px(760.0))
@@ -239,27 +302,7 @@ pub(crate) fn dialog(
         .shadow_lg()
         // 内容区的按压不再上浮到遮罩，避免点正文就关掉对话框。
         .on_press(|| {})
-        .child(
-            view()
-                .w_full()
-                .h(px(44.0))
-                .flex_row()
-                .items_center()
-                .gap(px(ui::GAP))
-                .px(px(ui::GAP_XL))
-                .border_b_1()
-                .border_color(move || design::line())
-                .child(
-                    text(move || panel_title())
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px(ui::BODY))
-                        .line_height(px(44.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                ),
-        )
+        .child(header)
         .child(
             view()
                 .w_full()
@@ -285,5 +328,5 @@ pub(crate) fn dialog(
         }
         panel = panel.child(row);
     }
-    return modal_open(move || title(), 120, panel, on_dismiss);
+    return modal_open(move || title(), 120, panel, move || dismiss());
 }

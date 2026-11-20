@@ -204,187 +204,263 @@ fn center_content(
     // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
     let refs_tab = signal(refs::state::RefsTab::Refs);
     let refresh = history.clone();
+    // commit 详情和文件变更只更新检查器；列表 snapshot 不包含这些高频变化，
+    // 因此选中 commit 时保留现有 History 表和 graph 布局。
+    let history_tab = computed({
+        let current = current;
+        move || current.get().map(history_list_snapshot)
+    });
+    let current_selection = computed({
+        let current = current;
+        move || {
+            current.get().and_then(|tab| {
+                tab.selected_commit()
+                    .map(|commit| (tab.id, commit.sha.clone()))
+            })
+        }
+    });
+    let current_error = computed({
+        let current = current;
+        move || current.get().and_then(|tab| tab.error.clone())
+    });
+    let current_has_history_diff = computed({
+        let current = current;
+        move || {
+            current.get().is_some_and(|tab| {
+                tab.show_commit_diff
+                    || (tab.compare_base.is_some() && tab.compare_target.is_some())
+                    || (tab.compare_worktree && tab.compare_target.is_some())
+                    || tab.compare_range().is_some()
+                    || tab.file_patch.is_some()
+            })
+        }
+    });
+    let current_exists = computed({
+        let current = current;
+        move || current.get().is_some()
+    });
     return view()
         .w_full()
         .h_full()
         .min_w_0()
         .min_h_0()
         .child(dynamic(move || -> AnyElement {
-            let Some(tab) = current.get() else {
-                return empty_workspace(language).into_element();
-            };
-            if let Some(detail) = tab.error.clone() {
+            if let Some(detail) = current_error.get() {
                 let session = session.clone();
                 let refresh = refresh.clone();
                 let retry: std::sync::Arc<dyn Fn()> =
                     std::sync::Arc::new(move || refresh.refresh());
                 return error_panel(language, detail, retry, session).into_element();
             }
-
-            let reference_compare = tab.compare_base.is_some() && tab.compare_target.is_some();
-            let worktree_compare = tab.compare_worktree && tab.compare_target.is_some();
-            let compare_range = tab.compare_range();
-            let compare_active = reference_compare || worktree_compare || compare_range.is_some();
-            let (label, raw_patch, compare_feedback) = if compare_active {
-                let lang = language.get_untracked();
-                let (from, to) = if let Some((newer, older)) = compare_range {
-                    (
-                        tab.commits
-                            .get(older)
-                            .map(|commit| commit.short.clone())
-                            .unwrap_or_default(),
-                        tab.commits
-                            .get(newer)
-                            .map(|commit| commit.short.clone())
-                            .unwrap_or_default(),
-                    )
-                } else {
-                    (
-                        tab.compare_base
-                            .as_deref()
-                            .map(|reference| {
-                                comparison_endpoint_label(&tab, lang.as_str(), reference)
-                            })
-                            .unwrap_or_default(),
-                        tab.compare_target
-                            .as_deref()
-                            .map(|reference| {
-                                comparison_endpoint_label(&tab, lang.as_str(), reference)
-                            })
-                            .unwrap_or_default(),
-                    )
-                };
-                let label = if worktree_compare {
-                    i18n::with_arguments(lang.as_str(), "compare.worktreeRange", &[("target", to)])
-                } else {
-                    i18n::with_arguments(
-                        lang.as_str(),
-                        "compare.range",
-                        &[("from", from), ("to", to)],
-                    )
-                };
-                let (patch, feedback) =
-                    match crate::features::history::ops::comparison_patch(&tab, false) {
-                        Ok(patch) if patch.raw.trim().is_empty() => {
-                            (patch, Some("compare.noChanges"))
-                        }
-                        Ok(patch) => (patch, None),
-                        Err(crate::features::history::ops::CompareFailure::IdenticalEndpoints) => {
-                            (domain::diff::Patch::default(), Some("compare.sameEndpoint"))
-                        }
-                        Err(crate::features::history::ops::CompareFailure::UnrelatedHistories) => {
-                            (domain::diff::Patch::default(), Some("compare.unrelated"))
-                        }
-                        Err(crate::features::history::ops::CompareFailure::Git) => {
-                            (domain::diff::Patch::default(), Some("compare.failed"))
-                        }
-                    };
-                (label, patch, feedback)
-            } else {
-                match tab.file_patch.clone() {
-                    Some((path, patch)) => (path, patch, None),
-                    None => (
-                        tab.selected_commit()
-                            .map(|commit| commit.short.clone())
-                            .unwrap_or_default(),
-                        tab.patch.clone(),
-                        None,
-                    ),
-                }
-            };
-            // 忽略空白用 Git 重新生成展示补丁；原始补丁仍供统计、复制与导出使用。
-            let ignore_whitespace = history.diff.state.ignore_whitespace.get();
-            let patch = if ignore_whitespace {
-                crate::features::history::ops::diff_patch_for_tab(&tab, true)
-            } else {
-                raw_patch.clone()
-            };
-            let tab_for_history = tab.clone();
-            let tab_for_changes = tab.clone();
-            let search_for_body = search.clone();
             return match mode.get() {
                 crate::Mode::History => {
-                    let show_diff =
-                        tab.show_commit_diff || compare_active || tab.file_patch.is_some();
-                    let center = view().w_full().h_full().min_h_0().flex_col();
-                    if show_diff {
-                        let return_title = if compare_active {
-                            label.clone()
-                        } else {
-                            tab.selected_commit()
-                                .map(|commit| commit.summary.clone())
-                                .unwrap_or_else(|| label.clone())
+                    if !current_has_history_diff.get() {
+                        let Some(tab) = history_tab.get() else {
+                            return empty_workspace(language).into_element();
                         };
-                        let file_count = if compare_active {
-                            raw_patch.files.len()
-                        } else {
-                            tab.files.len()
-                        };
-                        let return_to_history: std::sync::Arc<dyn Fn()> = {
-                            let history = history.clone();
-                            std::sync::Arc::new(move || history.return_to_history())
-                        };
-                        let open_blame = tab.file_patch.as_ref().map(|_| {
-                            let history = history.clone();
-                            std::sync::Arc::new(move || history.open_blame())
-                                as std::sync::Arc<dyn Fn()>
-                        });
-                        center
-                            .child(diff::diff(
-                                &history.diff.state,
-                                &history.diff,
-                                language,
-                                patch,
-                                raw_patch,
-                                compare_feedback,
-                                return_title,
-                                file_count,
-                                return_to_history,
-                                open_blame,
-                            ))
-                            .into_element()
-                    } else {
-                        center
-                            .child(history_view::history(
-                                &history.state,
-                                &history,
-                                tab_for_history,
-                                &search_for_body,
-                                &refs,
-                            ))
-                            .into_element()
+                        return history_view::history(
+                            &history.state,
+                            &history,
+                            tab,
+                            &search,
+                            &refs,
+                            current_selection,
+                        )
+                        .into_element();
                     }
+                    let Some(tab) = current.get() else {
+                        return empty_workspace(language).into_element();
+                    };
+                    let reference_compare =
+                        tab.compare_base.is_some() && tab.compare_target.is_some();
+                    let worktree_compare = tab.compare_worktree && tab.compare_target.is_some();
+                    let compare_range = tab.compare_range();
+                    let compare_active =
+                        reference_compare || worktree_compare || compare_range.is_some();
+                    let (label, raw_patch, compare_feedback) = if compare_active {
+                        let lang = language.get_untracked();
+                        let (from, to) = if let Some((newer, older)) = compare_range {
+                            (
+                                tab.commits
+                                    .get(older)
+                                    .map(|commit| commit.short.clone())
+                                    .unwrap_or_default(),
+                                tab.commits
+                                    .get(newer)
+                                    .map(|commit| commit.short.clone())
+                                    .unwrap_or_default(),
+                            )
+                        } else {
+                            (
+                                tab.compare_base
+                                    .as_deref()
+                                    .map(|reference| {
+                                        comparison_endpoint_label(&tab, lang.as_str(), reference)
+                                    })
+                                    .unwrap_or_default(),
+                                tab.compare_target
+                                    .as_deref()
+                                    .map(|reference| {
+                                        comparison_endpoint_label(&tab, lang.as_str(), reference)
+                                    })
+                                    .unwrap_or_default(),
+                            )
+                        };
+                        let label = if worktree_compare {
+                            i18n::with_arguments(
+                                lang.as_str(),
+                                "compare.worktreeRange",
+                                &[("target", to)],
+                            )
+                        } else {
+                            i18n::with_arguments(
+                                lang.as_str(),
+                                "compare.range",
+                                &[("from", from), ("to", to)],
+                            )
+                        };
+                        let (patch, feedback) =
+                            match crate::features::history::ops::comparison_patch(&tab, false) {
+                                Ok(patch) if patch.raw.trim().is_empty() => {
+                                    (patch, Some("compare.noChanges"))
+                                }
+                                Ok(patch) => (patch, None),
+                                Err(
+                                    crate::features::history::ops::CompareFailure::IdenticalEndpoints,
+                                ) => (domain::diff::Patch::default(), Some("compare.sameEndpoint")),
+                                Err(
+                                    crate::features::history::ops::CompareFailure::UnrelatedHistories,
+                                ) => (domain::diff::Patch::default(), Some("compare.unrelated")),
+                                Err(crate::features::history::ops::CompareFailure::Git) => {
+                                    (domain::diff::Patch::default(), Some("compare.failed"))
+                                }
+                            };
+                        (label, patch, feedback)
+                    } else {
+                        match tab.file_patch.clone() {
+                            Some((path, patch)) => (path, patch, None),
+                            None => (
+                                tab.selected_commit()
+                                    .map(|commit| commit.short.clone())
+                                    .unwrap_or_default(),
+                                tab.patch.clone(),
+                                None,
+                            ),
+                        }
+                    };
+                    let ignore_whitespace = history.diff.state.ignore_whitespace.get();
+                    let patch = if ignore_whitespace {
+                        crate::features::history::ops::diff_patch_for_tab(&tab, true)
+                    } else {
+                        raw_patch.clone()
+                    };
+                    let return_title = if compare_active {
+                        label.clone()
+                    } else {
+                        tab.selected_commit()
+                            .map(|commit| commit.summary.clone())
+                            .unwrap_or_else(|| label.clone())
+                    };
+                    let file_count = if compare_active {
+                        raw_patch.files.len()
+                    } else {
+                        tab.files.len()
+                    };
+                    let return_to_history: std::sync::Arc<dyn Fn()> = {
+                        let history = history.clone();
+                        std::sync::Arc::new(move || history.return_to_history())
+                    };
+                    let open_blame = tab.file_patch.as_ref().map(|_| {
+                        let history = history.clone();
+                        std::sync::Arc::new(move || history.open_blame())
+                            as std::sync::Arc<dyn Fn()>
+                    });
+                    return diff::diff(
+                        &history.diff.state,
+                        &history.diff,
+                        language,
+                        patch,
+                        raw_patch,
+                        compare_feedback,
+                        return_title,
+                        file_count,
+                        return_to_history,
+                        open_blame,
+                    )
+                    .into_element();
                 }
-                crate::Mode::Agent => view().w_full().flex_1().min_h_0().into_element(),
+                crate::Mode::Agent => {
+                    if !current_exists.get() {
+                        return empty_workspace(language).into_element();
+                    }
+                    view().w_full().flex_1().min_h_0().into_element()
+                }
                 crate::Mode::Blame => {
-                    crate::features::history::blame_view(language, tab_for_history, history.clone())
+                    let Some(tab) = current.get() else {
+                        return empty_workspace(language).into_element();
+                    };
+                    crate::features::history::blame_view(language, tab, history.clone())
                         .into_element()
                 }
-                crate::Mode::Refs => refs::view::refs_view(
-                    &refs.state,
-                    &refs,
-                    language,
-                    tab_for_changes,
-                    &search,
-                    refs_tab,
-                )
-                .into_element(),
+                crate::Mode::Refs => {
+                    let Some(tab) = current.get() else {
+                        return empty_workspace(language).into_element();
+                    };
+                    refs::view::refs_view(
+                        &refs.state,
+                        &refs,
+                        language,
+                        tab,
+                        &search,
+                        refs_tab,
+                    )
+                    .into_element()
+                }
                 crate::Mode::Changes => {
+                    let Some(tab) = current.get() else {
+                        return empty_workspace(language).into_element();
+                    };
                     if tab.stash_diff.is_some() || tab.selected_change.is_some() {
-                        crate::features::changes::view::change_diff(&changes, tab_for_changes)
+                        crate::features::changes::view::change_diff(&changes, tab)
                     } else {
+                        let Some(tab) = history_tab.get() else {
+                            return empty_workspace(language).into_element();
+                        };
                         history_view::history(
                             &history.state,
                             &history,
-                            tab_for_history,
-                            &search_for_body,
+                            tab,
+                            &search,
                             &refs,
+                            current_selection,
                         )
                         .into_element()
                     }
                 }
             };
         }));
+}
+
+fn history_list_snapshot(mut tab: Tab) -> Tab {
+    tab.selected = None;
+    tab.show_commit_diff = false;
+    tab.patch = domain::diff::Patch::default();
+    tab.files.clear();
+    tab.selected_file = None;
+    tab.file_patch = None;
+    tab.details = None;
+    tab.error = None;
+    tab.blame.clear();
+    tab.blame_path.clear();
+    tab.blame_revision.clear();
+    tab.blame_return_mode = None;
+    tab.blame_focus_sha = None;
+    tab.blame_selected_line = None;
+    tab.blame_show_diff = false;
+    tab.blame_patch = domain::diff::Patch::default();
+    tab.blame_error = None;
+    tab.file_history.clear();
+    return tab;
 }
 
 fn comparison_endpoint_label(tab: &Tab, language: &str, endpoint: &str) -> String {

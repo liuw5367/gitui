@@ -114,6 +114,8 @@ impl AppHandles {
             compare_refs_query: signal(String::new()),
             compare_refs_draft: signal(crate::features::history::state::CompareRefsDraft::default()),
             fast_selection: signal(None),
+            multi_commit_selection: signal(None),
+            multi_commit_files: signal(None),
             commit_info_loading: signal(handles.history.state.commit_info_loading.get_untracked()),
             commit_load_queue: std::sync::Arc::default(),
             table_ref: component_ref(),

@@ -4,7 +4,7 @@
 //! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
 use super::ops;
-use super::state::{CommitLoadRequest, HistoryState};
+use super::state::{CommitLoadRequest, HistoryState, MultiCommitFiles, MultiCommitSelection};
 use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::recovery::commands::RecoveryCommands;
@@ -33,12 +33,182 @@ pub(crate) struct HistoryCommands {
 impl HistoryCommands {
     /// 先显示行选中态并切到 History，再异步更新提交数据。
     pub(crate) fn request_commit_selection(&self, tab_id: u64, sha: String) {
-        self.state.fast_selection.set(Some((tab_id, sha.clone())));
+        let active = self.session.active.get_untracked();
+        let mut tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs.get_mut(active).filter(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) else {
+            return;
+        };
+
+        // 更新行与检查器所依赖的提交选择，并清掉旧 Diff / 比较视图。
+        // 缓存可复用时保留详情；否则由后续后台任务读取 Git 数据。
+        let reuse_current_selection = tab
+            .selected_commit()
+            .is_some_and(|commit| commit.sha == sha)
+            && (tab.details.is_some() && tab.error.is_none()
+                || self
+                    .state
+                    .commit_info_loading
+                    .get_untracked()
+                    .contains(&(tab_id, sha.clone())));
+        self.state.compare_mode.set(false);
+        tab.comparing = false;
+        tab.compare.clear();
+        tab.compare_base = None;
+        tab.compare_target = None;
+        tab.compare_worktree = false;
+        self.state.multi_commit_selection.set(None);
+        self.state.multi_commit_files.set(None);
         self.mode.set(crate::Mode::History);
+        if reuse_current_selection {
+            tab.show_commit_diff = false;
+            tab.selected_file = None;
+            tab.file_patch = None;
+            if self
+                .state
+                .fast_selection
+                .get_untracked()
+                .as_ref()
+                .is_some_and(|(selected_tab, selected_sha)| {
+                    *selected_tab == tab_id && selected_sha == &sha
+                })
+            {
+                self.state.fast_selection.set(None);
+            }
+            self.session.tabs.set(tabs);
+            return;
+        }
+        ops::prepare_commit_selection(tab, index);
+        self.state.fast_selection.set(Some((tab_id, sha.clone())));
+        self.session.tabs.set(tabs);
         let command = self.clone();
         Owner::detached().run(|| {
             spawn(async move {
                 command.select_commit(tab_id, sha);
+            });
+        });
+    }
+
+    /// ⌘ 点击在 History 中增减 commit 多选，并在后台合并右侧文件树统计。
+    pub(crate) fn toggle_multi_commit_selection(&self, tab_id: u64, sha: String) {
+        let active = self.session.active.get_untracked();
+        let tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs.get(active).filter(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if !tab.commits.iter().any(|commit| commit.sha == sha) {
+            return;
+        }
+
+        let current_selection = self.state.multi_commit_selection.get_untracked();
+        let has_multi_selection = current_selection
+            .as_ref()
+            .is_some_and(|selection| selection.tab_id == tab_id);
+        let mut shas = if has_multi_selection {
+            current_selection.unwrap().shas
+        } else {
+            let selected_sha = tab.selected_commit().map(|commit| commit.sha.clone());
+            if selected_sha.as_deref() == Some(sha.as_str()) {
+                vec![sha.clone()]
+            } else {
+                selected_sha
+                    .into_iter()
+                    .chain(std::iter::once(sha.clone()))
+                    .collect()
+            }
+        };
+        if has_multi_selection {
+            if let Some(selected) = shas.iter().position(|selected| selected == &sha) {
+                shas.remove(selected);
+            } else {
+                shas.push(sha);
+            }
+        }
+        if shas.is_empty() {
+            self.state.multi_commit_selection.set(None);
+            self.state.multi_commit_files.set(None);
+            return;
+        }
+        shas.sort_by_key(|selected| {
+            tab.commits
+                .iter()
+                .position(|commit| &commit.sha == selected)
+                .unwrap_or(usize::MAX)
+        });
+
+        let selection = MultiCommitSelection { tab_id, shas };
+        self.mode.set(crate::Mode::History);
+        self.state
+            .multi_commit_selection
+            .set(Some(selection.clone()));
+        self.state.multi_commit_files.set(Some(MultiCommitFiles {
+            tab_id,
+            shas: selection.shas.clone(),
+            files: Vec::new(),
+            loading: true,
+            failed: false,
+        }));
+        self.load_multi_commit_files(selection, tab.path.clone());
+    }
+
+    pub(crate) fn retry_multi_commit_files(&self) {
+        let Some(selection) = self.state.multi_commit_selection.get_untracked() else {
+            return;
+        };
+        let active = self.session.active.get_untracked();
+        let tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs.get(active).filter(|tab| tab.id == selection.tab_id) else {
+            return;
+        };
+        self.state.multi_commit_files.set(Some(MultiCommitFiles {
+            tab_id: selection.tab_id,
+            shas: selection.shas.clone(),
+            files: Vec::new(),
+            loading: true,
+            failed: false,
+        }));
+        self.load_multi_commit_files(selection, tab.path.clone());
+    }
+
+    fn load_multi_commit_files(&self, selection: MultiCommitSelection, path: String) {
+        let tab_id = selection.tab_id;
+        let shas = selection.shas.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = ops::load_multi_commit_files(path.as_str(), shas.as_slice());
+            let _ = sender.send(result);
+        });
+        let state = self.state.clone();
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            if state.multi_commit_selection.get_untracked().as_ref()
+                                == Some(&selection)
+                            {
+                                let (files, failed) = match result {
+                                    Ok(files) => (files, false),
+                                    Err(_) => (Vec::new(), true),
+                                };
+                                state.multi_commit_files.set(Some(MultiCommitFiles {
+                                    tab_id,
+                                    shas: selection.shas,
+                                    files,
+                                    loading: false,
+                                    failed,
+                                }));
+                            }
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            timer(std::time::Duration::from_millis(16)).await;
+                        }
+                    }
+                }
             });
         });
     }

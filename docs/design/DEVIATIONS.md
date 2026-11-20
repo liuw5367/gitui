@@ -65,7 +65,7 @@
 | 42 | Diff 空白筛选 | File diff / Commit info 画板只有一个 `Show whitespace` 图标 | 除显示空格与 tab 的开关外，再提供独立 `Ignore whitespace changes` 开关；后者通过 Git `--ignore-all-space` 重新生成展示差异，复制、导出与统计仍用原始 patch（`shared/diff.rs`、`crates/git/src/diff.rs`） | 可视化空白与忽略空白影响的是不同数据：一个只改显示文本，一个改变 Git 差异匹配；把两者合并会造成筛选含义不清 | 是（移除单独图标并保留 Git 查询能力） |
 | 43 | History 组合筛选 | 画板以分支多选、单作者选择与日历范围呈现；作者没有身份标识说明 | 作者以 email 区分并支持多选；顶栏用分支数、作者数显示已选数量，点击后打开窗口内锚定的多选浮层；逐项勾选只改草稿，点外部、按 Esc 或点关闭按钮后统一应用；`All x` 清除当前维度并立即应用、关闭浮层。日期端点仍用 `YYYY-MM-DD` 输入字段，路径、消息和日期在完整筛选浮层内编辑并应用（`features/history/view.rs`、`features/history/commands.rs`、`filters.rs`） | 顶栏空间有限，菜单显示已选数量即可；同名作者需要 email 身份区分 | 是（可换为日历范围控件） |
 | 44 | Merge 冲突代码显示 | Ours / Result / Theirs 以冲突块为单位并排标注来源行，冲突标记有单独着色 | Base 条置于三列上方；三侧直接展示 index stage 文件并按路径语法高亮；Result 独立可编辑。Files 浮层使用公共 Tree / Segmented，在操作会话中保留已解决路径及只读结果快照。导航按文件计数，行级冲突块数量不显示（`features/merge/view.rs`、`features/merge/view/files.rs`、`ui/text_input.rs`） | NSH 没有三方合并 diff 组件，Git index 也不提供冲突块计数；展示真实 stage 内容与文件级解决状态，避免将行级差异误作写回结果 | 是（替换三侧显示组件） |
-| 45 | 引用比较条与端点选择 | 比较板未画 ref 选择器、工作区端点与空差异反馈 | History 顶栏的 Compare refs 按钮打开可搜索、可滚动的窗口，提供本地/远端分支、tag、stash 端点，2-dot/3-dot、Swap、工作区切换与清除；Done 一次应用草稿，列表比较继续由 Compare 按钮进入（`features/history/view.rs`、`app/workspace.rs`） | 引用数量较多时可搜索定位，并在确认后一次更新比较结果；退化态继续提供明确反馈 | 是（恢复原生菜单需重做比较窗口与对应状态） |
+| 45 | 引用比较条与端点选择 | 比较板未画 ref 选择器、工作区端点与空差异反馈 | History 顶栏唯一的 `Compare` 按钮打开可搜索、可滚动的窗口，提供本地/远端分支、tag、stash 端点，2-dot/3-dot、Swap、工作区切换与清除；Done 一次应用草稿（`features/history/view.rs`、`app/workspace.rs`） | 引用数量较多时可搜索定位，并在确认后一次更新比较结果；退化态继续提供明确反馈 | 是（恢复原生菜单需重做比较窗口与对应状态） |
 | 46 | 欢迎页路径输入提示 | Open 路径、Clone 目标目录、Init 目录各显示 `⌘V` 键帽 | 三个字段均不显示键帽（`features/welcome/view.rs`） | 按反馈减少输入框旁的快捷键提示；系统输入框仍支持粘贴 | 是（为三个字段恢复 `⌘V` 参数） |
 | 47 | 命令面板遮罩 | 画板为 18% 压暗并模糊 2px | 遮罩完全透明，不模糊底层（features/search/view.rs、ui/dialog.rs） | 按本次明确要求优先采用普通弹窗的透明遮罩，保留模态拦截与 Escape 关闭 | 是（改回画板遮罩） |
 | 48 | 命令面板空结果 | 画板未提供零匹配状态 | 居中搜索图标、未找到仓库或命令的提示和输入建议（features/search/view.rs、locales/*.json） | 按反馈明确搜索范围并改善无匹配时的反馈 | 是（按后续空态设计统一） |
@@ -76,6 +76,7 @@
 | 51 | Changes 暂存动作 | 画板在 hunk 右端与代码行尾显示暂存按钮 | 逐行按钮位于对应变更行下方，原始 Git hunk 首个变更行还提供整段按钮（`ui/diff_surface.rs` 的 `staging_surface`） | NSH 0.6.0 的 DiffView 提供行下注释槽，没有任意代码行尾插槽；复用内置语法高亮，保留键盘可达的行与 hunk 操作 | 是（需要扩展 DiffView 行尾插槽） |
 | 52 | History 作者与日期列宽 | 画板固定 96 / 58 | 默认 152 / 112，可通过列标题右缘拖拽调整（作者 80–320、日期 80–250；`features/history/view.rs`、`ui/table.rs`） | 为作者名和本地化日期提供可读空间，同时允许用户按仓库内容分配列宽 | 是（恢复固定画板宽度并移除拖拽手柄） |
 | 53 | Blame 侧栏页签留白 | 页签栏高 33 | 40 高，垂直内距 6，保证 Changes / History 页签上下留白对称（`features/history/blame/panel.rs`） | 按反馈增大页签上方留白并保持上下节奏一致 | 是（恢复 33 高栏） |
+| 54 | History 的 ⌘ 提交多选 | 06 Multi-commit diff 未画进入手势与单纯文件列表状态 | `⌘` 点击只在 History 列表切换提交多选，右侧 Inspector 汇总所选提交的文件路径与增删统计；中栏保持提交列表，不进入比较 diff（`features/history/commands.rs`、`features/history/inspector.rs`） | 按用户确认将提交多选与引用比较、完整 diff 分开；无需切换主视图即可查看多个提交影响的文件 | 是（恢复多提交 diff 入口与 Inspector 单提交文件树） |
 
 ## 3. 已澄清：不算偏离
 

@@ -107,8 +107,10 @@ pub(crate) fn history(
     tab: Tab,
     search: &SearchCommands,
     refs: &RefsCommands,
+    selected_commit: Memo<Option<(u64, String)>>,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
+    let inspector_open = search.right_panel_open;
     let tab_id = tab.id;
     let commits = tab.commits.clone();
     let remote_branch_names = std::sync::Arc::new(
@@ -118,7 +120,6 @@ pub(crate) fn history(
             .map(|branch| (branch.full_name(), branch.name.clone()))
             .collect::<std::collections::HashMap<_, _>>(),
     );
-    let selected = tab.selected;
     let compare_refs_empty =
         tab.compare_base.is_some() && tab.compare_target.is_some() && tab.commits.is_empty();
     let graph_rows = graph::layout_filtered(&commits, &tab.graph_commits);
@@ -147,6 +148,15 @@ pub(crate) fn history(
     let toggle_compare: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |index: usize| cmd.toggle_compare(index))
+    };
+    let toggle_multi_commit: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        let commits = commits.clone();
+        std::sync::Arc::new(move |index: usize| {
+            if let Some(commit) = commits.get(index) {
+                cmd.toggle_multi_commit_selection(tab_id, commit.sha.clone());
+            }
+        })
     };
     let row_search = search.clone();
     // 提交功能的用例：右键菜单里的「改写说明 / 合并提交」与多选操作栏的「合并」。
@@ -204,10 +214,11 @@ pub(crate) fn history(
     let now = store::now_unix();
     let query = state.query;
     let fast_selection = state.fast_selection;
+    let multi_commit_selection = state.multi_commit_selection;
     let visible = {
         let commits = commits.clone();
         computed(move || {
-            return ops::visible_commit_indices(&commits, query.get().as_str(), selected)
+            return ops::visible_commit_indices(&commits, query.get().as_str(), None)
                 .into_iter()
                 .filter_map(|index| commits.get(index).map(|commit| (index, commit.clone())))
                 .collect::<Vec<_>>();
@@ -316,7 +327,7 @@ pub(crate) fn history(
                                 total,
                                 visible_rows.len(),
                                 graph_ancestors.len(),
-                                selected.is_some(),
+                                selected_commit.get_untracked().is_some(),
                                 !query.get().is_empty(),
                             );
                             // 后台还在读：先画骨架行，避免看到「空仓库」的假象。
@@ -381,6 +392,7 @@ pub(crate) fn history(
                             }
                             let select = select.clone();
                             let toggle_compare = toggle_compare.clone();
+                            let toggle_multi_commit = toggle_multi_commit.clone();
                             let row_search = row_search.clone();
                             let squash_range = squash_range.clone();
                             let compare_for_rows = compare.clone();
@@ -396,6 +408,7 @@ pub(crate) fn history(
                             let remote_branches_for_render = remote_branch_names.clone();
                             let compare_for_render = compare_for_rows.clone();
                             let fast_selection = fast_selection;
+                            let multi_selection_for_render = multi_commit_selection;
                             let visible_commits = rows_snapshot
                                 .iter()
                                 .map(|(_, commit)| commit.clone())
@@ -404,7 +417,9 @@ pub(crate) fn history(
                                 graph::layout_filtered(&visible_commits, &graph_ancestors);
                             let select_for_press = select.clone();
                             let toggle_for_press = toggle_compare.clone();
+                            let toggle_multi_for_press = toggle_multi_commit.clone();
                             let compare_mode_for_press = compare_mode;
+                            let table_ref_for_press = table_ref;
                             let open_diff_for_menu = open_commit_diff.clone();
                             let select_for_context = select.clone();
                             let menu_search = row_search.clone();
@@ -414,9 +429,13 @@ pub(crate) fn history(
                             let menu_recovery = recovery_for_menu.clone();
                             let commits_for_press = rows_snapshot.clone();
                             let commits_for_menu = rows_snapshot.clone();
-                            let visible_selected = rows_snapshot
-                                .iter()
-                                .position(|(index, _)| selected == Some(*index));
+                            let selected_sha = selected_commit
+                                .get_untracked()
+                                .filter(|(selected_tab, _)| *selected_tab == tab_id)
+                                .map(|(_, sha)| sha);
+                            let visible_selected = rows_snapshot.iter().position(
+                                |(_, commit)| selected_sha.as_ref() == Some(&commit.sha),
+                            );
                             return crate::ui::table::table_with_scroll(
                                 crate::ui::table::TableSpec {
                                     columns: vec![crate::ui::table::Column {
@@ -436,14 +455,40 @@ pub(crate) fn history(
                                         else {
                                             return view().w_full().h_full().into_element();
                                         };
-                                        let is_selected = selected == Some(index);
+                                        let selected_commit_for_row = selected_commit;
+                                        let multi_selection_for_row = multi_selection_for_render;
+                                        let fast_selection_for_row = fast_selection;
+                                        let row_sha = commit.sha.clone();
+                                        let row_tab_id = tab_id;
+                                        let selected_now: std::sync::Arc<dyn Fn() -> bool> =
+                                            std::sync::Arc::new(move || {
+                                                selected_commit_for_row
+                                                    .get()
+                                                    .as_ref()
+                                                    .is_some_and(|(selected_tab, selected_sha)| {
+                                                        *selected_tab == row_tab_id
+                                                            && selected_sha == &row_sha
+                                                    })
+                                                    || multi_selection_for_row
+                                                        .get()
+                                                        .as_ref()
+                                                        .is_some_and(|selection| {
+                                                            selection.tab_id == row_tab_id
+                                                                && selection
+                                                                    .shas
+                                                                    .contains(&row_sha)
+                                                        })
+                                                    || fast_selection_matches(
+                                                        row_tab_id,
+                                                        row_sha.as_str(),
+                                                        fast_selection_for_row.get(),
+                                                    )
+                                            });
                                         let in_compare = compare_for_render.contains(&index);
                                         let has_refs = !commit.refs.is_empty();
-                                        let row_sha = commit.sha.clone();
-                                        let row_sha_for_hover = row_sha.clone();
-                                        let row_tab_id = tab_id;
-                                        let fast_selection_for_row = fast_selection;
-                                        let fast_selection_for_hover = fast_selection;
+                                        let row_selected_for_bg = selected_now.clone();
+                                        let row_selected_for_hover = selected_now.clone();
+                                        let row_selected_for_graph = selected_now;
                                         let graph_row = graphs_for_render
                                             .get(row as usize)
                                             .cloned()
@@ -459,25 +504,14 @@ pub(crate) fn history(
                                             .bg(move || {
                                                 if in_compare {
                                                     design::accent_soft()
-                                                } else if is_selected
-                                                    || fast_selection_matches(
-                                                        row_tab_id,
-                                                        row_sha.as_str(),
-                                                        fast_selection_for_row.get(),
-                                                    )
-                                                {
+                                                } else if row_selected_for_bg() {
                                                     design::selected()
                                                 } else {
                                                     AdaptiveColor::TRANSPARENT
                                                 }
                                             })
                                             .hover(move |style| {
-                                                let fast_selected = fast_selection_matches(
-                                                    row_tab_id,
-                                                    row_sha_for_hover.as_str(),
-                                                    fast_selection_for_hover.get(),
-                                                );
-                                                if in_compare || is_selected || fast_selected {
+                                                if in_compare || row_selected_for_hover() {
                                                     style
                                                 } else {
                                                     style.bg(move || design::hover())
@@ -486,7 +520,7 @@ pub(crate) fn history(
                                             .child(graph_cell(
                                                 graph_row,
                                                 graph_width,
-                                                is_selected || in_compare,
+                                                move || in_compare || row_selected_for_graph(),
                                             ))
                                             .child(
                                                 view()
@@ -556,11 +590,17 @@ pub(crate) fn history(
                                         else {
                                             return;
                                         };
-                                        // 对比模式下点击是加入/移出集合；否则普通点击选中，
-                                        // ⌘ 点击也加入对比。
-                                        if compare_mode_for_press.get_untracked() || platform {
+                                        if platform {
+                                            inspector_open.set(true);
+                                            toggle_multi_for_press(index);
+                                        } else if compare_mode_for_press.get_untracked() {
                                             toggle_for_press(index);
                                         } else {
+                                            inspector_open.set(true);
+                                            crate::ui::table::select_row(
+                                                table_ref_for_press,
+                                                row,
+                                            );
                                             select_for_press(index);
                                         }
                                     })),
@@ -739,6 +779,20 @@ pub(crate) fn history(
                 compare_refs_state.clone(),
                 compare_refs_cmd.clone(),
             );
+        }))
+        // 选中项变化只同步 DataTable 的活动行；History 列表和 graph snapshot 保持不变。
+        .child(dynamic(move || -> AnyElement {
+            let rows = visible.get();
+            let selected = selected_commit.get();
+            if let Some((selected_tab, sha)) = selected
+                && selected_tab == tab_id
+                && let Some(row) = rows
+                    .iter()
+                    .position(|(_, commit)| commit.sha == sha)
+            {
+                crate::ui::table::select_row(table_ref, row as u32);
+            }
+            return view().w(px(0.0)).h(px(0.0)).into_element();
         }));
 }
 
@@ -752,7 +806,6 @@ fn hist_bar(
 ) -> impl IntoElement + use<> {
     let filter_open = state.filter_open;
     let filter_tab_id = state.filter_tab_id;
-    let compare_mode = state.compare_mode;
     let compare_refs_open = state.compare_refs_open;
     let compare_refs_query = state.compare_refs_query;
     let compare_refs_draft = state.compare_refs_draft;
@@ -780,7 +833,7 @@ fn hist_bar(
     let branch_filter_tab_for_active = branch_filter_tab_id;
     let branch_tab_id = tab_id;
     let branch_cmd = cmd.clone();
-    let branch_filter = crate::ui::menu::menu_button_tuned_at(
+    let branch_filter = crate::ui::menu::menu_button_anchored_at(
         move || {
             if branch_selection.is_empty() {
                 return i18n::t(language.get().as_str(), "filter.allBranches");
@@ -798,7 +851,7 @@ fn hist_bar(
                     && branch_filter_tab_for_active.get() == Some(branch_tab_id))
         },
         Some("chev-down"),
-        move |position| {
+        move |position, local_position| {
             if branch_filter_menu.get_untracked()
                 == Some(crate::features::history::state::FilterMenu::Branches)
                 && branch_filter_tab_id.get_untracked() == Some(tab_id)
@@ -809,7 +862,12 @@ fn hist_bar(
             }
             branch_cmd.begin_quick_filter(tab_id);
             branch_filter_open.set(false);
-            branch_filter_position.set(filter_popover_position(position, QUICK_FILTER_W));
+            branch_filter_position.set(filter_popover_position(
+                position,
+                local_position,
+                QUICK_FILTER_W,
+                QUICK_FILTER_W,
+            ));
             branch_filter_menu.set(Some(crate::features::history::state::FilterMenu::Branches));
         },
     );
@@ -822,7 +880,7 @@ fn hist_bar(
     let author_filter_tab_for_active = author_filter_tab_id;
     let author_tab_id = tab_id;
     let author_cmd = cmd.clone();
-    let author_filter = crate::ui::menu::menu_button_tuned_at(
+    let author_filter = crate::ui::menu::menu_button_anchored_at(
         move || {
             if author_selection.is_empty() {
                 return i18n::t(language.get().as_str(), "history.allAuthors");
@@ -840,7 +898,7 @@ fn hist_bar(
                     && author_filter_tab_for_active.get() == Some(author_tab_id))
         },
         Some("chev-down"),
-        move |position| {
+        move |position, local_position| {
             if author_filter_menu.get_untracked()
                 == Some(crate::features::history::state::FilterMenu::Authors)
                 && author_filter_tab_id.get_untracked() == Some(tab_id)
@@ -851,14 +909,15 @@ fn hist_bar(
             }
             author_cmd.begin_quick_filter(tab_id);
             author_filter_open.set(false);
-            author_filter_position.set(filter_popover_position(position, QUICK_FILTER_W));
+            author_filter_position.set(filter_popover_position(
+                position,
+                local_position,
+                QUICK_FILTER_W,
+                QUICK_FILTER_W,
+            ));
             author_filter_menu.set(Some(crate::features::history::state::FilterMenu::Authors));
         },
     );
-    let set_compare_mode: std::sync::Arc<dyn Fn(bool)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |enabled: bool| cmd.set_compare_mode(enabled))
-    };
     return view()
         .w_full()
         .h(px(metrics::HIST_BAR_H))
@@ -869,25 +928,35 @@ fn hist_bar(
         .border_b_1()
         .border_color(move || design::line_soft())
         .child(
-            view().h_full().flex_row().items_center().child(
-                text(move || i18n::t(language.get().as_str(), "shell.history"))
-                    .text_size(px(crate::ui::BODY))
-                    .font_weight(FontWeight(600))
-                    .text_color(move || design::text()),
-            ),
+            view()
+                .h(px(crate::ui::CONTROL_SMALL))
+                .flex_row()
+                .items_center()
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "shell.history"))
+                        .text_size(px(crate::ui::BODY))
+                        .line_height(px(crate::ui::BODY_LINE))
+                        .font_weight(FontWeight(600))
+                        .text_color(move || design::text()),
+                ),
         )
         .child(
-            view().h_full().flex_row().items_center().child(
-                text(move || {
-                    i18n::with_arguments(
-                        language.get().as_str(),
-                        "history.commits",
-                        &[("count", total.to_string())],
-                    )
-                })
-                .text_size(px(crate::ui::SECONDARY))
-                .text_color(move || design::text3()),
-            ),
+            view()
+                .h(px(crate::ui::CONTROL_SMALL))
+                .flex_row()
+                .items_center()
+                .child(
+                    text(move || {
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "history.commits",
+                            &[("count", total.to_string())],
+                        )
+                    })
+                    .text_size(px(crate::ui::SECONDARY))
+                    .line_height(px(crate::ui::SECONDARY_LINE))
+                    .text_color(move || design::text3()),
+                ),
         )
         .child(branch_filter)
         .child(author_filter)
@@ -903,23 +972,6 @@ fn hist_bar(
         ))
         .child(view().flex_1())
         .child({
-            let variant = if compare_mode.get() {
-                crate::ui::button::ButtonVariant::Secondary
-            } else {
-                crate::ui::button::ButtonVariant::Ghost
-            };
-            crate::ui::button::button(
-                move || i18n::t(language.get().as_str(), "compare.mode"),
-                variant,
-                crate::ui::button::ButtonSize::Small,
-                false,
-                {
-                    let set_compare_mode = set_compare_mode.clone();
-                    move || set_compare_mode(!compare_mode.get_untracked())
-                },
-            )
-        })
-        .child({
             let compare_refs_active =
                 (compare_pair.0.is_some() && compare_pair.1.is_some()) || compare_worktree;
             let variant = if compare_refs_active {
@@ -928,14 +980,7 @@ fn hist_bar(
                 crate::ui::button::ButtonVariant::Ghost
             };
             crate::ui::button::button_icon(
-                move || {
-                    let key = if compare_refs_active {
-                        "compare.refsActive"
-                    } else {
-                        "compare.pick"
-                    };
-                    i18n::t(language.get().as_str(), key)
-                },
+                move || i18n::t(language.get().as_str(), "compare.mode"),
                 "diff",
                 variant,
                 crate::ui::button::ButtonSize::Toolbar,
@@ -980,23 +1025,35 @@ fn widgets_icon(
         Some(crate::ui::icon::IconSize::Button),
         Some(foreground),
         false,
-        move |position| {
+        move |position, local_position| {
             if filter_open.get_untracked() && filter_tab_id.get_untracked() == Some(tab_id) {
                 filter_open.set(false);
                 return;
             }
-            // 过滤器靠近触发按钮右对齐展开，避免遮住工具栏与提交列表入口。
+            // 完整过滤浮层在筛选按钮下方右对齐。
             cmd.begin_filter_for_tab(tab_id);
             filter_menu.set(None);
-            filter_position.set(filter_popover_position(position, POP_W));
+            filter_position.set(filter_popover_position(
+                position,
+                local_position,
+                24.0,
+                POP_W,
+            ));
             filter_open.set(true);
         },
     );
 }
 
-fn filter_popover_position(position: Point<Points>, width: f32) -> (f32, f32) {
-    let left = (position.x.0 - width + 12.0).max(8.0);
-    return (left, position.y.0 + 12.0);
+fn filter_popover_position(
+    page_position: Point<Points>,
+    local_position: Point<Points>,
+    trigger_width: f32,
+    width: f32,
+) -> (f32, f32) {
+    let trigger_left = page_position.x.0 - local_position.x.0;
+    let trigger_top = page_position.y.0 - local_position.y.0;
+    let left = (trigger_left + trigger_width - width).max(8.0);
+    return (left, trigger_top + crate::ui::CONTROL_SMALL + 4.0);
 }
 
 fn column_header(language: Signal<SharedString>, key: &'static str) -> nsh_core::element::Text {
@@ -1048,7 +1105,11 @@ fn resizable_column_header(
     ));
 }
 
-fn graph_cell(graph: GraphRow, width: f32, highlight: bool) -> impl IntoElement {
+fn graph_cell(
+    graph: GraphRow,
+    width: f32,
+    highlight: impl Fn() -> bool + 'static,
+) -> impl IntoElement {
     let row_height = metrics::COMMIT_ROW_H;
     let middle = row_height / 2.0;
     let node_radius = GRAPH_NODE_D / 2.0;
@@ -1131,7 +1192,7 @@ fn graph_cell(graph: GraphRow, width: f32, highlight: bool) -> impl IntoElement 
             .h(px(GRAPH_NODE_D))
             .rounded(px(node_radius + 0.5))
             .bg(move || {
-                if highlight {
+                if highlight() {
                     design::accent()
                 } else {
                     design::graph_color(graph.node_lane)
@@ -2246,10 +2307,11 @@ fn compare_refs_dialog(
         )
         .into_element(),
     ];
-    return crate::ui::dialog::dialog(
+    return crate::ui::dialog::dialog_with_close(
         true,
         COMPARE_DIALOG_W,
         move || i18n::t(language.get().as_str(), "compare.dialogTitle"),
+        move || i18n::t(language.get().as_str(), "shell.close"),
         body,
         footer,
         move || dismiss_open.set(false),

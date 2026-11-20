@@ -301,6 +301,10 @@
     "title": "Files",
     "infoTab": "Info",
     "changedCount": "%{count} files",
+    "multiChangedCount": "%{count} files across %{commits} commits",
+    "multiFilesLoading": "Loading selected commit files…",
+    "multiFilesFailed": "Couldn't load the selected commit files.",
+    "retry": "Retry",
     "changes": "Changes",
     "info": {
       "sha": "Commit",
