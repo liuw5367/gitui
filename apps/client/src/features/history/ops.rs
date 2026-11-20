@@ -119,6 +119,14 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
         return;
     }
     let sha = tab.commits[index].sha.clone();
+    let short = tab.commits[index].short.clone();
+    let started = std::time::Instant::now();
+    log::debug!(
+        target: "gitui::history",
+        "event=commit_select.start index={} commit={}",
+        index,
+        short
+    );
     tab.selected = Some(index);
     tab.show_commit_diff = false;
     tab.selected_file = None;
@@ -126,15 +134,79 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
+            log::warn!(
+                target: "gitui::history",
+                "event=commit_select.repo_open_failed commit={} reason={}",
+                short,
+                error.summary()
+            );
             tab.error = Some(error.detail());
             return;
         }
     };
-    tab.patch = repo.patch(&sha).unwrap_or_default();
-    tab.files = repo.numstat(&sha).unwrap_or_default();
-    tab.details = repo.commit_details(&sha).ok();
+    tab.patch = repo
+        .patch(&sha)
+        .inspect(|patch| {
+            log::debug!(
+                target: "gitui::history",
+                "event=commit_select.patch_ok commit={} bytes={} files={} hunks={}",
+                short,
+                patch.raw.len(),
+                patch.files.len(),
+                patch
+                    .lines
+                    .iter()
+                    .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+                    .count(),
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=commit_select.patch_failed commit={} reason={}",
+                short,
+                error.summary()
+            );
+        })
+        .unwrap_or_default();
+    tab.files = repo
+        .numstat(&sha)
+        .inspect(|files| {
+            log::debug!(
+                target: "gitui::history",
+                "event=commit_select.numstat_ok commit={} files={}",
+                short,
+                files.len()
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=commit_select.numstat_failed commit={} reason={}",
+                short,
+                error.summary()
+            );
+        })
+        .unwrap_or_default();
+    tab.details = repo
+        .commit_details(&sha)
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=commit_select.details_failed commit={} reason={}",
+                short,
+                error.summary()
+            );
+        })
+        .ok();
     clear_blame(tab);
     tab.error = None;
+    log::debug!(
+        target: "gitui::history",
+        "event=commit_select.complete commit={} elapsed_ms={}",
+        short,
+        started.elapsed().as_millis()
+    );
 }
 
 /// 显式打开提交补丁时才读取它，普通 commit 选择保持轻量。
@@ -215,6 +287,11 @@ pub(crate) fn open_blame(tab: &mut Tab, path: &str, revision: &str, return_mode:
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
+            log::warn!(
+                target: "gitui::history",
+                "event=blame_open.repo_open_failed reason={}",
+                error.summary()
+            );
             clear_blame(tab);
             tab.blame_path = path.to_string();
             tab.blame_revision = revision.to_string();
@@ -222,7 +299,32 @@ pub(crate) fn open_blame(tab: &mut Tab, path: &str, revision: &str, return_mode:
             return;
         }
     };
-    let history = repo.file_history(path, revision, 50).unwrap_or_default();
+    let extension = std::path::Path::new(path)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+    let short = revision.chars().take(7).collect::<String>();
+    let history = repo
+        .file_history(path, revision, 50)
+        .inspect(|history| {
+            log::debug!(
+                target: "gitui::history",
+                "event=blame_open.history_ok revision={} extension={} entries={}",
+                short,
+                extension,
+                history.len()
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=blame_open.history_failed revision={} extension={} reason={}",
+                short,
+                extension,
+                error.summary()
+            );
+        })
+        .unwrap_or_default();
     if revision == "HEAD" {
         tab.selected_file = None;
         tab.file_patch = None;
@@ -242,9 +344,18 @@ pub(crate) fn select_blame_history(tab: &mut Tab, sha: &str) {
     else {
         return;
     };
-    let Ok(repo) = Repo::open(tab.path.as_str()) else {
-        tab.blame_error = Some("Could not open repository".to_string());
-        return;
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            log::warn!(
+                target: "gitui::history",
+                "event=blame_history_select.repo_open_failed revision={} reason={}",
+                sha.chars().take(7).collect::<String>(),
+                error.summary()
+            );
+            tab.blame_error = Some("Could not open repository".to_string());
+            return;
+        }
     };
     let path = entry.path.clone();
     let revision = entry.commit.sha.clone();
@@ -272,6 +383,7 @@ fn load_blame_data(
     history: Vec<git::FileHistoryEntry>,
     focus_sha: Option<String>,
 ) {
+    let started = std::time::Instant::now();
     let entry = history.iter().find(|entry| entry.commit.sha == revision);
     let path_at_revision = entry.map_or_else(|| path.to_string(), |entry| entry.path.clone());
     let content_revision = entry
@@ -282,10 +394,64 @@ fn load_blame_data(
     let focus_sha = focus_sha
         .or_else(|| entry.map(|entry| entry.commit.sha.clone()))
         .or_else(|| history.first().map(|entry| entry.commit.sha.clone()));
+    let extension = std::path::Path::new(path_at_revision.as_str())
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+    let short = revision.chars().take(7).collect::<String>();
+    log::debug!(
+        target: "gitui::history",
+        "event=blame_load.start revision={} extension={} history_entries={} content_is_parent={}",
+        short,
+        extension,
+        history.len(),
+        content_revision != revision
+    );
     let patch = repo
         .patch_for_path(revision, path_at_revision.as_str())
+        .inspect(|patch| {
+            log::debug!(
+                target: "gitui::history",
+                "event=blame_load.patch_ok revision={} bytes={} files={} hunks={}",
+                short,
+                patch.raw.len(),
+                patch.files.len(),
+                patch
+                    .lines
+                    .iter()
+                    .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+                    .count(),
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=blame_load.patch_failed revision={} extension={} reason={}",
+                short,
+                extension,
+                error.summary()
+            );
+        })
         .unwrap_or_default();
-    match repo.blame(path_at_revision.as_str(), content_revision.as_str()) {
+    match repo
+        .blame(path_at_revision.as_str(), content_revision.as_str())
+        .inspect(|lines| {
+            log::debug!(
+                target: "gitui::history",
+                "event=blame_load.blame_ok revision={} lines={} elapsed_ms={}",
+                short,
+                lines.len(),
+                started.elapsed().as_millis()
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=blame_load.blame_failed revision={} reason={}",
+                short,
+                error.summary()
+            );
+        }) {
         Ok(lines) => {
             tab.blame = lines;
             tab.blame_error = None;
@@ -324,21 +490,58 @@ pub(crate) fn diff_patch_for_tab(tab: &Tab, ignore_whitespace: bool) -> domain::
         || (tab.compare_base.is_some() && tab.compare_target.is_some())
         || (tab.compare_worktree && tab.compare_target.is_some())
     {
-        return comparison_patch(tab, ignore_whitespace).unwrap_or_default();
+        return comparison_patch(tab, ignore_whitespace)
+            .inspect_err(|error| {
+                let reason = match error {
+                    CompareFailure::IdenticalEndpoints => "identical_endpoints",
+                    CompareFailure::UnrelatedHistories => "unrelated_histories",
+                    CompareFailure::Git => "git_error",
+                };
+                log::warn!(
+                    target: "gitui::diff",
+                    "event=whitespace_diff.load_failed source=compare reason={}",
+                    reason
+                );
+            })
+            .unwrap_or_default();
     }
-    let Ok(repo) = Repo::open(tab.path.as_str()) else {
-        return domain::diff::Patch::default();
+    let repo = match Repo::open(tab.path.as_str()) {
+        Ok(repo) => repo,
+        Err(error) => {
+            log::warn!(
+                target: "gitui::diff",
+                "event=whitespace_diff.repo_open_failed reason={}",
+                error.summary()
+            );
+            return domain::diff::Patch::default();
+        }
     };
     if let Some((path, _)) = &tab.file_patch
         && let Some(commit) = tab.selected_commit()
     {
         return repo
             .patch_for_path_with_whitespace(commit.sha.as_str(), path.as_str(), ignore_whitespace)
+            .inspect_err(|error| {
+                log::warn!(
+                    target: "gitui::diff",
+                    "event=whitespace_diff.load_failed source=file commit={} reason={}",
+                    commit.short,
+                    error.summary()
+                );
+            })
             .unwrap_or_default();
     }
     if let Some(commit) = tab.selected_commit() {
         return repo
             .patch_with_whitespace(commit.sha.as_str(), ignore_whitespace)
+            .inspect_err(|error| {
+                log::warn!(
+                    target: "gitui::diff",
+                    "event=whitespace_diff.load_failed source=commit commit={} reason={}",
+                    commit.short,
+                    error.summary()
+                );
+            })
             .unwrap_or_default();
     }
     return domain::diff::Patch::default();
@@ -381,19 +584,75 @@ pub(crate) fn select_file(tab: &mut Tab, index: usize) {
     else {
         return;
     };
+    let extension = std::path::Path::new(file_path.as_str())
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+    let short = commit_sha.chars().take(7).collect::<String>();
+    log::debug!(
+        target: "gitui::history",
+        "event=file_select.start commit={} extension={}",
+        short,
+        extension
+    );
     let repo = match Repo::open(tab.path.as_str()) {
         Ok(repo) => repo,
         Err(error) => {
+            log::warn!(
+                target: "gitui::history",
+                "event=file_select.repo_open_failed commit={} reason={}",
+                short,
+                error.summary()
+            );
             tab.error = Some(error.detail());
             return;
         }
     };
-    match repo.patch_for_path(commit_sha.as_str(), file_path.as_str()) {
+    match repo
+        .patch_for_path(commit_sha.as_str(), file_path.as_str())
+        .inspect(|patch| {
+            log::debug!(
+                target: "gitui::history",
+                "event=file_select.patch_ok commit={} bytes={} files={} hunks={}",
+                short,
+                patch.raw.len(),
+                patch.files.len(),
+                patch
+                    .lines
+                    .iter()
+                    .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+                    .count(),
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=file_select.patch_failed commit={} reason={}",
+                short,
+                error.summary()
+            );
+        }) {
         Ok(patch) => {
             tab.selected_file = Some(index);
             tab.file_patch = Some((file_path.clone(), patch));
             let history = repo
                 .file_history(file_path.as_str(), commit_sha.as_str(), 50)
+                .inspect(|history| {
+                    log::debug!(
+                        target: "gitui::history",
+                        "event=file_select.history_ok commit={} entries={}",
+                        short,
+                        history.len()
+                    );
+                })
+                .inspect_err(|error| {
+                    log::warn!(
+                        target: "gitui::history",
+                        "event=file_select.history_failed commit={} reason={}",
+                        short,
+                        error.summary()
+                    );
+                })
                 .unwrap_or_default();
             load_blame_data(
                 tab,

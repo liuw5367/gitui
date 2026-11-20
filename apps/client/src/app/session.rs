@@ -318,9 +318,27 @@ impl Tab {
 
 /// 打开 `path` 并按 `filter` 装载数据；失败时返回带 `error` 的空标签页。
 pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
+    let started = std::time::Instant::now();
+    log::debug!(
+        target: "gitui::history",
+        "event=repo_load.start query_active={} author_filter={} author_count={} reference_filter={} reference_count={} path_filter={} message_filter={} date_filter={}",
+        !filter.query.is_empty(),
+        filter.author.is_some(),
+        filter.authors.len(),
+        filter.reference.is_some(),
+        filter.references.len(),
+        filter.path.is_some(),
+        !filter.message.is_empty(),
+        filter.since.is_some() || filter.until.is_some(),
+    );
     let repo = match Repo::open(path) {
         Ok(repo) => repo,
         Err(error) => {
+            log::warn!(
+                target: "gitui::history",
+                "event=repo_load.open_failed reason={}",
+                error.summary()
+            );
             let problem = match &error {
                 domain::GitError::NotARepository { .. } => RepoProblem::NotARepository,
                 domain::GitError::Unreadable { .. } => RepoProblem::NotFound,
@@ -339,7 +357,26 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         }
     };
     let summary = repo.summary().unwrap_or_default();
-    let commits = repo.log_history(filter).unwrap_or_default();
+    let log_started = std::time::Instant::now();
+    let commits = repo
+        .log_history(filter)
+        .inspect(|commits| {
+            log::debug!(
+                target: "gitui::history",
+                "event=repo_load.history_ok commits={} elapsed_ms={}",
+                commits.len(),
+                log_started.elapsed().as_millis(),
+            );
+        })
+        .inspect_err(|error| {
+            log::warn!(
+                target: "gitui::history",
+                "event=repo_load.history_failed reason={} elapsed_ms={}",
+                error.summary(),
+                log_started.elapsed().as_millis(),
+            );
+        })
+        .unwrap_or_default();
     let graph_commits = if filter.query.is_empty()
         && filter.author.is_none()
         && filter.authors.is_empty()
@@ -350,7 +387,24 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     {
         commits.clone()
     } else {
+        let graph_started = std::time::Instant::now();
         repo.log_history_graph(filter)
+            .inspect(|graph_commits| {
+                log::debug!(
+                    target: "gitui::history",
+                    "event=repo_load.graph_ok commits={} elapsed_ms={}",
+                    graph_commits.len(),
+                    graph_started.elapsed().as_millis(),
+                );
+            })
+            .inspect_err(|error| {
+                log::warn!(
+                    target: "gitui::history",
+                    "event=repo_load.graph_failed reason={} elapsed_ms={}",
+                    error.summary(),
+                    graph_started.elapsed().as_millis(),
+                );
+            })
             .unwrap_or_else(|_| commits.clone())
     };
     let refs = repo.refs().unwrap_or_default();
@@ -399,6 +453,16 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     if !tab.commits.is_empty() {
         select_commit(&mut tab, 0);
     }
+    log::debug!(
+        target: "gitui::history",
+        "event=repo_load.complete commits={} graph_commits={} refs={} authors={} changes={} elapsed_ms={}",
+        tab.commits.len(),
+        tab.graph_commits.len(),
+        tab.refs.branches.len() + tab.refs.remote_branches.len() + tab.refs.tags.len(),
+        tab.authors.len(),
+        tab.changes.len(),
+        started.elapsed().as_millis(),
+    );
     return tab;
 }
 

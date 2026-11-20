@@ -1518,6 +1518,7 @@ dependencies = [
  "domain",
  "env_logger",
  "git",
+ "log",
  "nsh-base",
  "nsh-core",
  "nsh-platform-macos",

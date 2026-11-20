@@ -54,6 +54,7 @@ pub(crate) fn history(
     refs: &RefsCommands,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
+    let tab_id = tab.id;
     let commits = tab.commits.clone();
     let selected = tab.selected;
     let compare_refs_empty =
@@ -215,6 +216,18 @@ pub(crate) fn history(
                         .w_full()
                         .h_full()
                         .child(dynamic(move || -> AnyElement {
+                            let visible_rows = visible.get();
+                            log::debug!(
+                                target: "gitui::history",
+                                "event=history_view.render tab={} loading={} commits={} visible={} graph_commits={} selected={} query_active={}",
+                                tab_id,
+                                loading,
+                                total,
+                                visible_rows.len(),
+                                graph_ancestors.len(),
+                                selected.is_some(),
+                                !query.get().is_empty(),
+                            );
                             // 后台还在读：先画骨架行，避免看到「空仓库」的假象。
                             if loading {
                                 let mut skeleton: Vec<AnyElement> = Vec::new();
@@ -223,7 +236,7 @@ pub(crate) fn history(
                                 }
                                 return view().w_full().flex_col().child(skeleton).into_element();
                             }
-                            if visible.get().is_empty() {
+                            if visible_rows.is_empty() {
                                 let branch_for_empty = branch_for_empty.clone();
                                 let mut empty = view()
                                     .w_full()
@@ -283,7 +296,7 @@ pub(crate) fn history(
                             // 表格：单列，整行交给 render 自绘——图线、引用徽章、对比
                             // 强调色都要保留，表格只负责虚拟化、行高与键盘导航。
                             // `visible` 是 Memo，先取一份快照供 render 与回调按索引取行。
-                            let rows_snapshot = visible.get();
+                            let rows_snapshot = visible_rows;
                             let rows: Vec<Vec<String>> = rows_snapshot
                                 .iter()
                                 .map(|(index, _commit)| vec![index.to_string()])

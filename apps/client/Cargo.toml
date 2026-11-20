@@ -8,6 +8,7 @@ publish.workspace = true
 nsh-core = "=0.6.0"
 nsh-base = "=0.6.0"
 env_logger = "0.11"
+log = "0.4"
 serde_json = "1"
 domain = { path = "../../crates/domain" }
 git = { path = "../../crates/git" }

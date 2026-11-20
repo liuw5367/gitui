@@ -15,6 +15,14 @@ nsh run
 APP_HOME=/tmp/app-home nsh run
 ```
 
+排查 History、Blame 与 Diff 的加载链路时，可打开分段诊断日志：
+
+```sh
+RUST_LOG=gitui::history=debug,gitui::diff=debug,nsh_base=debug nsh run
+```
+
+日志记录读取阶段、结果数量、补丁字节数、hunk 数与耗时；不记录仓库路径、提交说明或补丁正文。
+
 - 应用数据目录默认是 `~/.config/gitui`，由 `src/brand.rs` 的 `STORAGE_DIR` 决定；`APP_HOME` 可以直接覆盖。解析规则见 [store README](../../crates/store/README.md)。
 - 窗口初始内容区 1392×852，与设计板的内容区一致；最小尺寸为 1100×700。
 - 启动行为由设置的 `Launch behavior` 决定：恢复上次会话时按保存顺序打开主窗口标签且不打开欢迎页；空会话或 `Show Welcome` 只显示欢迎窗口。主窗口 `+` 打开欢迎窗口；关闭最后一个标签会清空会话并返回欢迎页，关闭主窗口不会清空标签，会保存当前顺序和活动仓库，供下次启动恢复；应用退出也会保存会话。

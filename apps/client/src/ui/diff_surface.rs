@@ -56,6 +56,21 @@ pub(crate) fn diff_surface(
     language: Signal<SharedString>,
     on_hunk_copy: std::sync::Arc<dyn Fn(&DiffHunk)>,
 ) -> impl IntoElement {
+    let layout_name = match layout {
+        Layout::Split => "split",
+        Layout::Unified => "unified",
+    };
+    let patch_text = patch.as_str();
+    log::debug!(
+        target: "gitui::diff",
+        "event=diff_surface.mount bytes={} files={} hunks={} layout={} wrap={} expand_all={}",
+        patch_text.len(),
+        patch_text.lines().filter(|line| line.starts_with("diff --git ")).count(),
+        patch_text.lines().filter(|line| line.starts_with("@@")).count(),
+        layout_name,
+        wrap,
+        expand_all
+    );
     let layout = match layout {
         Layout::Split => DiffLayout::Split,
         Layout::Unified => DiffLayout::Unified,

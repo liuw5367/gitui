@@ -16,6 +16,28 @@ pub(crate) fn blame_view(
     cmd: HistoryCommands,
 ) -> impl IntoElement {
     let selected_mode = if tab.blame_show_diff { "diff" } else { "blame" };
+    let extension = std::path::Path::new(tab.blame_path.as_str())
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+    let patch_hunks = tab
+        .blame_patch
+        .lines
+        .iter()
+        .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+        .count();
+    log::debug!(
+        target: "gitui::history",
+        "event=blame_view.render revision={} extension={} mode={} lines={} history_entries={} patch_bytes={} patch_files={} patch_hunks={} blame_rows_highlight=not_applied",
+        tab.blame_revision.chars().take(7).collect::<String>(),
+        extension,
+        selected_mode,
+        tab.blame.len(),
+        tab.file_history.len(),
+        tab.blame_patch.raw.len(),
+        tab.blame_patch.files.len(),
+        patch_hunks,
+    );
     let back_key = if tab.blame_return_mode == Some(crate::Mode::Changes) {
         "blame.backToChanges"
     } else {

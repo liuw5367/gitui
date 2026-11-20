@@ -355,12 +355,25 @@ pub(crate) fn diff(
                 .min_h_0()
                 .child(dynamic(move || -> AnyElement {
                     if raw_patch.raw.trim().is_empty() {
+                        log::debug!(
+                            target: "gitui::diff",
+                            "event=diff_body.render decision=empty_patch feedback={}",
+                            empty_feedback.is_some()
+                        );
                         if let Some(key) = empty_feedback {
                             return feedback_state(language, key).into_element();
                         }
                         return empty_state(language).into_element();
                     }
                     if patch.raw.trim().is_empty() || hunk_count == 0 {
+                        log::debug!(
+                            target: "gitui::diff",
+                            "event=diff_body.render decision=no_text_changes raw_bytes={} view_bytes={} files={} hunks={}",
+                            raw_patch.raw.len(),
+                            patch.raw.len(),
+                            raw_patch.files.len(),
+                            hunk_count
+                        );
                         return no_text_changes(language).into_element();
                     }
                     // 渲染交给 nsh 的 DiffView：分栏/统一、折叠、软换行、行号与
@@ -370,6 +383,15 @@ pub(crate) fn diff(
                     } else {
                         crate::ui::diff_surface::Layout::Unified
                     };
+                    log::debug!(
+                        target: "gitui::diff",
+                        "event=diff_body.render decision=diff_view raw_bytes={} view_bytes={} files={} hunks={} layout={:?}",
+                        raw_patch.raw.len(),
+                        patch_for_view.len(),
+                        raw_patch.files.len(),
+                        hunk_count,
+                        layout
+                    );
                     return crate::ui::diff_surface::diff_surface(
                         SharedString::from(patch_for_view.clone()),
                         layout,
