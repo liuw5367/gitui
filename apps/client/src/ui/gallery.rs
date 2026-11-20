@@ -57,9 +57,12 @@ fn body(
     select_value: Signal<SharedString>,
     dialog_open: Signal<bool>,
 ) -> impl IntoElement {
+    let language = signal(SharedString::from(crate::i18n::DEFAULT_LANGUAGE));
     let close = move || open.set(false);
     let split_left_open = signal(true);
     let split_right_open = signal(true);
+    let resize_author_width = signal(164.0_f32);
+    let resize_author_start = signal(164.0_f32);
     return scroll().w_full().h_full().child(
         view()
             .w_full()
@@ -90,6 +93,12 @@ fn body(
                     )),
             )
             .child(section(
+                "Staging diff",
+                view().w_full().h(px(240.0)).child(crate::ui::diff_surface::staging_surface(
+                    SharedString::from("diff --git a/main.rs b/main.rs\n--- a/main.rs\n+++ b/main.rs\n@@ -1 +1 @@\n-let count = 41;\n+let count = 42;\n"),
+                    false, language, std::sync::Arc::new(|_, _, _| {}))),
+            ))
+            .child(section(
                 "Buttons",
                 view()
                     .w_full()
@@ -97,6 +106,8 @@ fn body(
                     .flex_wrap()
                     .items_center()
                     .gap(px(ui::GAP))
+                    .child(crate::ui::button::file_list_toggle(language, true, || {}))
+                    .child(crate::ui::button::file_list_toggle(language, false, || {}))
                     .child(button(
                         move || "Primary".to_string(),
                         ButtonVariant::Primary,
@@ -176,6 +187,63 @@ fn body(
                         move || "Hover shows this hint".to_string(),
                         || {},
                     )),
+            ))
+            .child(section(
+                "Resizable table columns",
+                view()
+                    .w(px(380.0))
+                    .h(px(32.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(ui::GAP))
+                    .child(
+                        view()
+                            .relative()
+                            .w(move || px(resize_author_width.get()))
+                            .h_full()
+                            .flex_shrink_0()
+                            .child(
+                                view()
+                                    .w_full()
+                                    .h_full()
+                                    .flex_row()
+                                    .items_center()
+                                    .child(
+                                        text("Author")
+                                            .text_size(px(ui::SECONDARY))
+                                            .text_color(move || design::text3()),
+                                    ),
+                            )
+                            .child(ui::table::column_resize_handle(
+                                SharedString::from("Resize author column"),
+                                move || resize_author_start.set(resize_author_width.get_untracked()),
+                                {
+                                    let resize = std::rc::Rc::new(move |offset: &Points| {
+                                        resize_author_width.set(
+                                            (resize_author_start.get_untracked() + offset.0)
+                                                .clamp(96.0, 260.0),
+                                        );
+                                    });
+                                    let resize = resize.clone();
+                                    move |offset| resize(offset)
+                                },
+                                {
+                                    let resize = std::rc::Rc::new(move |offset: &Points| {
+                                        resize_author_width.set(
+                                            (resize_author_start.get_untracked() + offset.0)
+                                                .clamp(96.0, 260.0),
+                                        );
+                                    });
+                                    move |offset| resize(offset)
+                                },
+                            )),
+                    )
+                    .child(
+                        text("Date")
+                            .flex_1()
+                            .text_size(px(ui::SECONDARY))
+                            .text_color(move || design::text3()),
+                    ),
             ))
             .child(section(
                 "Fields",

@@ -9,7 +9,7 @@
 
 ## 当前实现
 
-- History 顶栏的引用 Compare 原生菜单按 Base 与 Target 两组列出本地分支、远端跟踪分支、tag 与 stash；菜单同时提供 2-dot/3-dot、工作区、Swap 与 Clear。显示标签会区分引用类型，传给 Git 的值使用完整 ref 或 stash OID。连续提交比较由 History 的 Compare 按钮与提交多选入口触发。
+- History 顶栏的引用 Compare 打开独立窗口，按本地分支、远端跟踪分支、tag 与 stash 列出引用；搜索同时匹配显示名称与完整 ref，列表可滚动，并在无匹配时显示提示。每行可分别指定 Base 与 Target；窗口同时提供 2-dot/3-dot、工作区比较、Swap 与 Clear。Done 一次应用草稿，Escape 或点遮罩关闭并丢弃草稿。传给 Git 的值使用完整 ref 或 stash OID。连续提交比较由 History 的 Compare 按钮与提交多选入口触发。
 - `2-dot` 比较左、右两端 tree；`3-dot` 先找 merge-base，再比较 merge-base 与右端 tree。Swap 交换 ref 两端。
 - 工作区模式以右端引用作为基准，显示它与当前 index/工作区之间已暂存和未暂存的 tracked 文件变化；Git diff 不包含未跟踪文件。
 - 同一 commit、无文件差异、没有共同祖先与 Git 查询失败分别显示明确状态。当前筛选范围内没有目标端 commit 时，历史列表显示空结果说明，但 diff 面板仍按完整端点 tree 结果显示。

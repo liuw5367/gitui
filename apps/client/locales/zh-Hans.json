@@ -144,6 +144,8 @@
     "description": "说明",
     "author": "作者",
     "date": "时间",
+    "resizeAuthor": "调整作者列宽度",
+    "resizeDate": "调整日期列宽度",
     "empty": "还没有提交",
     "noMatch": "没有匹配的提交",
     "referenceNotFound": "该引用已失效，或没有指向可显示的提交。",
@@ -260,11 +262,19 @@
     "allBranches": "所有分支",
     "allAuthors": "所有作者",
     "apply": "应用",
-    "clear": "清除"
+    "clear": "清除",
+    "search": "搜索…",
+    "allCount": "全部 %{count}",
+    "noResults": "没有匹配结果"
   },
   "compare": {
     "mode": "对比",
     "hint": "选择两个提交进行对比",
+    "dialogTitle": "对比引用",
+    "reference": "引用",
+    "searchRefs": "搜索分支、标签和贮藏…",
+    "noRefs": "没有匹配的引用",
+    "done": "完成",
     "clear": "清除",
     "base": "起点引用",
     "target": "目标引用",
@@ -289,6 +299,7 @@
   },
   "files": {
     "title": "文件",
+    "infoTab": "信息",
     "changedCount": "%{count} 个文件",
     "changes": "改动",
     "info": {
@@ -299,10 +310,11 @@
       "authored": "创作时间",
       "committer": "提交者",
       "committed": "提交时间",
-      "refs": "引用"
+      "refs": "分支与引用"
     },
     "atCommit": "提交 %{short}",
     "empty": "没有文件",
+    "infoLoading": "正在加载提交信息…",
     "copyPath": "复制路径",
     "openInEditor": "在编辑器中打开",
     "source": "源码",

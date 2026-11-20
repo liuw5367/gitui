@@ -389,3 +389,31 @@ fn tooltip_bubble(label: impl Fn() -> String + 'static) -> nsh_base::TooltipElem
             ),
     );
 }
+
+pub(crate) fn file_list_toggle(
+    language: Signal<SharedString>,
+    tree: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let label = move || {
+        crate::i18n::t(
+            language.get().as_str(),
+            if tree {
+                "changelists.flat"
+            } else {
+                "changelists.tree"
+            },
+        )
+    };
+    icon_button_tip(
+        if tree { "branch" } else { "unified" },
+        label,
+        ButtonSize::Small,
+        false,
+        label,
+        on_press,
+    )
+}
+pub(crate) fn text_tooltip(label: String) -> nsh_base::TooltipElement {
+    tooltip_bubble(move || label.clone())
+}

@@ -79,6 +79,48 @@ pub(crate) enum FilterError {
     ReversedRange,
 }
 
+pub(crate) fn draft_from_filter(filter: &LogFilter) -> FilterDraft {
+    let when = match filter.since.as_deref() {
+        Some("midnight") => When::Today,
+        Some("7 days ago") => When::Week,
+        Some("30 days ago") => When::Month,
+        Some("365 days ago") => When::Year,
+        Some(_) => When::Custom,
+        None if filter.until.is_some() => When::Custom,
+        None => When::All,
+    };
+    let custom_date = |value: &Option<String>| {
+        value
+            .as_deref()
+            .filter(|_| when == When::Custom)
+            .map(|value| {
+                value
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .unwrap_or_default()
+    };
+    return FilterDraft {
+        references: if filter.references.is_empty() {
+            filter.reference.iter().cloned().collect()
+        } else {
+            filter.references.clone()
+        },
+        authors: if filter.authors.is_empty() {
+            filter.author.iter().cloned().collect()
+        } else {
+            filter.authors.clone()
+        },
+        when,
+        since: custom_date(&filter.since),
+        until: custom_date(&filter.until),
+        path: filter.path.clone().unwrap_or_default(),
+        message: filter.message.clone(),
+    };
+}
+
 /// Convert the draft into conditions. Git parses date-only values in the user's local timezone;
 /// custom boundaries are explicit and inclusive to the second.
 pub(crate) fn build_draft(draft: &FilterDraft) -> Result<LogFilter, FilterError> {
@@ -243,5 +285,30 @@ mod tests {
             assert_eq!(When::from_key(when.id()), when);
         }
         assert_eq!(When::from_key("nonsense"), When::All);
+    }
+
+    #[test]
+    fn a_filter_draft_starts_from_its_repository_filter() {
+        let filter = LogFilter {
+            authors: vec![String::from("author@example.com")],
+            references: vec![String::from("refs/heads/main")],
+            since: Some(String::from("2026-11-01 00:00:00")),
+            until: Some(String::from("2026-11-15 23:59:59")),
+            path: Some(String::from("src/history")),
+            message: String::from("fix history"),
+            ..LogFilter::default()
+        };
+        assert_eq!(
+            draft_from_filter(&filter),
+            FilterDraft {
+                references: vec![String::from("refs/heads/main")],
+                authors: vec![String::from("author@example.com")],
+                when: When::Custom,
+                since: String::from("2026-11-01"),
+                until: String::from("2026-11-15"),
+                path: String::from("src/history"),
+                message: String::from("fix history"),
+            }
+        );
     }
 }

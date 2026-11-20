@@ -1,9 +1,8 @@
-//! 提交检查器（设计板 08 / 18）：Files / Info 两个页签；Blame 是独立主区视图。
+//! 提交检查器（设计板 08 / 18）：提交头、可滚动文件列表与固定高度的提交信息区。
 //!
-//! - Files：按目录展示提交改动的文件（numstat，含 +/−），选中文件以启用路径动作；
-//! - Info：提交元信息（SHA、tree、父提交、作者/提交者与时间、引用）与动作入口
-//!   （当前只有复制 SHA 之外的入口标注未实现）；
-//! Blame 入口切换到统一的 board 19 主区视图，不在检查器内嵌一个静态预览。
+//! - 文件列表按目录展示提交改动（numstat，含 +/−），可滚动并提供路径动作；
+//! - 提交信息固定在底部，字段可滚动、可选择，分支与引用排在首位；
+//! - 单文件 Diff 顶部工具栏提供 Blame 入口，进入统一的 board 19 主区视图。
 //!
 //! 宽度由工作区分栏调整，初始宽度与 Commit 面板一致。入口 `inspector` 收本功能的状态与用例；
 //! 拣选/回滚走 `cmd.recovery`，复制与编辑器打开走 `shared::os` 的自由函数。
@@ -16,12 +15,8 @@ use crate::features::recovery::commands::RecoveryCommands;
 use crate::i18n;
 use nsh_core::prelude::*;
 
-/// 检查器的页签（设计板 08 / 18）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InspectorTab {
-    Files,
-    Info,
-}
+/// Info 固定在检查器底部，文件列表使用剩余高度。
+const INFO_PANEL_H: f32 = 232.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FileListMode {
@@ -36,10 +31,11 @@ pub(crate) fn inspector(
     cmd: &HistoryCommands,
     tab: Tab,
     language: Signal<SharedString>,
-    selected_tab: Signal<InspectorTab>,
     file_list_mode: Signal<FileListMode>,
+    tree: crate::app::session::TreeOptions,
 ) -> impl IntoElement + use<> {
     let file_tree_expanded = state.file_tree_expanded;
+    let commit_info_loading = state.commit_info_loading;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let select_file: std::sync::Arc<dyn Fn(String)> = {
         let cmd = cmd.clone();
@@ -55,6 +51,15 @@ pub(crate) fn inspector(
         .as_ref()
         .map(|commit| commit.author.clone())
         .unwrap_or_default();
+    let author_email = commit
+        .as_ref()
+        .map(|commit| commit.author_email.clone())
+        .unwrap_or_default();
+    let author_identity = if author_email.is_empty() {
+        author.clone()
+    } else {
+        format!("{author} <{author_email}>")
+    };
     let short = commit
         .as_ref()
         .map(|commit| commit.short.clone())
@@ -63,16 +68,7 @@ pub(crate) fn inspector(
         .as_ref()
         .and_then(|commit| commit.date.parse::<i64>().ok())
         .unwrap_or(0);
-    let tab_for_body = tab.clone();
-    // 复制与外部打开的提示走本功能的用例（`shared::os` 的自由函数）。
     let notice = cmd.notice;
-    // 拣选/回滚的用例先克隆一份：`dynamic` 的闭包不能借用 `cmd`。
-    let recovery_for_body = cmd.recovery.clone();
-    // 页脚两个按钮作用于当前选中的文件（相对仓库根）。
-    let selected_path = tab
-        .selected_file
-        .and_then(|index| tab.files.get(index))
-        .map(|file| file.path.clone());
     let sha = commit
         .as_ref()
         .map(|commit| commit.sha.clone())
@@ -84,10 +80,9 @@ pub(crate) fn inspector(
         .take(2)
         .collect::<String>()
         .to_uppercase();
-    let additions = tab.files.iter().map(|file| file.additions).sum::<u32>();
-    let deletions = tab.files.iter().map(|file| file.deletions).sum::<u32>();
-    let file_count = tab.files.len();
-    let open_blame = cmd.clone();
+    let tab_for_files = tab.clone();
+    let tab_for_info = tab.clone();
+    let recovery = cmd.recovery.clone();
     return view()
         .w_full()
         .min_w_0()
@@ -140,7 +135,7 @@ pub(crate) fn inspector(
                                 .min_w_0()
                                 .flex_col()
                                 .child(
-                                    text(author)
+                                    text(author_identity)
                                         .text_size(px(crate::ui::SECONDARY))
                                         .line_height(px(crate::ui::SECONDARY_LINE))
                                         .font_weight(FontWeight::MEDIUM)
@@ -160,6 +155,11 @@ pub(crate) fn inspector(
                                     .text_color(move || design::text3()),
                                 ),
                         )
+                        .child(
+                            text(short)
+                                .text_size(px(crate::ui::CODE))
+                                .text_color(design::text2),
+                        )
                         .child(crate::ui::button::icon_button(
                             "copy",
                             {
@@ -173,179 +173,57 @@ pub(crate) fn inspector(
                                 move || crate::shared::os::copy_text(notice, language, sha.clone())
                             },
                         )),
-                )
-                .child(
-                    view()
-                        .w_full()
-                        .h(px(crate::ui::ROW_COMPACT))
-                        .px(px(crate::ui::GAP_SM))
-                        .flex_row()
-                        .items_center()
-                        .gap(px(crate::ui::GAP_SM))
-                        .rounded(px(5.0))
-                        .bg(move || design::panel2())
-                        .child(
-                            text(move || {
-                                i18n::with_arguments(
-                                    language.get().as_str(),
-                                    "files.atCommit",
-                                    &[("short", short.clone())],
-                                )
-                            })
-                            .text_size(px(crate::ui::CODE))
-                            .line_height(px(crate::ui::ROW_COMPACT))
-                            .text_color(move || design::text2()),
-                        ),
-                )
-                .child(
-                    view()
-                        .w_full()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(crate::ui::GAP_SM))
-                        .child(
-                            text(move || {
-                                i18n::with_arguments(
-                                    language.get().as_str(),
-                                    "files.changedCount",
-                                    &[("count", file_count.to_string())],
-                                )
-                            })
-                            .flex_1()
-                            .text_size(px(crate::ui::SECONDARY))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(move || design::text2()),
-                        )
-                        .child(
-                            text(format!("+{additions}"))
-                                .text_size(px(crate::ui::META))
-                                .text_color(move || design::add_fg()),
-                        )
-                        .child(
-                            text(format!("−{deletions}"))
-                                .text_size(px(crate::ui::META))
-                                .text_color(move || design::del_fg()),
-                        ),
                 ),
         )
+        .child(view().w_full().flex_1().min_h_0().child(files_body(
+            language,
+            tab_for_files,
+            select_file,
+            file_list_mode,
+            tree,
+            file_tree_expanded,
+            notice,
+        )))
         .child(dynamic(move || -> AnyElement {
-            let open_blame = open_blame.clone();
-            view()
+            let loading = tab_for_info.selected_commit().is_some_and(|commit| {
+                commit_info_loading
+                    .get()
+                    .contains(&(tab_for_info.id, commit.sha.clone()))
+            });
+            let fields = info_fields(language, tab_for_info.clone(), loading);
+            return view()
                 .w_full()
-                .h(px(crate::ui::ROW))
-                .px(px(crate::ui::GAP_LG))
-                .child(crate::ui::tabs::tabs(
-                    vec![
-                        crate::ui::tabs::TabItem {
-                            id: "files",
-                            label: Box::new({
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.title")
-                            }),
-                        },
-                        crate::ui::tabs::TabItem {
-                            id: "info",
-                            label: Box::new({
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.info")
-                            }),
-                        },
-                        crate::ui::tabs::TabItem {
-                            id: "blame",
-                            label: Box::new({
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.blame")
-                            }),
-                        },
-                    ],
-                    match selected_tab.get() {
-                        InspectorTab::Files => "files",
-                        InspectorTab::Info => "info",
-                    },
-                    move |id| match id {
-                        "info" => selected_tab.set(InspectorTab::Info),
-                        "blame" => open_blame.open_blame(),
-                        _ => selected_tab.set(InspectorTab::Files),
-                    },
-                ))
-                .into_element()
-        }))
-        .child(dynamic(move || -> AnyElement {
-            match selected_tab.get() {
-                InspectorTab::Files => files_body(
-                    language,
-                    tab_for_body.clone(),
-                    select_file.clone(),
-                    file_list_mode,
-                    file_tree_expanded,
-                )
-                .into_element(),
-                InspectorTab::Info => info_body(
-                    language,
-                    tab_for_body.clone(),
-                    notice,
-                    recovery_for_body.clone(),
-                )
-                .into_element(),
-            }
-        }))
-        .child(
-            view()
-                .w_full()
-                .h(px(34.0))
-                .px(px(12.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
+                .h(px(INFO_PANEL_H))
+                .min_h_0()
+                .flex_shrink_0()
+                .flex_col()
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(crate::ui::button::button(
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "files.copyPath")
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    selected_path.is_none(),
-                    {
-                        let root = tab.path.clone();
-                        let relative = selected_path.clone();
-                        move || {
-                            if let Some(relative) = relative.clone() {
-                                crate::shared::os::copy_text(
-                                    notice,
-                                    language,
-                                    format!("{}/{}", root.trim_end_matches('/'), relative),
-                                );
-                            }
-                        }
-                    },
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(crate::ui::ROW))
+                        .px(px(12.0))
+                        .flex_row()
+                        .items_center()
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "files.infoTab"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(move || design::text2()),
+                        ),
+                )
+                .child(scroll().w_full().flex_1().min_h_0().child(fields))
+                .child(info_actions(
+                    language,
+                    notice,
+                    recovery.clone(),
+                    sha.clone(),
+                    !has_commit,
                 ))
-                .child(view().flex_1())
-                .child(crate::ui::button::button(
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "files.openInEditor")
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    selected_path.is_none(),
-                    {
-                        let root = tab.path.clone();
-                        let relative = selected_path.clone();
-                        move || {
-                            if let Some(relative) = relative.clone() {
-                                crate::shared::os::open_editor(
-                                    notice,
-                                    language,
-                                    format!("{}/{}", root.trim_end_matches('/'), relative),
-                                );
-                            }
-                        }
-                    },
-                )),
-        );
+                .into_element();
+        }))
+        .into_element();
 }
 
 fn files_body(
@@ -353,14 +231,21 @@ fn files_body(
     tab: Tab,
     select_file: std::sync::Arc<dyn Fn(String)>,
     file_list_mode: Signal<FileListMode>,
+    tree: crate::app::session::TreeOptions,
     file_tree_expanded: Signal<Option<Vec<SharedString>>>,
+    notice: Signal<Option<String>>,
 ) -> AnyElement {
     let files = tab.files.clone();
+    let selected_path = tab
+        .selected_file
+        .and_then(|index| files.get(index))
+        .map(|file| file.path.clone());
+    let root_path = tab.path.clone();
     let selected_id = tab
         .selected_file
         .and_then(|index| files.get(index))
         .map(|file| SharedString::from(format!("file:{}", file.path)));
-    let (items, expanded) = file_tree(&files);
+    let (items, expanded) = file_tree(&files, tree);
     let additions = files.iter().map(|file| file.additions).sum::<u32>();
     let deletions = files.iter().map(|file| file.deletions).sum::<u32>();
     let count = files.len();
@@ -402,83 +287,119 @@ fn files_body(
                         .text_size(px(crate::ui::META))
                         .text_color(move || design::del_fg()),
                 )
+                .child(crate::ui::button::icon_button(
+                    "copy",
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.copyPath")
+                    },
+                    crate::ui::button::ButtonSize::Small,
+                    selected_path.is_none(),
+                    {
+                        let root = root_path.clone();
+                        let relative = selected_path.clone();
+                        move || {
+                            if let Some(relative) = relative.clone() {
+                                crate::shared::os::copy_text(
+                                    notice,
+                                    language,
+                                    format!("{}/{}", root.trim_end_matches('/'), relative),
+                                );
+                            }
+                        }
+                    },
+                ))
+                .child(crate::ui::button::icon_button(
+                    "external",
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.openInEditor")
+                    },
+                    crate::ui::button::ButtonSize::Small,
+                    selected_path.is_none(),
+                    {
+                        let root = root_path.clone();
+                        let relative = selected_path.clone();
+                        move || {
+                            if let Some(relative) = relative.clone() {
+                                crate::shared::os::open_editor(
+                                    notice,
+                                    language,
+                                    format!("{}/{}", root.trim_end_matches('/'), relative),
+                                );
+                            }
+                        }
+                    },
+                ))
                 .child(dynamic(move || -> AnyElement {
-                    crate::ui::segmented::segmented(
-                        vec![
-                            crate::ui::segmented::Segment {
-                                id: "tree",
-                                label: Box::new({
-                                    let language = language;
-                                    move || i18n::t(language.get().as_str(), "changelists.tree")
-                                }),
-                            },
-                            crate::ui::segmented::Segment {
-                                id: "flat",
-                                label: Box::new({
-                                    let language = language;
-                                    move || i18n::t(language.get().as_str(), "changelists.flat")
-                                }),
-                            },
-                        ],
-                        match file_list_mode.get() {
-                            FileListMode::Tree => "tree",
-                            FileListMode::Flat => "flat",
-                        },
-                        move |id| {
-                            file_list_mode.set(if id == "flat" {
+                    let mode = file_list_mode.get();
+                    crate::ui::button::file_list_toggle(
+                        language,
+                        mode == FileListMode::Tree,
+                        move || {
+                            file_list_mode.set(if mode == FileListMode::Tree {
                                 FileListMode::Flat
                             } else {
                                 FileListMode::Tree
-                            })
+                            });
                         },
                     )
                     .into_element()
                 })),
         )
-        .child(dynamic(move || -> AnyElement {
-            if files_for_list.is_empty() {
-                return view()
-                    .w_full()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        text(move || i18n::t(language.get().as_str(), "files.empty"))
-                            .text_size(px(crate::ui::SECONDARY))
-                            .text_color(move || design::text3()),
-                    )
-                    .into_element();
-            }
-            match file_list_mode.get() {
-                FileListMode::Tree => {
-                    let files_for_render = files_for_list.clone();
-                    let expanded_state = file_tree_expanded;
-                    crate::ui::tree::tree_with_renderer(
-                        items.clone(),
-                        expanded.clone(),
-                        file_tree_expanded.get(),
-                        selected_id.clone(),
-                        {
-                            let select_file = select_file.clone();
-                            move |id| select_file(id.to_string())
-                        },
-                        move |expanded| file_tree_expanded.set(Some(expanded)),
-                        move |entry| {
-                            let expanded = expanded_state
-                                .get()
-                                .unwrap_or_default()
-                                .iter()
-                                .any(|id| id.as_ref() == entry.id.as_ref());
-                            tree_file_row(entry, &files_for_render, expanded)
-                        },
-                    )
-                    .into_element()
-                }
-                FileListMode::Flat => {
-                    flat_file_list(&files_for_list, selected_id.clone(), select_file.clone())
-                }
-            }
-        }))
+        .child(
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .child(dynamic(move || -> AnyElement {
+                    if files_for_list.is_empty() {
+                        return view()
+                            .w_full()
+                            .h_full()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                text(move || i18n::t(language.get().as_str(), "files.empty"))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .text_color(move || design::text3()),
+                            )
+                            .into_element();
+                    }
+                    match file_list_mode.get() {
+                        FileListMode::Tree => {
+                            let files_for_render = files_for_list.clone();
+                            let expanded_state = file_tree_expanded;
+                            let default_expanded = expanded.clone();
+                            crate::ui::tree::tree_with_renderer(
+                                items.clone(),
+                                expanded.clone(),
+                                file_tree_expanded.get(),
+                                selected_id.clone(),
+                                {
+                                    let select_file = select_file.clone();
+                                    move |id| select_file(id.to_string())
+                                },
+                                move |expanded| file_tree_expanded.set(Some(expanded)),
+                                move |entry| {
+                                    let expanded = expanded_state
+                                        .get()
+                                        .unwrap_or_else(|| default_expanded.clone())
+                                        .iter()
+                                        .any(|id| id.as_ref() == entry.id.as_ref());
+                                    tree_file_row(entry, &files_for_render, expanded)
+                                },
+                            )
+                            .into_element()
+                        }
+                        FileListMode::Flat => flat_file_list(
+                            &files_for_list,
+                            selected_id.clone(),
+                            select_file.clone(),
+                        ),
+                    }
+                })),
+        )
         .into_element();
 }
 
@@ -488,7 +409,10 @@ struct FileDirectory {
     files: Vec<domain::DiffStat>,
 }
 
-fn file_tree(files: &[domain::DiffStat]) -> (Vec<crate::ui::tree::TreeItem>, Vec<SharedString>) {
+fn file_tree(
+    files: &[domain::DiffStat],
+    tree: crate::app::session::TreeOptions,
+) -> (Vec<crate::ui::tree::TreeItem>, Vec<SharedString>) {
     let mut root = FileDirectory::default();
     for file in files {
         let mut segments = file.path.split('/').collect::<Vec<_>>();
@@ -505,27 +429,45 @@ fn file_tree(files: &[domain::DiffStat]) -> (Vec<crate::ui::tree::TreeItem>, Vec
         }
         directory.files.push(file.clone());
     }
-    let expanded = root
-        .directories
-        .keys()
-        .map(|name| SharedString::from(format!("directory:{name}")))
+    let items = directory_items(&root, "", tree);
+    let expanded = items
+        .iter()
+        .filter(|item| !item.children.is_empty())
+        .map(|item| item.id.clone())
         .collect();
-    return (directory_items(&root, ""), expanded);
+    return (items, expanded);
 }
 
-fn directory_items(directory: &FileDirectory, parent: &str) -> Vec<crate::ui::tree::TreeItem> {
+fn directory_items(
+    directory: &FileDirectory,
+    parent: &str,
+    tree: crate::app::session::TreeOptions,
+) -> Vec<crate::ui::tree::TreeItem> {
     let mut items = Vec::new();
     for (name, child) in &directory.directories {
-        let path = if parent.is_empty() {
+        let mut path = if parent.is_empty() {
             name.clone()
         } else {
             format!("{parent}/{name}")
         };
-        items.push(crate::ui::tree::node(
-            format!("directory:{path}"),
-            name.clone(),
-            directory_items(child, path.as_str()),
-        ));
+        let mut label = name.clone();
+        let mut child = child;
+        while tree.compact_single_child && child.files.is_empty() && child.directories.len() == 1 {
+            let (name, next) = child.directories.iter().next().unwrap();
+            path = format!("{path}/{name}");
+            label = format!("{label}/{name}");
+            child = next;
+        }
+        let children = directory_items(child, &path, tree);
+        if tree.shows_directory(child.files.len()) {
+            items.push(crate::ui::tree::node(
+                format!("directory:{path}"),
+                label,
+                children,
+            ));
+        } else {
+            items.extend(children);
+        }
     }
     for file in &directory.files {
         let name = file.path.rsplit('/').next().unwrap_or(file.path.as_str());
@@ -567,33 +509,54 @@ fn tree_file_row(
         row = row.child(view().w(px(11.0)).h(px(11.0)));
     }
     let label = entry.label.to_string();
-    let label_view = if directory {
-        crate::ui::secondary(move || label.clone()).into_element()
-    } else {
-        crate::ui::code(move || label.clone()).into_element()
-    };
+    let color = file
+        .map(|file| status_color(file.status))
+        .unwrap_or_else(design::text2);
+    let label_view = text(label)
+        .text_size(px(crate::ui::CODE))
+        .text_color(move || color)
+        .number_of_lines(1)
+        .text_overflow(nsh_core::EllipsizeMode::Tail);
     row = row
         .child(crate::ui::icon::icon_view(
             if directory { "folder" } else { "file" },
             crate::ui::icon::IconSize::Button,
             design::text3,
         ))
-        .child(view().flex_1().min_w_0().child(label_view));
+        .child(
+            view()
+                .flex_1()
+                .min_w_0()
+                .child(label_view)
+                .tooltip(crate::ui::button::text_tooltip(
+                    id.strip_prefix("file:")
+                        .unwrap_or(entry.label.as_ref())
+                        .to_string(),
+                )),
+        );
     if let Some(file) = file {
-        if file.additions > 0 {
-            row = row.child(
+        let color = status_color(file.status);
+        row = row
+            .child(
                 text(format!("+{}", file.additions))
+                    .flex_shrink_0()
                     .text_size(px(crate::ui::META))
-                    .text_color(move || design::add_fg()),
-            );
-        }
-        if file.deletions > 0 {
-            row = row.child(
+                    .text_color(design::add_fg),
+            )
+            .child(
                 text(format!("−{}", file.deletions))
+                    .flex_shrink_0()
                     .text_size(px(crate::ui::META))
-                    .text_color(move || design::del_fg()),
+                    .text_color(design::del_fg),
+            )
+            .child(
+                text(file.status.to_string())
+                    .w(px(14.0))
+                    .flex_shrink_0()
+                    .text_size(px(crate::ui::META))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(move || color),
             );
-        }
     }
     return row.into_element();
 }
@@ -603,77 +566,39 @@ fn flat_file_list(
     selected: Option<SharedString>,
     select_file: std::sync::Arc<dyn Fn(String)>,
 ) -> AnyElement {
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for file in files {
-        let path = file.path.clone();
-        let selected_path = format!("file:{path}");
-        let selected = selected.as_deref() == Some(selected_path.as_str());
-        let mut trailing = Vec::new();
-        if file.additions > 0 {
-            trailing.push(
-                text(format!("+{}", file.additions))
-                    .text_size(px(crate::ui::META))
-                    .text_color(move || design::add_fg())
-                    .into_element(),
-            );
-        }
-        if file.deletions > 0 {
-            trailing.push(
-                text(format!("−{}", file.deletions))
-                    .text_size(px(crate::ui::META))
-                    .text_color(move || design::del_fg())
-                    .into_element(),
-            );
-        }
-        let on_select = select_file.clone();
-        rows.push(
-            crate::ui::row::row(
-                {
-                    let path = path.clone();
-                    move || path.clone()
-                },
-                None,
-                Some(
-                    crate::ui::icon::icon_view(
-                        "file",
-                        crate::ui::icon::IconSize::Button,
-                        design::text3,
-                    )
-                    .into_element(),
-                ),
-                trailing,
-                selected,
-                false,
-                move || on_select(format!("file:{path}")),
-            )
-            .into_element(),
-        );
-    }
-    return scroll()
-        .w_full()
-        .h_full()
-        .child(view().w_full().flex_col().px(px(6.0)).child(rows))
-        .into_element();
+    let items = files
+        .iter()
+        .map(|file| {
+            crate::ui::tree::node(format!("file:{}", file.path), file.path.clone(), Vec::new())
+        })
+        .collect();
+    let files = files.to_vec();
+    crate::ui::tree::tree_with_renderer(
+        items,
+        vec![],
+        None,
+        selected,
+        move |id| select_file(id.to_string()),
+        |_| {},
+        move |entry| tree_file_row(entry, &files, false),
+    )
+    .into_element()
 }
 
-fn info_body(
-    language: Signal<SharedString>,
-    tab: Tab,
-    notice: Signal<Option<String>>,
-    recovery: RecoveryCommands,
-) -> AnyElement {
-    let sha_for_actions = tab
-        .selected_commit()
-        .map(|commit| commit.sha.clone())
-        .unwrap_or_default();
+fn info_fields(language: Signal<SharedString>, tab: Tab, loading: bool) -> AnyElement {
     let Some(details) = tab.details.clone() else {
+        let key = if loading {
+            "files.infoLoading"
+        } else {
+            "files.empty"
+        };
         return view()
             .w_full()
-            .h(px(40.0))
+            .h_full()
             .items_center()
             .justify_center()
             .child(
-                text(move || i18n::t(language.get().as_str(), "files.empty"))
+                text(move || i18n::t(language.get().as_str(), key))
                     .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
             )
@@ -691,12 +616,24 @@ fn info_body(
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let refs = if details.refs.is_empty() {
+    let branches = tab
+        .selected_commit()
+        .filter(|commit| commit.sha == details.sha)
+        .map(|commit| commit.branches.clone())
+        .unwrap_or_default();
+    let refs = ordered_commit_refs(
+        &details.refs,
+        &branches,
+        &tab.refs.branches,
+        &tab.refs.remote_branches,
+    );
+    let refs = if refs.is_empty() {
         "—".to_string()
     } else {
-        details.refs.join(", ")
+        refs.join(", ")
     };
-    for (key, value) in [
+    let fields = [
+        ("files.info.refs", refs),
         ("files.info.sha", details.sha.clone()),
         ("files.info.tree", details.tree.chars().take(7).collect()),
         ("files.info.parents", parents),
@@ -716,8 +653,8 @@ fn info_body(
             "files.info.committed",
             crate::dates::format(language.get_untracked().as_str(), details.committed_at, now),
         ),
-        ("files.info.refs", refs),
-    ] {
+    ];
+    for (key, value) in fields {
         rows.push(
             view()
                 .w_full()
@@ -732,75 +669,259 @@ fn info_body(
                 )
                 .child(
                     text(value)
+                        .w_full()
+                        .min_w_0()
+                        .select_text()
                         .text_size(px(crate::ui::CODE))
                         .line_height(px(14.0))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                        .text_color(move || design::text()),
                 )
                 .into_element(),
         );
     }
-    return scroll()
+    let values = view()
         .w_full()
-        .h_full()
+        .px(px(12.0))
+        .py(px(8.0))
+        .flex_col()
+        .selectable(true)
+        .child(rows);
+    return values.into_element();
+}
+
+fn info_actions(
+    language: Signal<SharedString>,
+    notice: Signal<Option<String>>,
+    recovery: RecoveryCommands,
+    sha_for_actions: String,
+    disabled: bool,
+) -> AnyElement {
+    return view()
+        .w_full()
+        .px(px(12.0))
+        .py(px(6.0))
+        .flex_row()
+        .flex_shrink_0()
+        .items_center()
+        .gap(px(crate::ui::GAP_SM))
+        .border_t_1()
+        .border_color(move || design::line())
         .child(
             view()
-                .w_full()
-                .px(px(12.0))
-                .py(px(8.0))
-                .flex_col()
-                .child(rows)
-                .child(
-                    view()
-                        .w_full()
-                        .mt(px(6.0))
-                        .pt(px(6.0))
-                        .flex_wrap()
-                        .gap(px(6.0))
-                        .border_t_1()
-                        .border_color(move || design::line())
-                        .child(crate::ui::button::button(
-                            {
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.copySha")
-                            },
-                            crate::ui::button::ButtonVariant::Secondary,
-                            crate::ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let sha = sha_for_actions.clone();
-                                move || crate::shared::os::copy_text(notice, language, sha.clone())
-                            },
-                        ))
-                        .child(crate::ui::button::button(
-                            {
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.cherryPick")
-                            },
-                            crate::ui::button::ButtonVariant::Secondary,
-                            crate::ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let cherry_pick = recovery.clone();
-                                let sha = sha_for_actions.clone();
-                                move || cherry_pick.cherry_pick(sha.clone())
-                            },
-                        ))
-                        .child(crate::ui::button::button(
-                            {
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.revert")
-                            },
-                            crate::ui::button::ButtonVariant::Secondary,
-                            crate::ui::button::ButtonSize::Small,
-                            false,
-                            {
-                                let revert_commit = recovery.clone();
-                                let sha = sha_for_actions.clone();
-                                move || revert_commit.revert_commit(sha.clone())
-                            },
-                        )),
-                ),
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .justify_center()
+                .child(crate::ui::button::button(
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.copySha")
+                    },
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    disabled,
+                    {
+                        let sha = sha_for_actions.clone();
+                        move || crate::shared::os::copy_text(notice, language, sha.clone())
+                    },
+                )),
+        )
+        .child(
+            view()
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .justify_center()
+                .child(crate::ui::button::button(
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.cherryPick")
+                    },
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    disabled,
+                    {
+                        let cherry_pick = recovery.clone();
+                        let sha = sha_for_actions.clone();
+                        move || cherry_pick.cherry_pick(sha.clone())
+                    },
+                )),
+        )
+        .child(
+            view()
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .justify_center()
+                .child(crate::ui::button::button(
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.revert")
+                    },
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    disabled,
+                    {
+                        let revert_commit = recovery.clone();
+                        let sha = sha_for_actions.clone();
+                        move || revert_commit.revert_commit(sha.clone())
+                    },
+                )),
         )
         .into_element();
+}
+
+fn ordered_commit_refs(
+    refs: &[String],
+    branches_at_commit: &[String],
+    local_branches: &[git::Branch],
+    remote_branches: &[git::RemoteBranch],
+) -> Vec<String> {
+    let mut known_branches = local_branches
+        .iter()
+        .map(|branch| branch.name.clone())
+        .collect::<std::collections::HashSet<_>>();
+    known_branches.extend(remote_branches.iter().map(git::RemoteBranch::full_name));
+
+    let current_branch = local_branches
+        .iter()
+        .find(|branch| branch.current)
+        .map(|branch| branch.name.clone());
+    let mut branches = std::collections::HashSet::<String>::new();
+    let mut other_refs = Vec::new();
+    let mut seen_other_refs = std::collections::HashSet::new();
+    for reference in refs {
+        let reference = reference.trim();
+        if reference == "HEAD" {
+            continue;
+        }
+        let normalized = reference
+            .strip_prefix("HEAD -> ")
+            .or_else(|| reference.strip_prefix("refs/heads/"))
+            .or_else(|| reference.strip_prefix("refs/remotes/"))
+            .unwrap_or(reference);
+        if known_branches.contains(normalized) {
+            branches.insert(normalized.to_string());
+        } else if normalized != "HEAD" && seen_other_refs.insert(reference.to_string()) {
+            other_refs.push(reference.to_string());
+        }
+    }
+    branches.extend(
+        branches_at_commit
+            .iter()
+            .filter(|branch| known_branches.contains(branch.as_str()))
+            .cloned(),
+    );
+
+    let mut branches = branches.into_iter().collect::<Vec<_>>();
+    branches.sort_by(|left, right| {
+        let left_current = current_branch.as_deref() == Some(left.as_str());
+        let right_current = current_branch.as_deref() == Some(right.as_str());
+        right_current
+            .cmp(&left_current)
+            .then_with(|| left.cmp(right))
+    });
+    branches.extend(other_refs);
+    branches.dedup();
+    return branches;
+}
+
+fn status_color(status: char) -> AdaptiveColor {
+    match status {
+        'A' => design::add_fg(),
+        'D' => design::del_fg(),
+        _ => design::warn(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_refs_show_all_branches_with_current_first() {
+        let refs = vec![String::from("HEAD -> main"), String::from("tag: v2.0")];
+        let branches_at_commit = vec![
+            String::from("origin/main"),
+            String::from("feature/history"),
+            String::from("main"),
+        ];
+        let local = vec![
+            git::Branch {
+                name: String::from("feature/history"),
+                current: false,
+                ..Default::default()
+            },
+            git::Branch {
+                name: String::from("main"),
+                current: true,
+                ..Default::default()
+            },
+        ];
+        let remote = vec![git::RemoteBranch {
+            remote: String::from("origin"),
+            name: String::from("main"),
+        }];
+
+        assert_eq!(
+            ordered_commit_refs(&refs, &branches_at_commit, &local, &remote),
+            vec![
+                String::from("main"),
+                String::from("feature/history"),
+                String::from("origin/main"),
+                String::from("tag: v2.0"),
+            ]
+        );
+    }
+
+    #[test]
+    fn info_refs_do_not_add_current_branch_when_it_does_not_point_to_commit() {
+        let refs = vec![String::from("origin/release"), String::from("tag: v1.0")];
+        let local = vec![git::Branch {
+            name: String::from("main"),
+            current: true,
+            ..Default::default()
+        }];
+        let remote = vec![git::RemoteBranch {
+            remote: String::from("origin"),
+            name: String::from("release"),
+        }];
+
+        assert_eq!(
+            ordered_commit_refs(&refs, &[], &local, &remote),
+            vec![String::from("origin/release"), String::from("tag: v1.0")]
+        );
+    }
+
+    #[test]
+    fn commit_tree_obeys_directory_preferences() {
+        let files = vec![domain::DiffStat {
+            path: "src/git/deep/file.rs".into(),
+            status: 'M',
+            ..Default::default()
+        }];
+        let (plain, _) = file_tree(&files, crate::app::session::TreeOptions::default());
+        assert_eq!(plain[0].label.as_ref(), "src");
+        let (compact, expanded) = file_tree(
+            &files,
+            crate::app::session::TreeOptions {
+                compact_single_child: true,
+                merge_empty_dirs: false,
+            },
+        );
+        assert_eq!(compact[0].label.as_ref(), "src/git/deep");
+        assert_eq!(expanded[0].as_ref(), "directory:src/git/deep");
+        let (merged, _) = file_tree(
+            &files,
+            crate::app::session::TreeOptions {
+                compact_single_child: false,
+                merge_empty_dirs: true,
+            },
+        );
+        assert_eq!(merged[0].id.as_ref(), "directory:src/git/deep");
+        assert_eq!(
+            merged[0].children[0].id.as_ref(),
+            "file:src/git/deep/file.rs"
+        );
+    }
 }

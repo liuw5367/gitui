@@ -11,7 +11,6 @@ use crate::app::session::Tab;
 use crate::design::{self, metrics};
 use crate::i18n;
 use crate::widgets;
-use domain::diff::DiffLineKind;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
@@ -43,45 +42,6 @@ pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
             cmd.apply_piece(hunk, line, reverse)
         })
     };
-    let mut rows: Vec<AnyElement> = Vec::new();
-    let mut hunk_index = 0usize;
-    let mut line_index = 0usize;
-    for line in patch.lines.iter() {
-        match line.kind {
-            DiffLineKind::Hunk => {
-                if hunk_index > 0 || !rows.is_empty() {
-                    // 第一个 hunk 之前可能已有 Meta 行，不算 hunk。
-                }
-                let apply = apply_piece.clone();
-                let language = language;
-                rows.push(hunk_header_row(
-                    language,
-                    line.text.clone(),
-                    hunk_index,
-                    staged_selection,
-                    apply,
-                ));
-                hunk_index += 1;
-                line_index = 0;
-            }
-            DiffLineKind::Add | DiffLineKind::Remove => {
-                let apply = apply_piece.clone();
-                let language = language;
-                rows.push(line_row_with_piece(
-                    line,
-                    hunk_index.saturating_sub(1),
-                    line_index,
-                    staged_selection,
-                    language,
-                    apply,
-                ));
-                line_index += 1;
-            }
-            _ => {
-                rows.push(diff_row(line));
-            }
-        }
-    }
     let clear = cmd.clone();
     return view()
         .w_full()
@@ -132,32 +92,43 @@ pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
                 ),
         )
         .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(
-                    scroll()
+            view().w_full().flex_1().min_h_0().child(
+                if patch.raw.trim().is_empty()
+                    || !patch
+                        .lines
+                        .iter()
+                        .any(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+                {
+                    view()
                         .w_full()
                         .h_full()
-                        .child(view().w_full().flex_col().child(if rows.is_empty() {
-                            view()
-                                .w_full()
-                                .h(px(48.0))
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    text(move || {
-                                        i18n::t(language.get().as_str(), "changes.selectFile")
-                                    })
-                                    .text_size(px(crate::ui::BODY))
-                                    .text_color(move || design::text3()),
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            text(move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    if patch.raw.trim().is_empty() {
+                                        "changes.selectFile"
+                                    } else {
+                                        "diff.noTextChanges"
+                                    },
                                 )
-                                .into_element()
-                        } else {
-                            view().w_full().flex_col().child(rows).into_element()
-                        })),
-                ),
+                            })
+                            .text_size(px(crate::ui::BODY))
+                            .text_color(design::text3),
+                        )
+                        .into_element()
+                } else {
+                    crate::ui::diff_surface::staging_surface(
+                        SharedString::from(patch.raw),
+                        staged_selection,
+                        language,
+                        apply_piece,
+                    )
+                    .into_element()
+                },
+            ),
         )
         .into_element();
 }
@@ -169,7 +140,6 @@ fn stash_diff_view(
     label: String,
     patch: domain::diff::Patch,
 ) -> AnyElement {
-    let rows = patch.lines.iter().map(diff_row).collect::<Vec<_>>();
     let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
     let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
     let clear = cmd.clone();
@@ -213,25 +183,49 @@ fn stash_diff_view(
                 )),
         )
         .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .child(scroll().w_full().h_full().child(if rows.is_empty() {
+            view().w_full().flex_1().min_h_0().child(
+                if patch.raw.trim().is_empty()
+                    || !patch
+                        .lines
+                        .iter()
+                        .any(|line| line.kind == domain::diff::DiffLineKind::Hunk)
+                {
                     view()
                         .w_full()
-                        .h(px(48.0))
+                        .h_full()
                         .items_center()
                         .justify_center()
                         .child(
-                            text(move || i18n::t(language.get().as_str(), "stash.diffEmpty"))
-                                .text_size(px(crate::ui::BODY))
-                                .text_color(move || design::text3()),
+                            text(move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    if patch.raw.trim().is_empty() {
+                                        "stash.diffEmpty"
+                                    } else {
+                                        "diff.noTextChanges"
+                                    },
+                                )
+                            })
+                            .text_size(px(crate::ui::BODY))
+                            .text_color(design::text3),
                         )
                         .into_element()
                 } else {
-                    view().w_full().flex_col().child(rows).into_element()
-                })),
+                    let handle = crate::ui::diff_surface::DiffHandle::new();
+                    let copy =
+                        crate::shared::diff::copy_hunk_handler(&patch.raw, cmd.notice, language);
+                    crate::ui::diff_surface::diff_surface(
+                        SharedString::from(patch.raw),
+                        crate::ui::diff_surface::Layout::Unified,
+                        false,
+                        true,
+                        &handle,
+                        language,
+                        copy,
+                    )
+                    .into_element()
+                },
+            ),
         )
         .into_element();
 }
@@ -751,40 +745,10 @@ pub(crate) fn changelists_panel(
 fn tree_mode_controls(language: Signal<SharedString>, tree_mode: Signal<bool>) -> AnyElement {
     return dynamic(move || -> AnyElement {
         let selected_tree = tree_mode.get();
-        let tree_variant = if selected_tree {
-            crate::ui::button::ButtonVariant::Secondary
-        } else {
-            crate::ui::button::ButtonVariant::Ghost
-        };
-        let flat_variant = if selected_tree {
-            crate::ui::button::ButtonVariant::Ghost
-        } else {
-            crate::ui::button::ButtonVariant::Secondary
-        };
-        return view()
-            .h(px(22.0))
-            .flex_row()
-            .items_center()
-            .gap(px(1.0))
-            .rounded(px(5.0))
-            .border_1()
-            .border_color(move || design::line_soft())
-            .bg(move || design::panel())
-            .child(crate::ui::button::button(
-                move || i18n::t(language.get().as_str(), "changelists.tree"),
-                tree_variant,
-                crate::ui::button::ButtonSize::Small,
-                false,
-                move || tree_mode.set(true),
-            ))
-            .child(crate::ui::button::button(
-                move || i18n::t(language.get().as_str(), "changelists.flat"),
-                flat_variant,
-                crate::ui::button::ButtonSize::Small,
-                false,
-                move || tree_mode.set(false),
-            ))
-            .into_element();
+        return crate::ui::button::file_list_toggle(language, selected_tree, move || {
+            tree_mode.set(!selected_tree)
+        })
+        .into_element();
     });
 }
 
@@ -890,160 +854,6 @@ fn status_color(status: char) -> AdaptiveColor {
         '?' => design::text3(),
         _ => design::warn(),
     };
-}
-
-fn diff_row(line: &domain::diff::DiffLine) -> AnyElement {
-    let (background, foreground) = match line.kind {
-        DiffLineKind::Add => (design::add_bg(), design::add_fg()),
-        DiffLineKind::Remove => (design::del_bg(), design::del_fg()),
-        DiffLineKind::Hunk => (design::panel2(), design::text2()),
-        DiffLineKind::Meta => (design::content(), design::text3()),
-        DiffLineKind::Context => (design::content(), design::text()),
-    };
-    let old = line.old.map(|value| value.to_string()).unwrap_or_default();
-    let new = line.new.map(|value| value.to_string()).unwrap_or_default();
-    let content = line.text.clone();
-    return view()
-        .w_full()
-        .h(px(metrics::DIFF_LINE_H))
-        .flex_row()
-        .items_center()
-        .bg(move || background)
-        .child(
-            text(old)
-                .w(px(34.0))
-                .flex_shrink_0()
-                .pl(px(6.0))
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(
-            text(new)
-                .w(px(34.0))
-                .flex_shrink_0()
-                .pl(px(6.0))
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(
-            text(content)
-                .flex_1()
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || foreground)
-                .text_overflow(nsh_core::EllipsizeMode::Clip),
-        )
-        .into_element();
-}
-
-/// hunk 头：右侧一个「暂存/取消暂存此段」按钮。
-fn hunk_header_row(
-    language: Signal<SharedString>,
-    header: String,
-    hunk_index: usize,
-    staged: bool,
-    apply: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
-) -> AnyElement {
-    let label_key = if staged {
-        "changes.unstageHunk"
-    } else {
-        "changes.stageHunk"
-    };
-    return view()
-        .w_full()
-        .h(px(metrics::DIFF_LINE_H))
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .px(px(6.0))
-        .bg(move || design::panel2())
-        .child(
-            text(header)
-                .flex_1()
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || design::text2())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        )
-        .child(crate::ui::button::button(
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), label_key)
-            },
-            crate::ui::button::ButtonVariant::Secondary,
-            crate::ui::button::ButtonSize::Small,
-            false,
-            move || apply(hunk_index, None, staged),
-        ))
-        .into_element();
-}
-
-/// 增删行：行尾一个「暂存/取消暂存此行」的小按钮。
-fn line_row_with_piece(
-    line: &domain::diff::DiffLine,
-    hunk_index: usize,
-    line_index: usize,
-    staged: bool,
-    language: Signal<SharedString>,
-    apply: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
-) -> AnyElement {
-    let (background, foreground) = match line.kind {
-        DiffLineKind::Add => (design::add_bg(), design::add_fg()),
-        _ => (design::del_bg(), design::del_fg()),
-    };
-    let old = line.old.map(|value| value.to_string()).unwrap_or_default();
-    let new = line.new.map(|value| value.to_string()).unwrap_or_default();
-    let content = line.text.clone();
-    let label_key = if staged {
-        "changes.unstageLine"
-    } else {
-        "changes.stageLine"
-    };
-    return view()
-        .w_full()
-        .h(px(metrics::DIFF_LINE_H))
-        .flex_row()
-        .items_center()
-        .bg(move || background)
-        .child(
-            text(old)
-                .w(px(34.0))
-                .flex_shrink_0()
-                .pl(px(6.0))
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(
-            text(new)
-                .w(px(34.0))
-                .flex_shrink_0()
-                .pl(px(6.0))
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(
-            text(content)
-                .flex_1()
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(crate::ui::CODE_LINE))
-                .text_color(move || foreground)
-                .text_overflow(nsh_core::EllipsizeMode::Clip),
-        )
-        .child(crate::ui::button::button(
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), label_key)
-            },
-            crate::ui::button::ButtonVariant::Secondary,
-            crate::ui::button::ButtonSize::Small,
-            false,
-            move || apply(hunk_index, Some(line_index), staged),
-        ))
-        .into_element();
 }
 
 /// 变更清单弹层（设计板 11）：清单列表、设为当前、把选中文件移入、新建清单。

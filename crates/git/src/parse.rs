@@ -67,6 +67,7 @@ pub(crate) fn parse_log(text: &str) -> Result<Vec<Commit>, GitError> {
             summary: fields[5].to_string(),
             message: fields[6].trim_end_matches('\n').to_string(),
             refs,
+            branches: Vec::new(),
             parents,
         });
     }

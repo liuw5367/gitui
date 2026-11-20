@@ -159,6 +159,8 @@ impl Repo {
             &[
                 "show",
                 "--numstat",
+                "--no-renames",
+                "-z",
                 "--format=",
                 "--root",
                 "--diff-merges=first-parent",
@@ -166,19 +168,43 @@ impl Repo {
             ],
         )?;
         let mut stats = Vec::new();
-        for line in String::from_utf8_lossy(&output).lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
+        for record in output
+            .split(|byte| *byte == 0)
+            .filter(|record| !record.is_empty())
+        {
+            let line = String::from_utf8_lossy(record);
             let mut parts = line.splitn(3, '\t');
             let additions = parts.next().unwrap_or("");
             let deletions = parts.next().unwrap_or("");
             let path = parts.next().unwrap_or("");
             stats.push(DiffStat {
+                status: 'M',
                 path: path.to_string(),
                 additions: additions.parse().unwrap_or(0),
                 deletions: deletions.parse().unwrap_or(0),
             });
+        }
+        // name-status 提供真实文件类型，不能从增删行数推断新增或删除（空文件和二进制也有状态）。
+        let output = run_git(
+            &self.root,
+            &[
+                "show",
+                "--name-status",
+                "-z",
+                "--no-renames",
+                "--format=",
+                "--root",
+                "--diff-merges=first-parent",
+                sha,
+            ],
+        )?;
+        let fields = output.split(|byte| *byte == 0).collect::<Vec<_>>();
+        for pair in fields.chunks_exact(2) {
+            let status = pair[0].first().copied().unwrap_or(b'M') as char;
+            let path = String::from_utf8_lossy(pair[1]);
+            if let Some(file) = stats.iter_mut().find(|file| file.path == path) {
+                file.status = status;
+            }
         }
         return Ok(stats);
     }
@@ -201,6 +227,7 @@ impl Repo {
                 continue;
             }
             stats.push(DiffStat {
+                status: 'M',
                 path: path.to_string(),
                 additions: additions.parse().unwrap_or(0),
                 deletions: deletions.parse().unwrap_or(0),
@@ -230,8 +257,37 @@ mod tests {
         let stats = repo.numstat(&head.sha).expect("numstat");
         assert_eq!(stats.len(), 1);
         assert_eq!(stats[0].path, "a.txt");
+        assert_eq!(stats[0].status, 'M');
         assert_eq!(stats[0].additions, 1);
         assert_eq!(stats[0].deletions, 0);
+    }
+
+    #[test]
+    fn commit_stats_preserve_empty_binary_and_unicode_file_status() {
+        let (_guard, path) = fixture(
+            "stat-status",
+            &[("deleted.txt", "old\n"), ("modified.txt", "base\n")],
+            "base",
+        );
+        let repo = Repo::open(&path).expect("open");
+        std::fs::remove_file(repo.root().join("deleted.txt")).unwrap();
+        std::fs::write(repo.root().join("modified.txt"), "base\nmore\n").unwrap();
+        std::fs::write(repo.root().join("空文件.txt"), "").unwrap();
+        std::fs::write(repo.root().join("binary.dat"), [0, 1, 2]).unwrap();
+        run_git(repo.root(), &["add", "-A"]).unwrap();
+        run_git(repo.root(), &["commit", "-qm", "status"]).unwrap();
+        let stats = repo.numstat("HEAD").unwrap();
+        for (path, status) in [
+            ("deleted.txt", 'D'),
+            ("modified.txt", 'M'),
+            ("空文件.txt", 'A'),
+            ("binary.dat", 'A'),
+        ] {
+            assert_eq!(
+                stats.iter().find(|file| file.path == path).unwrap().status,
+                status
+            );
+        }
     }
 
     #[test]

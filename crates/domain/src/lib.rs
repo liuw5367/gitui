@@ -114,6 +114,8 @@ pub struct Commit {
     pub date: String,
     /// `%D` 解析后的引用名：`main`、`tag: v1.4.0`、`origin/main`。
     pub refs: Vec<String>,
+    /// 指向该提交的所有本地与远端分支，含经过该提交历史的后代分支。
+    pub branches: Vec<String>,
     /// 父提交的完整 SHA；多于一个表示合并提交（图线据此画分叉）。
     pub parents: Vec<String>,
 }
@@ -141,6 +143,8 @@ impl StatusEntry {
 /// 一个文件的 diff 统计。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DiffStat {
+    /// Git 文件变更类型：A、M、D、R、C、T。
+    pub status: char,
     pub path: String,
     pub additions: u32,
     pub deletions: u32,

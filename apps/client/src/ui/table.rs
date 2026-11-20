@@ -12,13 +12,38 @@ use nsh_base::data_table::{
 };
 use nsh_core::prelude::*;
 
+/// 可拖拽列标题使用的原生水平调整手柄。
+pub(crate) fn column_resize_handle(
+    label: SharedString,
+    on_drag_start: impl Fn() + 'static,
+    on_drag_move: impl Fn(&Points) + 'static,
+    on_drag_end: impl Fn(&Points) + 'static,
+) -> nsh_base::ResizeHandleElement {
+    return nsh_base::resize_handle()
+        .axis(nsh_core::geometry::Axis::Horizontal)
+        .edge(nsh_base::HandleEdge::Trailing)
+        .accessibility_label(Some(label))
+        .on_drag_start(on_drag_start)
+        .on_drag_move(on_drag_move)
+        .on_drag_end(on_drag_end)
+        .child(
+            view()
+                .w(px(1.0))
+                .h_full()
+                .rounded(px(1.0))
+                .bg(move || design::line_soft())
+                .group_hover(|style| style.bg(design::accent()))
+                .group_active(|style| style.bg(design::accent())),
+        );
+}
+
 /// 一列。
 pub(crate) struct Column {
     /// 数据键，与 `rows` 的列一一对应。
     pub(crate) key: &'static str,
     /// 表头文案；`None` 表示没有表头（例如图线列）。
     pub(crate) title: Option<&'static str>,
-    /// 固定宽度；`None` 表示按内容自适应。
+    /// 固定宽度；单列的 `None` 填满表格，多列的 `None` 使用 NSH 默认列宽。
     pub(crate) width: Option<f32>,
     /// 是否固定在左侧（跨横向滚动保持可见）。
     pub(crate) fixed: bool,
@@ -68,16 +93,29 @@ fn table_inner(
     scroll: Option<(ComponentRef<nsh_base::DataTable>, Signal<Option<usize>>)>,
 ) -> impl IntoElement {
     let columns = columns_of(&spec.columns);
+    let full_width_column = spec.columns.len() == 1 && spec.columns[0].width.is_none();
+    let has_header = spec.columns.iter().any(|column| column.title.is_some());
+    let viewport_width = signal(0.0_f32);
     let data = rows_of(&spec.columns, &spec.rows);
     let render = spec.render;
     let row_press = spec.on_row_press.map(std::rc::Rc::new);
     let context_menu = spec.on_context_menu.map(std::rc::Rc::new);
     let on_select = std::rc::Rc::new(spec.on_select);
     let mut table = nsh_base::data_table()
-        .columns(columns)
+        .w_full()
+        .h_full()
+        .columns(move || {
+            let mut columns = columns.clone();
+            if full_width_column {
+                let width = viewport_width.get().max(1.0);
+                columns[0].width = Some(Points(width));
+                columns[0].max_width = Some(Points(width));
+            }
+            columns
+        })
         .data(data)
         .row_height(Points(spec.row_height.unwrap_or(ui::ROW)))
-        .header_height(Some(Points(ui::ROW)))
+        .header_height(Some(Points(if has_header { ui::ROW } else { 1.0 })))
         .row_selectable(true)
         .cell_selectable(false)
         .column_selectable(false)
@@ -125,19 +163,24 @@ fn table_inner(
         table = table.component_ref(&table_ref);
         mounted_scroll = Some((table_ref, scroll_request));
     }
-    let mut root = view().w_full().h_full().child(table);
-    if let Some((table_ref, scroll_request)) = mounted_scroll {
-        root = root.on_layout(move |_: &nsh_core::Bounds<nsh_core::Points>| {
-            let Some(row) = scroll_request.get_untracked() else {
-                return;
-            };
-            if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
-                api.scroll_to_row(row as u32, Some(false));
-                scroll_request.set(None);
+    return view()
+        .w_full()
+        .h_full()
+        .child(table)
+        .on_layout(move |bounds: &Bounds<Points>| {
+            if bounds.size.width.0 != viewport_width.get_untracked() {
+                viewport_width.set(bounds.size.width.0);
+            }
+            if let Some((table_ref, scroll_request)) = mounted_scroll {
+                let Some(row) = scroll_request.get_untracked() else {
+                    return;
+                };
+                if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
+                    api.scroll_to_row(row as u32, Some(false));
+                    scroll_request.set(None);
+                }
             }
         });
-    }
-    return root;
 }
 
 /// 把列定义转成 `data_table` 的列。
@@ -148,7 +191,7 @@ fn columns_of(spec: &[Column]) -> Vec<DataTableColumn> {
     for column in spec {
         let mut built = DataTableColumn::default();
         built.key = SharedString::from(column.key);
-        built.title = column.title.map(SharedString::from);
+        built.title = Some(SharedString::from(column.title.unwrap_or("")));
         built.width = column.width.map(Points);
         built.fixed = if column.fixed {
             ColumnFixed::Left
@@ -187,6 +230,84 @@ mod tests {
             width,
             fixed,
         };
+    }
+
+    #[component]
+    fn HistoryTableFixture() -> impl IntoElement {
+        table(TableSpec {
+            columns: vec![Column {
+                key: "commit",
+                title: None,
+                width: None,
+                fixed: false,
+            }],
+            rows: vec![vec!["visible commit".into()]],
+            selected: None,
+            row_height: None,
+            on_select: Box::new(|_| {}),
+            render: Some(Box::new(|_, _, value| {
+                view()
+                    .w_full()
+                    .h_full()
+                    .flex_row()
+                    .items_center()
+                    .child(text(value).flex_1().min_w_0())
+                    .child(text("Author").w(px(60.0)).flex_shrink_0())
+                    .child(text("Today").w(px(40.0)).flex_shrink_0())
+                    .into_element()
+            })),
+            on_row_press: None,
+            on_context_menu: None,
+        })
+    }
+
+    #[test]
+    fn history_table_has_a_visible_viewport() {
+        for width in [800.0, 320.0] {
+            let mut app =
+                nsh_testing::Headless::start(nsh_engine::EngineConfig {
+                    viewport: Size::new(px(width), px(600.0)),
+                    ..nsh_engine::EngineConfig::new(nsh_core::element::Root::of::<
+                        HistoryTableFixture,
+                    >())
+                })
+                .unwrap();
+            app.first_render().unwrap();
+            app.wait_for("visible commit").unwrap();
+            let nodes = app.screen().layout_nodes();
+            let date = nodes
+                .iter()
+                .find(|node| {
+                    node.text
+                        .as_ref()
+                        .is_some_and(|text| text.text.text == "Today")
+                })
+                .unwrap();
+            assert!(
+                (date.bounds.origin.x.0 + date.bounds.size.width.0 - width).abs() < 2.0,
+                "日期列未跟随中栏宽度"
+            );
+            let mut node = nodes
+                .iter()
+                .find(|node| {
+                    node.text
+                        .as_ref()
+                        .is_some_and(|text| text.text.text == "visible commit")
+                })
+                .unwrap();
+            while let Some(parent) = nodes
+                .iter()
+                .find(|parent| parent.id == node.parent && parent.id != node.id)
+            {
+                if parent.clips {
+                    assert!(
+                        parent.bounds.size.height.0 > 0.0,
+                        "表格内容被零高度容器裁剪"
+                    );
+                }
+                node = parent;
+            }
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@
 //! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
 use super::ops;
-use super::state::HistoryState;
+use super::state::{CommitLoadRequest, HistoryState};
 use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::recovery::commands::RecoveryCommands;
@@ -31,13 +31,198 @@ pub(crate) struct HistoryCommands {
 }
 
 impl HistoryCommands {
-    /// 选中第 `index` 个提交（原 `select_commit`）。
-    pub(crate) fn select_commit(&self, index: usize) {
+    /// 先显示行选中态并切到 History，再异步更新提交数据。
+    pub(crate) fn request_commit_selection(&self, tab_id: u64, sha: String) {
+        self.state.fast_selection.set(Some((tab_id, sha.clone())));
+        self.mode.set(crate::Mode::History);
+        let command = self.clone();
+        Owner::detached().run(|| {
+            spawn(async move {
+                command.select_commit(tab_id, sha);
+            });
+        });
+    }
+
+    /// 更新指定仓库标签页中的提交选择，Git 数据随后在后台读取。
+    fn select_commit(&self, tab_id: u64, requested_sha: String) {
+        if !self
+            .state
+            .fast_selection
+            .get_untracked()
+            .as_ref()
+            .is_some_and(|(selected_tab, selected_sha)| {
+                *selected_tab == tab_id && selected_sha == &requested_sha
+            })
+        {
+            return;
+        }
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            ops::select_commit(tab, index);
-            self.session.tabs.set(list);
+        let is_active_tab = list.get(current).is_some_and(|tab| tab.id == tab_id);
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            self.clear_fast_selection(tab_id, requested_sha.as_str());
+            return;
+        };
+        if !is_active_tab {
+            self.clear_fast_selection(tab_id, requested_sha.as_str());
+            return;
+        }
+        let loading = self.state.commit_info_loading;
+        let already_loading = loading
+            .get_untracked()
+            .contains(&(tab_id, requested_sha.clone()));
+        if tab
+            .selected_commit()
+            .is_some_and(|commit| commit.sha == requested_sha)
+            && (tab.details.is_some() && tab.error.is_none() || already_loading)
+        {
+            let needs_return_to_history = tab.show_commit_diff || tab.file_patch.is_some();
+            if needs_return_to_history {
+                tab.show_commit_diff = false;
+                tab.file_patch = None;
+                self.session.tabs.set(list);
+            }
+            self.clear_fast_selection(tab_id, requested_sha.as_str());
+            return;
+        }
+        let Some(index) = tab
+            .commits
+            .iter()
+            .position(|commit| commit.sha == requested_sha)
+        else {
+            self.clear_fast_selection(tab_id, requested_sha.as_str());
+            return;
+        };
+        let Some((sha, short)) = ops::prepare_commit_selection(tab, index) else {
+            self.clear_fast_selection(tab_id, requested_sha.as_str());
+            return;
+        };
+        let path = tab.path.clone();
+        let tabs = self.session.tabs;
+        loading.update(|items| {
+            items.retain(|(loading_tab, _)| *loading_tab != tab_id);
+            items.push((tab_id, sha.clone()));
+        });
+        tabs.set(list);
+        self.clear_fast_selection(tab_id, sha.as_str());
+
+        let request = CommitLoadRequest {
+            tab_id,
+            path,
+            sha,
+            short,
+        };
+        let start = self
+            .state
+            .commit_load_queue
+            .lock()
+            .unwrap()
+            .enqueue(request);
+        if let Some(request) = start {
+            self.start_commit_load(request);
+        }
+    }
+
+    fn start_commit_load(&self, request: CommitLoadRequest) {
+        let CommitLoadRequest {
+            tab_id,
+            path,
+            sha,
+            short,
+        } = request;
+        let tabs = self.session.tabs;
+        let loading = self.state.commit_info_loading;
+        let command = self.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let load_sha = sha.clone();
+        std::thread::spawn(move || {
+            let result =
+                ops::load_commit_selection(path.as_str(), load_sha.as_str(), short.as_str());
+            let _ = sender.send(result);
+        });
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            let mut current_tabs = tabs.get_untracked();
+                            let mut changed = false;
+                            if let Some(tab) = current_tabs.iter_mut().find(|tab| {
+                                tab.id == tab_id
+                                    && tab
+                                        .selected_commit()
+                                        .is_some_and(|commit| commit.sha == sha)
+                            }) {
+                                match result {
+                                    Ok(data) => ops::apply_commit_selection(tab, data),
+                                    Err(error) => tab.error = Some(error),
+                                }
+                                changed = true;
+                            }
+                            if changed {
+                                tabs.set(current_tabs);
+                            }
+                            loading.update(|items| {
+                                items.retain(|(loading_tab, loading_sha)| {
+                                    *loading_tab != tab_id || loading_sha != &sha
+                                });
+                            });
+                            command.start_next_commit_load();
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            loading.update(|items| {
+                                items.retain(|(loading_tab, loading_sha)| {
+                                    *loading_tab != tab_id || loading_sha != &sha
+                                });
+                            });
+                            command.start_next_commit_load();
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            timer(std::time::Duration::from_millis(16)).await;
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    fn start_next_commit_load(&self) {
+        let next = self.state.commit_load_queue.lock().unwrap().finish();
+        if let Some(request) = next {
+            let already_loaded = self
+                .session
+                .tabs
+                .get_untracked()
+                .iter()
+                .find(|tab| tab.id == request.tab_id)
+                .is_some_and(|tab| {
+                    tab.details.is_some()
+                        && tab.error.is_none()
+                        && tab
+                            .selected_commit()
+                            .is_some_and(|commit| commit.sha == request.sha)
+                });
+            if already_loaded {
+                self.start_next_commit_load();
+            } else {
+                self.start_commit_load(request);
+            }
+        }
+    }
+
+    fn clear_fast_selection(&self, tab_id: u64, sha: &str) {
+        if self
+            .state
+            .fast_selection
+            .get_untracked()
+            .as_ref()
+            .is_some_and(|(selected_tab, selected_sha)| {
+                *selected_tab == tab_id && selected_sha == sha
+            })
+        {
+            self.state.fast_selection.set(None);
         }
     }
 
@@ -250,6 +435,39 @@ impl HistoryCommands {
         self.set_compare_refs_at(tab_id, base, target);
     }
 
+    /// 在 Compare refs 窗口确认一组端点与选项，只刷新一次当前标签页。
+    pub(crate) fn apply_compare_refs(
+        &self,
+        base: Option<String>,
+        target: Option<String>,
+        three_dot: bool,
+        worktree: bool,
+    ) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            let refs_changed = tab.compare_base != base || tab.compare_target != target;
+            let options_changed = tab.compare_three_dot != three_dot
+                || tab.compare_worktree != (worktree && tab.compare_target.is_some());
+            if !refs_changed && !options_changed {
+                return;
+            }
+            if !refs_changed {
+                tab.compare_three_dot = three_dot;
+                tab.compare_worktree = worktree && tab.compare_target.is_some();
+                self.session.tabs.set(list);
+                return;
+            }
+            self.state.compare_mode.set(false);
+            tab.comparing = false;
+            tab.compare_three_dot = three_dot;
+            ops::set_compare_refs(tab, base, target);
+            tab.compare_worktree = worktree && tab.compare_target.is_some();
+            self.session.tabs.set(list);
+            self.mode.set(crate::Mode::History);
+        }
+    }
+
     /// 按仓库标签的稳定 ID 设置对比区间。
     pub(crate) fn set_compare_refs_at(
         &self,
@@ -268,86 +486,101 @@ impl HistoryCommands {
     }
 
     /// Select two-dot or three-dot comparison semantics.
-    pub(crate) fn set_compare_three_dot(&self, enabled: bool) {
+    pub(crate) fn begin_filter(&self) {
         let current = self.session.active.get_untracked();
-        let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            tab.compare_three_dot = enabled;
-            self.session.tabs.set(list);
+        let Some(tab_id) = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
+        self.begin_filter_for_tab(tab_id);
+    }
+
+    pub(crate) fn begin_filter_for_tab(&self, tab_id: u64) {
+        if self.state.filter_tab_id.get_untracked() == Some(tab_id) {
+            return;
+        }
+        let current = self.session.active.get_untracked();
+        let Some(filter) = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .filter(|tab| tab.id == tab_id)
+            .map(|tab| tab.filter.clone())
+        else {
+            return;
+        };
+        self.state.filter_tab_id.set(Some(tab_id));
+        self.state.draft.set(filters::draft_from_filter(&filter));
+    }
+
+    pub(crate) fn begin_quick_filter(&self, tab_id: u64) {
+        let continuing_quick_filter = self.state.filter_menu.get_untracked().is_some()
+            && self.state.filter_tab_id.get_untracked() == Some(tab_id);
+        self.begin_filter_for_tab(tab_id);
+        if !continuing_quick_filter {
+            let draft = self.state.draft.get_untracked();
+            self.state
+                .quick_filter_baseline
+                .set(Some((draft.references, draft.authors)));
         }
     }
 
-    /// Compare the target ref with the current working tree.
-    pub(crate) fn set_compare_worktree(&self, enabled: bool) {
-        let current = self.session.active.get_untracked();
-        let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            tab.compare_worktree = enabled && tab.compare_target.is_some();
-            self.session.tabs.set(list);
-        }
-    }
-
-    /// 顶部 branch 菜单直接切换已应用的多分支筛选。
     pub(crate) fn toggle_branch_filter(&self, reference: String) {
-        self.update_filter(|filter| {
-            let mut references = if filter.references.is_empty() {
-                filter.reference.iter().cloned().collect::<Vec<_>>()
+        self.state.draft.update(|draft| {
+            if draft.references.contains(&reference) {
+                draft.references.retain(|item| item != &reference);
             } else {
-                filter.references.clone()
-            };
-            if references.contains(&reference) {
-                references.retain(|item| item != &reference);
-            } else {
-                references.push(reference);
+                draft.references.push(reference);
             }
-            filter.reference = None;
-            filter.references = references;
         });
     }
-
     pub(crate) fn clear_branch_filter(&self) {
-        self.update_filter(|filter| {
-            filter.reference = None;
-            filter.references.clear();
-        });
+        self.state.draft.update(|draft| draft.references.clear());
     }
-
-    /// 顶部 author 菜单直接切换已应用的多作者筛选。
     pub(crate) fn toggle_author_filter(&self, email: String) {
-        self.update_filter(|filter| {
-            if filter.authors.contains(&email) {
-                filter.authors.retain(|item| item != &email);
+        self.state.draft.update(|draft| {
+            if draft.authors.contains(&email) {
+                draft.authors.retain(|item| item != &email);
             } else {
-                filter.authors.push(email);
+                draft.authors.push(email);
             }
         });
     }
-
     pub(crate) fn clear_author_filter(&self) {
-        self.update_filter(|filter| filter.authors.clear());
+        self.state.draft.update(|draft| draft.authors.clear());
     }
-
-    fn update_filter(&self, update: impl FnOnce(&mut LogFilter)) {
+    pub(crate) fn apply_quick_filter(&self) {
+        let Some(tab_id) = self.active_filter_tab_id() else {
+            return;
+        };
         let current = self.session.active.get_untracked();
         let Some(mut filter) = self
             .session
             .tabs
             .get_untracked()
             .get(current)
+            .filter(|tab| tab.id == tab_id)
             .map(|tab| tab.filter.clone())
         else {
             return;
         };
-        update(&mut filter);
-        let references = if filter.references.is_empty() {
-            filter.reference.iter().cloned().collect()
-        } else {
-            filter.references.clone()
-        };
-        self.state.draft.update(|draft| {
-            draft.references = references;
-            draft.authors = filter.authors.clone();
-        });
+        let draft = self.state.draft.get_untracked();
+        let baseline = self.state.quick_filter_baseline.get_untracked();
+        if quick_filter_selection_unchanged(baseline.as_ref(), &filter, &draft) {
+            return;
+        }
+        filter.reference = None;
+        filter.references = draft.references.clone();
+        filter.authors = draft.authors.clone();
+        self.state
+            .quick_filter_baseline
+            .set(Some((draft.references, draft.authors)));
         self.reload_with_filter(&filter);
     }
 
@@ -367,6 +600,9 @@ impl HistoryCommands {
 
     /// 应用筛选条件并收起浮层（原 `apply_filter`）。
     pub(crate) fn apply_filter(&self) {
+        let Some(_tab_id) = self.active_filter_tab_id() else {
+            return;
+        };
         let filter = match filters::build_draft(&self.state.draft.get_untracked()) {
             Ok(filter) => filter,
             Err(error) => {
@@ -381,10 +617,25 @@ impl HistoryCommands {
 
     /// 清掉全部筛选条件并重读（原 `clear_filter`）。
     pub(crate) fn clear_filter(&self) {
+        let Some(_tab_id) = self.active_filter_tab_id() else {
+            return;
+        };
         self.state.draft.set(filters::FilterDraft::default());
         self.state.filter_open.set(false);
         self.state.filter_menu.set(None);
         self.reload_with_filter(&LogFilter::default());
+    }
+
+    fn active_filter_tab_id(&self) -> Option<u64> {
+        let tab_id = self.state.filter_tab_id.get_untracked()?;
+        let current = self.session.active.get_untracked();
+        return self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .filter(|tab| tab.id == tab_id)
+            .map(|_| tab_id);
     }
 
     fn notify_filter_error(&self, error: FilterError) {
@@ -418,5 +669,89 @@ impl HistoryCommands {
                 );
             }
         }
+    }
+}
+
+fn quick_filter_unchanged(filter: &LogFilter, draft: &filters::FilterDraft) -> bool {
+    let applied_references = if filter.references.is_empty() {
+        filter.reference.iter().cloned().collect::<Vec<_>>()
+    } else {
+        filter.references.clone()
+    };
+    return same_filter_values(&applied_references, &draft.references)
+        && same_filter_values(&filter.authors, &draft.authors);
+}
+
+fn quick_filter_selection_unchanged(
+    baseline: Option<&(Vec<String>, Vec<String>)>,
+    filter: &LogFilter,
+    draft: &filters::FilterDraft,
+) -> bool {
+    if let Some((references, authors)) = baseline {
+        return same_filter_values(references, &draft.references)
+            && same_filter_values(authors, &draft.authors);
+    }
+    return quick_filter_unchanged(filter, draft);
+}
+
+fn same_filter_values(left: &[String], right: &[String]) -> bool {
+    let mut left = left.to_vec();
+    let mut right = right.to_vec();
+    left.sort();
+    left.dedup();
+    right.sort();
+    right.dedup();
+    return left == right;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_legacy_single_branch_filter_is_unchanged_after_normalization() {
+        let filter = LogFilter {
+            reference: Some(String::from("refs/heads/main")),
+            ..LogFilter::default()
+        };
+        let draft = filters::FilterDraft {
+            references: vec![String::from("refs/heads/main")],
+            ..filters::FilterDraft::default()
+        };
+        assert!(quick_filter_unchanged(&filter, &draft));
+    }
+
+    #[test]
+    fn an_unchanged_quick_draft_does_not_restore_a_cleared_applied_filter() {
+        let baseline = (
+            vec![String::from("refs/heads/main")],
+            vec![String::from("author@example.com")],
+        );
+        let filter = LogFilter::default();
+        let draft = filters::FilterDraft {
+            references: baseline.0.clone(),
+            authors: baseline.1.clone(),
+            ..filters::FilterDraft::default()
+        };
+        assert!(quick_filter_selection_unchanged(
+            Some(&baseline),
+            &filter,
+            &draft
+        ));
+    }
+
+    #[test]
+    fn quick_filter_values_compare_as_unordered_selections() {
+        let filter = LogFilter {
+            references: vec![String::from("refs/heads/a"), String::from("refs/heads/b")],
+            authors: vec![String::from("a@example.com"), String::from("b@example.com")],
+            ..LogFilter::default()
+        };
+        let draft = filters::FilterDraft {
+            references: vec![String::from("refs/heads/b"), String::from("refs/heads/a")],
+            authors: vec![String::from("b@example.com"), String::from("a@example.com")],
+            ..filters::FilterDraft::default()
+        };
+        assert!(quick_filter_unchanged(&filter, &draft));
     }
 }

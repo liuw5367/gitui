@@ -130,6 +130,7 @@ pub(crate) fn diff(
     return_title: String,
     file_count: usize,
     return_to_history: std::sync::Arc<dyn Fn()>,
+    open_blame: Option<std::sync::Arc<dyn Fn()>>,
 ) -> impl IntoElement {
     // 只改展示文本；复制、导出与统计都取未转换的原始补丁。
     let options = state.options.get();
@@ -201,6 +202,116 @@ pub(crate) fn diff(
             }
         }
     };
+    let mut file_toolbar = view()
+        .w_full()
+        .h(px(metrics::DIFFBAR_H))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(11.0))
+        .border_b_1()
+        .border_color(move || design::line())
+        .child(crate::ui::icon::icon_view(
+            "diff",
+            crate::ui::icon::IconSize::Button,
+            design::text3,
+        ))
+        .child(
+            text(file_label)
+                .flex_1()
+                .min_w_0()
+                .text_size(px(crate::ui::CODE))
+                .text_color(move || design::text())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        );
+    if let Some(open_blame) = open_blame {
+        file_toolbar = file_toolbar.child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "files.blame"),
+            crate::ui::button::ButtonVariant::Ghost,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || open_blame(),
+        ));
+    }
+    file_toolbar = file_toolbar
+        .child(
+            text(format!("+{additions}"))
+                .font_family(crate::ui::MONO)
+                .text_size(px(crate::ui::CODE))
+                .text_color(move || design::add_fg()),
+        )
+        .child(
+            text(format!("−{deletions}"))
+                .font_family(crate::ui::MONO)
+                .text_size(px(crate::ui::CODE))
+                .text_color(move || design::del_fg()),
+        )
+        .child(mode_toggle(language, split_view, set_split_mode.clone()))
+        .child(toolbar_separator())
+        .child(fold_toggle(language, options, toggle_option.clone()))
+        .child(wrap_toggle(language, options, toggle_option.clone()))
+        .child(space_toggle(language, options, toggle_option.clone()))
+        .child(ignore_whitespace_toggle(
+            language,
+            ignore_whitespace,
+            toggle_option.clone(),
+        ))
+        .child(toolbar_separator())
+        .child(
+            text(move || {
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "diff.changePosition",
+                    &[
+                        ("current", hunk_position.get().unwrap_or(0).to_string()),
+                        ("total", hunk_count.to_string()),
+                    ],
+                )
+            })
+            .text_size(px(crate::ui::CODE))
+            .text_color(move || design::text3()),
+        )
+        .child(crate::ui::button::icon_button(
+            "chev-left",
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.previousChange")
+            },
+            crate::ui::button::ButtonSize::Small,
+            hunk_count == 0,
+            move || previous_hunk(),
+        ))
+        .child(crate::ui::button::icon_button(
+            "chev-right",
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.nextChange")
+            },
+            crate::ui::button::ButtonSize::Small,
+            hunk_count == 0,
+            move || next_hunk(),
+        ))
+        .child(toolbar_separator())
+        .child(crate::ui::button::button(
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.export")
+            },
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || export_patch(),
+        ))
+        .child(crate::ui::button::icon_button(
+            "copy",
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.copy")
+            },
+            crate::ui::button::ButtonSize::Small,
+            copy_text.trim().is_empty(),
+            move || copy_patch(copy_text.clone()),
+        ));
     return view()
         .w_full()
         .flex_1()
@@ -246,108 +357,7 @@ pub(crate) fn diff(
                     .text_color(move || design::text3()),
                 ),
         )
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::DIFFBAR_H))
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(11.0))
-                .border_b_1()
-                .border_color(move || design::line())
-                .child(crate::ui::icon::icon_view(
-                    "diff",
-                    crate::ui::icon::IconSize::Button,
-                    design::text3,
-                ))
-                .child(
-                    text(file_label)
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(format!("+{additions}"))
-                        .font_family(crate::ui::MONO)
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::add_fg()),
-                )
-                .child(
-                    text(format!("−{deletions}"))
-                        .font_family(crate::ui::MONO)
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::del_fg()),
-                )
-                .child(mode_toggle(language, split_view, set_split_mode.clone()))
-                .child(toolbar_separator())
-                .child(fold_toggle(language, options, toggle_option.clone()))
-                .child(wrap_toggle(language, options, toggle_option.clone()))
-                .child(space_toggle(language, options, toggle_option.clone()))
-                .child(ignore_whitespace_toggle(
-                    language,
-                    ignore_whitespace,
-                    toggle_option.clone(),
-                ))
-                .child(toolbar_separator())
-                .child(
-                    text(move || {
-                        i18n::with_arguments(
-                            language.get().as_str(),
-                            "diff.changePosition",
-                            &[
-                                ("current", hunk_position.get().unwrap_or(0).to_string()),
-                                ("total", hunk_count.to_string()),
-                            ],
-                        )
-                    })
-                    .text_size(px(crate::ui::CODE))
-                    .text_color(move || design::text3()),
-                )
-                .child(crate::ui::button::icon_button(
-                    "chev-left",
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "diff.previousChange")
-                    },
-                    crate::ui::button::ButtonSize::Small,
-                    hunk_count == 0,
-                    move || previous_hunk(),
-                ))
-                .child(crate::ui::button::icon_button(
-                    "chev-right",
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "diff.nextChange")
-                    },
-                    crate::ui::button::ButtonSize::Small,
-                    hunk_count == 0,
-                    move || next_hunk(),
-                ))
-                .child(toolbar_separator())
-                .child(crate::ui::button::button(
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "diff.export")
-                    },
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || export_patch(),
-                ))
-                .child(crate::ui::button::icon_button(
-                    "copy",
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "diff.copy")
-                    },
-                    crate::ui::button::ButtonSize::Small,
-                    copy_text.trim().is_empty(),
-                    move || copy_patch(copy_text.clone()),
-                )),
-        )
+        .child(file_toolbar)
         .child(
             view()
                 .w_full()

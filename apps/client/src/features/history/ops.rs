@@ -10,6 +10,12 @@ pub(crate) enum CompareFailure {
     Git,
 }
 
+pub(crate) struct CommitSelectionData {
+    pub(crate) patch: domain::diff::Patch,
+    pub(crate) files: Vec<domain::DiffStat>,
+    pub(crate) details: Option<git::CommitDetails>,
+}
+
 /// 按 SHA 选中一个提交（reflog 的「在历史中显示」）。
 ///
 /// 当前筛选可能把该提交过滤掉了；找不到时先清空关键字再找一次，仍找不到返回
@@ -24,9 +30,15 @@ pub(crate) fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
         .iter()
         .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
         .collect::<Vec<_>>();
-    if let Ok(commits) = Repo::open(tab.path.as_str()).and_then(|repo| repo.log_all()) {
-        tab.graph_commits = commits.clone();
+    if let Ok(repo) = Repo::open(tab.path.as_str())
+        && let Ok(mut commits) = repo.log_all()
+    {
+        let refs = repo.refs().unwrap_or_default();
+        let graph_commits = commits.clone();
+        git::decorate_commit_branch_history(&mut commits, &graph_commits, &refs);
+        tab.graph_commits = graph_commits;
         tab.commits = commits;
+        tab.refs = refs;
         tab.filter = LogFilter::default();
         tab.compare = compare_shas
             .iter()
@@ -92,8 +104,11 @@ pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter)
         graph_commits = all_commits;
         commits.sort_by_key(|commit| order_by_sha.get(&commit.sha).copied().unwrap_or(usize::MAX));
     }
+    let refs = repo.refs().unwrap_or_default();
+    git::decorate_commit_branch_history(&mut commits, &graph_commits, &refs);
     tab.commits = commits;
     tab.graph_commits = graph_commits;
+    tab.refs = refs;
     tab.compare = compare_shas
         .iter()
         .filter_map(|sha| tab.commits.iter().position(|commit| commit.sha == *sha))
@@ -113,25 +128,38 @@ pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter)
     return false;
 }
 
-/// 选中第 `index` 个提交，读取补丁与文件统计，并清掉单文件选择。
-pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
+/// 立即更新选中态并清掉上一条提交的数据；返回待加载的 SHA 与短 SHA。
+pub(crate) fn prepare_commit_selection(tab: &mut Tab, index: usize) -> Option<(String, String)> {
     if index >= tab.commits.len() {
-        return;
+        return None;
     }
     let sha = tab.commits[index].sha.clone();
     let short = tab.commits[index].short.clone();
-    let started = std::time::Instant::now();
-    log::debug!(
-        target: "gitui::history",
-        "event=commit_select.start index={} commit={}",
-        index,
-        short
-    );
     tab.selected = Some(index);
     tab.show_commit_diff = false;
     tab.selected_file = None;
     tab.file_patch = None;
-    let repo = match Repo::open(tab.path.as_str()) {
+    tab.patch = domain::diff::Patch::default();
+    tab.files.clear();
+    tab.details = None;
+    tab.error = None;
+    clear_blame(tab);
+    return Some((sha, short));
+}
+
+/// 在线程中读取提交补丁、文件统计与完整信息。
+pub(crate) fn load_commit_selection(
+    path: &str,
+    sha: &str,
+    short: &str,
+) -> Result<CommitSelectionData, String> {
+    let started = std::time::Instant::now();
+    log::debug!(
+        target: "gitui::history",
+        "event=commit_select.start commit={}",
+        short
+    );
+    let repo = match Repo::open(path) {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -140,11 +168,10 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
                 short,
                 error.summary()
             );
-            tab.error = Some(error.detail());
-            return;
+            return Err(error.detail());
         }
     };
-    tab.patch = repo
+    let patch = repo
         .patch(&sha)
         .inspect(|patch| {
             log::debug!(
@@ -169,7 +196,7 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
             );
         })
         .unwrap_or_default();
-    tab.files = repo
+    let files = repo
         .numstat(&sha)
         .inspect(|files| {
             log::debug!(
@@ -188,7 +215,7 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
             );
         })
         .unwrap_or_default();
-    tab.details = repo
+    let details = repo
         .commit_details(&sha)
         .inspect_err(|error| {
             log::warn!(
@@ -199,17 +226,39 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
             );
         })
         .ok();
-    clear_blame(tab);
-    tab.error = None;
     log::debug!(
         target: "gitui::history",
         "event=commit_select.complete commit={} elapsed_ms={}",
         short,
         started.elapsed().as_millis()
     );
+    return Ok(CommitSelectionData {
+        patch,
+        files,
+        details,
+    });
 }
 
-/// 显式打开提交补丁时才读取它，普通 commit 选择保持轻量。
+pub(crate) fn apply_commit_selection(tab: &mut Tab, data: CommitSelectionData) {
+    tab.patch = data.patch;
+    tab.files = data.files;
+    tab.details = data.details;
+    tab.error = None;
+}
+
+/// 同步选中提交，供加载期与内部跳转使用。
+pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
+    let Some((sha, short)) = prepare_commit_selection(tab, index) else {
+        return;
+    };
+    let path = tab.path.clone();
+    match load_commit_selection(path.as_str(), sha.as_str(), short.as_str()) {
+        Ok(data) => apply_commit_selection(tab, data),
+        Err(error) => tab.error = Some(error),
+    }
+}
+
+/// 显式打开提交补丁并切换中栏；列表选择由命令层异步读取提交数据。
 pub(crate) fn show_commit_diff(tab: &mut Tab, index: usize) {
     select_commit(tab, index);
     tab.show_commit_diff = true;
@@ -812,8 +861,12 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
         }
     };
     match repo.commits_between(base.as_str(), target.as_str()) {
-        Ok(commits) => {
+        Ok(mut commits) => {
+            let graph_commits = repo.log_all().unwrap_or_else(|_| tab.graph_commits.clone());
+            let refs = repo.refs().unwrap_or_default();
+            git::decorate_commit_branch_history(&mut commits, &graph_commits, &refs);
             tab.commits = commits;
+            tab.refs = refs;
             tab.compare.clear();
             tab.show_commit_diff = false;
             tab.compare_worktree = false;

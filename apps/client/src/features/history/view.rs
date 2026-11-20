@@ -19,17 +19,23 @@ use crate::features::refs::commands::RefsCommands;
 use crate::features::search::commands::SearchCommands;
 use crate::filters::When;
 use crate::i18n;
-use crate::ui::badge::kbd;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
-const AUTHOR_W: f32 = 96.0;
-const DATE_W: f32 = 58.0;
+const AUTHOR_MIN_W: f32 = 80.0;
+const AUTHOR_MAX_W: f32 = 320.0;
+const DATE_MIN_W: f32 = 80.0;
+const DATE_MAX_W: f32 = 250.0;
 const GRAPH_LANE_W: f32 = 10.0;
+const GRAPH_NODE_D: f32 = 7.0;
 
 /// 浮层宽度（设计板 `.filter-pop`）。
 const POP_W: f32 = 432.0;
 const QUICK_FILTER_W: f32 = 320.0;
+/// 比较引用窗口按引用名与两列端点操作布置。
+const COMPARE_DIALOG_W: f32 = 640.0;
+const COMPARE_REF_LIST_H: f32 = 350.0;
+const COMPARE_REF_ACTION_W: f32 = 88.0;
 
 #[derive(Clone)]
 struct FilterBranch {
@@ -40,8 +46,57 @@ struct FilterBranch {
 
 #[derive(Clone)]
 struct CompareRef {
-    label: String,
+    label_key: &'static str,
+    name: String,
     value: String,
+}
+
+fn compare_refs_for_tab(tab: &Tab) -> Vec<CompareRef> {
+    let mut refs = Vec::new();
+    for branch in &tab.refs.branches {
+        refs.push(CompareRef {
+            label_key: "compare.localBranch",
+            name: branch.name.clone(),
+            value: format!("refs/heads/{}", branch.name),
+        });
+    }
+    for branch in &tab.refs.remote_branches {
+        refs.push(CompareRef {
+            label_key: "compare.remoteBranch",
+            name: branch.full_name(),
+            value: format!("refs/remotes/{}", branch.full_name()),
+        });
+    }
+    for tag in &tab.refs.tags {
+        refs.push(CompareRef {
+            label_key: "compare.tagRef",
+            name: tag.clone(),
+            value: format!("refs/tags/{tag}"),
+        });
+    }
+    for stash in &tab.refs.stashes {
+        refs.push(CompareRef {
+            label_key: "compare.stashRef",
+            name: stash.summary.clone(),
+            value: stash.oid.clone(),
+        });
+    }
+    return refs;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum CommitRefKind {
+    Head,
+    Branch,
+    Tag,
+    Stash,
+}
+
+#[derive(Clone)]
+struct CommitRefChip {
+    label: String,
+    kind: CommitRefKind,
+    remote: bool,
 }
 
 /// `use<>`：返回的元素只持有克隆出来的信号，不借用入参（edition 2024 的
@@ -56,6 +111,13 @@ pub(crate) fn history(
     let language = cmd.language;
     let tab_id = tab.id;
     let commits = tab.commits.clone();
+    let remote_branch_names = std::sync::Arc::new(
+        tab.refs
+            .remote_branches
+            .iter()
+            .map(|branch| (branch.full_name(), branch.name.clone()))
+            .collect::<std::collections::HashMap<_, _>>(),
+    );
     let selected = tab.selected;
     let compare_refs_empty =
         tab.compare_base.is_some() && tab.compare_target.is_some() && tab.commits.is_empty();
@@ -70,7 +132,13 @@ pub(crate) fn history(
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let select: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |index: usize| cmd.select_commit(index))
+        let tab_id = tab_id;
+        let commits = commits.clone();
+        std::sync::Arc::new(move |index: usize| {
+            if let Some(commit) = commits.get(index) {
+                cmd.request_commit_selection(tab_id, commit.sha.clone());
+            }
+        })
     };
     let open_commit_diff: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
@@ -135,6 +203,7 @@ pub(crate) fn history(
     let total = commits.len();
     let now = store::now_unix();
     let query = state.query;
+    let fast_selection = state.fast_selection;
     let visible = {
         let commits = commits.clone();
         computed(move || {
@@ -163,13 +232,19 @@ pub(crate) fn history(
     branches.dedup_by(|left, right| left.reference == right.reference);
     let authors = tab.authors.clone();
     let language_value = language;
+    let compare_refs = compare_refs_for_tab(&tab);
     let filter_open = state.filter_open;
+    let filter_tab_id = state.filter_tab_id;
     let filter_position = state.filter_position;
     let filter_menu = state.filter_menu;
     let compare_mode = state.compare_mode;
+    let author_column_width = state.author_column_width;
+    let date_column_width = state.date_column_width;
     // 筛选浮层在 `dynamic` 里渲染，参数要能反复取用，因此这里各留一份克隆。
     let filter_state = state.clone();
     let filter_cmd = cmd.clone();
+    let compare_refs_state = state.clone();
+    let compare_refs_cmd = cmd.clone();
     let graph_ancestors = tab.graph_commits.clone();
     let table_ref = state.table_ref;
     let scroll_request = state.scroll_request;
@@ -203,8 +278,24 @@ pub(crate) fn history(
                 .border_color(move || design::line_soft())
                 .child(view().w(px(graph_width)))
                 .child(column_header(language, "history.description").flex_1())
-                .child(column_header(language, "history.author").w(px(AUTHOR_W)))
-                .child(column_header(language, "history.date").w(px(DATE_W))),
+                .child(resizable_column_header(
+                    language,
+                    "history.author",
+                    "history.resizeAuthor",
+                    author_column_width,
+                    AUTHOR_MIN_W,
+                    AUTHOR_MAX_W,
+                    true,
+                ))
+                .child(resizable_column_header(
+                    language,
+                    "history.date",
+                    "history.resizeDate",
+                    date_column_width,
+                    DATE_MIN_W,
+                    DATE_MAX_W,
+                    false,
+                )),
         )
         .child(
             view()
@@ -302,7 +393,9 @@ pub(crate) fn history(
                                 .map(|(index, _commit)| vec![index.to_string()])
                                 .collect();
                             let commits_for_render = rows_snapshot.clone();
+                            let remote_branches_for_render = remote_branch_names.clone();
                             let compare_for_render = compare_for_rows.clone();
+                            let fast_selection = fast_selection;
                             let visible_commits = rows_snapshot
                                 .iter()
                                 .map(|(_, commit)| commit.clone())
@@ -329,9 +422,8 @@ pub(crate) fn history(
                                     columns: vec![crate::ui::table::Column {
                                         key: "commit",
                                         title: None,
-                                        // 单列自绘整行：宽度要给足，否则图线/摘要/作者/时间
-                                        // 会被裁在 120pt 的默认列宽里看不出内容。
-                                        width: Some(1200.0),
+                                        // 单列随中栏宽度伸缩，保留右侧作者与日期。
+                                        width: None,
                                         fixed: false,
                                     }],
                                     rows,
@@ -347,10 +439,16 @@ pub(crate) fn history(
                                         let is_selected = selected == Some(index);
                                         let in_compare = compare_for_render.contains(&index);
                                         let has_refs = !commit.refs.is_empty();
+                                        let row_sha = commit.sha.clone();
+                                        let row_sha_for_hover = row_sha.clone();
+                                        let row_tab_id = tab_id;
+                                        let fast_selection_for_row = fast_selection;
+                                        let fast_selection_for_hover = fast_selection;
                                         let graph_row = graphs_for_render
                                             .get(row as usize)
                                             .cloned()
                                             .unwrap_or_default();
+                                        let remote_branches = remote_branches_for_render.clone();
                                         return view()
                                             .w_full()
                                             .h(px(metrics::COMMIT_ROW_H))
@@ -361,8 +459,28 @@ pub(crate) fn history(
                                             .bg(move || {
                                                 if in_compare {
                                                     design::accent_soft()
+                                                } else if is_selected
+                                                    || fast_selection_matches(
+                                                        row_tab_id,
+                                                        row_sha.as_str(),
+                                                        fast_selection_for_row.get(),
+                                                    )
+                                                {
+                                                    design::selected()
                                                 } else {
                                                     AdaptiveColor::TRANSPARENT
+                                                }
+                                            })
+                                            .hover(move |style| {
+                                                let fast_selected = fast_selection_matches(
+                                                    row_tab_id,
+                                                    row_sha_for_hover.as_str(),
+                                                    fast_selection_for_hover.get(),
+                                                );
+                                                if in_compare || is_selected || fast_selected {
+                                                    style
+                                                } else {
+                                                    style.bg(move || design::hover())
                                                 }
                                             })
                                             .child(graph_cell(
@@ -379,8 +497,11 @@ pub(crate) fn history(
                                                     .gap(px(6.0))
                                                     .child(
                                                         text(commit.summary.clone())
+                                                            .flex_1()
+                                                            .min_w_0()
                                                             .text_size(px(crate::ui::BODY))
                                                             .text_color(move || design::text())
+                                                            .number_of_lines(1)
                                                             .text_overflow(
                                                                 nsh_core::EllipsizeMode::Tail,
                                                             ),
@@ -394,13 +515,17 @@ pub(crate) fn history(
                                                             .when(has_refs, |this| {
                                                                 this.child(ref_chips(
                                                                     commit.refs.clone(),
+                                                                    remote_branches,
                                                                 ))
                                                             }),
                                                     ),
                                             )
                                             .child(
                                                 text(commit.author.clone())
-                                                    .w(px(AUTHOR_W))
+                                                    .w(move || px(author_column_width.get()))
+                                                    .min_w_0()
+                                                    .flex_shrink_0()
+                                                    .number_of_lines(1)
                                                     .text_size(px(crate::ui::SECONDARY))
                                                     .text_color(move || design::text2())
                                                     .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -415,9 +540,13 @@ pub(crate) fn history(
                                                         now,
                                                     )
                                                 })
-                                                .w(px(DATE_W))
+                                                .w(move || px(date_column_width.get()))
+                                                .min_w_0()
+                                                .flex_shrink_0()
+                                                .number_of_lines(1)
                                                 .text_size(px(crate::ui::SECONDARY))
-                                                .text_color(move || design::text3()),
+                                                .text_color(move || design::text3())
+                                                .text_overflow(nsh_core::EllipsizeMode::Tail),
                                             )
                                             .into_element();
                                     })),
@@ -548,7 +677,8 @@ pub(crate) fn history(
         .child(dynamic(move || -> AnyElement {
             let advanced = filter_open.get();
             let menu = filter_menu.get();
-            if !advanced && menu.is_none() {
+            let menu_matches_tab = filter_tab_id.get() == Some(tab_id);
+            if !menu_matches_tab || (!advanced && menu.is_none()) {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
             let (left, top) = filter_position.get();
@@ -578,6 +708,7 @@ pub(crate) fn history(
                 .into_element()
             };
             let close_state = filter_state.clone();
+            let close_cmd = filter_cmd.clone();
             return crate::ui::dialog::popover_overlay(
                 move || i18n::t(language_value.get().as_str(), title_key),
                 80,
@@ -590,9 +721,23 @@ pub(crate) fn history(
                         .child(crate::ui::dialog::modality(panel)),
                 ),
                 move || {
+                    if close_state.filter_menu.get_untracked().is_some() {
+                        close_cmd.apply_quick_filter();
+                    }
                     close_state.filter_open.set(false);
                     close_state.filter_menu.set(None);
                 },
+            );
+        }))
+        .child(dynamic(move || -> AnyElement {
+            if !compare_refs_state.compare_refs_open.get() {
+                return view().w(px(0.0)).h(px(0.0)).into_element();
+            }
+            return compare_refs_dialog(
+                language_value,
+                compare_refs.clone(),
+                compare_refs_state.clone(),
+                compare_refs_cmd.clone(),
             );
         }));
 }
@@ -606,7 +751,11 @@ fn hist_bar(
     filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
 ) -> impl IntoElement + use<> {
     let filter_open = state.filter_open;
+    let filter_tab_id = state.filter_tab_id;
     let compare_mode = state.compare_mode;
+    let compare_refs_open = state.compare_refs_open;
+    let compare_refs_query = state.compare_refs_query;
+    let compare_refs_draft = state.compare_refs_draft;
     let total = tab.commits.len();
     let applied = tab.filter.clone();
     let applied_branches = if applied.references.is_empty() {
@@ -618,49 +767,6 @@ fn hist_bar(
     let has_refine = applied.path.is_some() || !applied.message.is_empty();
     let filter_active =
         has_dates || has_refine || !applied_branches.is_empty() || !applied.authors.is_empty();
-    // Compare refs 提供所有本地分支、远端跟踪分支与 tag；value 使用限定 ref 避免同名歧义。
-    let mut refs_list: Vec<CompareRef> = Vec::new();
-    let language_value = language.get_untracked();
-    for branch in &tab.refs.branches {
-        refs_list.push(CompareRef {
-            label: i18n::with_arguments(
-                language_value.as_str(),
-                "compare.localBranch",
-                &[("name", branch.name.clone())],
-            ),
-            value: format!("refs/heads/{}", branch.name),
-        });
-    }
-    for branch in &tab.refs.remote_branches {
-        refs_list.push(CompareRef {
-            label: i18n::with_arguments(
-                language_value.as_str(),
-                "compare.remoteBranch",
-                &[("name", branch.full_name())],
-            ),
-            value: format!("refs/remotes/{}", branch.full_name()),
-        });
-    }
-    for tag in &tab.refs.tags {
-        refs_list.push(CompareRef {
-            label: i18n::with_arguments(
-                language_value.as_str(),
-                "compare.tagRef",
-                &[("name", tag.clone())],
-            ),
-            value: format!("refs/tags/{tag}"),
-        });
-    }
-    for stash in &tab.refs.stashes {
-        refs_list.push(CompareRef {
-            label: i18n::with_arguments(
-                language_value.as_str(),
-                "compare.stashRef",
-                &[("name", stash.summary.clone())],
-            ),
-            value: stash.oid.clone(),
-        });
-    }
     let compare_pair = (tab.compare_base.clone(), tab.compare_target.clone());
     let compare_three_dot = tab.compare_three_dot;
     let compare_worktree = tab.compare_worktree;
@@ -669,6 +775,11 @@ fn hist_bar(
     let branch_filter_menu = filter_menu;
     let branch_filter_open = filter_open;
     let branch_filter_position = filter_position;
+    let branch_filter_tab_id = state.filter_tab_id;
+    let tab_id = tab.id;
+    let branch_filter_tab_for_active = branch_filter_tab_id;
+    let branch_tab_id = tab_id;
+    let branch_cmd = cmd.clone();
     let branch_filter = crate::ui::menu::menu_button_tuned_at(
         move || {
             if branch_selection.is_empty() {
@@ -682,17 +793,21 @@ fn hist_bar(
         },
         move || {
             branch_active
-                || branch_filter_menu.get()
+                || (branch_filter_menu.get()
                     == Some(crate::features::history::state::FilterMenu::Branches)
+                    && branch_filter_tab_for_active.get() == Some(branch_tab_id))
         },
-        Some("branch"),
+        Some("chev-down"),
         move |position| {
             if branch_filter_menu.get_untracked()
                 == Some(crate::features::history::state::FilterMenu::Branches)
+                && branch_filter_tab_id.get_untracked() == Some(tab_id)
             {
+                branch_cmd.apply_quick_filter();
                 branch_filter_menu.set(None);
                 return;
             }
+            branch_cmd.begin_quick_filter(tab_id);
             branch_filter_open.set(false);
             branch_filter_position.set(filter_popover_position(position, QUICK_FILTER_W));
             branch_filter_menu.set(Some(crate::features::history::state::FilterMenu::Branches));
@@ -703,6 +818,10 @@ fn hist_bar(
     let author_filter_menu = filter_menu;
     let author_filter_open = filter_open;
     let author_filter_position = filter_position;
+    let author_filter_tab_id = state.filter_tab_id;
+    let author_filter_tab_for_active = author_filter_tab_id;
+    let author_tab_id = tab_id;
+    let author_cmd = cmd.clone();
     let author_filter = crate::ui::menu::menu_button_tuned_at(
         move || {
             if author_selection.is_empty() {
@@ -716,40 +835,29 @@ fn hist_bar(
         },
         move || {
             author_active
-                || author_filter_menu.get()
+                || (author_filter_menu.get()
                     == Some(crate::features::history::state::FilterMenu::Authors)
+                    && author_filter_tab_for_active.get() == Some(author_tab_id))
         },
         Some("chev-down"),
         move |position| {
             if author_filter_menu.get_untracked()
                 == Some(crate::features::history::state::FilterMenu::Authors)
+                && author_filter_tab_id.get_untracked() == Some(tab_id)
             {
+                author_cmd.apply_quick_filter();
                 author_filter_menu.set(None);
                 return;
             }
+            author_cmd.begin_quick_filter(tab_id);
             author_filter_open.set(false);
             author_filter_position.set(filter_popover_position(position, QUICK_FILTER_W));
             author_filter_menu.set(Some(crate::features::history::state::FilterMenu::Authors));
         },
     );
-    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
-    let set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |base: Option<String>, target: Option<String>| {
-            cmd.set_compare_refs(base, target)
-        })
-    };
     let set_compare_mode: std::sync::Arc<dyn Fn(bool)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |enabled: bool| cmd.set_compare_mode(enabled))
-    };
-    let set_compare_three_dot: std::sync::Arc<dyn Fn(bool)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |enabled| cmd.set_compare_three_dot(enabled))
-    };
-    let set_compare_worktree: std::sync::Arc<dyn Fn(bool)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |enabled| cmd.set_compare_worktree(enabled))
     };
     return view()
         .w_full()
@@ -761,24 +869,38 @@ fn hist_bar(
         .border_b_1()
         .border_color(move || design::line_soft())
         .child(
-            text(move || i18n::t(language.get().as_str(), "shell.history"))
-                .text_size(px(crate::ui::BODY))
-                .font_weight(FontWeight(600))
-                .text_color(move || design::text()),
+            view().h_full().flex_row().items_center().child(
+                text(move || i18n::t(language.get().as_str(), "shell.history"))
+                    .text_size(px(crate::ui::BODY))
+                    .font_weight(FontWeight(600))
+                    .text_color(move || design::text()),
+            ),
+        )
+        .child(
+            view().h_full().flex_row().items_center().child(
+                text(move || {
+                    i18n::with_arguments(
+                        language.get().as_str(),
+                        "history.commits",
+                        &[("count", total.to_string())],
+                    )
+                })
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::text3()),
+            ),
         )
         .child(branch_filter)
-        .child(
-            text(move || {
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "history.commits",
-                    &[("count", total.to_string())],
-                )
-            })
-            .text_size(px(crate::ui::SECONDARY))
-            .text_color(move || design::text3()),
-        )
         .child(author_filter)
+        .child(widgets_icon(
+            language,
+            filter_open,
+            filter_position,
+            filter_menu,
+            filter_active,
+            filter_tab_id,
+            tab_id,
+            cmd.clone(),
+        ))
         .child(view().flex_1())
         .child({
             let variant = if compare_mode.get() {
@@ -797,23 +919,41 @@ fn hist_bar(
                 },
             )
         })
-        .child(compare_refs_menu(
-            language,
-            refs_list,
-            compare_pair,
-            compare_three_dot,
-            compare_worktree,
-            set_compare_refs,
-            set_compare_three_dot,
-            set_compare_worktree,
-        ))
-        .child(widgets_icon(
-            language,
-            filter_open,
-            filter_position,
-            filter_menu,
-            filter_active,
-        ));
+        .child({
+            let compare_refs_active =
+                (compare_pair.0.is_some() && compare_pair.1.is_some()) || compare_worktree;
+            let variant = if compare_refs_active {
+                crate::ui::button::ButtonVariant::Secondary
+            } else {
+                crate::ui::button::ButtonVariant::Ghost
+            };
+            crate::ui::button::button_icon(
+                move || {
+                    let key = if compare_refs_active {
+                        "compare.refsActive"
+                    } else {
+                        "compare.pick"
+                    };
+                    i18n::t(language.get().as_str(), key)
+                },
+                "diff",
+                variant,
+                crate::ui::button::ButtonSize::Toolbar,
+                false,
+                move || {
+                    compare_refs_query.set(String::new());
+                    compare_refs_draft.set(crate::features::history::state::CompareRefsDraft {
+                        base: compare_pair.0.clone(),
+                        target: compare_pair.1.clone(),
+                        three_dot: compare_three_dot,
+                        worktree: compare_worktree,
+                    });
+                    filter_open.set(false);
+                    filter_menu.set(None);
+                    compare_refs_open.set(true);
+                },
+            )
+        });
 }
 
 fn widgets_icon(
@@ -822,9 +962,12 @@ fn widgets_icon(
     filter_position: Signal<(f32, f32)>,
     filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
     filter_active: bool,
+    filter_tab_id: Signal<Option<u64>>,
+    tab_id: u64,
+    cmd: HistoryCommands,
 ) -> impl IntoElement {
     let foreground = std::rc::Rc::new(move || {
-        if filter_open.get() || filter_active {
+        if (filter_open.get() && filter_tab_id.get() == Some(tab_id)) || filter_active {
             design::accent()
         } else {
             design::text2()
@@ -838,11 +981,12 @@ fn widgets_icon(
         Some(foreground),
         false,
         move |position| {
-            if filter_open.get_untracked() {
+            if filter_open.get_untracked() && filter_tab_id.get_untracked() == Some(tab_id) {
                 filter_open.set(false);
                 return;
             }
             // 过滤器靠近触发按钮右对齐展开，避免遮住工具栏与提交列表入口。
+            cmd.begin_filter_for_tab(tab_id);
             filter_menu.set(None);
             filter_position.set(filter_popover_position(position, POP_W));
             filter_open.set(true);
@@ -857,54 +1001,135 @@ fn filter_popover_position(position: Point<Points>, width: f32) -> (f32, f32) {
 
 fn column_header(language: Signal<SharedString>, key: &'static str) -> nsh_core::element::Text {
     return text(move || i18n::t(language.get().as_str(), key))
+        .number_of_lines(1)
         .text_size(px(crate::ui::SECONDARY))
         .font_weight(FontWeight(600))
         .text_color(move || design::text3());
 }
 
+fn resizable_column_header(
+    language: Signal<SharedString>,
+    title_key: &'static str,
+    resize_label_key: &'static str,
+    width: Signal<f32>,
+    min_width: f32,
+    max_width: f32,
+    leading_divider: bool,
+) -> impl IntoElement {
+    let drag_start = signal(width.get_untracked());
+    let update_width: std::rc::Rc<dyn Fn(&Points)> = std::rc::Rc::new(move |offset: &Points| {
+        width.set(super::state::resized_column_width(
+            drag_start.get_untracked(),
+            offset.0,
+            min_width,
+            max_width,
+        ));
+    });
+    let update_on_move = update_width.clone();
+    let update_on_end = update_width;
+    let mut header = view()
+        .relative()
+        .w(move || px(width.get()))
+        .h_full()
+        .flex_row()
+        .items_center()
+        .flex_shrink_0()
+        .child(column_header(language, title_key).w_full().text_center());
+    if leading_divider {
+        header = header
+            .border_l_1()
+            .border_color(move || design::line_soft());
+    }
+    return header.child(crate::ui::table::column_resize_handle(
+        SharedString::from(i18n::t(language.get_untracked().as_str(), resize_label_key)),
+        move || drag_start.set(width.get_untracked()),
+        move |offset| update_on_move(offset),
+        move |offset| update_on_end(offset),
+    ));
+}
+
 fn graph_cell(graph: GraphRow, width: f32, highlight: bool) -> impl IntoElement {
     let row_height = metrics::COMMIT_ROW_H;
+    let middle = row_height / 2.0;
+    let node_radius = GRAPH_NODE_D / 2.0;
     let mut cell = view()
         .relative()
         .w(px(width.max(GRAPH_LANE_W)))
         .h(px(row_height));
-    for lane in graph.active_lanes {
+    for lane in graph.top_lanes {
         let x = lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0 - 0.5;
+        let bottom = if lane == graph.node_lane {
+            middle - node_radius
+        } else {
+            middle
+        };
+        if bottom <= 0.0 {
+            continue;
+        }
         cell = cell.child(
             view()
                 .absolute()
                 .left(px(x))
                 .top(px(0.0))
                 .w(px(1.0))
-                .h_full()
+                .h(px(bottom))
+                .bg(move || design::graph_color(lane)),
+        );
+    }
+    for lane in graph.bottom_lanes {
+        let x = lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0 - 0.5;
+        let top = if lane == graph.node_lane {
+            middle + node_radius
+        } else {
+            middle
+        };
+        if top >= row_height {
+            continue;
+        }
+        cell = cell.child(
+            view()
+                .absolute()
+                .left(px(x))
+                .top(px(top))
+                .w(px(1.0))
+                .h(px(row_height - top))
                 .bg(move || design::graph_color(lane)),
         );
     }
     for parent_lane in graph.parent_lanes {
-        let start = graph.node_lane.min(parent_lane);
-        let end = graph.node_lane.max(parent_lane);
-        let left = start as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0;
-        let width = (end - start) as f32 * GRAPH_LANE_W;
+        let node_center = graph.node_lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0;
+        let parent_center = parent_lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0;
+        let left = if parent_lane < graph.node_lane {
+            parent_center
+        } else {
+            node_center + node_radius
+        };
+        let right = if parent_lane < graph.node_lane {
+            node_center - node_radius
+        } else {
+            parent_center
+        };
+        let width = (right - left).max(0.0);
         let color = graph.node_lane;
         cell = cell.child(
             view()
                 .absolute()
                 .left(px(left))
-                .top(px(row_height / 2.0 - 0.5))
+                .top(px(middle - 0.5))
                 .w(px(width))
                 .h(px(1.0))
                 .bg(move || design::graph_color(color)),
         );
     }
-    let node_left = graph.node_lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0 - 3.5;
+    let node_left = graph.node_lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0 - node_radius;
     return cell.child(
         view()
             .absolute()
             .left(px(node_left))
-            .top(px(row_height / 2.0 - 3.5))
-            .w(px(7.0))
-            .h(px(7.0))
-            .rounded(px(4.0))
+            .top(px(middle - node_radius))
+            .w(px(GRAPH_NODE_D))
+            .h(px(GRAPH_NODE_D))
+            .rounded(px(node_radius + 0.5))
             .bg(move || {
                 if highlight {
                     design::accent()
@@ -1115,137 +1340,151 @@ fn quick_filter_pop(
     cmd: HistoryCommands,
 ) -> impl IntoElement + use<> {
     let draft = state.draft;
-    let close = state.filter_menu;
-    let (title_key, empty_key) = match kind {
-        crate::features::history::state::FilterMenu::Branches => {
-            ("filter.branch", "filter.allBranches")
-        }
-        crate::features::history::state::FilterMenu::Authors => {
-            ("filter.author", "filter.allAuthors")
-        }
+    let filter_menu = state.filter_menu;
+    let filter_open = state.filter_open;
+    let query = signal(String::new());
+    let choices: Vec<(String, String)> = match kind {
+        super::state::FilterMenu::Branches => branches
+            .into_iter()
+            .map(|b| {
+                (
+                    b.reference,
+                    if b.remote {
+                        format!(
+                            "{} · {}",
+                            b.label,
+                            i18n::t(language.get_untracked().as_str(), "filter.remote")
+                        )
+                    } else {
+                        b.label
+                    },
+                )
+            })
+            .collect(),
+        super::state::FilterMenu::Authors => authors
+            .into_iter()
+            .map(|a| (a.email.clone(), format!("{} <{}>", a.name, a.email)))
+            .collect(),
     };
-    let mut rows = Vec::new();
-    match kind {
-        crate::features::history::state::FilterMenu::Branches => {
-            rows.push(filter_choice_row(
-                language,
-                empty_key,
-                std::sync::Arc::new(move || draft.get().references.is_empty()),
-                {
-                    let cmd = cmd.clone();
-                    std::sync::Arc::new(move || cmd.clear_branch_filter())
-                },
-            ));
-            for branch in branches {
-                let reference = branch.reference.clone();
-                let selected = reference.clone();
-                let label = if branch.remote {
-                    format!(
-                        "{} · {}",
-                        branch.label,
-                        i18n::t(language.get_untracked().as_str(), "filter.remote")
-                    )
-                } else {
-                    branch.label
-                };
-                let checked =
-                    std::sync::Arc::new(move || draft.get().references.contains(&selected));
-                let toggle = cmd.clone();
-                rows.push(
-                    crate::ui::check::check_inline(
-                        move || label.clone(),
-                        move || checked(),
-                        26.0,
-                        14.0,
-                        false,
-                        move |_| toggle.toggle_branch_filter(reference.clone()),
-                    )
-                    .into_element(),
-                );
-            }
-        }
-        crate::features::history::state::FilterMenu::Authors => {
-            rows.push(filter_choice_row(
-                language,
-                empty_key,
-                std::sync::Arc::new(move || draft.get().authors.is_empty()),
-                {
-                    let cmd = cmd.clone();
-                    std::sync::Arc::new(move || cmd.clear_author_filter())
-                },
-            ));
-            for author in authors {
-                let email = author.email.clone();
-                let selected = email.clone();
-                let label = format!("{} <{}>", author.name, email);
-                let checked = std::sync::Arc::new(move || {
-                    draft.get().authors.iter().any(|item| item == &selected)
-                });
-                let toggle = cmd.clone();
-                rows.push(
-                    crate::ui::check::check_inline(
-                        move || label.clone(),
-                        move || checked(),
-                        26.0,
-                        14.0,
-                        false,
-                        move |_| toggle.toggle_author_filter(email.clone()),
-                    )
-                    .into_element(),
-                );
-            }
-        }
-    }
-
-    return view()
+    let total = choices.len();
+    let clear = cmd.clone();
+    let close = cmd.clone();
+    view()
         .w(px(QUICK_FILTER_W))
         .p(px(10.0))
         .flex_col()
-        .gap(px(crate::ui::GAP_XS))
+        .gap(px(crate::ui::GAP_SM))
         .rounded(px(metrics::RADIUS_PANEL))
         .border_1()
-        .border_color(move || design::line_strong())
-        .bg(move || design::token("popover"))
+        .border_color(design::line_strong)
+        .bg(|| design::token("popover"))
         .shadow_lg()
         .child(
             view()
                 .w_full()
-                .h(px(crate::ui::ROW_COMPACT))
                 .flex_row()
                 .items_center()
                 .gap(px(crate::ui::GAP_SM))
                 .child(
-                    text(move || i18n::t(language.get().as_str(), title_key))
+                    view()
                         .flex_1()
-                        .text_size(px(crate::ui::BODY))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(move || design::text()),
+                        .min_w_0()
+                        .child(crate::ui::text_input::text_input(
+                            query,
+                            move || i18n::t(language.get().as_str(), "filter.search"),
+                            false,
+                            move |value| query.set(value.to_string()),
+                        )),
                 )
-                .child(kbd("esc"))
-                .child(crate::ui::button::icon_button(
-                    "x",
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "shell.close")
+                .child(crate::ui::button::button(
+                    move || {
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            "filter.allCount",
+                            &[("count", total.to_string())],
+                        )
                     },
+                    crate::ui::button::ButtonVariant::Ghost,
                     crate::ui::button::ButtonSize::Small,
                     false,
-                    move || close.set(None),
+                    move || {
+                        match kind {
+                            super::state::FilterMenu::Branches => clear.clear_branch_filter(),
+                            super::state::FilterMenu::Authors => clear.clear_author_filter(),
+                        }
+                        clear.apply_quick_filter();
+                        filter_open.set(false);
+                        filter_menu.set(None);
+                    },
+                ))
+                .child(crate::ui::button::icon_button(
+                    "x",
+                    move || i18n::t(language.get().as_str(), "shell.close"),
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || {
+                        close.apply_quick_filter();
+                        filter_open.set(false);
+                        filter_menu.set(None);
+                    },
                 )),
         )
         .child(
             scroll()
                 .w_full()
                 .h(px(288.0))
-                .child(view().w_full().flex_col().children(rows)),
+                .child(dynamic(move || -> AnyElement {
+                    let search = query.get().trim().to_lowercase();
+                    let selection = draft.get();
+                    let mut rows = Vec::new();
+                    for (id, label) in &choices {
+                        if !label.to_lowercase().contains(&search) {
+                            continue;
+                        }
+                        let selected = match kind {
+                            super::state::FilterMenu::Branches => selection.references.contains(id),
+                            super::state::FilterMenu::Authors => selection.authors.contains(id),
+                        };
+                        let id = id.clone();
+                        let label = label.clone();
+                        let toggle = cmd.clone();
+                        rows.push(
+                            crate::ui::row::row(
+                                move || label.clone(),
+                                None,
+                                Some(crate::ui::check::indicator(selected).into_element()),
+                                vec![],
+                                selected,
+                                false,
+                                move || match kind {
+                                    super::state::FilterMenu::Branches => {
+                                        toggle.toggle_branch_filter(id.clone())
+                                    }
+                                    super::state::FilterMenu::Authors => {
+                                        toggle.toggle_author_filter(id.clone())
+                                    }
+                                },
+                            )
+                            .into_element(),
+                        );
+                    }
+                    if rows.is_empty() {
+                        rows.push(
+                            text(move || i18n::t(language.get().as_str(), "filter.noResults"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .text_color(design::text3)
+                                .into_element(),
+                        );
+                    }
+                    view().w_full().flex_col().children(rows).into_element()
+                })),
         )
-        .into_element();
 }
 
 fn filter_pop(
     language: Signal<SharedString>,
-    branches: Vec<FilterBranch>,
-    authors: Vec<git::Author>,
+    _branches: Vec<FilterBranch>,
+    _authors: Vec<git::Author>,
     state: HistoryState,
     cmd: HistoryCommands,
 ) -> impl IntoElement + use<> {
@@ -1260,108 +1499,6 @@ fn filter_pop(
         let cmd = cmd.clone();
         std::sync::Arc::new(move || cmd.clear_filter())
     };
-    let all_branches = std::sync::Arc::new(move || draft.update(|value| value.references.clear()));
-    let branch_values = branches
-        .iter()
-        .map(|branch| branch.reference.clone())
-        .collect::<Vec<_>>();
-    let select_all_branches = std::sync::Arc::new(move || {
-        draft.update(|value| value.references = branch_values.clone());
-    });
-    let mut branch_rows = vec![filter_choice_row(
-        language,
-        "filter.allBranches",
-        std::sync::Arc::new(move || draft.get().references.is_empty()),
-        all_branches,
-    )];
-    for branch in &branches {
-        let branch_value = branch.reference.clone();
-        let selected_value = branch_value.clone();
-        let label = if branch.remote {
-            format!(
-                "{} · {}",
-                branch.label,
-                i18n::t(language.get_untracked().as_str(), "filter.remote")
-            )
-        } else {
-            branch.label.clone()
-        };
-        let checked = std::sync::Arc::new(move || {
-            draft
-                .get()
-                .references
-                .iter()
-                .any(|reference| reference == &selected_value)
-        });
-        branch_rows.push(
-            view()
-                .w_full()
-                .h(px(24.0))
-                .flex_row()
-                .items_center()
-                .child(crate::ui::check::check_inline(
-                    move || label.clone(),
-                    move || checked(),
-                    24.0,
-                    14.0,
-                    false,
-                    move |checked| {
-                        draft.update(|value| {
-                            if checked {
-                                if !value.references.contains(&branch_value) {
-                                    value.references.push(branch_value.clone());
-                                }
-                            } else {
-                                value.references.retain(|item| item != &branch_value);
-                            }
-                        });
-                    },
-                ))
-                .into_element(),
-        );
-    }
-
-    let all_authors = std::sync::Arc::new(move || draft.update(|value| value.authors.clear()));
-    let mut author_rows = vec![filter_choice_row(
-        language,
-        "filter.allAuthors",
-        std::sync::Arc::new(move || draft.get().authors.is_empty()),
-        all_authors,
-    )];
-    for author in &authors {
-        let email = author.email.clone();
-        let selected_email = email.clone();
-        let label = format!("{} <{}>", author.name, author.email);
-        let checked = std::sync::Arc::new(move || {
-            draft
-                .get()
-                .authors
-                .iter()
-                .any(|selected| selected == &selected_email)
-        });
-        author_rows.push(
-            crate::ui::check::check_inline(
-                move || label.clone(),
-                move || checked(),
-                24.0,
-                14.0,
-                false,
-                move |checked| {
-                    draft.update(|value| {
-                        if checked {
-                            if !value.authors.contains(&email) {
-                                value.authors.push(email.clone());
-                            }
-                        } else {
-                            value.authors.retain(|item| item != &email);
-                        }
-                    });
-                },
-            )
-            .into_element(),
-        );
-    }
-
     let when_rows = When::ALL
         .iter()
         .map(|when| {
@@ -1375,13 +1512,6 @@ fn filter_pop(
         })
         .collect::<Vec<_>>();
 
-    let branch_select_all = crate::ui::button::button(
-        move || i18n::t(language.get().as_str(), "filter.selectAll"),
-        crate::ui::button::ButtonVariant::Ghost,
-        crate::ui::button::ButtonSize::Small,
-        false,
-        move || select_all_branches(),
-    );
     let custom_dates =
         {
             let draft = draft;
@@ -1461,7 +1591,6 @@ fn filter_pop(
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(move || design::text()),
                 )
-                .child(kbd("esc"))
                 .child(crate::ui::button::icon_button(
                     "x",
                     {
@@ -1472,45 +1601,6 @@ fn filter_pop(
                     false,
                     move || close_filter.set(false),
                 )),
-        )
-        .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_center()
-                .child(
-                    view()
-                        .flex_1()
-                        .child(section_label(language, "filter.branch")),
-                )
-                .child(branch_select_all),
-        )
-        .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    view()
-                        .w(px(120.0))
-                        .h(px(24.0))
-                        .flex_shrink_0()
-                        .child(branch_rows.remove(0)),
-                )
-                .child(
-                    scroll()
-                        .w_full()
-                        .h(px(120.0))
-                        .child(view().w_full().flex_col().child(branch_rows)),
-                ),
-        )
-        .child(section_label(language, "filter.author"))
-        .child(
-            scroll()
-                .w_full()
-                .h(px(96.0))
-                .child(view().w_full().flex_col().child(author_rows)),
         )
         .child(section_label(language, "filter.when"))
         .child(
@@ -1590,169 +1680,578 @@ fn filter_choice_row(
 }
 
 /// 引用徽章：本地分支、远程、标签各用一组配色。
-fn ref_chips(refs: Vec<String>) -> impl IntoElement {
+fn ref_chips(
+    refs: Vec<String>,
+    remote_branches: std::sync::Arc<std::collections::HashMap<String, String>>,
+) -> impl IntoElement {
     let mut chips: Vec<AnyElement> = Vec::new();
-    for reference in refs.into_iter().take(2) {
-        let is_stash = reference.starts_with("stash: ");
-        let is_tag = reference.starts_with("tag:");
-        let is_remote = reference.contains('/') && !is_tag && !is_stash;
-        let label = reference
-            .trim_start_matches("HEAD -> ")
-            .trim_start_matches("stash: ")
-            .trim_start_matches("tag: ")
-            .to_string();
+    let mut references = Vec::<CommitRefChip>::new();
+    let mut branch_indices = std::collections::HashMap::<String, usize>::new();
+    let mut seen_tags = std::collections::HashSet::<String>::new();
+    let mut seen_stashes = std::collections::HashSet::<String>::new();
+    let mut has_head = false;
+    for reference in refs {
+        let label = if let Some(target) = reference.strip_prefix("HEAD -> ") {
+            if !has_head {
+                has_head = true;
+                references.push(CommitRefChip {
+                    label: String::from("HEAD"),
+                    kind: CommitRefKind::Head,
+                    remote: false,
+                });
+            }
+            target.to_string()
+        } else if reference == "HEAD" {
+            if !has_head {
+                has_head = true;
+                references.push(CommitRefChip {
+                    label: String::from("HEAD"),
+                    kind: CommitRefKind::Head,
+                    remote: false,
+                });
+            }
+            continue;
+        } else {
+            reference
+        };
+        if let Some(label) = label.strip_prefix("tag: ") {
+            if seen_tags.insert(label.to_string()) {
+                references.push(CommitRefChip {
+                    label: label.to_string(),
+                    kind: CommitRefKind::Tag,
+                    remote: false,
+                });
+            }
+            continue;
+        }
+        if let Some(label) = label.strip_prefix("stash: ") {
+            if seen_stashes.insert(label.to_string()) {
+                references.push(CommitRefChip {
+                    label: label.to_string(),
+                    kind: CommitRefKind::Stash,
+                    remote: false,
+                });
+            }
+            continue;
+        }
+
+        let remote_name = remote_branches.get(&label);
+        let remote = remote_name.is_some();
+        let branch_name = remote_name.cloned().unwrap_or_else(|| label.clone());
+        if let Some(existing) = branch_indices
+            .get(&branch_name)
+            .and_then(|index| references.get_mut(*index))
+        {
+            existing.remote |= remote;
+            // 本地分支名优先显示；多个远端别名仍合并为同一个徽章和图标。
+            if !remote {
+                existing.label = branch_name;
+            }
+            continue;
+        }
+        branch_indices.insert(branch_name.clone(), references.len());
+        let chip = CommitRefChip {
+            label: if remote { label } else { branch_name.clone() },
+            kind: CommitRefKind::Branch,
+            remote,
+        };
+        references.push(chip);
+    }
+
+    references.sort_by_key(|chip| match chip.kind {
+        CommitRefKind::Head => 0,
+        CommitRefKind::Branch => 1,
+        CommitRefKind::Tag => 2,
+        CommitRefKind::Stash => 3,
+    });
+    for chip in references.into_iter().take(3) {
+        let is_head = chip.kind == CommitRefKind::Head;
+        let is_branch = chip.kind == CommitRefKind::Branch;
+        let is_tag = chip.kind == CommitRefKind::Tag;
+        let is_stash = chip.kind == CommitRefKind::Stash;
+        let is_remote = chip.remote;
+        let branch_color = branch_color(&chip.label);
+        let branch_ink = branch_badge_ink(branch_color);
+        let branch_wash = branch_ink.opacity(0.12);
+        let tooltip = crate::ui::button::text_tooltip(chip.label.clone());
+        let label = chip.label;
+        let mut badge = view()
+            .h(px(16.0))
+            .max_w(px(140.0))
+            .px(px(4.0))
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .gap(px(2.0))
+            .rounded(px(3.0))
+            .border_1()
+            .border_color(move || {
+                if is_head {
+                    design::warn()
+                } else if is_tag {
+                    design::tag_border()
+                } else if is_branch {
+                    branch_ink
+                } else {
+                    design::line_soft()
+                }
+            })
+            .bg(move || {
+                if is_head || is_tag {
+                    design::tag_bg()
+                } else if is_branch {
+                    branch_wash
+                } else if is_stash || is_remote {
+                    design::panel2()
+                } else {
+                    design::branch_bg()
+                }
+            });
+        if is_remote {
+            badge = badge.child(crate::ui::icon::icon_view(
+                "globe",
+                crate::ui::icon::IconSize::Compact,
+                move || branch_ink,
+            ));
+        }
         chips.push(
-            view()
-                .h(px(16.0))
-                .px(px(4.0))
-                .items_center()
-                .rounded(px(3.0))
-                .bg(move || {
-                    if is_tag {
-                        design::tag_bg()
-                    } else if is_stash {
-                        design::panel2()
-                    } else if is_remote {
-                        design::panel2()
-                    } else {
-                        design::branch_bg()
-                    }
-                })
+            badge
                 .child(
                     text(label)
+                        .min_w_0()
                         .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || {
-                            if is_tag {
+                            if is_head {
+                                design::warn()
+                            } else if is_tag {
                                 design::tag_fg()
-                            } else if is_stash {
-                                design::remote_fg()
-                            } else if is_remote {
+                            } else if is_branch {
+                                branch_ink
+                            } else if is_stash || is_remote {
                                 design::remote_fg()
                             } else {
                                 design::branch_fg()
                             }
-                        }),
+                        })
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
+                .tooltip(tooltip)
                 .into_element(),
         );
     }
     return view().flex_row().items_center().gap(px(4.0)).child(chips);
 }
 
-/// Compare refs 下拉菜单：集中放入端点、模式、工作区比较、交换与清除动作。
-fn compare_refs_menu(
+/// 稳定地把分支名映射到图线使用的四种设计颜色。
+fn branch_color(name: &str) -> usize {
+    let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+    });
+    return hash as usize % 4;
+}
+
+fn branch_badge_ink(index: usize) -> AdaptiveColor {
+    return softened_branch_badge_ink(design::graph_color(index));
+}
+
+fn softened_branch_badge_ink(color: AdaptiveColor) -> AdaptiveColor {
+    return color.map(|color| color.lighten(0.18));
+}
+
+fn fast_selection_matches(tab_id: u64, sha: &str, selection: Option<(u64, String)>) -> bool {
+    return selection
+        .is_some_and(|(selected_tab, selected_sha)| selected_tab == tab_id && selected_sha == sha);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[component]
+    fn RefChipsFixture() -> impl IntoElement {
+        let refs = [
+            "HEAD -> main",
+            "main",
+            "origin/main",
+            "upstream/main",
+            "tag: v1.0",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let remotes = std::collections::HashMap::from([
+            (String::from("origin/main"), String::from("main")),
+            (String::from("upstream/main"), String::from("main")),
+        ]);
+        return ref_chips(refs, std::sync::Arc::new(remotes));
+    }
+
+    #[test]
+    fn current_commit_has_a_visible_head_badge() {
+        let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig {
+            viewport: size(px(400.0), px(120.0)),
+            ..nsh_engine::EngineConfig::new(nsh_core::element::Root::of::<RefChipsFixture>())
+        })
+        .unwrap();
+        app.first_render().unwrap();
+        app.wait_for("HEAD").unwrap();
+        app.wait_for("v1.0").unwrap();
+        let main_count = app
+            .screen()
+            .layout_nodes()
+            .iter()
+            .filter(|node| {
+                node.text
+                    .as_ref()
+                    .is_some_and(|text| text.text.text == "main")
+            })
+            .count();
+        assert_eq!(
+            main_count, 1,
+            "local and remote refs share one branch badge"
+        );
+    }
+
+    #[test]
+    fn branch_colors_are_stable_and_vary_across_names() {
+        let names = [
+            "main",
+            "develop",
+            "feature/history",
+            "fix/diff-scroll",
+            "release/2.0",
+            "origin/main",
+            "topic/rebase",
+        ];
+        let colors = names
+            .iter()
+            .map(|name| branch_color(name))
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(
+            branch_color("feature/history"),
+            branch_color("feature/history")
+        );
+        assert!(colors.len() > 1);
+        assert!(colors.iter().all(|color| *color < 4));
+    }
+
+    #[test]
+    fn branch_badge_ink_is_lighter_than_graph_lines() {
+        let source = AdaptiveColor::rgb(0x2E9E6B, 0x6FCC9D);
+        let badge = softened_branch_badge_ink(source);
+        assert!(badge.light.l > source.light.l);
+        assert!(badge.dark.l > source.dark.l);
+    }
+
+    #[test]
+    fn fast_selection_is_scoped_to_its_tab_and_commit() {
+        let selection = Some((12, String::from("commit-a")));
+        assert!(fast_selection_matches(12, "commit-a", selection.clone()));
+        assert!(!fast_selection_matches(13, "commit-a", selection.clone()));
+        assert!(!fast_selection_matches(12, "commit-b", selection));
+        assert!(!fast_selection_matches(12, "commit-a", None));
+    }
+}
+
+/// 可搜索的 Compare refs 窗口：端点与比较选项先保存在草稿，Done 时一次应用。
+fn compare_refs_dialog(
     language: Signal<SharedString>,
     refs: Vec<CompareRef>,
-    pair: (Option<String>, Option<String>),
-    three_dot: bool,
-    compare_worktree: bool,
-    set_compare_refs: std::sync::Arc<dyn Fn(Option<String>, Option<String>)>,
-    set_three_dot: std::sync::Arc<dyn Fn(bool)>,
-    set_worktree: std::sync::Arc<dyn Fn(bool)>,
-) -> impl IntoElement {
-    let (base, target) = pair;
-    let has_pair = base.is_some() && target.is_some();
-    let label_key = if has_pair || compare_worktree {
-        "compare.refsActive"
-    } else {
-        "compare.pick"
-    };
-    let menu_refs = refs.clone();
-    let menu_base = base.clone();
-    let menu_target = target.clone();
-    let menu_set_refs = set_compare_refs.clone();
-    let menu_set_dot = set_three_dot.clone();
-    let menu_set_worktree = set_worktree.clone();
-
-    return crate::ui::menu::menu_button_tuned(
-        move || i18n::t(language.get().as_str(), label_key),
-        has_pair || compare_worktree,
-        Some("chev-down"),
-        move || {
-            let mut items = Vec::new();
-            for reference in menu_refs.clone() {
-                let value = reference.value.clone();
-                let target = menu_target.clone();
-                let selected = menu_base.as_deref() == Some(value.as_str());
-                let action = menu_set_refs.clone();
-                let label = format!(
-                    "{} · {}",
-                    i18n::t(language.get().as_str(), "compare.base"),
-                    reference.label
-                );
-                items.push(crate::ui::menu::checkable(
-                    label,
-                    selected,
-                    true,
-                    move || action(Some(value.clone()), target.clone()),
-                ));
+    state: HistoryState,
+    cmd: HistoryCommands,
+) -> AnyElement {
+    let query = state.compare_refs_query;
+    let draft = state.compare_refs_draft;
+    let open = state.compare_refs_open;
+    let results_refs = refs;
+    let results_draft = draft;
+    let results_query = query;
+    let search = crate::ui::text_input::text_input(
+        query,
+        move || i18n::t(language.get().as_str(), "compare.searchRefs"),
+        false,
+        move |value| query.set(value.to_string()),
+    );
+    let rows = dynamic(move || -> AnyElement {
+        let search = results_query.get().trim().to_lowercase();
+        let locale = language.get();
+        let mut rows = Vec::new();
+        for reference in &results_refs {
+            let label = i18n::with_arguments(
+                locale.as_str(),
+                reference.label_key,
+                &[("name", reference.name.clone())],
+            );
+            if !label.to_lowercase().contains(&search)
+                && !reference.name.to_lowercase().contains(&search)
+                && !reference.value.to_lowercase().contains(&search)
+            {
+                continue;
             }
-            items.push(crate::ui::menu::divider());
-            for reference in menu_refs.clone() {
-                let value = reference.value.clone();
-                let base = menu_base.clone();
-                let selected = menu_target.as_deref() == Some(value.as_str());
-                let action = menu_set_refs.clone();
-                let label = format!(
-                    "{} · {}",
-                    i18n::t(language.get().as_str(), "compare.target"),
-                    reference.label
+            let base_reference = reference.clone();
+            let target_reference = reference.clone();
+            let row_draft = results_draft;
+            let row_draft_for_target = row_draft;
+            rows.push(
+                view()
+                    .w_full()
+                    .h(px(crate::ui::ROW + 2.0))
+                    .flex_row()
+                    .items_center()
+                    .gap(px(crate::ui::GAP_SM))
+                    .px(px(crate::ui::GAP_SM))
+                    .border_b_1()
+                    .border_color(move || design::line_soft())
+                    .child(
+                        text(move || label.clone())
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(crate::ui::BODY))
+                            .text_color(move || design::text())
+                            .number_of_lines(1)
+                            .text_overflow(nsh_core::EllipsizeMode::Tail),
+                    )
+                    .child(
+                        view()
+                            .w(px(COMPARE_REF_ACTION_W))
+                            .flex_row()
+                            .justify_center()
+                            .child(dynamic(move || -> AnyElement {
+                                let selected = row_draft.get().base.as_deref()
+                                    == Some(base_reference.value.as_str());
+                                let value = base_reference.value.clone();
+                                crate::ui::button::button(
+                                    move || i18n::t(language.get().as_str(), "compare.base"),
+                                    if selected {
+                                        crate::ui::button::ButtonVariant::Secondary
+                                    } else {
+                                        crate::ui::button::ButtonVariant::Ghost
+                                    },
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    move || {
+                                        row_draft.update(|selection| {
+                                            selection.base = Some(value.clone())
+                                        })
+                                    },
+                                )
+                                .into_element()
+                            })),
+                    )
+                    .child(
+                        view()
+                            .w(px(COMPARE_REF_ACTION_W))
+                            .flex_row()
+                            .justify_center()
+                            .child(dynamic(move || -> AnyElement {
+                                let selected = row_draft_for_target.get().target.as_deref()
+                                    == Some(target_reference.value.as_str());
+                                let value = target_reference.value.clone();
+                                crate::ui::button::button(
+                                    move || i18n::t(language.get().as_str(), "compare.target"),
+                                    if selected {
+                                        crate::ui::button::ButtonVariant::Secondary
+                                    } else {
+                                        crate::ui::button::ButtonVariant::Ghost
+                                    },
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    move || {
+                                        row_draft_for_target.update(|selection| {
+                                            selection.target = Some(value.clone())
+                                        })
+                                    },
+                                )
+                                .into_element()
+                            })),
+                    )
+                    .into_element(),
+            );
+        }
+        if rows.is_empty() {
+            return view()
+                .w_full()
+                .h(px(crate::ui::ROW * 3.0))
+                .flex_row()
+                .items_center()
+                .justify_center()
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "compare.noRefs"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
+                )
+                .into_element();
+        }
+        return view().w_full().flex_col().children(rows).into_element();
+    });
+    let worktree = dynamic(move || -> AnyElement {
+        let selection = draft.get();
+        return crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.withWorkingTree"),
+            if selection.worktree {
+                crate::ui::button::ButtonVariant::Secondary
+            } else {
+                crate::ui::button::ButtonVariant::Ghost
+            },
+            crate::ui::button::ButtonSize::Small,
+            selection.target.is_none(),
+            move || draft.update(|value| value.worktree = !value.worktree),
+        )
+        .into_element();
+    });
+    let mode_buttons = view()
+        .flex_row()
+        .items_center()
+        .gap(px(crate::ui::GAP_XS))
+        .child(dynamic(move || -> AnyElement {
+            let selected = !draft.get().three_dot;
+            return crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "compare.twoDot"),
+                if selected {
+                    crate::ui::button::ButtonVariant::Secondary
+                } else {
+                    crate::ui::button::ButtonVariant::Ghost
+                },
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || draft.update(|value| value.three_dot = false),
+            )
+            .into_element();
+        }))
+        .child(dynamic(move || -> AnyElement {
+            let selection = draft.get();
+            return crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "compare.threeDot"),
+                if selection.three_dot {
+                    crate::ui::button::ButtonVariant::Secondary
+                } else {
+                    crate::ui::button::ButtonVariant::Ghost
+                },
+                crate::ui::button::ButtonSize::Small,
+                selection.worktree,
+                move || draft.update(|value| value.three_dot = true),
+            )
+            .into_element();
+        }));
+    let body = view()
+        .w_full()
+        .flex_col()
+        .min_h_0()
+        .gap(px(crate::ui::GAP))
+        .child(search)
+        .child(
+            view()
+                .w_full()
+                .h(px(crate::ui::ROW))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .px(px(crate::ui::GAP_SM))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "compare.reference"))
+                        .flex_1()
+                        .text_size(px(crate::ui::SECONDARY))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(move || design::text3()),
+                )
+                .child(
+                    view()
+                        .w(px(COMPARE_REF_ACTION_W))
+                        .flex_row()
+                        .justify_center()
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "compare.base"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(move || design::text3()),
+                        ),
+                )
+                .child(
+                    view()
+                        .w(px(COMPARE_REF_ACTION_W))
+                        .flex_row()
+                        .justify_center()
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "compare.target"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(move || design::text3()),
+                        ),
+                ),
+        )
+        .child(scroll().w_full().h(px(COMPARE_REF_LIST_H)).child(rows))
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .child(mode_buttons)
+                .child(view().flex_1())
+                .child(worktree),
+        );
+    let footer_cmd = cmd.clone();
+    let dismiss_open = open;
+    let done_open = open;
+    let swap_draft = draft;
+    let clear_draft = draft;
+    let footer = vec![
+        dynamic(move || -> AnyElement {
+            let selection = swap_draft.get();
+            return crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "compare.swap"),
+                crate::ui::button::ButtonVariant::Ghost,
+                crate::ui::button::ButtonSize::Small,
+                selection.base.is_none() || selection.target.is_none() || selection.worktree,
+                move || {
+                    swap_draft.update(|selection| {
+                        std::mem::swap(&mut selection.base, &mut selection.target);
+                    })
+                },
+            )
+            .into_element();
+        }),
+        dynamic(move || -> AnyElement {
+            let selection = clear_draft.get();
+            return crate::ui::button::button(
+                move || i18n::t(language.get().as_str(), "compare.clear"),
+                crate::ui::button::ButtonVariant::Ghost,
+                crate::ui::button::ButtonSize::Small,
+                selection.base.is_none() && selection.target.is_none() && !selection.worktree,
+                move || {
+                    clear_draft.update(|selection| {
+                        selection.base = None;
+                        selection.target = None;
+                        selection.worktree = false;
+                    })
+                },
+            )
+            .into_element();
+        }),
+        crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "compare.done"),
+            crate::ui::button::ButtonVariant::Primary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || {
+                let selection = draft.get_untracked();
+                footer_cmd.apply_compare_refs(
+                    selection.base,
+                    selection.target,
+                    selection.three_dot,
+                    selection.worktree,
                 );
-                items.push(crate::ui::menu::checkable(
-                    label,
-                    selected,
-                    true,
-                    move || action(base.clone(), Some(value.clone())),
-                ));
-            }
-            items.push(crate::ui::menu::divider());
-            items.push(crate::ui::menu::checkable(
-                i18n::t(language.get().as_str(), "compare.twoDot"),
-                !three_dot,
-                true,
-                {
-                    let action = menu_set_dot.clone();
-                    move || action(false)
-                },
-            ));
-            items.push(crate::ui::menu::checkable(
-                i18n::t(language.get().as_str(), "compare.threeDot"),
-                three_dot,
-                !compare_worktree,
-                {
-                    let action = menu_set_dot.clone();
-                    move || action(true)
-                },
-            ));
-            items.push(crate::ui::menu::checkable(
-                i18n::t(language.get().as_str(), "compare.withWorkingTree"),
-                compare_worktree,
-                menu_target.is_some(),
-                {
-                    let action = menu_set_worktree.clone();
-                    move || action(!compare_worktree)
-                },
-            ));
-            items.push(crate::ui::menu::action(
-                i18n::t(language.get().as_str(), "compare.swap"),
-                has_pair && !compare_worktree,
-                {
-                    let action = menu_set_refs.clone();
-                    let base = menu_base.clone();
-                    let target = menu_target.clone();
-                    move || action(target.clone(), base.clone())
-                },
-            ));
-            items.push(crate::ui::menu::divider());
-            items.push(crate::ui::menu::action(
-                i18n::t(language.get().as_str(), "compare.clear"),
-                has_pair || menu_base.is_some() || menu_target.is_some() || compare_worktree,
-                {
-                    let action = menu_set_refs.clone();
-                    move || action(None, None)
-                },
-            ));
-            return items;
-        },
+                done_open.set(false);
+            },
+        )
+        .into_element(),
+    ];
+    return crate::ui::dialog::dialog(
+        true,
+        COMPARE_DIALOG_W,
+        move || i18n::t(language.get().as_str(), "compare.dialogTitle"),
+        body,
+        footer,
+        move || dismiss_open.set(false),
     );
 }

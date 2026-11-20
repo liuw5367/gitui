@@ -231,6 +231,44 @@ mod tests {
     use git::LogFilter;
 
     #[test]
+    fn stage_and_unstage_a_line_after_context() {
+        let repo = TempRepo::new("line-context");
+        let git = Repo::open(&repo.path.display().to_string()).unwrap();
+        std::fs::write(repo.path.join("main.rs"), "fn main() {\n}\n").unwrap();
+        git.stage(&["main.rs".to_string()]).unwrap();
+        git.commit("base", "").unwrap();
+        std::fs::write(
+            repo.path.join("main.rs"),
+            "fn main() {\n    let count = 42;\n}\n",
+        )
+        .unwrap();
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "main.rs" && !entry.staged)
+            .unwrap();
+        load_change_diff(&mut tab, index);
+        apply_piece(&mut tab, 0, Some(1), false).unwrap();
+        let staged = git.file_diff("main.rs", true).unwrap();
+        assert!(staged.raw.contains("+    let count = 42;"));
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "main.rs" && entry.staged)
+            .unwrap();
+        load_change_diff(&mut tab, index);
+        apply_piece(&mut tab, 0, Some(1), true).unwrap();
+        assert!(git.file_diff("main.rs", true).unwrap().raw.is_empty());
+        assert!(
+            git.file_diff("main.rs", false)
+                .unwrap()
+                .raw
+                .contains("+    let count = 42;")
+        );
+    }
+
+    #[test]
     fn changes_list_splits_staged_and_unstaged() {
         let repo = TempRepo::new("changes");
         let path = repo.path.display().to_string();

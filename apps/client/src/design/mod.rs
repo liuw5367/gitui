@@ -112,6 +112,10 @@ pub(crate) fn tag_fg() -> AdaptiveColor {
     return token("tag-fg");
 }
 
+pub(crate) fn tag_border() -> AdaptiveColor {
+    return token("tag-border");
+}
+
 pub(crate) fn remote_fg() -> AdaptiveColor {
     return token("remote-fg");
 }

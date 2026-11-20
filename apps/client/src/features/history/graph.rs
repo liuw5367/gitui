@@ -6,8 +6,10 @@ use std::collections::{HashMap, HashSet};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct GraphRow {
     pub(crate) node_lane: usize,
-    /// 当前行需要连续绘制的竖向泳道。
-    pub(crate) active_lanes: Vec<usize>,
+    /// 从行顶端连到当前节点的泳道。
+    pub(crate) top_lanes: Vec<usize>,
+    /// 从当前节点向行底端延续的泳道。
+    pub(crate) bottom_lanes: Vec<usize>,
     /// 从当前提交连接到额外 parent 泳道的横向线段。
     pub(crate) parent_lanes: Vec<usize>,
     pub(crate) lane_count: usize,
@@ -30,12 +32,16 @@ pub(crate) fn layout(commits: &[Commit]) -> Vec<GraphRow> {
         if node_lane == lanes.len() {
             lanes.push(None);
         }
+        let node_has_incoming = lanes[node_lane].as_deref() == Some(commit.sha.as_str());
         lanes[node_lane] = Some(commit.sha.clone());
-        let mut active = lanes
+        let mut top_lanes = lanes
             .iter()
             .enumerate()
             .filter_map(|(index, sha)| sha.as_ref().map(|_| index))
             .collect::<Vec<_>>();
+        if !node_has_incoming {
+            top_lanes.retain(|lane| *lane != node_lane);
+        }
 
         lanes[node_lane] = None;
         let mut parent_lanes = Vec::new();
@@ -78,23 +84,30 @@ pub(crate) fn layout(commits: &[Commit]) -> Vec<GraphRow> {
         while lanes.last().is_some_and(Option::is_none) {
             lanes.pop();
         }
-        active.extend(
+        let bottom_lanes = lanes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, sha)| sha.as_ref().map(|_| index))
+            .collect::<Vec<_>>();
+        let mut occupied = top_lanes.clone();
+        occupied.extend(
             lanes
                 .iter()
                 .enumerate()
                 .filter_map(|(index, sha)| sha.as_ref().map(|_| index)),
         );
-        active.push(node_lane);
-        active.sort_unstable();
-        active.dedup();
-        let lane_count = active
+        occupied.push(node_lane);
+        occupied.sort_unstable();
+        occupied.dedup();
+        let lane_count = occupied
             .last()
             .map(|lane| lane + 1)
             .unwrap_or(node_lane + 1)
             .max(lanes.len());
         rows.push(GraphRow {
             node_lane,
-            active_lanes: active,
+            top_lanes,
+            bottom_lanes,
             parent_lanes,
             lane_count,
         });

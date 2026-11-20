@@ -1,4 +1,4 @@
-//! 页签条：面板内的互斥视图切换（检查器 Files / Info / Blame、同步 Fetch / Pull / Push）。
+//! 页签条：面板内的互斥视图切换（Blame Changes / History、同步 Fetch / Pull / Push）。
 //!
 //! 行为来自 `nsh_base::tabs`/`tab`（每一页签自己处理按压与选中语义，键盘可进入），
 //! 外观是系统页签：行高 28、选中项文字转正文色并在底部画 2pt 强调线。

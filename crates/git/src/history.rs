@@ -4,7 +4,7 @@ use domain::{Commit, GitError};
 
 use crate::exec::{portable_separator, run_git, run_git_full};
 use crate::parse::parse_log;
-use crate::query::Repo;
+use crate::query::{Refs, RemoteBranch, Repo};
 
 const LOG_FORMAT: &str =
     "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%B%x1f%D%x1f%P%x1e";
@@ -566,6 +566,88 @@ fn decorate_stashes(commits: &mut [Commit], stashes: &[(String, String)]) {
     }
 }
 
+/// Adds every local or remote branch whose history contains each visible commit.
+/// `graph` must include the branch tips and their ancestors; the visible list may be filtered.
+pub fn decorate_commit_branch_history(commits: &mut [Commit], graph: &[Commit], refs: &Refs) {
+    if graph.is_empty() {
+        return;
+    }
+
+    let mut branch_names = refs
+        .branches
+        .iter()
+        .map(|branch| branch.name.clone())
+        .collect::<std::collections::HashSet<_>>();
+    branch_names.extend(refs.remote_branches.iter().map(RemoteBranch::full_name));
+    let current_branch = refs
+        .branches
+        .iter()
+        .find(|branch| branch.current)
+        .map(|branch| branch.name.as_str());
+
+    let indexes = graph
+        .iter()
+        .enumerate()
+        .map(|(index, commit)| (commit.sha.as_str(), index))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut parent_indexes = vec![Vec::new(); graph.len()];
+    let mut remaining_children = vec![0usize; graph.len()];
+    for (child_index, commit) in graph.iter().enumerate() {
+        for parent in &commit.parents {
+            let Some(parent_index) = indexes.get(parent.as_str()).copied() else {
+                continue;
+            };
+            parent_indexes[child_index].push(parent_index);
+            remaining_children[parent_index] += 1;
+        }
+    }
+
+    let mut branch_sets = vec![std::collections::HashSet::<String>::new(); graph.len()];
+    for (index, commit) in graph.iter().enumerate() {
+        for reference in &commit.refs {
+            let branch = reference
+                .strip_prefix("HEAD -> ")
+                .or_else(|| reference.strip_prefix("refs/heads/"))
+                .or_else(|| reference.strip_prefix("refs/remotes/"))
+                .unwrap_or(reference.as_str());
+            if branch_names.contains(branch) {
+                branch_sets[index].insert(branch.to_string());
+            }
+        }
+    }
+
+    let mut ready = remaining_children
+        .iter()
+        .enumerate()
+        .filter_map(|(index, count)| (*count == 0).then_some(index))
+        .collect::<std::collections::VecDeque<_>>();
+    while let Some(child_index) = ready.pop_front() {
+        let child_branches = branch_sets[child_index].clone();
+        for parent_index in &parent_indexes[child_index] {
+            branch_sets[*parent_index].extend(child_branches.iter().cloned());
+            remaining_children[*parent_index] -= 1;
+            if remaining_children[*parent_index] == 0 {
+                ready.push_back(*parent_index);
+            }
+        }
+    }
+
+    for commit in commits {
+        let Some(index) = indexes.get(commit.sha.as_str()).copied() else {
+            continue;
+        };
+        let mut branches = branch_sets[index].iter().cloned().collect::<Vec<_>>();
+        branches.sort_by(|left, right| {
+            let left_current = current_branch == Some(left.as_str());
+            let right_current = current_branch == Some(right.as_str());
+            right_current
+                .cmp(&left_current)
+                .then_with(|| left.cmp(right))
+        });
+        commit.branches = branches;
+    }
+}
+
 fn push_path(args: &mut Vec<String>, path: Option<&str>) {
     let Some(path) = path.map(str::trim).filter(|path| !path.is_empty()) else {
         return;
@@ -611,6 +693,90 @@ mod tests {
     use super::*;
     use crate::query::testkit::*;
     use std::process::Command as StdCommand;
+
+    #[test]
+    fn branch_history_reaches_ancestor_commits_and_prioritizes_current_branch() {
+        let mut visible = vec![Commit {
+            sha: String::from("a"),
+            ..Default::default()
+        }];
+        let graph = vec![
+            Commit {
+                sha: String::from("b"),
+                refs: vec![String::from("x")],
+                parents: vec![String::from("a")],
+                ..Default::default()
+            },
+            Commit {
+                sha: String::from("c"),
+                refs: vec![String::from("y")],
+                parents: vec![String::from("a")],
+                ..Default::default()
+            },
+            Commit {
+                sha: String::from("a"),
+                ..Default::default()
+            },
+        ];
+        let refs = Refs {
+            branches: vec![
+                crate::query::Branch {
+                    name: String::from("x"),
+                    current: false,
+                    ..Default::default()
+                },
+                crate::query::Branch {
+                    name: String::from("y"),
+                    current: true,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        decorate_commit_branch_history(&mut visible, &graph, &refs);
+
+        assert_eq!(
+            visible[0].branches,
+            vec![String::from("y"), String::from("x")]
+        );
+    }
+
+    #[test]
+    fn shared_ancestor_lists_every_branch_tip_that_reaches_it() {
+        let (_guard, path) = fixture("branch-ancestry", &[("a.txt", "base\n")], "ancestor");
+        let repo = Repo::open(&path).expect("open");
+        run_git(repo.root(), &["branch", "x"]).expect("create x");
+        run_git(repo.root(), &["branch", "y"]).expect("create y");
+        run_git(repo.root(), &["checkout", "-q", "x"]).expect("checkout x");
+        run_git(
+            repo.root(),
+            &["commit", "-q", "--allow-empty", "-m", "x tip"],
+        )
+        .expect("x tip");
+        run_git(repo.root(), &["checkout", "-q", "y"]).expect("checkout y");
+        run_git(
+            repo.root(),
+            &["commit", "-q", "--allow-empty", "-m", "y tip"],
+        )
+        .expect("y tip");
+
+        let graph = repo.log_all().expect("all history");
+        let refs = repo.refs().expect("refs");
+        let mut ancestor = vec![
+            graph
+                .iter()
+                .find(|commit| commit.summary == "ancestor")
+                .expect("ancestor commit")
+                .clone(),
+        ];
+        decorate_commit_branch_history(&mut ancestor, &graph, &refs);
+
+        assert_eq!(
+            ancestor[0].branches,
+            vec![String::from("y"), String::from("main"), String::from("x")]
+        );
+    }
 
     #[test]
     fn log_reads_commits_newest_first() {

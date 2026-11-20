@@ -144,6 +144,8 @@
     "description": "Description",
     "author": "Author",
     "date": "Date",
+    "resizeAuthor": "Resize author column",
+    "resizeDate": "Resize date column",
     "empty": "No commits yet",
     "noMatch": "No commits match",
     "referenceNotFound": "This reference no longer points to a visible commit.",
@@ -260,11 +262,19 @@
     "allBranches": "All branches",
     "allAuthors": "All authors",
     "apply": "Apply",
-    "clear": "Clear"
+    "clear": "Clear",
+    "search": "Search…",
+    "allCount": "All %{count}",
+    "noResults": "No matches"
   },
   "compare": {
     "mode": "Compare",
     "hint": "Select two commits to compare",
+    "dialogTitle": "Compare references",
+    "reference": "Reference",
+    "searchRefs": "Search branches, tags, and stashes…",
+    "noRefs": "No matching references",
+    "done": "Done",
     "clear": "Clear",
     "base": "Base ref",
     "target": "Target ref",
@@ -289,6 +299,7 @@
   },
   "files": {
     "title": "Files",
+    "infoTab": "Info",
     "changedCount": "%{count} files",
     "changes": "Changes",
     "info": {
@@ -299,10 +310,11 @@
       "authored": "Authored",
       "committer": "Committer",
       "committed": "Committed",
-      "refs": "Refs"
+      "refs": "Branches and refs"
     },
     "atCommit": "At commit %{short}",
     "empty": "No files",
+    "infoLoading": "Loading commit info…",
     "copyPath": "Copy Path",
     "openInEditor": "Open in Editor",
     "source": "Source",

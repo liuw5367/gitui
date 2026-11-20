@@ -81,8 +81,11 @@ pub(crate) fn blame_history_panel(
         .child(
             view()
                 .w_full()
-                .h(px(ui::ROW))
+                .h(px(ui::ROW + ui::GAP_SM * 2.0))
                 .px(px(ui::GAP_LG))
+                .py(px(ui::GAP_SM))
+                .flex_row()
+                .items_center()
                 .flex_shrink_0()
                 .child(ui::tabs::tabs(
                     vec![

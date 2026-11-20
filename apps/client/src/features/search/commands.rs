@@ -287,12 +287,14 @@ impl SearchCommands {
                     self.welcome.focus_search();
                 } else {
                     self.set_mode(crate::Mode::History);
+                    self.history.begin_filter();
                     self.history.state.filter_open.set(true);
                 }
             }
             // ⇧⌘F 始终是历史过滤。
             "filterHistory" => {
                 self.set_mode(crate::Mode::History);
+                self.history.begin_filter();
                 self.history.state.filter_open.set(true);
             }
             // ⌘↵：只在 Changes 里提交，避免在历史视图误提交。

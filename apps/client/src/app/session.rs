@@ -358,7 +358,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
     };
     let summary = repo.summary().unwrap_or_default();
     let log_started = std::time::Instant::now();
-    let commits = repo
+    let mut commits = repo
         .log_history(filter)
         .inspect(|commits| {
             log::debug!(
@@ -408,6 +408,12 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
             .unwrap_or_else(|_| commits.clone())
     };
     let refs = repo.refs().unwrap_or_default();
+    let branch_graph_commits = if filter.reference.is_some() || !filter.references.is_empty() {
+        repo.log_all().unwrap_or_else(|_| graph_commits.clone())
+    } else {
+        graph_commits.clone()
+    };
+    git::decorate_commit_branch_history(&mut commits, &branch_graph_commits, &refs);
     let status = repo.status().unwrap_or_default();
     let authors = repo.authors_with_email().unwrap_or_default();
     let changes = load_changes(&repo);
@@ -495,6 +501,17 @@ fn initial_sidebar_collapsed(refs: &Refs) -> BTreeSet<String> {
     } else {
         for remote in &refs.remote_info {
             collapsed.insert(format!("remote:{}", remote.name));
+        }
+    }
+    for branch in &refs.remote_branches {
+        let mut prefix = String::new();
+        let segments = branch.name.split('/').collect::<Vec<_>>();
+        for segment in segments.iter().take(segments.len().saturating_sub(1)) {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(segment);
+            collapsed.insert(format!("remote-prefix:{}:{prefix}", branch.remote));
         }
     }
     return collapsed;
@@ -661,6 +678,11 @@ mod tests {
                     ..git::Branch::default()
                 },
             ],
+            remote_branches: vec![git::RemoteBranch {
+                remote: "origin".to_string(),
+                name: "feature/deep/ui".to_string(),
+                ..git::RemoteBranch::default()
+            }],
             remote_info: vec![
                 git::RemoteInfo {
                     name: "origin".to_string(),
@@ -680,6 +702,8 @@ mod tests {
                 "branch-prefix:feature/deep".to_string(),
                 "branch-prefix:release".to_string(),
                 "group:tags".to_string(),
+                "remote-prefix:origin:feature".to_string(),
+                "remote-prefix:origin:feature/deep".to_string(),
                 "remote:origin".to_string(),
                 "remote:upstream".to_string(),
             ])

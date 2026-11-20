@@ -106,11 +106,21 @@ impl AppHandles {
             filter_open: signal(false),
             filter_position: signal((0.0, 0.0)),
             filter_menu: signal(None),
+            filter_tab_id: signal(None),
+            quick_filter_baseline: signal(None),
             file_tree_expanded: signal(None),
             compare_mode: signal(false),
+            compare_refs_open: signal(false),
+            compare_refs_query: signal(String::new()),
+            compare_refs_draft: signal(crate::features::history::state::CompareRefsDraft::default()),
+            fast_selection: signal(None),
+            commit_info_loading: signal(handles.history.state.commit_info_loading.get_untracked()),
+            commit_load_queue: std::sync::Arc::default(),
             table_ref: component_ref(),
             scroll_request: signal(None),
             filter: filter.clone(),
+            author_column_width: signal(handles.history.state.author_column_width.get_untracked()),
+            date_column_width: signal(handles.history.state.date_column_width.get_untracked()),
         };
         handles.sync.session = session.clone();
         handles.sync.state.dialog = signal(None);

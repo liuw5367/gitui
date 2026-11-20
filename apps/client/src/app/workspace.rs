@@ -152,7 +152,16 @@ fn match_body(
         .min(320.0),
         crate::ui::split::Pane::fixed(
             right_content(
-                language, current, agent, history, commit, changes, show_tree, tree, search,
+                language,
+                current,
+                agent,
+                history,
+                commit,
+                changes,
+                show_tree,
+                tree,
+                search,
+                settings_state,
             ),
             crate::features::commit::view::WIDTH,
         )
@@ -315,6 +324,11 @@ fn center_content(
                             let history = history.clone();
                             std::sync::Arc::new(move || history.return_to_history())
                         };
+                        let open_blame = tab.file_patch.as_ref().map(|_| {
+                            let history = history.clone();
+                            std::sync::Arc::new(move || history.open_blame())
+                                as std::sync::Arc<dyn Fn()>
+                        });
                         center
                             .child(diff::diff(
                                 &history.diff.state,
@@ -326,6 +340,7 @@ fn center_content(
                                 return_title,
                                 file_count,
                                 return_to_history,
+                                open_blame,
                             ))
                             .into_element()
                     } else {
@@ -411,9 +426,9 @@ fn right_content(
     show_tree: bool,
     tree: crate::app::session::TreeOptions,
     search: SearchCommands,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let mode = search.state.mode;
-    let inspector_tab = signal(inspector::InspectorTab::Files);
     let inspector_file_list_mode = signal(inspector::FileListMode::Tree);
     return view()
         .w_full()
@@ -429,8 +444,8 @@ fn right_content(
                     &history,
                     tab,
                     language,
-                    inspector_tab,
                     inspector_file_list_mode,
+                    crate::app::session::TreeOptions::from_settings(&settings_state.get()),
                 )
                 .into_element(),
                 crate::Mode::Agent => {

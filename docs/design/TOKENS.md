@@ -149,7 +149,7 @@
 | `branch-fg` | `design::branch_fg()` | `#0B5FCC` | `#8CC2FF` |
 | `tag-bg` | `design::tag_bg()` | `#FFF3DD` | `#3A2E16` |
 | `tag-fg` | `design::tag_fg()` | `#835700` | `#F0C674` |
-| `tag-border` | — | `#F0DEB8` | `#514020` |
+| `tag-border` | `design::tag_border()` | `#F0DEB8` | `#514020` |
 | `remote-fg` | `design::remote_fg()` | `#5D5D65` | `#A9A9B1` |
 | `avatar-bg` | — | `#DCE7F5` | `#2C3D52` |
 | `avatar-fg` | — | `#2F5D8A` | `#BBD2EC` |
