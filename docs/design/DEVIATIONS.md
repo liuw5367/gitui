@@ -78,6 +78,7 @@
 | 53 | Blame 侧栏页签留白 | 页签栏高 33 | 40 高，垂直内距 6，保证 Changes / History 页签上下留白对称（`features/history/blame/panel.rs`） | 按反馈增大页签上方留白并保持上下节奏一致 | 是（恢复 33 高栏） |
 | 54 | History 的 ⌘ 提交多选 | 06 Multi-commit diff 未画进入手势与单纯文件列表状态 | `⌘` 点击只在 History 列表切换提交多选，右侧 Inspector 汇总所选提交的文件路径与增删统计；中栏保持提交列表，不进入比较 diff（`features/history/commands.rs`、`features/history/inspector.rs`） | 按用户确认将提交多选与引用比较、完整 diff 分开；无需切换主视图即可查看多个提交影响的文件 | 是（恢复多提交 diff 入口与 Inspector 单提交文件树） |
 | 55 | Refs / Reflog 工具栏与右栏 | 工具栏显示 Branch / Stash；Reflog 画板右栏显示 Undo / History 页签和恢复卡 | 工具栏移除 Branch / Stash，新增选中态 Reflog 入口；Refs 主区保留 Refs / Reflog 页签；Reflog 选中记录后右栏只读显示提交头、文件统计与提交元信息（`shell/mod.rs`、`features/refs/view.rs`、`features/history/inspector.rs`、`app/workspace.rs`） | 按用户要求为 Reflog 增加直接入口与提交详情，并保留 Refs 总表 | 是（可恢复 Branch / Stash 并切回 Undo 检查器） |
+| 56 | 同步面板完成状态 | 成功状态显示通用 `Done`，具体输出只在日志区 | Fetch / Pull / Push 的完成行显示已是最新、确认到的引用与提交数量；Push 部分拒绝列出已更新与被拒绝数量，无法确认的提交数标记为未确认；原始 Git 输出保留在日志区（`features/sync/commands.rs`、`features/sync/state.rs`、`features/sync/view.rs`） | 让操作完成状态直接回答远端目标和结果，不要求用户从 Git 日志里推断 | 是（恢复通用 `Done` 完成行） |
 
 ## 3. 已澄清：不算偏离
 

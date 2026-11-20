@@ -6,6 +6,32 @@
 use crate::app::session::{Sync, SyncOptions};
 use nsh_core::prelude::*;
 
+/// 远端操作完成后供面板本地化呈现的事实摘要。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SyncSummary {
+    Fetch {
+        target: String,
+        updated_refs: usize,
+        deleted_refs: usize,
+        commits: Option<usize>,
+    },
+    Pull {
+        target: String,
+        commits: Option<usize>,
+    },
+    Push {
+        target: String,
+        updated_refs: usize,
+        deleted_refs: usize,
+        commits: Option<usize>,
+        rejected_refs: usize,
+    },
+    Unknown {
+        kind: Sync,
+        target: String,
+    },
+}
+
 /// 对话框状态：种类 + 选项 + 结果。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SyncDialogState {
@@ -17,6 +43,8 @@ pub(crate) struct SyncDialogState {
     pub options: SyncOptions,
     /// 执行结果；`None` 表示还没执行。
     pub result: Option<Result<String, String>>,
+    /// Fetch/Pull/Push 完成后可确认的操作摘要。
+    pub summary: Option<SyncSummary>,
     /// 正在执行。
     pub running: bool,
 }
@@ -30,6 +58,7 @@ impl SyncDialogState {
             remote,
             options: SyncOptions::default(),
             result: None,
+            summary: None,
             running: false,
         };
     }
@@ -44,6 +73,7 @@ pub(crate) struct SyncTaskState {
     pub options: SyncOptions,
     pub progress: String,
     pub result: Option<Result<String, String>>,
+    pub summary: Option<SyncSummary>,
     pub cancelled: bool,
     pub follow_up_push: Option<SyncOptions>,
     pub retry_push: bool,
@@ -59,6 +89,7 @@ impl PartialEq for SyncTaskState {
             && self.options == other.options
             && self.progress == other.progress
             && self.result == other.result
+            && self.summary == other.summary
             && self.cancelled == other.cancelled
             && self.follow_up_push == other.follow_up_push
             && self.retry_push == other.retry_push;

@@ -67,6 +67,8 @@ History 默认中心区域展示所有分支与 tag 可达的提交、stash 列�
 
 Refs 主区保留 Refs 总表与 Reflog 页签，并可来回切换；工具栏的 Reflog 入口直接打开 Reflog。选择 Reflog 记录后，右侧检查器只读显示提交摘要、SHA、作者与时间、父提交和文件变更统计；不可读取的提交显示本地化错误，不会改动 HEAD、工作区或索引。工具栏不再显示 Branch 与 Stash，左侧引用树中的分支和贮藏管理仍保留。
 
+Fetch、Pull、Push 完成后，面板状态会说明目标是否已是最新，或列出确认到的引用更新数与新增提交节点数；Push 部分拒绝会同时说明已成功和被拒绝的引用数。提交数无法确认时显示未确认，不伪装成 0；Git 原始输出仍在日志区保留。
+
 单文件 Diff 工具栏的 Blame 入口进入独立的 Blame / File History 页面：中栏显示逐行提交归属，也可切换到该 revision 的 Diff；右侧 Changes 返回来源视图，History 按文件版本列出提交。历史文件按所选 commit 读取，工作区文件按 HEAD 读取；文件历史跟踪重命名，删除提交显示其第一父版本内容。Blame 行聚焦右侧对应提交，文件历史行则切换 blame revision。
 
 Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并按文件路径语法高亮；可编辑 Result 草稿按冲突路径留在当前仓库会话中。缺失的 stage 表示该侧删除文件，二进制冲突通过选择一侧解决。标记解决只写入并暂存当前路径；有未解决文件或未处理草稿时不能继续。Continue 会重读 Git 操作与冲突状态；若 Rebase 继续后产生下一轮冲突，会更新文件清单并打开冲突视图。Abort 也会核对确认时的操作类型，避免仓库状态改变后误放弃另一项操作。stash apply / pop 冲突作为普通 Changes 文件冲突显示，不出现操作级 Continue / Abort。详细交互见[合并冲突页说明](../../docs/pages/merge-conflict.md)。
@@ -91,7 +93,7 @@ cargo test -p nsh-app        # 等价于在本目录运行 cargo test
 nsh check
 ```
 
-仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。`cargo test -p nsh-app` 当前 106 项通过。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
+仓库根是 Cargo workspace，客户端是其中一个成员（`nsh-app`），共用根 `Cargo.lock` 与 `target/`；在仓库根直接 `cargo test` 会跑全部五个成员。测试会创建真实 Git 仓库，因此需要 PATH 中有 `git`；覆盖范围包括：
 
 - `features/*/ops`（连同 `app/session.rs`、`app/ops.rs`）：仓库装载与错误页、暂存与 hunk 暂存、提交与钩子、同步及其稳定仓库目标、改写、reflog、引用操作、分支和远端跟踪分支斜杠树排序与折叠键、变更清单、冲突解决、过滤与对比、树形选项。
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。
@@ -111,7 +113,7 @@ nsh check
 
 ## 已知限制
 
-- 部分文件头注释滞后于实现：`src/lib.rs` 仍描述只读阶段，`src/shell/mod.rs` 仍描述 P1 的禁用按钮；`src/design/metrics.rs` 仍引用 `tests/geometry.rs` 与已归档的计划。修改前以代码行为为准；设计系统口径见 [docs/design/](../../docs/design/README.md)。
+- 部分文件头注释滞后于实现：`src/lib.rs` 仍描述只读阶段；`src/design/metrics.rs` 仍引用 `tests/geometry.rs` 与已归档的计划。修改前以代码行为为准；设计系统口径见 [docs/design/](../../docs/design/README.md)。
 - 产品范围与用户可见限制见[项目 README](../../README.md) 的「已知限制」一节。
 
 ## 相关

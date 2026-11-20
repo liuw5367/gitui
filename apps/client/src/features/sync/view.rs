@@ -3,7 +3,7 @@
 //! 左侧放操作目标、选项与动作，右侧只显示 Git 子进程实际返回的输出和状态。
 
 use super::commands::SyncCommands;
-use super::state::{SyncState, SyncTaskState};
+use super::state::{SyncState, SyncSummary, SyncTaskState};
 use crate::app::session::{Sync, SyncOptions, Tab};
 use crate::design::{self, metrics};
 use crate::i18n;
@@ -582,6 +582,26 @@ fn log_panel(
                                 status_remote.as_deref(),
                             ) && task.cancelled
                         });
+                        let lang = language.get();
+                        if let Some(summary) = status_task
+                            .get()
+                            .filter(|task| {
+                                sync_task_matches(
+                                    task,
+                                    kind,
+                                    target_tab_id,
+                                    status_path.as_deref(),
+                                    status_remote.as_deref(),
+                                )
+                            })
+                            .and_then(|task| task.summary)
+                        {
+                            return sync_summary_text(
+                                lang.as_str(),
+                                &summary,
+                                status_result.as_ref().is_some_and(Result::is_err),
+                            );
+                        }
                         let key = if cancelled {
                             "sync.cancelled"
                         } else if running {
@@ -593,8 +613,10 @@ fn log_panel(
                         } else {
                             "sync.ready"
                         };
-                        i18n::t(language.get().as_str(), key)
+                        i18n::t(lang.as_str(), key)
                     })
+                    .flex_1()
+                    .min_w_0()
                     .text_size(px(ui::BODY))
                     .line_height(px(ui::BODY_LINE))
                     .font_weight(FontWeight::MEDIUM)
@@ -695,6 +717,114 @@ fn sync_log_output(progress: &str, result: Option<&Result<String, String>>) -> O
         };
         (!message.trim().is_empty()).then(|| message.clone())
     });
+}
+
+fn sync_summary_text(language: &str, summary: &SyncSummary, failed: bool) -> String {
+    let count = |value: usize| value.to_string();
+    match summary {
+        SyncSummary::Fetch {
+            target,
+            updated_refs,
+            deleted_refs,
+            commits,
+        } => {
+            let all_remotes = target == "*";
+            let target = if all_remotes {
+                i18n::t(language, "sync.allRemotes")
+            } else {
+                target.clone()
+            };
+            let args = [
+                ("target", target),
+                ("updated", count(*updated_refs)),
+                ("deleted", count(*deleted_refs)),
+                (
+                    "commits",
+                    commits
+                        .map(count)
+                        .unwrap_or_else(|| i18n::t(language, "sync.unknownCount")),
+                ),
+            ];
+            let key = if failed {
+                if commits.is_some() {
+                    "sync.fetchPartialFailure"
+                } else {
+                    "sync.fetchPartialFailureUnknown"
+                }
+            } else if *updated_refs == 0 && *deleted_refs == 0 {
+                if all_remotes {
+                    "sync.fetchAllUpToDate"
+                } else {
+                    "sync.fetchUpToDate"
+                }
+            } else if commits.is_some() {
+                "sync.fetchUpdated"
+            } else {
+                "sync.fetchUpdatedUnknown"
+            };
+            return i18n::with_arguments(language, key, &args);
+        }
+        SyncSummary::Pull { target, commits } => {
+            let args = [
+                ("target", target.clone()),
+                (
+                    "commits",
+                    commits
+                        .map(count)
+                        .unwrap_or_else(|| i18n::t(language, "sync.unknownCount")),
+                ),
+            ];
+            let key = match commits {
+                Some(0) => "sync.pullUpToDate",
+                Some(_) => "sync.pullUpdated",
+                None => "sync.pullUpdatedUnknown",
+            };
+            return i18n::with_arguments(language, key, &args);
+        }
+        SyncSummary::Push {
+            target,
+            updated_refs,
+            deleted_refs,
+            commits,
+            rejected_refs,
+        } => {
+            let args = [
+                ("target", target.clone()),
+                ("updated", count(*updated_refs)),
+                ("deleted", count(*deleted_refs)),
+                (
+                    "commits",
+                    commits
+                        .map(count)
+                        .unwrap_or_else(|| i18n::t(language, "sync.unknownCount")),
+                ),
+                ("rejected", count(*rejected_refs)),
+            ];
+            let key = if failed {
+                if commits.is_some() {
+                    "sync.pushPartialFailure"
+                } else {
+                    "sync.pushPartialFailureUnknown"
+                }
+            } else if *updated_refs == 0 && *deleted_refs == 0 && *rejected_refs == 0 {
+                "sync.pushUpToDate"
+            } else if commits.is_some() {
+                "sync.pushUpdated"
+            } else {
+                "sync.pushUpdatedUnknown"
+            };
+            return i18n::with_arguments(language, key, &args);
+        }
+        SyncSummary::Unknown { kind, target } => {
+            let target = if target == "*" {
+                i18n::t(language, "sync.allRemotes")
+            } else {
+                target.clone()
+            };
+            let args = [("kind", i18n::t(language, kind.id())), ("target", target)];
+            return i18n::with_arguments(language, "sync.completedUnknown", &args);
+        }
+    }
 }
 
 fn sync_task_matches(
@@ -814,8 +944,9 @@ fn sync_kind_key(kind: Sync) -> &'static str {
 
 #[cfg(test)]
 mod log_panel_tests {
-    use super::{SyncTaskState, sync_log_output, sync_task_matches};
+    use super::{SyncTaskState, sync_log_output, sync_summary_text, sync_task_matches};
     use crate::app::session::{Sync, SyncOptions};
+    use crate::features::sync::state::SyncSummary;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
 
@@ -828,11 +959,51 @@ mod log_panel_tests {
             options: SyncOptions::default(),
             progress: "previous operation output".to_string(),
             result: None,
+            summary: None,
             cancelled: false,
             follow_up_push: None,
             retry_push: false,
             cancel: Arc::new(AtomicBool::new(false)),
         };
+    }
+
+    #[test]
+    fn summary_shows_fetch_ref_and_commit_counts() {
+        let text = sync_summary_text(
+            "zh-Hans",
+            &SyncSummary::Fetch {
+                target: "origin".to_string(),
+                updated_refs: 2,
+                deleted_refs: 1,
+                commits: Some(5),
+            },
+            false,
+        );
+
+        assert!(text.contains("origin"));
+        assert!(text.contains("2"));
+        assert!(text.contains("1"));
+        assert!(text.contains("5"));
+    }
+
+    #[test]
+    fn partial_push_summary_keeps_rejected_count_and_unknown_commit_count() {
+        let text = sync_summary_text(
+            "zh-Hans",
+            &SyncSummary::Push {
+                target: "origin/main".to_string(),
+                updated_refs: 1,
+                deleted_refs: 0,
+                commits: None,
+                rejected_refs: 2,
+            },
+            true,
+        );
+
+        assert!(text.contains("origin/main"));
+        assert!(text.contains("1"));
+        assert!(text.contains("2"));
+        assert!(text.contains("未确认"));
     }
 
     #[test]

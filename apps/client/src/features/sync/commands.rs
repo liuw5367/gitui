@@ -4,7 +4,7 @@
 //! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
 use super::ops;
-use super::state::{SyncDialogState, SyncState, SyncTaskState};
+use super::state::{SyncDialogState, SyncState, SyncSummary, SyncTaskState};
 use crate::app::session::{Sync, SyncOptions};
 use crate::features::SessionHandle;
 use nsh_core::prelude::*;
@@ -16,9 +16,540 @@ enum SyncWorkerEvent {
     Progress(String),
     Finished {
         result: Option<Result<String, domain::GitError>>,
+        summary: Option<SyncSummary>,
         output: String,
         cancelled: bool,
     },
+}
+
+enum SyncBefore {
+    Fetch(Option<std::collections::BTreeMap<String, String>>),
+    Pull {
+        branch: String,
+        upstream: Option<(String, String)>,
+        head: Option<String>,
+    },
+    Push,
+}
+
+fn sync_before(repo: &git::Repo, kind: Sync) -> SyncBefore {
+    return match kind {
+        Sync::Fetch => SyncBefore::Fetch(repo.sync_ref_snapshot().ok()),
+        Sync::Pull => SyncBefore::Pull {
+            branch: repo.abbrev_branch().unwrap_or_else(|_| "HEAD".to_string()),
+            upstream: repo.upstream_ref(),
+            head: repo.head_oid(),
+        },
+        Sync::Push => SyncBefore::Push,
+    };
+}
+
+fn completion_summary(
+    repo: &git::Repo,
+    kind: Sync,
+    remote: &str,
+    options: &SyncOptions,
+    before: SyncBefore,
+    succeeded: bool,
+    status_output: &str,
+    status_complete: bool,
+) -> Option<SyncSummary> {
+    match (kind, before) {
+        (Sync::Fetch, SyncBefore::Fetch(before)) => {
+            let Some(before) = before else {
+                return succeeded.then(|| SyncSummary::Unknown {
+                    kind,
+                    target: if options.fetch.all_remotes {
+                        "*".to_string()
+                    } else {
+                        remote.to_string()
+                    },
+                });
+            };
+            let Some(after) = repo.sync_ref_snapshot().ok() else {
+                return succeeded.then(|| SyncSummary::Unknown {
+                    kind,
+                    target: if options.fetch.all_remotes {
+                        "*".to_string()
+                    } else {
+                        remote.to_string()
+                    },
+                });
+            };
+            let names = before
+                .keys()
+                .chain(after.keys())
+                .collect::<std::collections::BTreeSet<_>>();
+            let mut updated_refs = 0usize;
+            let mut deleted_refs = 0usize;
+            let mut commits = std::collections::HashSet::new();
+            let mut count_known = true;
+            for name in names {
+                let old = before.get(name);
+                let new = after.get(name);
+                if old == new {
+                    continue;
+                }
+                match (old, new) {
+                    (Some(_), None) => deleted_refs += 1,
+                    (_, Some(new)) => {
+                        updated_refs += 1;
+                        match repo.commit_oids_between(old.map(String::as_str), new) {
+                            Ok(oids) => commits.extend(oids),
+                            Err(_) => count_known = false,
+                        }
+                    }
+                    (None, None) => {}
+                }
+            }
+            if !succeeded && updated_refs == 0 && deleted_refs == 0 {
+                return None;
+            }
+            return Some(SyncSummary::Fetch {
+                target: if options.fetch.all_remotes {
+                    "*".to_string()
+                } else {
+                    remote.to_string()
+                },
+                updated_refs,
+                deleted_refs,
+                commits: count_known.then_some(commits.len()),
+            });
+        }
+        (
+            Sync::Pull,
+            SyncBefore::Pull {
+                branch,
+                upstream,
+                head,
+            },
+        ) if succeeded => {
+            let new_upstream = repo.upstream_ref();
+            let new_head = repo.head_oid();
+            let commits = match (upstream, new_upstream, head, new_head) {
+                (Some((old_ref, old_oid)), Some((new_ref, new_oid)), Some(_), Some(head_oid))
+                    if old_ref == new_ref && repo.is_ancestor(&new_oid, &head_oid).ok()? =>
+                {
+                    Some(
+                        repo.commit_oids_between(Some(old_oid.as_str()), new_oid.as_str())
+                            .ok()?
+                            .len(),
+                    )
+                }
+                _ => None,
+            };
+            return Some(SyncSummary::Pull {
+                target: branch,
+                commits,
+            });
+        }
+        (Sync::Push, SyncBefore::Push) => {
+            if !status_complete {
+                return succeeded.then(|| SyncSummary::Unknown {
+                    kind,
+                    target: remote.to_string(),
+                });
+            }
+            let updates = git::parse_push_porcelain(status_output);
+            if updates.is_empty() {
+                return succeeded.then(|| SyncSummary::Unknown {
+                    kind,
+                    target: remote.to_string(),
+                });
+            }
+            let mut updated_refs = 0usize;
+            let mut deleted_refs = 0usize;
+            let mut rejected_refs = 0usize;
+            let mut targets = std::collections::BTreeSet::new();
+            let mut commits = std::collections::HashSet::new();
+            let mut count_known = true;
+            let mut counted_an_update = false;
+            for update in &updates {
+                targets.insert(update.destination.clone());
+                match update.status {
+                    git::PushRefStatus::Updated
+                    | git::PushRefStatus::Created
+                    | git::PushRefStatus::Forced => {
+                        updated_refs += 1;
+                        counted_an_update = true;
+                        let endpoints =
+                            update.summary.split_whitespace().next().and_then(|value| {
+                                value.split_once("...").or_else(|| value.split_once(".."))
+                            });
+                        let range = if let Some((old, new)) = endpoints {
+                            repo.resolve_commit_oid(old)
+                                .ok()
+                                .zip(repo.resolve_commit_oid(new).ok())
+                                .map(|(old, new)| (Some(old), new))
+                        } else if update.status == git::PushRefStatus::Created {
+                            update
+                                .source
+                                .as_deref()
+                                .and_then(|source| repo.resolve_commit_oid(source).ok())
+                                .map(|new| (None, new))
+                        } else {
+                            None
+                        };
+                        match range {
+                            Some((old, new)) => {
+                                match repo.commit_oids_between(old.as_deref(), new.as_str()) {
+                                    Ok(oids) => commits.extend(oids),
+                                    Err(_) => count_known = false,
+                                }
+                            }
+                            None => count_known = false,
+                        }
+                    }
+                    git::PushRefStatus::Deleted => deleted_refs += 1,
+                    git::PushRefStatus::Rejected => rejected_refs += 1,
+                    git::PushRefStatus::UpToDate => {}
+                }
+            }
+            if !succeeded && updated_refs == 0 && deleted_refs == 0 && rejected_refs == 0 {
+                return None;
+            }
+            let target = if targets.len() == 1 && !options.push.all_branches && !options.push.tags {
+                let reference = targets.first().map(String::as_str).unwrap_or_default();
+                format!("{remote}/{}", short_remote_ref(reference))
+            } else {
+                remote.to_string()
+            };
+            return Some(SyncSummary::Push {
+                target,
+                updated_refs,
+                deleted_refs,
+                commits: (count_known && counted_an_update).then_some(commits.len()),
+                rejected_refs,
+            });
+        }
+        _ => {}
+    }
+    return None;
+}
+
+fn short_remote_ref(reference: &str) -> &str {
+    return reference
+        .strip_prefix("refs/heads/")
+        .or_else(|| reference.strip_prefix("refs/tags/"))
+        .unwrap_or(reference);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::sync::state::SyncSummary;
+    use crate::test_support::TempRepo;
+    use std::path::Path;
+
+    struct RemoteFixture {
+        repo: TempRepo,
+        remote: std::path::PathBuf,
+        other: std::path::PathBuf,
+    }
+
+    impl RemoteFixture {
+        fn new(name: &str) -> Self {
+            let repo = TempRepo::new(name);
+            let base = repo.path.parent().expect("temp parent");
+            let suffix = repo
+                .path
+                .file_name()
+                .expect("temp repo name")
+                .to_string_lossy();
+            let remote = base.join(format!("{suffix}-remote.git"));
+            let other = base.join(format!("{suffix}-other"));
+            git(
+                &repo.path,
+                &["init", "--bare", "-q", remote.to_str().expect("utf8")],
+            );
+            git(
+                &repo.path,
+                &["remote", "add", "origin", remote.to_str().expect("utf8")],
+            );
+            git(&repo.path, &["push", "-q", "-u", "origin", "main"]);
+            git(
+                Path::new("."),
+                &[
+                    "clone",
+                    "-q",
+                    remote.to_str().expect("utf8"),
+                    other.to_str().expect("utf8"),
+                ],
+            );
+            git(&other, &["config", "user.name", "Other"]);
+            git(&other, &["config", "user.email", "other@example.com"]);
+            return Self {
+                repo,
+                remote,
+                other,
+            };
+        }
+
+        fn other_commit(&self, message: &str) {
+            let file = self.other.join("remote.txt");
+            let contents = std::fs::read_to_string(&file).unwrap_or_default();
+            std::fs::write(file, format!("{contents}{message}\n")).expect("write remote file");
+            git(&self.other, &["add", "-A"]);
+            git(&self.other, &["commit", "-q", "-m", message]);
+            git(&self.other, &["push", "-q", "origin", "main"]);
+        }
+    }
+
+    impl Drop for RemoteFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.other);
+            let _ = std::fs::remove_dir_all(&self.remote);
+        }
+    }
+
+    fn git(directory: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(directory)
+            .args(args)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return String::from_utf8_lossy(&output.stdout).trim().to_string();
+    }
+
+    fn finish_run(run: &mut git::SyncRun) -> Result<String, domain::GitError> {
+        for _ in 0..1000 {
+            if let Some(result) = run.try_finish() {
+                return result;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("local Git sync did not finish");
+    }
+
+    #[test]
+    fn fetch_summary_counts_changed_refs_and_deduplicates_commits() {
+        let fixture = RemoteFixture::new("sync-fetch-summary");
+        fixture.other_commit("remote-1");
+        git(
+            &fixture.other,
+            &["push", "-q", "origin", "main:refs/heads/topic"],
+        );
+        git(&fixture.other, &["tag", "-a", "v1", "-m", "v1"]);
+        git(&fixture.other, &["push", "-q", "origin", "v1"]);
+        let repo = git::Repo::open(fixture.repo.path.to_str().expect("repo path")).expect("repo");
+        let options = SyncOptions::default();
+        let before = sync_before(&repo, Sync::Fetch);
+        let mut run = repo
+            .start_fetch_with("origin", &options.fetch)
+            .expect("start fetch");
+        let result = finish_run(&mut run);
+        let summary = completion_summary(
+            &repo,
+            Sync::Fetch,
+            "origin",
+            &options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(
+            summary,
+            Some(SyncSummary::Fetch {
+                target: "origin".to_string(),
+                updated_refs: 3,
+                deleted_refs: 0,
+                commits: Some(2),
+            })
+        );
+
+        let before = sync_before(&repo, Sync::Fetch);
+        let mut run = repo
+            .start_fetch_with("origin", &options.fetch)
+            .expect("start unchanged fetch");
+        let result = finish_run(&mut run);
+        let unchanged = completion_summary(
+            &repo,
+            Sync::Fetch,
+            "origin",
+            &options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+        assert_eq!(
+            unchanged,
+            Some(SyncSummary::Fetch {
+                target: "origin".to_string(),
+                updated_refs: 0,
+                deleted_refs: 0,
+                commits: Some(0),
+            })
+        );
+
+        git(
+            &fixture.other,
+            &["push", "-q", "origin", "--delete", "topic"],
+        );
+        let before = sync_before(&repo, Sync::Fetch);
+        let mut prune_options = options.clone();
+        prune_options.fetch.prune = true;
+        let mut run = repo
+            .start_fetch_with("origin", &prune_options.fetch)
+            .expect("start pruned fetch");
+        let result = finish_run(&mut run);
+        let pruned = completion_summary(
+            &repo,
+            Sync::Fetch,
+            "origin",
+            &prune_options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+        assert!(result.is_ok());
+        assert_eq!(
+            pruned,
+            Some(SyncSummary::Fetch {
+                target: "origin".to_string(),
+                updated_refs: 0,
+                deleted_refs: 1,
+                commits: Some(0),
+            })
+        );
+    }
+
+    #[test]
+    fn pull_summary_uses_upstream_delta_that_reached_head() {
+        let fixture = RemoteFixture::new("sync-pull-summary");
+        fixture.other_commit("remote-1");
+        let repo = git::Repo::open(fixture.repo.path.to_str().expect("repo path")).expect("repo");
+        let before = sync_before(&repo, Sync::Pull);
+        let options = SyncOptions::default();
+        let mut run = repo.start_pull_with(&options.pull).expect("start pull");
+        let result = finish_run(&mut run);
+        let summary = completion_summary(
+            &repo,
+            Sync::Pull,
+            "origin",
+            &options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(
+            summary,
+            Some(SyncSummary::Pull {
+                target: "main".to_string(),
+                commits: Some(1),
+            })
+        );
+    }
+
+    #[test]
+    fn push_summary_reports_commits_and_rejected_refs() {
+        let fixture = RemoteFixture::new("sync-push-summary");
+        let repo = git::Repo::open(fixture.repo.path.to_str().expect("repo path")).expect("repo");
+        std::fs::write(fixture.repo.path.join("local.txt"), "local\n").expect("write local file");
+        git(&fixture.repo.path, &["add", "-A"]);
+        git(&fixture.repo.path, &["commit", "-q", "-m", "local-1"]);
+        let options = SyncOptions::default();
+        let before = sync_before(&repo, Sync::Push);
+        let mut run = repo
+            .start_push_with(Some("origin"), &options.push)
+            .expect("start push");
+        let result = finish_run(&mut run);
+        let summary = completion_summary(
+            &repo,
+            Sync::Push,
+            "origin",
+            &options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+        assert!(result.is_ok());
+        assert_eq!(
+            summary,
+            Some(SyncSummary::Push {
+                target: "origin/main".to_string(),
+                updated_refs: 1,
+                deleted_refs: 0,
+                commits: Some(1),
+                rejected_refs: 0,
+            })
+        );
+
+        let before = sync_before(&repo, Sync::Push);
+        let mut run = repo
+            .start_push_with(Some("origin"), &options.push)
+            .expect("start unchanged push");
+        let result = finish_run(&mut run);
+        let unchanged = completion_summary(
+            &repo,
+            Sync::Push,
+            "origin",
+            &options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+        assert!(result.is_ok());
+        assert_eq!(
+            unchanged,
+            Some(SyncSummary::Push {
+                target: "origin/main".to_string(),
+                updated_refs: 0,
+                deleted_refs: 0,
+                commits: None,
+                rejected_refs: 0,
+            })
+        );
+
+        git(&fixture.other, &["pull", "-q", "--ff-only"]);
+        fixture.other_commit("remote-1");
+        std::fs::write(fixture.repo.path.join("local-2.txt"), "local\n")
+            .expect("write second file");
+        git(&fixture.repo.path, &["add", "-A"]);
+        git(&fixture.repo.path, &["commit", "-q", "-m", "local-2"]);
+        let before = sync_before(&repo, Sync::Push);
+        let mut run = repo
+            .start_push_with(Some("origin"), &options.push)
+            .expect("start rejected push");
+        let result = finish_run(&mut run);
+        let summary = completion_summary(
+            &repo,
+            Sync::Push,
+            "origin",
+            &options,
+            before,
+            result.is_ok(),
+            run.status_output().as_str(),
+            !run.status_output_truncated(),
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            summary,
+            Some(SyncSummary::Push {
+                target: "origin/main".to_string(),
+                updated_refs: 0,
+                deleted_refs: 0,
+                commits: None,
+                rejected_refs: 1,
+            })
+        );
+    }
 }
 
 #[derive(Clone)]
@@ -57,6 +588,7 @@ impl SyncCommands {
                 remote: task.remote,
                 options: task.options,
                 result: task.result,
+                summary: task.summary,
                 running,
             }));
             return;
@@ -76,6 +608,7 @@ impl SyncCommands {
         };
         state.kind = kind;
         state.result = None;
+        state.summary = None;
         sync_state.set(Some(state));
     }
 
@@ -96,6 +629,7 @@ impl SyncCommands {
                 remote: task.remote,
                 options: task.options,
                 result: task.result,
+                summary: task.summary,
                 running,
             }));
             return;
@@ -115,6 +649,7 @@ impl SyncCommands {
         state.remote = Some(remote);
         state.options.fetch.all_remotes = false;
         state.result = None;
+        state.summary = None;
         sync_state.set(Some(state));
     }
 
@@ -193,6 +728,7 @@ impl SyncCommands {
                     self.language.get_untracked().as_str(),
                     "form.targetClosed",
                 )));
+                dialog.summary = None;
                 dialog.running = false;
                 self.state.dialog.set(Some(dialog));
             }
@@ -208,6 +744,7 @@ impl SyncCommands {
             remote: remote.clone(),
             options: options.clone(),
             result: None,
+            summary: None,
             running: true,
         }));
         self.state.task.set(Some(SyncTaskState {
@@ -218,6 +755,7 @@ impl SyncCommands {
             options: options.clone(),
             progress: String::new(),
             result: None,
+            summary: None,
             cancelled: false,
             follow_up_push: follow_up_push.clone(),
             retry_push,
@@ -236,6 +774,7 @@ impl SyncCommands {
                     let _ = sender.send(SyncWorkerEvent::Finished {
                         output: error.detail(),
                         result: Some(Err(error)),
+                        summary: None,
                         cancelled: false,
                     });
                     return;
@@ -249,6 +788,7 @@ impl SyncCommands {
                         .and_then(|refs| refs.remotes.first().cloned())
                 })
                 .unwrap_or_else(|| "origin".to_string());
+            let before = sync_before(&repo, kind);
             let started = match kind {
                 Sync::Fetch => repo.start_fetch_with(remote_name.as_str(), &worker_options.fetch),
                 Sync::Pull => repo.start_pull_with(&worker_options.pull),
@@ -262,6 +802,7 @@ impl SyncCommands {
                     let _ = sender.send(SyncWorkerEvent::Finished {
                         output: error.detail(),
                         result: Some(Err(error)),
+                        summary: None,
                         cancelled: false,
                     });
                     return;
@@ -271,8 +812,21 @@ impl SyncCommands {
             loop {
                 if let Some(result) = run.try_finish() {
                     let output = run.progress();
+                    let status_output = run.status_output();
+                    let status_complete = !run.status_output_truncated();
+                    let summary = completion_summary(
+                        &repo,
+                        kind,
+                        remote_name.as_str(),
+                        &worker_options,
+                        before,
+                        result.is_ok(),
+                        status_output.as_str(),
+                        status_complete,
+                    );
                     let _ = sender.send(SyncWorkerEvent::Finished {
                         result: Some(result),
+                        summary,
                         output,
                         cancelled: false,
                     });
@@ -282,6 +836,7 @@ impl SyncCommands {
                     let output = run.cancel();
                     let _ = sender.send(SyncWorkerEvent::Finished {
                         result: None,
+                        summary: None,
                         output,
                         cancelled: true,
                     });
@@ -316,6 +871,7 @@ impl SyncCommands {
                         }
                         Ok(SyncWorkerEvent::Finished {
                             result,
+                            summary,
                             output,
                             cancelled,
                         }) => {
@@ -379,6 +935,7 @@ impl SyncCommands {
                                         output
                                     };
                                     task.result = Some(outcome.clone());
+                                    task.summary = summary.clone();
                                     task.cancelled = cancelled;
                                     task_signal.set(Some(task));
                                 }
@@ -388,6 +945,7 @@ impl SyncCommands {
                             {
                                 dialog.running = false;
                                 dialog.result = Some(outcome.clone());
+                                dialog.summary = summary;
                                 dialog_signal.set(Some(dialog));
                             }
 

@@ -1,6 +1,7 @@
 //! 本模块负责与远端打交道：取回、拉取、推送，以及克隆与初始化。
 
 use domain::GitError;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -83,11 +84,76 @@ pub struct PushOptions {
 
 const MAX_SYNC_OUTPUT: usize = 256 * 1024;
 
+/// A single status row emitted by `git push --porcelain`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PushRefUpdate {
+    pub status: PushRefStatus,
+    pub source: Option<String>,
+    pub destination: String,
+    /// Git's endpoint summary, such as `abcd123..def456` or `[new branch]`.
+    pub summary: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PushRefStatus {
+    Updated,
+    Created,
+    Deleted,
+    Forced,
+    UpToDate,
+    Rejected,
+}
+
+/// Parse machine-readable status rows while ignoring the human progress and `To …` lines.
+pub fn parse_push_porcelain(output: &str) -> Vec<PushRefUpdate> {
+    let mut updates = Vec::new();
+    for line in output.lines() {
+        let Some((marker, fields)) =
+            line.split_at_checked(line.chars().next().map(char::len_utf8).unwrap_or(0))
+        else {
+            continue;
+        };
+        let status = match marker {
+            " " => PushRefStatus::Updated,
+            "*" => PushRefStatus::Created,
+            "-" => PushRefStatus::Deleted,
+            "+" => PushRefStatus::Forced,
+            "=" => PushRefStatus::UpToDate,
+            "!" => PushRefStatus::Rejected,
+            _ => continue,
+        };
+        let mut parts = fields.split_whitespace();
+        let Some(refspec) = parts.next() else {
+            continue;
+        };
+        let (source, destination) = match refspec.split_once(':') {
+            Some((source, destination)) => (
+                (!source.is_empty()).then(|| source.to_string()),
+                destination.to_string(),
+            ),
+            None => continue,
+        };
+        if destination.is_empty() {
+            continue;
+        }
+        let summary = parts.collect::<Vec<_>>().join(" ");
+        updates.push(PushRefUpdate {
+            status,
+            source,
+            destination,
+            summary,
+        });
+    }
+    return updates;
+}
+
 pub struct SyncRun {
     child: Child,
     process_group: Option<u32>,
     args: String,
     output: Arc<Mutex<String>>,
+    stdout: Arc<Mutex<String>>,
+    stdout_truncated: Arc<AtomicBool>,
     stop_readers: Arc<AtomicBool>,
     readers: Vec<JoinHandle<()>>,
 }
@@ -111,19 +177,25 @@ impl SyncRun {
                 reason: error.to_string(),
             })?;
         let output = Arc::new(Mutex::new(String::new()));
+        let status_output = Arc::new(Mutex::new(String::new()));
+        let status_truncated = Arc::new(AtomicBool::new(false));
         let stop_readers = Arc::new(AtomicBool::new(false));
         let mut readers = Vec::new();
-        if let Some(stdout) = child.stdout.take() {
+        if let Some(pipe) = child.stdout.take() {
             readers.push(read_sync_output(
-                stdout,
+                pipe,
                 output.clone(),
+                Some(status_output.clone()),
+                Some(status_truncated.clone()),
                 stop_readers.clone(),
             ));
         }
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(pipe) = child.stderr.take() {
             readers.push(read_sync_output(
-                stderr,
+                pipe,
                 output.clone(),
+                None,
+                None,
                 stop_readers.clone(),
             ));
         }
@@ -132,6 +204,8 @@ impl SyncRun {
             child,
             args: args.join(" "),
             output,
+            stdout: status_output,
+            stdout_truncated: status_truncated,
             stop_readers,
             readers,
         });
@@ -143,6 +217,20 @@ impl SyncRun {
             .lock()
             .map(|output| output.clone())
             .unwrap_or_default();
+    }
+
+    /// Machine-readable command output from stdout (stderr remains in `progress()`).
+    pub fn status_output(&self) -> String {
+        return self
+            .stdout
+            .lock()
+            .map(|output| output.clone())
+            .unwrap_or_default();
+    }
+
+    /// Whether the bounded machine-readable output buffer dropped any prefix.
+    pub fn status_output_truncated(&self) -> bool {
+        return self.stdout_truncated.load(Ordering::Acquire);
     }
 
     pub fn try_finish(&mut self) -> Option<Result<String, GitError>> {
@@ -218,7 +306,13 @@ fn terminate_sync_process_group(process_group: u32) {
 fn terminate_sync_process_group(_process_group: u32) {}
 
 #[cfg(unix)]
-fn read_sync_output<R>(pipe: R, output: Arc<Mutex<String>>, stop: Arc<AtomicBool>) -> JoinHandle<()>
+fn read_sync_output<R>(
+    pipe: R,
+    output: Arc<Mutex<String>>,
+    status_output: Option<Arc<Mutex<String>>>,
+    status_truncated: Option<Arc<AtomicBool>>,
+    stop: Arc<AtomicBool>,
+) -> JoinHandle<()>
 where
     R: std::io::Read + std::os::fd::AsRawFd + Send + 'static,
 {
@@ -247,7 +341,13 @@ where
                 }
                 Err(_) => break,
             };
-            append_sync_output(&output, &chunk[..read]);
+            let _ = append_sync_output(&output, &chunk[..read]);
+            if let Some(status_output) = &status_output {
+                let truncated = append_sync_output(status_output, &chunk[..read]);
+                if truncated && let Some(status_truncated) = &status_truncated {
+                    status_truncated.store(true, Ordering::Release);
+                }
+            }
             if stopping {
                 drained_after_stop = drained_after_stop.saturating_add(read);
                 if drained_after_stop >= MAX_SYNC_OUTPUT {
@@ -280,7 +380,13 @@ fn sync_output_ready(fd: std::os::fd::RawFd, timeout_ms: i32) -> bool {
 }
 
 #[cfg(not(unix))]
-fn read_sync_output<R>(pipe: R, output: Arc<Mutex<String>>, stop: Arc<AtomicBool>) -> JoinHandle<()>
+fn read_sync_output<R>(
+    pipe: R,
+    output: Arc<Mutex<String>>,
+    status_output: Option<Arc<Mutex<String>>>,
+    status_truncated: Option<Arc<AtomicBool>>,
+    stop: Arc<AtomicBool>,
+) -> JoinHandle<()>
 where
     R: std::io::Read + Send + 'static,
 {
@@ -295,28 +401,113 @@ where
                 Ok(0) | Err(_) => break,
                 Ok(read) => read,
             };
-            append_sync_output(&output, &chunk[..read]);
+            let _ = append_sync_output(&output, &chunk[..read]);
+            if let Some(status_output) = &status_output {
+                let truncated = append_sync_output(status_output, &chunk[..read]);
+                if truncated && let Some(status_truncated) = &status_truncated {
+                    status_truncated.store(true, Ordering::Release);
+                }
+            }
         }
     });
 }
 
-fn append_sync_output(output: &Arc<Mutex<String>>, bytes: &[u8]) {
+fn append_sync_output(output: &Arc<Mutex<String>>, bytes: &[u8]) -> bool {
     let text = String::from_utf8_lossy(bytes).replace('\r', "\n");
-    if let Ok(mut output) = output.lock() {
-        output.push_str(&text);
-        if output.len() > MAX_SYNC_OUTPUT {
-            let excess = output.len() - MAX_SYNC_OUTPUT;
-            let boundary = output
-                .char_indices()
-                .find(|(index, _)| *index >= excess)
-                .map(|(index, _)| index)
-                .unwrap_or(output.len());
-            output.drain(..boundary);
-        }
+    let Ok(mut output) = output.lock() else {
+        return true;
+    };
+    output.push_str(&text);
+    if output.len() <= MAX_SYNC_OUTPUT {
+        return false;
     }
+    let excess = output.len() - MAX_SYNC_OUTPUT;
+    let boundary = output
+        .char_indices()
+        .find(|(index, _)| *index >= excess)
+        .map(|(index, _)| index)
+        .unwrap_or(output.len());
+    output.drain(..boundary);
+    return true;
 }
 
 impl Repo {
+    /// Capture local remote-tracking refs and tags before/after fetch.
+    pub fn sync_ref_snapshot(&self) -> Result<BTreeMap<String, String>, GitError> {
+        let output = run_git(
+            &self.root,
+            &[
+                "for-each-ref",
+                "--format=%(refname)%1f%(objectname)%1f%(symref)",
+                "refs/remotes",
+                "refs/tags",
+            ],
+        )?;
+        let mut refs = BTreeMap::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let Some((name, details)) = line.split_once('\u{1f}') else {
+                continue;
+            };
+            let Some((oid, symbolic_target)) = details.split_once('\u{1f}') else {
+                continue;
+            };
+            if !symbolic_target.is_empty() {
+                continue;
+            }
+            if !name.is_empty() && !oid.is_empty() {
+                refs.insert(name.to_string(), oid.to_string());
+            }
+        }
+        return Ok(refs);
+    }
+
+    /// Current upstream full ref name and commit OID, if the branch has a readable upstream.
+    pub fn upstream_ref(&self) -> Option<(String, String)> {
+        let name = run_git(
+            &self.root,
+            &["rev-parse", "--symbolic-full-name", "@{upstream}"],
+        )
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output).trim().to_string())
+        .filter(|name| !name.is_empty())?;
+        let oid = self.resolve_commit_oid(name.as_str()).ok()?;
+        return Some((name, oid));
+    }
+
+    /// Current HEAD commit OID, if one exists.
+    pub fn head_oid(&self) -> Option<String> {
+        return self.resolve_commit_oid("HEAD").ok();
+    }
+
+    /// Resolve a ref or abbreviated OID to a commit OID.
+    pub fn resolve_commit_oid(&self, reference: &str) -> Result<String, GitError> {
+        let revision = format!("{reference}^{{commit}}");
+        let output = run_git(
+            &self.root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                revision.as_str(),
+            ],
+        )?;
+        return Ok(String::from_utf8_lossy(&output).trim().to_string());
+    }
+
+    /// Commit OIDs reachable from `target` but not from `base`; `None` means no base ref.
+    pub fn commit_oids_between(
+        &self,
+        base: Option<&str>,
+        target: &str,
+    ) -> Result<Vec<String>, GitError> {
+        let mut args = vec!["rev-list", "--end-of-options", target];
+        let exclusion = base.map(|base| format!("^{base}"));
+        if let Some(exclusion) = exclusion.as_deref() {
+            args.push(exclusion);
+        }
+        return self.lines(&args);
+    }
+
     /// 从远程取回引用（`git fetch --prune <remote>`）。
     pub fn fetch(&self, remote: &str) -> Result<String, GitError> {
         return self.fetch_with(
@@ -450,7 +641,8 @@ impl Repo {
         options: &PushOptions,
     ) -> Result<SyncRun, GitError> {
         let mut args = self.push_args(remote, options)?;
-        args.insert(1, "--progress".to_string());
+        args.insert(1, "--porcelain".to_string());
+        args.insert(2, "--progress".to_string());
         return SyncRun::start(&self.root, &args);
     }
 
@@ -923,6 +1115,74 @@ pub fn start_clone(
 mod tests {
     use super::*;
     use crate::query::testkit::*;
+
+    #[test]
+    fn parses_push_porcelain_rows_and_ignores_human_lines() {
+        let output = concat!(
+            "To /remote.git\n",
+            "  refs/heads/main:refs/heads/main abc1234..def5678\n",
+            "* refs/heads/topic:refs/heads/topic [new branch]\n",
+            "+ refs/heads/main:refs/heads/main abc1234...def5678 (forced update)\n",
+            "- :refs/heads/old [deleted]\n",
+            "= refs/heads/main:refs/heads/main [up to date]\n",
+            "! refs/heads/blocked:refs/heads/blocked [rejected] (non-fast-forward)\n",
+            "Done\n",
+            "error: rejected\n",
+        );
+
+        let updates = parse_push_porcelain(output);
+
+        assert_eq!(updates.len(), 6);
+        assert_eq!(updates[0].status, PushRefStatus::Updated);
+        assert_eq!(updates[0].source.as_deref(), Some("refs/heads/main"));
+        assert_eq!(updates[0].destination, "refs/heads/main");
+        assert_eq!(updates[1].status, PushRefStatus::Created);
+        assert_eq!(updates[2].status, PushRefStatus::Forced);
+        assert_eq!(updates[3].status, PushRefStatus::Deleted);
+        assert_eq!(updates[3].source, None);
+        assert_eq!(updates[4].status, PushRefStatus::UpToDate);
+        assert_eq!(updates[5].status, PushRefStatus::Rejected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_run_keeps_machine_output_separate_from_progress() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "printf 'status-row\\n'; printf 'progress-row\\n' >&2"]);
+        let mut run = SyncRun::spawn(command, &[]).expect("start fake Git");
+        let mut result = None;
+        while result.is_none() {
+            result = run.try_finish();
+            if result.is_none() {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
+        assert!(result.expect("finished").is_ok());
+        assert_eq!(run.status_output(), "status-row\n");
+        let output = run.progress();
+        assert!(output.contains("status-row"));
+        assert!(output.contains("progress-row"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_run_reports_truncated_machine_output() {
+        let mut command = Command::new("python3");
+        command.args(["-c", "import sys; sys.stdout.write('x' * 300000)"]);
+        let mut run = SyncRun::spawn(command, &[]).expect("start fake Git");
+        let mut result = None;
+        while result.is_none() {
+            result = run.try_finish();
+            if result.is_none() {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
+        assert!(result.expect("finished").is_ok());
+        assert!(run.status_output_truncated());
+        assert!(run.status_output().len() <= MAX_SYNC_OUTPUT);
+    }
 
     #[test]
     fn push_and_fetch_report_results() {

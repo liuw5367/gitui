@@ -223,7 +223,7 @@ impl Repo {
         return Ok(String::from_utf8_lossy(&output).trim().to_string());
     }
 
-    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, GitError> {
+    pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, GitError> {
         let status = std::process::Command::new("git")
             .arg("-C")
             .arg(&self.root)

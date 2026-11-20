@@ -6,7 +6,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 - 每条命令带 `-C <工作树>`，参数以独立 argv 传入，不拼接 shell 字符串。
 - 读取命令设置 `GIT_TERMINAL_PROMPT=0` 与 `GIT_OPTIONAL_LOCKS=0`：凭据缺失时直接失败，只读命令不拿可选锁。stdout 超过 8 MiB 截断，错误详情截断到前 4096 个字符。
-- fetch、pull、push、merge 等操作的进度与结果写在 stderr，执行层把 stdout 与 stderr 合并，成功后取最后 3 条有效行作为摘要；失败时把合并输出截断到前 4096 个字符作为 `detail`。
+- fetch、pull、push、merge 等同步调用把 stdout 与 stderr 合并，成功后取最后 3 条有效行作为摘要；失败时把合并输出截断到前 4096 个字符作为 `detail`。后台同步仍把两路合并供日志显示，同时独立保留 stdout 状态记录；Push 使用 porcelain 行，Fetch 由执行前后的本地远端引用与 tag 快照判断变化。
 - 命令以非零状态退出时返回 `GitError::CommandFailed`，保留程序名、参数、退出码与截断后的输出。
 - `reword_commit` 与 `squash_commits` 自行生成 rebase todo，并用临时脚本覆盖 `GIT_SEQUENCE_EDITOR` 与 `GIT_EDITOR`；命令失败后执行 `git rebase --abort`，不把仓库留在改写中间状态。`rebase_onto` 执行普通分支变基，冲突时保留 Git 的 rebase 状态供界面解决。
 
@@ -22,14 +22,14 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 | 分组 | 方法 |
 |---|---|
-| 打开与状态 | `Repo::open`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs` |
+| 打开与状态 | `Repo::open`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs`、`sync_ref_snapshot`、`upstream_ref`、`head_oid`、`resolve_commit_oid`、`commit_oids_between`、`is_ancestor` |
 | 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`merge_base`、`diff_between`、`diff_between_with_whitespace`、`diff_trees_with_whitespace`、`diff_worktree_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog` |
 | 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_pop`、`stash_apply`、`stash_drop` |
 | 子模块 | `SubmoduleInfo`、`update_submodule`、`sync_submodule`、`remove_submodule` |
 | 工作树 | `WorktreeInfo`、`add_worktree`、`remove_worktree`、`prune_worktrees` |
-| 同步 | `fetch`、`fetch_with`、`start_fetch_with`、`pull`、`pull_with`、`start_pull_with`、`pull_remote_branch`、`push`、`push_with`、`start_push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming`、`SyncRun` |
+| 同步 | `fetch`、`fetch_with`、`start_fetch_with`、`pull`、`pull_with`、`start_pull_with`、`pull_remote_branch`、`push`、`push_with`、`start_push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming`、`parse_push_porcelain`、`PushRefUpdate`、`SyncRun` |
 | 冲突与多步操作 | `operation`、`conflict_content`、`conflict_worktree_content`、`conflict_sides`、`conflicts`、`resolve_conflict`、`resolve_conflict_bytes`、`resolve_conflict_delete`、`resolve_with`、`continue_operation`、`abort_operation` |
 | 克隆与初始化 | `clone`、`clone_with`、`start_clone`、`init_repository`、`init_with` |
 | 本机信息与底层执行 | `info`、`credential_helper`、`run_git` |
@@ -76,7 +76,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 `start_fetch_with`、`start_pull_with` 与 `start_push_with` 返回 `SyncRun`，供界面在后台运行 Git 同步命令：
 
-- 子进程启用 Git 的 `--progress`，分别捕获 stdout 与 stderr；`progress()` 返回当前合并输出，最多保留约 256 KiB。
+- 子进程启用 Git 的 `--progress`，分别捕获 stdout 与 stderr；`progress()` 返回当前合并日志，`status_output()` 返回 stdout 状态记录，二者最多保留约 256 KiB。`status_output_truncated()` 用于识别状态记录是否被截断。
+- `start_push_with` 使用 `--porcelain`；`parse_push_porcelain` 解析成功、创建、强制更新、删除、已最新与拒绝的 ref 行，忽略人类进度文字。Fetch 通过 `sync_ref_snapshot()` 比较 `refs/remotes` 与 `refs/tags` 的完整 OID，过滤 `origin/HEAD` 符号别名。`upstream_ref()`、`head_oid()` 与 `commit_oids_between()` 支持 Pull 的前后端点和去重提交数确认。
 - `try_finish()` 非阻塞地检查进程；运行中返回 `None`，结束后返回 `Some(Result<String, GitError>)`。成功值是 Git 输出摘要，失败保留命令与输出详情。
 - 同步命令在独立进程组运行；Git 退出或取消时会停止输出读取器，避免遗留辅助进程占住输出管道后卡住完成与取消。
 - `cancel()` 终止同步进程组、等待退出，并返回已捕获的输出；已完成的远端或工作区变更不会由执行层回滚。
@@ -101,7 +102,7 @@ cd crates/git
 cargo test
 ```
 
-测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏/子模块/工作树、冲突解决与多步操作、同步选项与强推保护、推送未检出的分支、普通分支变基与变基冲突处理、按指定远端跟踪分支创建/拉取/删除、克隆选项与取消、blame、reflog 与错误路径。
+测试在临时目录创建真实 Git 仓库，并用本机 bare 远程验证 fetch、pull 与 push，因此需要 PATH 中有 `git`，不依赖网络。覆盖范围包括补丁解析、暂存与 hunk/行级补丁、提交与钩子、固定形态改写、分支/标签/远程/贮藏/子模块/工作树、冲突解决与多步操作、同步选项与强推保护、Push porcelain 状态解析与 stdout/stderr 分流、推送未检出的分支、普通分支变基与变基冲突处理、按指定远端跟踪分支创建/拉取/删除、克隆选项与取消、blame、reflog 与错误路径。
 
 ## 依赖
 
