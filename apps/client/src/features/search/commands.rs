@@ -53,11 +53,6 @@ impl SearchCommands {
         self.state.mode.set(mode);
     }
 
-    /// 切到引用管理的 Refs 表（原 `set_mode_refs`）。
-    pub(crate) fn set_mode_refs(&self) {
-        self.set_mode(crate::Mode::Refs);
-    }
-
     /// 切到 Agent 面板（原 `set_mode_agent`）。
     pub(crate) fn set_mode_agent(&self) {
         self.set_mode(crate::Mode::Agent);

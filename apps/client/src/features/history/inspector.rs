@@ -268,6 +268,237 @@ pub(crate) fn inspector(
         .into_element();
 }
 
+/// Reflog 选中状态使用的简洁占位内容。
+pub(crate) fn reflog_commit_placeholder(
+    language: Signal<SharedString>,
+    key: &'static str,
+) -> impl IntoElement {
+    return view()
+        .w_full()
+        .h_full()
+        .items_center()
+        .justify_center()
+        .px(px(24.0))
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
+                .text_color(move || design::text3()),
+        );
+}
+
+/// 展示直接从 Reflog SHA 读取的只读提交快照，不依赖 History 当前选中项。
+pub(crate) fn reflog_commit_inspector(
+    language: Signal<SharedString>,
+    details: git::CommitDetails,
+    files: Vec<domain::DiffStat>,
+    notice: Signal<Option<String>>,
+) -> impl IntoElement + use<> {
+    let author_identity = if details.author_email.is_empty() {
+        details.author.clone()
+    } else {
+        format!("{} <{}>", details.author, details.author_email)
+    };
+    let short = details.short.clone();
+    let sha = details.sha.clone();
+    let summary = if details.subject.is_empty() {
+        "—".to_string()
+    } else {
+        details.subject.clone()
+    };
+    let timestamp = details.authored_at;
+    let now = store::now_unix();
+    let count = files.len();
+    let additions = files.iter().map(|file| file.additions).sum::<u32>();
+    let deletions = files.iter().map(|file| file.deletions).sum::<u32>();
+    let info_refs = ordered_commit_refs(&details.refs, &[], &[], &[]);
+    let info_refs = if info_refs.is_empty() {
+        "—".to_string()
+    } else {
+        info_refs.join(", ")
+    };
+    let info = info_values(language, details, info_refs);
+    let mut file_rows = Vec::with_capacity(files.len());
+    for file in files {
+        let status = file.status;
+        file_rows.push(
+            view()
+                .w_full()
+                .h(px(crate::ui::ROW))
+                .px(px(12.0))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .border_b_1()
+                .border_color(move || design::line_soft())
+                .child(
+                    text(status.to_string())
+                        .w(px(18.0))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || status_color(status)),
+                )
+                .child(
+                    text(file.path)
+                        .flex_1()
+                        .min_w_0()
+                        .select_text()
+                        .text_size(px(crate::ui::CODE))
+                        .text_color(move || design::text2())
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    text(format!("+{}", file.additions))
+                        .text_size(px(crate::ui::META))
+                        .text_color(move || design::add_fg()),
+                )
+                .child(
+                    text(format!("−{}", file.deletions))
+                        .text_size(px(crate::ui::META))
+                        .text_color(move || design::del_fg()),
+                )
+                .into_element(),
+        );
+    }
+    let files_body = if file_rows.is_empty() {
+        view()
+            .w_full()
+            .h_full()
+            .items_center()
+            .justify_center()
+            .child(
+                text(move || i18n::t(language.get().as_str(), "files.empty"))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+            )
+            .into_element()
+    } else {
+        view()
+            .w_full()
+            .flex_col()
+            .children(file_rows)
+            .into_element()
+    };
+    return view()
+        .w_full()
+        .h_full()
+        .min_w_0()
+        .flex_col()
+        .bg(move || design::panel())
+        .child(
+            view()
+                .w_full()
+                .px(px(12.0))
+                .py(px(12.0))
+                .flex_col()
+                .gap(px(8.0))
+                .border_b_1()
+                .border_color(move || design::line())
+                .child(
+                    text(summary)
+                        .text_size(px(crate::ui::BODY))
+                        .font_weight(FontWeight(600))
+                        .line_height(px(crate::ui::BODY_LINE))
+                        .text_color(move || design::text())
+                        .number_of_lines(2)
+                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                )
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(crate::ui::GAP_SM))
+                        .child(
+                            text(author_identity)
+                                .flex_1()
+                                .min_w_0()
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
+                                .text_color(move || design::text2())
+                                .text_overflow(nsh_core::EllipsizeMode::Tail),
+                        )
+                        .child(
+                            text(move || {
+                                crate::dates::format(language.get().as_str(), timestamp, now)
+                            })
+                            .text_size(px(crate::ui::META))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(move || design::text3()),
+                        )
+                        .child(
+                            text(short)
+                                .text_size(px(crate::ui::CODE))
+                                .text_color(move || design::text2()),
+                        )
+                        .child(crate::ui::button::icon_button(
+                            "copy",
+                            {
+                                let language = language;
+                                move || i18n::t(language.get().as_str(), "files.copySha")
+                            },
+                            crate::ui::button::ButtonSize::Small,
+                            false,
+                            {
+                                let sha = sha.clone();
+                                move || crate::shared::os::copy_text(notice, language, sha.clone())
+                            },
+                        )),
+                ),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .flex_col()
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(crate::ui::ROW))
+                        .px(px(12.0))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(crate::ui::GAP_SM))
+                        .border_b_1()
+                        .border_color(move || design::line_soft())
+                        .child(
+                            text(move || {
+                                i18n::with_arguments(
+                                    language.get().as_str(),
+                                    "files.changedCount",
+                                    &[("count", count.to_string())],
+                                )
+                            })
+                            .flex_1()
+                            .text_size(px(crate::ui::SECONDARY))
+                            .text_color(move || design::text2()),
+                        )
+                        .child(
+                            text(format!("+{additions}"))
+                                .text_size(px(crate::ui::META))
+                                .text_color(move || design::add_fg()),
+                        )
+                        .child(
+                            text(format!("−{deletions}"))
+                                .text_size(px(crate::ui::META))
+                                .text_color(move || design::del_fg()),
+                        ),
+                )
+                .child(scroll().w_full().flex_1().min_h_0().child(files_body)),
+        )
+        .child(
+            view()
+                .w_full()
+                .h(px(INFO_PANEL_H))
+                .min_h_0()
+                .flex_shrink_0()
+                .flex_col()
+                .border_t_1()
+                .border_color(move || design::line())
+                .child(scroll().w_full().flex_1().min_h_0().child(info)),
+        );
+}
+
 fn files_body(
     language: Signal<SharedString>,
     files: Vec<domain::DiffStat>,
@@ -693,18 +924,6 @@ fn info_fields(language: Signal<SharedString>, tab: Tab, loading: bool) -> AnyEl
             )
             .into_element();
     };
-    let now = store::now_unix();
-    let mut rows: Vec<AnyElement> = Vec::new();
-    let parents = if details.parents.is_empty() {
-        "—".to_string()
-    } else {
-        details
-            .parents
-            .iter()
-            .map(|parent| parent.chars().take(7).collect::<String>())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
     let branches = tab
         .selected_commit()
         .filter(|commit| commit.sha == details.sha)
@@ -720,6 +939,26 @@ fn info_fields(language: Signal<SharedString>, tab: Tab, loading: bool) -> AnyEl
         "—".to_string()
     } else {
         refs.join(", ")
+    };
+    return info_values(language, details, refs);
+}
+
+fn info_values(
+    language: Signal<SharedString>,
+    details: git::CommitDetails,
+    refs: String,
+) -> AnyElement {
+    let now = store::now_unix();
+    let mut rows: Vec<AnyElement> = Vec::new();
+    let parents = if details.parents.is_empty() {
+        "—".to_string()
+    } else {
+        details
+            .parents
+            .iter()
+            .map(|parent| parent.chars().take(7).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(", ")
     };
     let fields = [
         ("files.info.refs", refs),

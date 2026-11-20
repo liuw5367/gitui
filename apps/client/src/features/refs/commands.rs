@@ -4,7 +4,7 @@
 //! 这里只调本功能的 `ops` 与 `app::ops`，不写布局。
 
 use super::ops;
-use super::state::RefsState;
+use super::state::{ReflogDetailState, ReflogEntryKey, RefsState, RefsTab};
 use crate::app::ops::identity;
 use crate::features::SessionHandle;
 use crate::features::history::commands::HistoryCommands;
@@ -39,6 +39,134 @@ pub(crate) struct RefsCommands {
 }
 
 impl RefsCommands {
+    /// 从工具栏打开引用主区的 Reflog 页签，并显示提交检查器。
+    pub(crate) fn open_reflog(&self) {
+        self.state.selected_tab.set(RefsTab::Reflog);
+        self.search.state.mode.set(crate::Mode::Refs);
+        self.search.right_panel_open.set(true);
+    }
+
+    /// 选择一条 reflog 记录并只读加载其提交元信息与文件统计。
+    pub(crate) fn select_reflog_entry(&self, selection: ReflogEntryKey) {
+        let tabs = self.session.tabs.get_untracked();
+        let active = self.session.active.get_untracked();
+        let Some(tab) = tabs.get(active).filter(|tab| {
+            tab.id == selection.tab_id
+                && tab.path == selection.path
+                && tab.reflog.get(selection.index).is_some_and(|entry| {
+                    selection.matches_entry(tab.id, tab.path.as_str(), selection.index, entry)
+                })
+        }) else {
+            return;
+        };
+
+        let current = self.state.reflog_detail.get_untracked();
+        let already_loading_or_loaded = self
+            .state
+            .reflog_selection
+            .get_untracked()
+            .as_ref()
+            .is_some_and(|selected| selected == &selection)
+            && current.as_ref().is_some_and(|detail| match detail {
+                ReflogDetailState::Loading(selected) => selected == &selection,
+                ReflogDetailState::Loaded {
+                    selection: selected,
+                    ..
+                } => selected == &selection,
+                ReflogDetailState::Failed(_) => false,
+            });
+        self.state.selected_tab.set(RefsTab::Reflog);
+        self.state.reflog_selection.set(Some(selection.clone()));
+        self.search.right_panel_open.set(true);
+        if already_loading_or_loaded {
+            return;
+        }
+
+        self.state
+            .reflog_detail
+            .set(Some(ReflogDetailState::Loading(selection.clone())));
+        let path = tab.path.clone();
+        let sha = selection.sha.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = git::Repo::open(path.as_str())
+                .and_then(|repo| {
+                    let details = repo.commit_details(sha.as_str())?;
+                    let files = repo.numstat(sha.as_str())?;
+                    Ok((details, files))
+                })
+                .map_err(|_| ());
+            let _ = sender.send(result);
+        });
+
+        let detail_state = self.state.reflog_detail;
+        let current_selection = self.state.reflog_selection;
+        let tabs = self.session.tabs;
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            let still_exists = tabs.get_untracked().iter().any(|tab| {
+                                tab.id == selection.tab_id
+                                    && tab.path == selection.path
+                                    && tab.reflog.get(selection.index).is_some_and(|entry| {
+                                        selection.matches_entry(
+                                            tab.id,
+                                            tab.path.as_str(),
+                                            selection.index,
+                                            entry,
+                                        )
+                                    })
+                            });
+                            let still_selected = current_selection
+                                .get_untracked()
+                                .as_ref()
+                                .is_some_and(|selected| selected == &selection);
+                            if still_exists && still_selected {
+                                detail_state.set(Some(match result {
+                                    Ok((details, files)) => ReflogDetailState::Loaded {
+                                        selection,
+                                        details,
+                                        files,
+                                    },
+                                    Err(()) => ReflogDetailState::Failed(selection),
+                                }));
+                            }
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            let still_exists = tabs.get_untracked().iter().any(|tab| {
+                                tab.id == selection.tab_id
+                                    && tab.path == selection.path
+                                    && tab.reflog.get(selection.index).is_some_and(|entry| {
+                                        selection.matches_entry(
+                                            tab.id,
+                                            tab.path.as_str(),
+                                            selection.index,
+                                            entry,
+                                        )
+                                    })
+                            });
+                            if still_exists
+                                && current_selection
+                                    .get_untracked()
+                                    .as_ref()
+                                    .is_some_and(|selected| selected == &selection)
+                            {
+                                detail_state.set(Some(ReflogDetailState::Failed(selection)));
+                            }
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            timer(std::time::Duration::from_millis(16)).await;
+                        }
+                    }
+                }
+            });
+        });
+    }
+
     fn active_tab_id(&self) -> Option<u64> {
         return self
             .session

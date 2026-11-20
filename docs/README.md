@@ -14,6 +14,8 @@ History 页面优化要求：标题后显示提交数，分支、作者与高级
 
 Fetch、Pull、Push 共用 800×520 同步面板，以后台 Git 子进程运行并显示实际输出；命令没有文本输出时，完成后右侧日志显示结果摘要。切换操作类型或远端目标时，右侧内容随当前目标更新，不显示其它任务的旧输出；新输出和切换后的当前日志都会自动滚动到底部。Cancel 会结束同步操作并刷新仓库状态；关闭面板会保留任务。Welcome 与 Settings 的已开窗口可由重复入口重新聚焦；macOS 应用菜单提供 Settings 与 ⌘,。对应页面见[同步](pages/sync.md)、[同步 Fetch](pages/sync-fetch.md)、[同步 Pull](pages/sync-pull.md)、[工作区](pages/workspace.md)、[常规设置](pages/settings.md)与[菜单和对话框](pages/menus.md)。
 
+工具栏与 Reflog 改进分两阶段实施。第一阶段已完成：移除 Branch、Stash 工具按钮，增加 Reflog 直达；保留 Refs 总表和 Refs / Reflog 来回切换；选择 Reflog 记录后右栏只读显示提交信息。第二阶段待实施：Fetch、Pull、Push 完成后显示“已是最新”或明确列出更新引用与提交数量。设计源保持不变；工具栏与 Reflog 右栏偏离见[偏离清单](design/DEVIATIONS.md)，实施步骤与验收记录见本地计划。
+
 History 默认展示全部引用可达提交与 graph，引用点击定位到提交；当前提交显示橙色 HEAD 徽标，分支徽标按名称稳定分配颜色。点击提交后工具栏切到 History，右侧检查器保留当前页签（默认 Files），作者行显示 email；检查器页签与 Blame 侧栏页签有对称的上下留白。点击文件可查看单文件差异，提交菜单可打开完整提交差异。NSH DiffView 按每个文件路径识别语法，支持 Unified/Split、上下文折叠、换行、空白可视化、Git 忽略空白、hunk 导航、复制与导出；原始 patch 保持不变。History 筛选支持分支、作者、日期、路径和消息组合条件，工具栏快速搜索与应用筛选分开。Compare 支持连续 commit、全部本地/远端分支、tag 与 stash 端点、工作区比较、2-dot/3-dot 与 Swap；工作区差异覆盖暂存和未暂存的 tracked 文件。无共同祖先、相同端点与零差异有反馈。Merge 冲突页以 index stage 1/2/3 构建三栏，Result 使用按路径识别语法的可编辑器，并在当前会话内保留逐文件草稿；二进制冲突选择一侧，逐文件标记解决，继续前重新核对 Git 状态。页面说明见[历史筛选](pages/history-filters.md)、[文件 diff](pages/file-diff-focus.md)、[多提交 diff](pages/multi-commit-diff.md)、[引用比较](pages/compare-refs.md)与[合并冲突](pages/merge-conflict.md)。
 
 应用偏好统一保存在 `settings.toml`；会话、最近仓库、变更清单与 Agent 审计仍使用独立文本记录。旧版设置 `.txt` 不迁移、不删除；格式与失败行为见 [store 持久化说明](../crates/store/README.md)。

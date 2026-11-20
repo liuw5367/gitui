@@ -88,8 +88,7 @@
     "fetch": "获取",
     "pull": "拉取",
     "push": "推送",
-    "branch": "分支",
-    "stash": "贮藏"
+    "reflog": "引用日志"
   },
   "sidebar": {
     "branches": "分支",
@@ -799,7 +798,12 @@
     "undoMessage": "分支会以 git reset --hard 移到 %{short}，未提交的改动会丢失。",
     "undoAction": "重置",
     "notFound": "该提交不在当前历史里",
-    "filterHint": "过滤记录"
+    "filterHint": "过滤记录",
+    "empty": "引用日志为空。",
+    "noMatches": "没有符合过滤条件的记录。",
+    "selectEntry": "选择一条引用日志记录以查看提交信息。",
+    "detailsLoading": "正在读取提交信息…",
+    "detailsFailed": "无法读取此提交的信息。该提交对象可能已被清理。"
   },
   "agent": {
     "name": "助手",

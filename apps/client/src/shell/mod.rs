@@ -1,8 +1,7 @@
 //! 工作区外壳：标题栏（仓库标签页）、工具栏与状态栏。
 //!
 //! 尺寸取自设计稿：`.titlebar.with-tabs` 与 `.toolbar.v2` 使用紧凑 40pt，高度不改变 tabs。
-//! P1 中 Fetch/Pull/Push、Branch/Stash、Agent 还没有对应的写路径或同步实现，
-//! 这些按钮按禁用态渲染，不伪装成可用。
+//! 工具栏提供 Fetch/Pull/Push、Reflog、History/Changes 与 Agent 入口。
 
 use crate::app::session::{RepoProblem, Sync, Tab};
 use crate::design::{self, metrics};
@@ -158,26 +157,25 @@ pub(crate) fn titlebar(
         );
 }
 
-/// 工具栏：仓库操作、搜索、History/Changes 切换与 Agent 入口。
+/// 工具栏：仓库操作、搜索、主区切换与 Agent 入口。
 pub(crate) fn toolbar(
     language: Signal<SharedString>,
     history_query: Signal<String>,
     change_count: impl Fn() -> u32 + 'static,
     mode: Signal<crate::Mode>,
     search: &SearchCommands,
+    refs: &crate::features::refs::commands::RefsCommands,
     sync: std::sync::Arc<dyn Fn(Sync) -> ()>,
     sidebar_open: Signal<bool>,
     right_panel_open: Signal<bool>,
 ) -> impl IntoElement {
-    // 工具栏的分段与两个入口都改主区模式，因此直接调搜索功能的用例。
+    // 工具栏的主区入口分别由搜索与引用功能的用例负责。
     let do_agent = {
         let search = search.clone();
         move || search.set_mode_agent()
     };
-    let do_refs = {
-        let search = search.clone();
-        move || search.set_mode_refs()
-    };
+    let do_reflog = refs.clone();
+    let selected_refs_tab = refs.state.selected_tab;
     let set_history = {
         let search = search.clone();
         std::sync::Arc::new(move || search.set_mode(crate::Mode::History))
@@ -235,11 +233,16 @@ pub(crate) fn toolbar(
             do_push(Sync::Push)
         }))
         .child(crate::ui::v_separator())
-        .child(tool_button(language, "branch", "shell.branch", {
-            let do_refs = do_refs.clone();
-            move || do_refs()
-        }))
-        .child(disabled_tool(language, "archive", "shell.stash"))
+        .child(mode_tool_tab(
+            language,
+            "shell.reflog",
+            "clock",
+            Arc::new(move || {
+                mode.get() == crate::Mode::Refs
+                    && selected_refs_tab.get() == crate::features::refs::state::RefsTab::Reflog
+            }),
+            move || do_reflog.open_reflog(),
+        ))
         .child(view().flex_1())
         .child(
             view()
@@ -888,6 +891,56 @@ fn mode_tab(
         });
 }
 
+/// 工具栏单项主区入口，选中态沿用 History / Changes 分段样式。
+fn mode_tool_tab(
+    language: Signal<SharedString>,
+    key: &'static str,
+    icon: &'static str,
+    active: Arc<dyn Fn() -> bool>,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let active_background = active.clone();
+    let active_text = active.clone();
+    let active_icon = active;
+    return view()
+        .h(px(22.0))
+        .px(px(9.0))
+        .flex_row()
+        .items_center()
+        .gap(px(5.0))
+        .rounded(px(5.0))
+        .bg(move || {
+            if active_background() {
+                design::content()
+            } else {
+                AdaptiveColor::TRANSPARENT
+            }
+        })
+        .on_press(on_press)
+        .child(crate::ui::icon::icon_view(
+            icon,
+            crate::ui::icon::IconSize::Toolbar,
+            move || {
+                if active_icon() {
+                    design::text()
+                } else {
+                    design::text2()
+                }
+            },
+        ))
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || {
+                    if active_text() {
+                        design::text()
+                    } else {
+                        design::text2()
+                    }
+                }),
+        );
+}
+
 /// 可用的工具栏按钮（图标 + 文案）。
 fn tool_button(
     language: Signal<SharedString>,
@@ -902,21 +955,5 @@ fn tool_button(
         crate::ui::button::ButtonSize::Toolbar,
         false,
         on_press,
-    );
-}
-
-/// 尚未接入的动作：按钮按设计稿渲染，但处于禁用态（不响应按压）。
-fn disabled_tool(
-    language: Signal<SharedString>,
-    icon: &'static str,
-    key: &'static str,
-) -> impl IntoElement {
-    return crate::ui::button::button_icon(
-        move || i18n::t(language.get().as_str(), key),
-        icon,
-        crate::ui::button::ButtonVariant::Ghost,
-        crate::ui::button::ButtonSize::Toolbar,
-        true,
-        || {},
     );
 }

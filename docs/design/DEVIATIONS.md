@@ -77,6 +77,7 @@
 | 52 | History 作者与日期列宽 | 画板固定 96 / 58 | 默认 152 / 112，可通过列标题右缘拖拽调整（作者 80–320、日期 80–250；`features/history/view.rs`、`ui/table.rs`） | 为作者名和本地化日期提供可读空间，同时允许用户按仓库内容分配列宽 | 是（恢复固定画板宽度并移除拖拽手柄） |
 | 53 | Blame 侧栏页签留白 | 页签栏高 33 | 40 高，垂直内距 6，保证 Changes / History 页签上下留白对称（`features/history/blame/panel.rs`） | 按反馈增大页签上方留白并保持上下节奏一致 | 是（恢复 33 高栏） |
 | 54 | History 的 ⌘ 提交多选 | 06 Multi-commit diff 未画进入手势与单纯文件列表状态 | `⌘` 点击只在 History 列表切换提交多选，右侧 Inspector 汇总所选提交的文件路径与增删统计；中栏保持提交列表，不进入比较 diff（`features/history/commands.rs`、`features/history/inspector.rs`） | 按用户确认将提交多选与引用比较、完整 diff 分开；无需切换主视图即可查看多个提交影响的文件 | 是（恢复多提交 diff 入口与 Inspector 单提交文件树） |
+| 55 | Refs / Reflog 工具栏与右栏 | 工具栏显示 Branch / Stash；Reflog 画板右栏显示 Undo / History 页签和恢复卡 | 工具栏移除 Branch / Stash，新增选中态 Reflog 入口；Refs 主区保留 Refs / Reflog 页签；Reflog 选中记录后右栏只读显示提交头、文件统计与提交元信息（`shell/mod.rs`、`features/refs/view.rs`、`features/history/inspector.rs`、`app/workspace.rs`） | 按用户要求为 Reflog 增加直接入口与提交详情，并保留 Refs 总表 | 是（可恢复 Branch / Stash 并切回 Undo 检查器） |
 
 ## 3. 已澄清：不算偏离
 

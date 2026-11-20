@@ -46,12 +46,13 @@ pub(crate) fn app() -> impl IntoElement {
     let history_query = signal(String::new());
     let filter_draft = signal(FilterDraft::default());
     let filter_open = signal(false);
-    // 验收开关：`GITUI_MODE=history|changes|refs|agent|blame` 指定启动主视图；
+    // 验收开关：`GITUI_MODE` 指定启动主视图；reflog 用于核对 Reflog 列表与检查器。
     // blame 模式会预选首个可追溯文件；未指定时默认进入 Changes + Commit。
+    let initial_reflog = acceptance::value("GITUI_MODE").as_deref() == Some("reflog");
     let mode = signal(match acceptance::value("GITUI_MODE").as_deref() {
         Some("history") => Mode::History,
         Some("changes") => Mode::Changes,
-        Some("refs") => Mode::Refs,
+        Some("refs" | "reflog") => Mode::Refs,
         Some("agent") => Mode::Agent,
         Some("blame") => Mode::Blame,
         _ => Mode::Changes,
@@ -61,6 +62,7 @@ pub(crate) fn app() -> impl IntoElement {
     let sidebar_open = signal(true);
     let right_panel_open = signal(
         matches!(mode.get_untracked(), Mode::Changes | Mode::Blame)
+            || initial_reflog
             || acceptance::flag("GITUI_INSPECTOR"),
     );
     let compare_mode = signal(false);
@@ -108,8 +110,16 @@ pub(crate) fn app() -> impl IntoElement {
     let blink_on = signal(true);
     let pending_keystroke =
         signal(acceptance::value("GITUI_PENDING_KEY").map(|combo| combo.to_string()));
+    // Refs / Reflog 的入口与中栏页签共用状态；右栏详情只在明确选择记录后读取。
+    let refs_selected_tab = signal(if initial_reflog {
+        features::refs::state::RefsTab::Reflog
+    } else {
+        features::refs::state::RefsTab::Refs
+    });
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
+    let reflog_selection = signal(None);
+    let reflog_detail = signal(None);
     // 冲突视图的 Base 区域显隐。
     let conflict_base_open = signal(false);
     let conflict_files_open = signal(false);
@@ -606,7 +616,23 @@ pub(crate) fn app() -> impl IntoElement {
 
     // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。
     // 「切到某个提交」的确认流程归恢复功能，这里只是持有它的用例。
-    let refs_state = features::refs::state::RefsState { reflog_query };
+    let initial_reflog_selection = if initial_reflog {
+        let current_tabs = tabs.get_untracked();
+        current_tabs.get(active.get_untracked()).and_then(|tab| {
+            tab.reflog.first().map(|entry| {
+                features::refs::state::ReflogEntryKey::new(tab.id, tab.path.clone(), 0, entry)
+            })
+        })
+    } else {
+        None
+    };
+    reflog_selection.set(initial_reflog_selection.clone());
+    let refs_state = features::refs::state::RefsState {
+        selected_tab: refs_selected_tab,
+        reflog_query,
+        reflog_selection,
+        reflog_detail,
+    };
     let refs_commands = features::refs::commands::RefsCommands {
         state: refs_state,
         session: session.clone(),
@@ -620,6 +646,9 @@ pub(crate) fn app() -> impl IntoElement {
         worktree_windows: signal(Vec::new()),
         open_worktree_window: None,
     };
+    if let Some(selection) = initial_reflog_selection {
+        refs_commands.select_reflog_entry(selection);
+    }
 
     // 各功能的句柄收成一个结构：主窗口版式（`app::workspace`）只取这一个参数。
     let mut handles = AppHandles {

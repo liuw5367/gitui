@@ -130,7 +130,10 @@ impl AppHandles {
         handles.refs.history = handles.history.clone();
         handles.refs.recovery = handles.recovery.clone();
         handles.refs.sync = handles.sync.clone();
+        handles.refs.state.selected_tab = signal(crate::features::refs::state::RefsTab::Refs);
         handles.refs.state.reflog_query = signal(String::new());
+        handles.refs.state.reflog_selection = signal(None);
+        handles.refs.state.reflog_detail = signal(None);
         handles.refs.open_worktree_window = None;
         handles.search.session = session.clone();
         handles.search.history = handles.history.clone();

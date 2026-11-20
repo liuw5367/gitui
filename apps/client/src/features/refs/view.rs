@@ -1776,10 +1776,11 @@ pub(crate) fn refs_view(
     language: Signal<SharedString>,
     tab: Tab,
     search: &SearchCommands,
-    selected_tab: Signal<RefsTab>,
 ) -> impl IntoElement + use<> {
     let now = store::now_unix();
     let reflog_query = state.reflog_query;
+    let selected_tab = state.selected_tab;
+    let reflog_selection = state.reflog_selection;
     // 表格在 `dynamic` 里重建，先克隆一份用例，闭包才拿得到 `'static` 数据。
     let table_cmd = cmd.clone();
     let table_search = search.clone();
@@ -1843,6 +1844,7 @@ pub(crate) fn refs_view(
                         tab.clone(),
                         now,
                         reflog_query,
+                        reflog_selection,
                         &table_cmd,
                         &table_search,
                     )
@@ -1856,19 +1858,22 @@ fn tab_button(
     which: RefsTab,
     selected: Signal<RefsTab>,
 ) -> impl IntoElement {
-    // 页签：选中的用 Secondary 表达，未选中用 Ghost。
-    let variant = if selected.get_untracked() == which {
-        crate::ui::button::ButtonVariant::Secondary
-    } else {
-        crate::ui::button::ButtonVariant::Ghost
-    };
-    return crate::ui::button::button(
-        move || i18n::t(language.get().as_str(), which.key()),
-        variant,
-        crate::ui::button::ButtonSize::Small,
-        false,
-        move || selected.set(which),
-    );
+    return dynamic(move || -> AnyElement {
+        // 每个按钮单独订阅页签状态，切换时更新选中外观。
+        let variant = if selected.get() == which {
+            crate::ui::button::ButtonVariant::Secondary
+        } else {
+            crate::ui::button::ButtonVariant::Ghost
+        };
+        crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), which.key()),
+            variant,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || selected.set(which),
+        )
+        .into_element()
+    });
 }
 fn refs_table(
     language: Signal<SharedString>,
@@ -2360,6 +2365,7 @@ fn reflog_list(
     tab: Tab,
     now: i64,
     query: Signal<String>,
+    selected: Signal<Option<super::state::ReflogEntryKey>>,
     cmd: &RefsCommands,
     search: &SearchCommands,
 ) -> impl IntoElement {
@@ -2380,32 +2386,104 @@ fn reflog_list(
             crate::shared::os::copy_text(notice, language, text)
         })
     };
-    let needle = query.get_untracked().to_lowercase();
-    let mut rows: Vec<AnyElement> = Vec::new();
-    for (index, entry) in tab.reflog.iter().enumerate() {
-        // 关键字同时匹配动作与说明，空关键字不过滤。
-        if !needle.is_empty()
-            && !entry.action.to_lowercase().contains(&needle)
-            && !entry.summary.to_lowercase().contains(&needle)
-            && !entry.short.contains(&needle)
-        {
-            continue;
-        }
-        let undo = recovery.clone();
-        let short = entry.short.clone();
-        let action = entry.action.clone();
-        let summary = entry.summary.clone();
-        let timestamp = entry.timestamp;
-        rows.push(
+    let entries = tab.reflog.clone();
+    let tab_id = tab.id;
+    let path = tab.path.clone();
+    let commands = cmd.clone();
+    let mut body = view()
+        .w_full()
+        .h_full()
+        .flex_col()
+        .child(
             view()
                 .w_full()
-                .h(px(28.0))
-                .px(px(6.0))
+                .py(px(8.0))
+                .px(px(12.0))
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
-                .rounded(px(4.0))
-                .hover(|style| style.bg(move || design::hover()))
+                .child(
+                    text(move || i18n::t(language.get().as_str(), "reflog.hint"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .line_height(px(crate::ui::SECONDARY_LINE))
+                        .text_color(move || design::text3()),
+                )
+                .child(view().flex_1())
+                .child(
+                    view()
+                        .w(px(180.0))
+                        .child(crate::ui::text_input::search_field(
+                            query,
+                            move || i18n::t(language.get().as_str(), "reflog.filterHint"),
+                            None,
+                            move |text| query.set(text.to_string()),
+                        )),
+                ),
+        )
+        .child(view().w_full().h(px(1.0)).bg(move || design::line()));
+    body = body.child(dynamic(move || -> AnyElement {
+        let needle = query.get().to_lowercase();
+        let current_selection = selected.get();
+        let visible = entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                needle.is_empty()
+                    || entry.action.to_lowercase().contains(&needle)
+                    || entry.summary.to_lowercase().contains(&needle)
+                    || entry.short.to_lowercase().contains(&needle)
+            })
+            .map(|(index, entry)| (index, entry.clone()))
+            .collect::<Vec<_>>();
+        if visible.is_empty() {
+            let key = if entries.is_empty() {
+                "reflog.empty"
+            } else {
+                "reflog.noMatches"
+            };
+            return view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .items_center()
+                .justify_center()
+                .child(
+                    text(move || i18n::t(language.get().as_str(), key))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3()),
+                )
+                .into_element();
+        }
+
+        let selected_index = visible.iter().position(|(index, entry)| {
+            current_selection
+                .as_ref()
+                .is_some_and(|key| key.matches_entry(tab_id, path.as_str(), *index, entry))
+        });
+        let rows = visible
+            .iter()
+            .map(|(_, entry)| vec![entry.sha.clone()])
+            .collect::<Vec<_>>();
+        let render_entries = visible.clone();
+        let render_language = language;
+        let render_recovery = recovery.clone();
+        let render: Box<dyn Fn(u32, &str, String) -> AnyElement> = Box::new(move |row, _, _| {
+            let Some((index, entry)) = render_entries.get(row as usize) else {
+                return view().into_element();
+            };
+            let index = *index;
+            let short = entry.short.clone();
+            let action = entry.action.clone();
+            let summary = entry.summary.clone();
+            let timestamp = entry.timestamp;
+            let undo = render_recovery.clone();
+            view()
+                .w_full()
+                .h(px(28.0))
+                .px(px(8.0))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
                 .child(
                     text(short)
                         .w(px(64.0))
@@ -2423,106 +2501,116 @@ fn reflog_list(
                 .child(
                     text(summary)
                         .flex_1()
+                        .min_w_0()
                         .text_size(px(crate::ui::BODY))
                         .line_height(px(14.0))
                         .text_color(move || design::text())
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(
-                    text(move || crate::dates::format(language.get().as_str(), timestamp, now))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3()),
+                    text(move || {
+                        crate::dates::format(render_language.get().as_str(), timestamp, now)
+                    })
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
                 )
                 .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "reflog.undo"),
+                    move || i18n::t(render_language.get().as_str(), "reflog.undo"),
                     crate::ui::button::ButtonVariant::Ghost,
                     crate::ui::button::ButtonSize::Small,
                     false,
                     move || undo.undo_reflog(index),
                 ))
-                .on_context_menu({
-                    let undo = recovery.clone();
-                    let open_form = open_form_from.clone();
-                    let show = show_in_history.clone();
-                    let copy_text = copy_text_fn.clone();
-                    let sha = entry.sha.clone();
-                    let short = entry.short.clone();
-                    move |event: &nsh_core::ContextMenuEvent| {
-                        let lang = language.get_untracked();
-                        let lang = lang.as_str();
-                        let items = vec![
-                            ui::menu::action(i18n::t(lang, "reflog.undo"), true, {
-                                let undo = undo.clone();
-                                move || undo.undo_reflog(index)
-                            }),
-                            ui::menu::action(i18n::t(lang, "menu.newBranchFromHere"), true, {
-                                let open_form = open_form.clone();
-                                let sha = sha.clone();
-                                move || {
-                                    open_form(
-                                        crate::features::search::FormKind::NewBranch,
-                                        sha.clone(),
-                                    )
-                                }
-                            }),
-                            ui::menu::action(i18n::t(lang, "menu.showInHistory"), true, {
-                                let show = show.clone();
-                                let sha = sha.clone();
-                                move || show.show_in_history(sha.clone())
-                            }),
-                            ui::menu::divider(),
-                            ui::menu::action(i18n::t(lang, "menu.copySha"), true, {
-                                let copy_text = copy_text.clone();
-                                let sha = sha.clone();
-                                move || copy_text(sha.clone())
-                            }),
-                            ui::menu::action(i18n::t(lang, "menu.copyName"), true, {
-                                let copy_text = copy_text.clone();
-                                let short = short.clone();
-                                move || copy_text(short.clone())
-                            }),
-                        ];
-                        crate::ui::menu::popup_at(items, event.page_position);
-                    }
-                })
-                .into_element(),
-        );
-    }
-    return view().w_full().h_full().child(
-        scroll().w_full().h_full().child(
-            view()
-                .w_full()
-                .py(px(8.0))
-                .px(px(12.0))
-                .flex_col()
-                .child(
-                    view()
-                        .w_full()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), "reflog.hint"))
-                                .text_size(px(crate::ui::SECONDARY))
-                                .line_height(px(crate::ui::SECONDARY_LINE))
-                                .text_color(move || design::text3()),
-                        )
-                        .child(view().flex_1())
-                        .child(
-                            view()
-                                .w(px(180.0))
-                                .child(crate::ui::text_input::search_field(
-                                    query,
-                                    move || i18n::t(language.get().as_str(), "reflog.filterHint"),
-                                    None,
-                                    move |text| query.set(text.to_string()),
-                                )),
-                        ),
-                )
-                .child(view().w_full().h(px(1.0)).bg(move || design::line()))
-                .child(rows),
-        ),
-    );
+                .into_element()
+        });
+        let select_entries = visible.clone();
+        let select_commands = commands.clone();
+        let select_path = path.clone();
+        let on_select: Box<dyn Fn(usize)> = Box::new(move |row| {
+            if let Some((index, entry)) = select_entries.get(row) {
+                select_commands.select_reflog_entry(super::state::ReflogEntryKey::new(
+                    tab_id,
+                    select_path.clone(),
+                    *index,
+                    entry,
+                ));
+            }
+        });
+        // RowPress also fires for an already selected row, so a failed detail read can be retried.
+        let press_entries = visible.clone();
+        let press_commands = commands.clone();
+        let press_path = path.clone();
+        let on_row_press: Box<dyn Fn(u32, bool)> = Box::new(move |row, _| {
+            if let Some((index, entry)) = press_entries.get(row as usize) {
+                press_commands.select_reflog_entry(super::state::ReflogEntryKey::new(
+                    tab_id,
+                    press_path.clone(),
+                    *index,
+                    entry,
+                ));
+            }
+        });
+        let menu_entries = visible.clone();
+        let menu_undo = recovery.clone();
+        let menu_open_form = open_form_from.clone();
+        let menu_show_history = show_in_history.clone();
+        let menu_copy = copy_text_fn.clone();
+        let menu_language = language;
+        let on_context_menu: Box<dyn Fn(u32, f32, f32)> = Box::new(move |row, x, y| {
+            let Some((index, entry)) = menu_entries.get(row as usize) else {
+                return;
+            };
+            let index = *index;
+            let lang = menu_language.get_untracked();
+            let lang = lang.as_str();
+            let sha = entry.sha.clone();
+            let short = entry.short.clone();
+            let items = vec![
+                ui::menu::action(i18n::t(lang, "reflog.undo"), true, {
+                    let undo = menu_undo.clone();
+                    move || undo.undo_reflog(index)
+                }),
+                ui::menu::action(i18n::t(lang, "menu.newBranchFromHere"), true, {
+                    let open_form = menu_open_form.clone();
+                    let sha = sha.clone();
+                    move || open_form(crate::features::search::FormKind::NewBranch, sha.clone())
+                }),
+                ui::menu::action(i18n::t(lang, "menu.showInHistory"), true, {
+                    let show = menu_show_history.clone();
+                    let sha = sha.clone();
+                    move || show.show_in_history(sha.clone())
+                }),
+                ui::menu::divider(),
+                ui::menu::action(i18n::t(lang, "menu.copySha"), true, {
+                    let copy = menu_copy.clone();
+                    let sha = sha.clone();
+                    move || copy(sha.clone())
+                }),
+                ui::menu::action(i18n::t(lang, "menu.copyName"), true, {
+                    let copy = menu_copy.clone();
+                    move || copy(short.clone())
+                }),
+            ];
+            crate::ui::menu::popup_at(items, nsh_core::geometry::Point::new(Points(x), Points(y)));
+        });
+        crate::ui::table::table(crate::ui::table::TableSpec {
+            columns: vec![crate::ui::table::Column {
+                key: "entry",
+                title: None,
+                width: None,
+                fixed: true,
+            }],
+            rows,
+            selected: selected_index,
+            row_height: Some(28.0),
+            on_select,
+            render: Some(render),
+            on_row_press: Some(on_row_press),
+            on_context_menu: Some(on_context_menu),
+        })
+        .into_element()
+    }));
+    return body;
 }
 /// 创建入口按钮（工具条右侧）。
 fn create_button(

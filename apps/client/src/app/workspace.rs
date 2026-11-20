@@ -68,6 +68,7 @@ pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement + use<> {
             change_count,
             mode,
             &search,
+            &refs,
             {
                 let sync = sync.clone();
                 std::sync::Arc::new(move |kind: Sync| sync.open_sync(kind))
@@ -144,7 +145,7 @@ fn match_body(
             language,
             current,
             changes.clone(),
-            refs,
+            refs.clone(),
             history.clone(),
             session.clone(),
             search.clone(),
@@ -161,6 +162,7 @@ fn match_body(
                 show_tree,
                 tree,
                 search,
+                refs,
                 settings_state,
             ),
             crate::features::commit::view::WIDTH,
@@ -201,8 +203,6 @@ fn center_content(
     search: SearchCommands,
 ) -> impl IntoElement {
     let mode = search.state.mode;
-    // Refs / Reflog 的页签选择仍随正文重建（与迁入前一致）。
-    let refs_tab = signal(refs::state::RefsTab::Refs);
     let refresh = history.clone();
     // commit 详情和文件变更只更新检查器；列表 snapshot 不包含这些高频变化，
     // 因此选中 commit 时保留现有 History 表和 graph 布局。
@@ -412,7 +412,6 @@ fn center_content(
                         language,
                         tab,
                         &search,
-                        refs_tab,
                     )
                     .into_element()
                 }
@@ -502,6 +501,7 @@ fn right_content(
     show_tree: bool,
     tree: crate::app::session::TreeOptions,
     search: SearchCommands,
+    refs: RefsCommands,
     settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let mode = search.state.mode;
@@ -557,6 +557,60 @@ fn right_content(
                 )
                 .into_element(),
                 crate::Mode::Refs => {
+                    if refs.state.selected_tab.get() == refs::state::RefsTab::Reflog {
+                        let selected = refs.state.reflog_selection.get().filter(|selection| {
+                            selection.tab_id == tab.id && selection.path == tab.path
+                        });
+                        if selected.is_none() {
+                            return inspector::reflog_commit_placeholder(
+                                language,
+                                if tab.reflog.is_empty() {
+                                    "reflog.empty"
+                                } else {
+                                    "reflog.selectEntry"
+                                },
+                            )
+                            .into_element();
+                        }
+                        return match refs.state.reflog_detail.get() {
+                            Some(refs::state::ReflogDetailState::Loading(selection))
+                                if selected.as_ref() == Some(&selection) =>
+                            {
+                                inspector::reflog_commit_placeholder(
+                                    language,
+                                    "reflog.detailsLoading",
+                                )
+                                .into_element()
+                            }
+                            Some(refs::state::ReflogDetailState::Loaded {
+                                selection,
+                                details,
+                                files,
+                            }) if selected.as_ref() == Some(&selection) => {
+                                inspector::reflog_commit_inspector(
+                                    language,
+                                    details,
+                                    files,
+                                    refs.notice,
+                                )
+                                .into_element()
+                            }
+                            Some(refs::state::ReflogDetailState::Failed(selection))
+                                if selected.as_ref() == Some(&selection) =>
+                            {
+                                inspector::reflog_commit_placeholder(
+                                    language,
+                                    "reflog.detailsFailed",
+                                )
+                                .into_element()
+                            }
+                            _ => inspector::reflog_commit_placeholder(
+                                language,
+                                "reflog.detailsLoading",
+                            )
+                            .into_element(),
+                        };
+                    }
                     let ask_agent: std::sync::Arc<dyn Fn()> = {
                         let agent = agent.clone();
                         let mode = mode;

@@ -19,7 +19,7 @@
 #   GITUI_GALLERY=1     打开独立组件画廊窗口
 #   GITUI_SYNC=1        启动即打开同步面板（验收弹层用）
 #   GITUI_FORM=1        启动即打开新建分支表单（验收表单弹层用）
-#   GITUI_MODE=...      启动时的主视图：history / changes / refs / agent
+#   GITUI_MODE=...      启动时的主视图：history / changes / refs / reflog / agent / blame
 #   GITUI_PALETTE=1     启动即打开命令面板（⌘K 的等价物）
 #   GITUI_SETTINGS=1    启动即打开设置窗口（独立窗口）
 #   GITUI_SETTINGS_SECTION=general|shortcuts|agent|git|credentials|about
