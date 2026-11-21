@@ -157,10 +157,9 @@ pub(crate) fn titlebar(
         );
 }
 
-/// 工具栏：仓库操作、搜索、主区切换与 Agent 入口。
+/// 工具栏：仓库操作、主区切换与 Agent 入口。
 pub(crate) fn toolbar(
     language: Signal<SharedString>,
-    history_query: Signal<String>,
     change_count: impl Fn() -> u32 + 'static,
     mode: Signal<crate::Mode>,
     search: &SearchCommands,
@@ -244,16 +243,6 @@ pub(crate) fn toolbar(
             move || do_reflog.open_reflog(),
         ))
         .child(view().flex_1())
-        .child(
-            view()
-                .w(px(metrics::SEARCH_W))
-                .child(crate::ui::text_input::search_field(
-                    history_query,
-                    move || i18n::t(language.get().as_str(), "history.filter"),
-                    Some("⌘F"),
-                    move |value| history_query.set(value.to_string()),
-                )),
-        )
         .child(crate::ui::v_separator())
         .child(
             view()

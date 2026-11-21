@@ -312,6 +312,19 @@ fn body(
                         None,
                     ))
                     .child(ui::field::field(
+                        move || "Clearable search field".to_string(),
+                        ui::text_input::search_field_clearable(
+                            input_value,
+                            move || "Filter commits".to_string(),
+                            move || "Clear search".to_string(),
+                            move |text| input_value.set(text.to_string()),
+                        ),
+                        Some(Box::new(move || {
+                            "The clear button appears when the query has a value.".to_string()
+                        })),
+                        None,
+                    ))
+                    .child(ui::field::field(
                         move || "Multiline focus outline".to_string(),
                         ui::text_input::text_area(
                             area_value,

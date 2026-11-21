@@ -290,7 +290,7 @@ pub(crate) fn search_field(
     shortcut: Option<&'static str>,
     on_change: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
-    return search_field_inner(value, placeholder, shortcut, on_change, None);
+    return search_field_inner(value, placeholder, shortcut, on_change, None, None);
 }
 
 /// 与 [`search_field`] 相同，并把输入框挂到 `handle` 上，供快捷键聚焦。
@@ -301,7 +301,24 @@ pub(crate) fn search_field_ref(
     on_change: impl Fn(&str) + 'static,
     handle: &ElementRef,
 ) -> impl IntoElement {
-    return search_field_inner(value, placeholder, shortcut, on_change, Some(*handle));
+    return search_field_inner(value, placeholder, shortcut, on_change, Some(*handle), None);
+}
+
+/// 可清空搜索框：值非空时在字段内显示清空按钮。
+pub(crate) fn search_field_clearable(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    clear_label: impl Fn() -> String + 'static,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    return search_field_inner(
+        value,
+        placeholder,
+        None,
+        on_change,
+        None,
+        Some(std::rc::Rc::new(clear_label)),
+    );
 }
 
 fn search_field_inner(
@@ -310,15 +327,19 @@ fn search_field_inner(
     shortcut: Option<&'static str>,
     on_change: impl Fn(&str) + 'static,
     handle: Option<ElementRef>,
+    clear_label: Option<std::rc::Rc<dyn Fn() -> String>>,
 ) -> impl IntoElement {
+    let placeholder: std::rc::Rc<dyn Fn() -> String> = std::rc::Rc::new(placeholder);
+    let input_label = placeholder.clone();
     let mut input = nsh_base::input()
         .value(value)
-        .placeholder(placeholder)
+        .placeholder(move || placeholder())
         .on_change(move |text: &str| on_change(text))
         .text_size(px(ui::BODY))
         .text_color(move || design::text())
         .flex_1()
-        .min_w_0();
+        .min_w_0()
+        .label(move || SharedString::from(input_label()));
     if let Some(handle) = handle {
         input = input.element_ref(&handle);
     }
@@ -328,6 +349,26 @@ fn search_field_inner(
     ];
     if let Some(combo) = shortcut {
         children.push(ui::badge::kbd(combo).into_element());
+    }
+    if let Some(clear_label) = clear_label {
+        let clear_value = value;
+        children.push(
+            dynamic(move || -> AnyElement {
+                if clear_value.get().is_empty() {
+                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                }
+                let label = clear_label.clone();
+                return crate::ui::button::icon_button(
+                    "x",
+                    move || label(),
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || clear_value.set(String::new()),
+                )
+                .into_element();
+            })
+            .into_element(),
+        );
     }
     return field_frame(children);
 }

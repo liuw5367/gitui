@@ -64,7 +64,6 @@ pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement + use<> {
         ))
         .child(shell::toolbar(
             language,
-            history.state.query,
             change_count,
             mode,
             &search,
