@@ -551,25 +551,13 @@ fn field(
                 .line_height(px(crate::ui::SECONDARY_LINE))
                 .text_color(move || design::text2()),
         )
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::FIELD_H))
-                .flex_row()
-                .items_center()
-                .px(px(8.0))
-                .rounded(px(metrics::RADIUS_CONTROL))
-                .border_1()
-                .border_color(move || design::field_border())
-                .bg(move || design::field())
-                .child(crate::ui::text_input::text_input_bound(
-                    {
-                        let form = form.clone();
-                        move || read(&form)
-                    },
-                    || String::new(),
-                    false,
-                    move |text: String| write(text),
-                )),
-        );
+        .child(crate::ui::text_input::text_input_bound(
+            {
+                let form = form.clone();
+                move || read(&form)
+            },
+            || String::new(),
+            false,
+            move |text: String| write(text),
+        ));
 }

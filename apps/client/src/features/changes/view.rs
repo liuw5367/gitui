@@ -1002,13 +1002,7 @@ fn changelist_pop(
                 .child(
                     view()
                         .flex_1()
-                        .h(px(22.0))
-                        .px(px(6.0))
-                        .items_center()
-                        .rounded(px(4.0))
-                        .border_1()
-                        .border_color(move || design::field_border())
-                        .bg(move || design::field())
+                        .min_w_0()
                         .child(crate::ui::text_input::text_input(
                             new_name,
                             move || i18n::t(language.get().as_str(), "changelists.newName"),
