@@ -821,7 +821,7 @@ fn info_fields(
     let remote_branches = &tab.refs.remote_branches;
     if let Some(selection) = selection {
         let mut missing_details = false;
-        for sha in &selection.shas {
+        for (index, sha) in selection.shas.iter().enumerate() {
             let Some(commit) = tab
                 .commits
                 .iter()
@@ -842,6 +842,7 @@ fn info_fields(
                 local_branches,
                 remote_branches,
                 notice,
+                index + 1 < selection.shas.len(),
             ));
         }
         if loading {
@@ -862,6 +863,7 @@ fn info_fields(
             local_branches,
             remote_branches,
             notice,
+            false,
         ));
         if missing_details {
             let key = if loading {
@@ -886,8 +888,6 @@ fn info_fields(
     }
     return view()
         .w_full()
-        .px(px(12.0))
-        .py(px(8.0))
         .flex_col()
         .selectable(true)
         .child(entries)
@@ -901,6 +901,7 @@ fn commit_info_entry(
     local_branches: &[git::Branch],
     remote_branches: &[git::RemoteBranch],
     notice: Signal<Option<String>>,
+    show_separator: bool,
 ) -> AnyElement {
     let refs = details
         .as_ref()
@@ -912,12 +913,11 @@ fn commit_info_entry(
     } else {
         references.join(", ")
     };
-    let mut entry = view()
-        .w_full()
-        .flex_col()
-        .selectable(true)
-        .child(commit_header(language, notice, commit))
-        .child(info_ref_value(language, references));
+    let mut entry = view().w_full().flex_col().selectable(true);
+    if show_separator {
+        entry = entry.border_b_1().border_color(move || design::line());
+    }
+    entry = entry.child(commit_header(language, notice, commit));
     if let Some(details) = details {
         if details.author != details.committer
             || details.author_email != details.committer_email
@@ -947,6 +947,7 @@ fn commit_info_entry(
             );
         }
     }
+    entry = entry.child(info_ref_value(language, references));
     return entry.into_element();
 }
 
@@ -972,8 +973,6 @@ fn commit_header(
         .py(px(12.0))
         .flex_col()
         .gap(px(8.0))
-        .border_b_1()
-        .border_color(move || design::line())
         .child(
             text(commit.summary)
                 .text_size(px(crate::ui::BODY))
@@ -1055,22 +1054,20 @@ fn info_ref_value(language: Signal<SharedString>, refs: String) -> AnyElement {
         .w_full()
         .px(px(12.0))
         .py(px(3.0))
-        .flex_col()
-        .gap(px(1.0))
         .child(
-            text(move || i18n::t(language.get_untracked().as_str(), "files.info.refs"))
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text3()),
-        )
-        .child(
-            text(refs)
-                .w_full()
-                .min_w_0()
-                .select_text()
-                .text_size(px(crate::ui::CODE))
-                .line_height(px(14.0))
-                .text_color(move || design::text()),
+            text(move || {
+                format!(
+                    "{}: {}",
+                    i18n::t(language.get_untracked().as_str(), "files.info.refs"),
+                    refs
+                )
+            })
+            .w_full()
+            .min_w_0()
+            .select_text()
+            .text_size(px(crate::ui::SECONDARY))
+            .line_height(px(crate::ui::SECONDARY_LINE))
+            .text_color(move || design::text2()),
         )
         .into_element();
 }
