@@ -90,8 +90,8 @@ pub const MERGE_CODE_LINE_H: f32 = 18.0;
 pub const SYNC_SHEET_W: f32 = 800.0;
 pub const SYNC_SHEET_H: f32 = 520.0;
 /// `.sync-head` 46、`.sync-foot` 46。
-pub const SYNC_HEAD_H: f32 = 46.0;
-pub const SYNC_FOOT_H: f32 = 46.0;
+pub const SYNC_HEAD_H: f32 = 44.0;
+pub const SYNC_FOOT_H: f32 = 48.0;
 
 /// 通用弹窗（设计稿 22）：head 44、foot 42。
 pub const DIALOG_HEAD_H: f32 = 44.0;

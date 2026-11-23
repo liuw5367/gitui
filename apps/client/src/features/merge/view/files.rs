@@ -110,7 +110,7 @@ pub(super) fn picker(
             let tree = crate::ui::tree::tree_with_renderer(
                 items,
                 expanded,
-                None,
+                || None,
                 selected_id,
                 move |id| {
                     if let Some(path) = id.strip_prefix("file:") {

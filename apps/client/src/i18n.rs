@@ -260,6 +260,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn history_filter_date_heading_is_localized() {
+        assert_eq!(t("en", "filter.whenLabel"), "Date");
+        assert_eq!(t("zh-Hans", "filter.whenLabel"), "日期");
+    }
+
+    #[test]
     fn both_languages_have_the_same_keys() {
         let mut english: Vec<&String> = EN_MAP.keys().collect();
         let mut chinese: Vec<&String> = ZH_MAP.keys().collect();

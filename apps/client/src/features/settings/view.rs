@@ -74,10 +74,11 @@ fn restore_confirm(state: &SettingsState, cmd: &SettingsCommands) -> AnyElement 
                 .text_size(px(ui::BODY))
                 .line_height(px(ui::BODY_LINE))
                 .text_color(move || design::text2());
-        ui::dialog::dialog(
+        ui::dialog::dialog_with_close(
             open.get(),
             420.0,
             move || i18n::t(language.get().as_str(), "confirm.restoreShortcutsTitle"),
+            move || crate::i18n::t(language.get().as_str(), "common.close"),
             message,
             vec![cancel, confirm],
             move || open.set(false),

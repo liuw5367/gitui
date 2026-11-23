@@ -68,6 +68,7 @@
     "cloneHttpHint": "http:// 可用于本地镜像。"
   },
   "shell": {
+    "stash": "贮藏",
     "history": "历史",
     "changes": "变更",
     "commit": "提交",
@@ -229,6 +230,7 @@
     "initAction": "新建仓库"
   },
   "filter": {
+    "whenLabel": "日期",
     "title": "筛选提交",
     "branch": "分支",
     "author": "作者",
@@ -320,6 +322,8 @@
     "empty": "没有文件",
     "infoLoading": "正在加载提交信息…",
     "infoUnavailable": "无法加载提交信息。",
+    "expandAll": "展开全部目录",
+    "collapseAll": "折叠全部目录",
     "copyPath": "复制路径",
     "openInEditor": "在编辑器中打开",
     "source": "源码",
@@ -1000,6 +1004,18 @@
     "descTab": "按标签编号打开仓库。"
   },
   "form": {
+    "placeholders": {
+      "branchName": "例如 feature/my-change",
+      "tagName": "例如 v1.0.0",
+      "revision": "分支、标签或提交，例如 HEAD",
+      "remoteName": "例如 origin",
+      "remoteUrl": "例如 https://example.com/team/repository.git",
+      "stashMessage": "说明本次贮藏的改动（可选）",
+      "commitMessage": "填写此版本的说明",
+      "authorName": "输入姓名",
+      "authorEmail": "例如 you@example.com",
+      "worktreePath": "选择工作树所在目录"
+    },
     "newBranch": "新建分支",
     "newTag": "新建标签",
     "addRemote": "添加远程",

@@ -33,15 +33,17 @@ pub(crate) fn blame_history_panel(
         rows.push(
             ui::row::row_sized(
                 move || summary.clone(),
-                Some((Box::new(move || format!("{short} · {author}")), true)),
+                Some((
+                    Box::new(move || {
+                        format!(
+                            "{short} · {author} · {}",
+                            crate::dates::format(language.get().as_str(), timestamp, now)
+                        )
+                    }),
+                    true,
+                )),
                 None,
-                vec![
-                    text(move || crate::dates::format(language.get().as_str(), timestamp, now))
-                        .text_size(px(ui::META))
-                        .line_height(px(ui::SECONDARY_LINE))
-                        .text_color(move || design::text3())
-                        .into_element(),
-                ],
+                vec![],
                 selected_sha.as_deref() == Some(entry.commit.sha.as_str()),
                 false,
                 40.0,
@@ -153,10 +155,15 @@ pub(crate) fn blame_history_panel(
         )
         .child(
             view().w_full().flex_1().min_h_0().child(
-                scroll()
-                    .w_full()
-                    .h_full()
-                    .child(view().w_full().flex_col().children(rows)),
+                scroll().w_full().h_full().child(
+                    view()
+                        .w_full()
+                        .px(px(ui::GAP))
+                        .py(px(ui::GAP_XS))
+                        .flex_col()
+                        .gap(px(ui::GAP_XS))
+                        .children(rows),
+                ),
             ),
         )
         .child(

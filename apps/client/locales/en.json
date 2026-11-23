@@ -68,6 +68,7 @@
     "cloneHttpHint": "http:// works for local mirrors."
   },
   "shell": {
+    "stash": "Stash",
     "history": "History",
     "changes": "Changes",
     "commit": "Commit",
@@ -229,6 +230,7 @@
     "initAction": "Create Repository"
   },
   "filter": {
+    "whenLabel": "Date",
     "title": "Filter commits",
     "branch": "Branch",
     "author": "Author",
@@ -241,8 +243,8 @@
     "endDate": "End date YYYY-MM-DD",
     "pathPlaceholder": "File or directory path",
     "messagePlaceholder": "Match commit message",
-    "branchCount": "%{count} branches",
-    "authorCount": "%{count} authors",
+    "branchCount": "Branch (%{count})",
+    "authorCount": "Author (%{count})",
     "dateActive": "Date range",
     "refineActive": "Path / message",
     "invalidStartDate": "Invalid start date. Use YYYY-MM-DD.",
@@ -320,6 +322,8 @@
     "empty": "No files",
     "infoLoading": "Loading commit info…",
     "infoUnavailable": "Could not load commit info.",
+    "expandAll": "Expand All Folders",
+    "collapseAll": "Collapse All Folders",
     "copyPath": "Copy Path",
     "openInEditor": "Open in Editor",
     "source": "Source",
@@ -1000,6 +1004,18 @@
     "descTab": "Open a repository by its tab number."
   },
   "form": {
+    "placeholders": {
+      "branchName": "feature/my-change",
+      "tagName": "v1.0.0",
+      "revision": "Branch, tag or commit (e.g. HEAD)",
+      "remoteName": "origin",
+      "remoteUrl": "https://example.com/team/repository.git",
+      "stashMessage": "Describe the changes to stash (optional)",
+      "commitMessage": "Describe this release",
+      "authorName": "Your name",
+      "authorEmail": "you@example.com",
+      "worktreePath": "Choose a folder for the worktree"
+    },
     "newBranch": "New Branch",
     "newTag": "New Tag",
     "addRemote": "Add Remote",

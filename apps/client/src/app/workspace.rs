@@ -179,12 +179,30 @@ fn refs_sidebar_content(
     current: Memo<Option<Tab>>,
     refs: RefsCommands,
 ) -> impl IntoElement {
+    // 引用侧栏不依赖提交选择或详情，避免浏览提交时重建无关侧栏。
+    let sidebar = computed(move || {
+        current.with(|current| {
+            current.as_ref().map(|tab| Tab {
+                id: tab.id,
+                refs: tab.refs.clone(),
+                branch: tab.branch.clone(),
+                head: tab.head.clone(),
+                sidebar_collapsed: tab.sidebar_collapsed.clone(),
+                operation: tab.operation.clone(),
+                status: tab.status.clone(),
+                changes: tab.changes.clone(),
+                remote_urls: tab.remote_urls.clone(),
+                error: tab.error.clone(),
+                ..Default::default()
+            })
+        })
+    });
     return view()
         .w_full()
         .h_full()
         .min_w_0()
         .child(dynamic(move || -> AnyElement {
-            let Some(tab) = current.get().filter(|tab| tab.error.is_none()) else {
+            let Some(tab) = sidebar.get().filter(|tab| tab.error.is_none()) else {
                 return view().w_full().h_full().into_element();
             };
             return refs::view::refs_sidebar(&refs.state, &refs, language, tab).into_element();
@@ -505,6 +523,7 @@ fn right_content(
 ) -> impl IntoElement {
     let mode = search.state.mode;
     let inspector_file_list_mode = signal(inspector::FileListMode::Tree);
+    let reflog_file_tree_expanded: Signal<Option<Vec<SharedString>>> = signal(None);
     return view()
         .w_full()
         .h_full()
@@ -586,11 +605,25 @@ fn right_content(
                                 details,
                                 files,
                             }) if selected.as_ref() == Some(&selection) => {
+                                let history = history.clone();
+                                let tab_id = tab.id;
+                                let sha = details.sha.clone();
+                                let file_history: std::sync::Arc<dyn Fn(String)> =
+                                    std::sync::Arc::new(move |path| {
+                                        history.show_file_history_at(tab_id, path, sha.clone())
+                                    });
                                 inspector::reflog_commit_inspector(
                                     language,
                                     details,
                                     files,
+                                    tab.path.clone(),
+                                    inspector_file_list_mode,
+                                    crate::app::session::TreeOptions::from_settings(
+                                        &settings_state.get(),
+                                    ),
+                                    reflog_file_tree_expanded,
                                     refs.notice,
+                                    file_history,
                                 )
                                 .into_element()
                             }

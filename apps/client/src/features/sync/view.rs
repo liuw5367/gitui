@@ -160,10 +160,11 @@ pub(crate) fn sync_dialog(
                         .w(px(metrics::SYNC_SHEET_W))
                         .h(px(metrics::SYNC_SHEET_H))
                         .flex_col()
-                        .rounded(px(12.0))
+                        .rounded(px(metrics::RADIUS_PANEL + 2.0))
                         .border_1()
-                        .border_color(move || design::line())
-                        .bg(move || design::content())
+                        .border_color(move || design::line_strong())
+                        .bg(move || design::token("popover"))
+                        .shadow_lg()
                         .overflow_hidden()
                         .child(header)
                         .child(
@@ -201,8 +202,7 @@ fn sync_header(
         .flex_row()
         .items_center()
         .gap(px(ui::GAP_LG))
-        .px(px(14.0))
-        .bg(move || design::panel())
+        .px(px(ui::GAP_XL))
         .border_b_1()
         .border_color(move || design::line())
         .child(
@@ -280,7 +280,7 @@ fn action_panel(
         .h_full()
         .flex_col()
         .gap(px(ui::GAP))
-        .p(px(14.0))
+        .p(px(ui::GAP_XL))
         .overflow_hidden()
         .child(
             text(move || i18n::t(language.get().as_str(), sync_kind_key(kind)))
@@ -543,7 +543,7 @@ fn log_panel(
         .h_full()
         .flex_col()
         .gap(px(ui::GAP))
-        .p(px(14.0))
+        .p(px(ui::GAP_XL))
         .border_l_1()
         .border_color(move || design::line())
         .bg(move || design::panel())
@@ -875,10 +875,9 @@ fn sync_footer(
         .flex_row()
         .items_center()
         .gap(px(ui::GAP))
-        .px(px(14.0))
+        .px(px(ui::GAP_XL))
         .border_t_1()
         .border_color(move || design::line())
-        .bg(move || design::panel())
         .child(
             text(move || {
                 let cancelled = status_task.get().is_some_and(|task| {
@@ -928,7 +927,7 @@ fn sync_footer(
         .child(crate::ui::button::button(
             move || i18n::t(language.get().as_str(), "sync.close"),
             crate::ui::button::ButtonVariant::Secondary,
-            crate::ui::button::ButtonSize::Small,
+            crate::ui::button::ButtonSize::Regular,
             false,
             move || on_close(),
         ));

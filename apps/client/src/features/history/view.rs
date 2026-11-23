@@ -267,8 +267,6 @@ pub(crate) fn history(
         .relative()
         .flex_col()
         .bg(move || design::content())
-        .border_b_1()
-        .border_color(move || design::line())
         .child(hist_bar(
             language,
             state,
@@ -459,30 +457,19 @@ pub(crate) fn history(
                                         let fast_selection_for_row = fast_selection;
                                         let row_sha = commit.sha.clone();
                                         let row_tab_id = tab_id;
+                                        let row_selected = computed(move || {
+                                            let fast = fast_selection_for_row.get();
+                                            if fast.as_ref().is_some_and(|(tab, _)| *tab == row_tab_id) {
+                                                return fast_selection_matches(row_tab_id, &row_sha, fast);
+                                            }
+                                            selected_commit_for_row.get().as_ref().is_some_and(
+                                                |(tab, sha)| *tab == row_tab_id && sha == &row_sha,
+                                            ) || multi_selection_for_row.get().as_ref().is_some_and(
+                                                |selection| selection.tab_id == row_tab_id && selection.shas.contains(&row_sha),
+                                            )
+                                        });
                                         let selected_now: std::sync::Arc<dyn Fn() -> bool> =
-                                            std::sync::Arc::new(move || {
-                                                selected_commit_for_row
-                                                    .get()
-                                                    .as_ref()
-                                                    .is_some_and(|(selected_tab, selected_sha)| {
-                                                        *selected_tab == row_tab_id
-                                                            && selected_sha == &row_sha
-                                                    })
-                                                    || multi_selection_for_row
-                                                        .get()
-                                                        .as_ref()
-                                                        .is_some_and(|selection| {
-                                                            selection.tab_id == row_tab_id
-                                                                && selection
-                                                                    .shas
-                                                                    .contains(&row_sha)
-                                                        })
-                                                    || fast_selection_matches(
-                                                        row_tab_id,
-                                                        row_sha.as_str(),
-                                                        fast_selection_for_row.get(),
-                                                    )
-                                            });
+                                            std::sync::Arc::new(move || row_selected.get());
                                         let in_compare = compare_for_render.contains(&index);
                                         let has_refs = !commit.refs.is_empty();
                                         let row_selected_for_bg = selected_now.clone();
@@ -745,7 +732,6 @@ pub(crate) fn history(
                 .into_element()
             };
             let close_state = filter_state.clone();
-            let close_cmd = filter_cmd.clone();
             return crate::ui::dialog::popover_overlay(
                 move || i18n::t(language_value.get().as_str(), title_key),
                 80,
@@ -758,9 +744,6 @@ pub(crate) fn history(
                         .child(crate::ui::dialog::modality(panel)),
                 ),
                 move || {
-                    if close_state.filter_menu.get_untracked().is_some() {
-                        close_cmd.apply_quick_filter();
-                    }
                     close_state.filter_open.set(false);
                     close_state.filter_menu.set(None);
                 },
@@ -834,7 +817,7 @@ fn hist_bar(
     let branch_filter = crate::ui::menu::menu_button_anchored_at(
         move || {
             if branch_selection.is_empty() {
-                return i18n::t(language.get().as_str(), "filter.allBranches");
+                return i18n::t(language.get().as_str(), "filter.branch");
             }
             return i18n::with_arguments(
                 language.get().as_str(),
@@ -854,7 +837,6 @@ fn hist_bar(
                 == Some(crate::features::history::state::FilterMenu::Branches)
                 && branch_filter_tab_id.get_untracked() == Some(tab_id)
             {
-                branch_cmd.apply_quick_filter();
                 branch_filter_menu.set(None);
                 return;
             }
@@ -881,7 +863,7 @@ fn hist_bar(
     let author_filter = crate::ui::menu::menu_button_anchored_at(
         move || {
             if author_selection.is_empty() {
-                return i18n::t(language.get().as_str(), "history.allAuthors");
+                return i18n::t(language.get().as_str(), "filter.author");
             }
             return i18n::with_arguments(
                 language.get().as_str(),
@@ -901,7 +883,6 @@ fn hist_bar(
                 == Some(crate::features::history::state::FilterMenu::Authors)
                 && author_filter_tab_id.get_untracked() == Some(tab_id)
             {
-                author_cmd.apply_quick_filter();
                 author_filter_menu.set(None);
                 return;
             }
@@ -956,6 +937,18 @@ fn hist_bar(
                     .text_color(move || design::text3()),
                 ),
         )
+        // 快速搜索与已应用筛选独立；输入立即筛选提交，清空按钮只在有内容时出现。
+        .child(
+            view().w(px(128.0)).child(
+                crate::ui::text_input::search_field_clearable(
+                    query,
+                    move || i18n::t(language.get().as_str(), "history.filter"),
+                    move || i18n::t(language.get().as_str(), "history.clear"),
+                    move |value| query.set(value.to_string()),
+                )
+                .h(px(crate::ui::CONTROL_SMALL)),
+            ),
+        )
         .child(branch_filter)
         .child(author_filter)
         .child(widgets_icon(
@@ -967,15 +960,6 @@ fn hist_bar(
             filter_tab_id,
             tab_id,
             cmd.clone(),
-        ))
-        // 快速搜索与已应用筛选独立；输入立即筛选提交，清空按钮只在有内容时出现。
-        .child(view().w(px(metrics::SEARCH_W)).child(
-            crate::ui::text_input::search_field_clearable(
-                query,
-                move || i18n::t(language.get().as_str(), "history.filter"),
-                move || i18n::t(language.get().as_str(), "history.clear"),
-                move |value| query.set(value.to_string()),
-            ),
         ))
         .child(view().flex_1())
         .child({
@@ -1434,14 +1418,22 @@ fn quick_filter_pop(
             .map(|a| (a.email.clone(), format!("{} <{}>", a.name, a.email)))
             .collect(),
     };
-    let total = choices.len();
-    let clear = cmd.clone();
-    let close = cmd.clone();
+    let visible_choices = computed(move || {
+        let search = query.get().trim().to_lowercase();
+        choices
+            .iter()
+            .filter(|(_, label)| label.to_lowercase().contains(&search))
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+    let reset = cmd.clone();
+    let apply = cmd.clone();
+    let toggle = cmd.clone();
     view()
         .w(px(QUICK_FILTER_W))
         .p(px(10.0))
         .flex_col()
-        .gap(px(crate::ui::GAP_SM))
+        .gap(px(crate::ui::GAP))
         .rounded(px(metrics::RADIUS_PANEL))
         .border_1()
         .border_color(design::line_strong)
@@ -1464,88 +1456,103 @@ fn quick_filter_pop(
                             move |value| query.set(value.to_string()),
                         )),
                 )
-                .child(crate::ui::button::button(
-                    move || {
-                        i18n::with_arguments(
-                            language.get().as_str(),
-                            "filter.allCount",
-                            &[("count", total.to_string())],
-                        )
-                    },
-                    crate::ui::button::ButtonVariant::Ghost,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || {
-                        match kind {
-                            super::state::FilterMenu::Branches => clear.clear_branch_filter(),
-                            super::state::FilterMenu::Authors => clear.clear_author_filter(),
-                        }
-                        clear.apply_quick_filter();
-                        filter_open.set(false);
-                        filter_menu.set(None);
-                    },
-                ))
                 .child(crate::ui::button::icon_button(
                     "x",
                     move || i18n::t(language.get().as_str(), "shell.close"),
                     crate::ui::button::ButtonSize::Small,
                     false,
                     move || {
-                        close.apply_quick_filter();
                         filter_open.set(false);
                         filter_menu.set(None);
                     },
                 )),
         )
         .child(
-            scroll()
-                .w_full()
-                .h(px(288.0))
-                .child(dynamic(move || -> AnyElement {
-                    let search = query.get().trim().to_lowercase();
-                    let selection = draft.get();
-                    let mut rows = Vec::new();
-                    for (id, label) in &choices {
-                        if !label.to_lowercase().contains(&search) {
-                            continue;
-                        }
-                        let selected = match kind {
-                            super::state::FilterMenu::Branches => selection.references.contains(id),
-                            super::state::FilterMenu::Authors => selection.authors.contains(id),
-                        };
-                        let id = id.clone();
-                        let label = label.clone();
-                        let toggle = cmd.clone();
-                        rows.push(
-                            crate::ui::row::row(
-                                move || label.clone(),
-                                None,
-                                Some(crate::ui::check::indicator(selected).into_element()),
-                                vec![],
-                                selected,
-                                false,
-                                move || match kind {
-                                    super::state::FilterMenu::Branches => {
-                                        toggle.toggle_branch_filter(id.clone())
-                                    }
-                                    super::state::FilterMenu::Authors => {
-                                        toggle.toggle_author_filter(id.clone())
-                                    }
-                                },
-                            )
-                            .into_element(),
-                        );
-                    }
-                    if rows.is_empty() {
-                        rows.push(
+            scroll().w_full().h(px(288.0)).child(
+                view()
+                    .w_full()
+                    .flex_col()
+                    .gap(px(crate::ui::GAP_XS))
+                    .child(when(
+                        move || visible_choices.with(|choices| choices.is_empty()),
+                        move || {
                             text(move || i18n::t(language.get().as_str(), "filter.noResults"))
                                 .text_size(px(crate::ui::SECONDARY))
                                 .text_color(design::text3)
-                                .into_element(),
-                        );
-                    }
-                    view().w_full().flex_col().children(rows).into_element()
-                })),
+                        },
+                    ))
+                    .child(each(
+                        move || visible_choices.get(),
+                        |(id, _): &(String, String)| id.clone(),
+                        move |choice, _| {
+                            let toggle = toggle.clone();
+                            let selected = computed(move || {
+                                choice.with(|(id, _)| {
+                                    draft.with(|draft| match kind {
+                                        super::state::FilterMenu::Branches => {
+                                            draft.references.contains(id)
+                                        }
+                                        super::state::FilterMenu::Authors => {
+                                            draft.authors.contains(id)
+                                        }
+                                    })
+                                })
+                            });
+                            dynamic(move || {
+                                let (id, label) = choice.get();
+                                let toggle = toggle.clone();
+                                crate::ui::row::row(
+                                    move || label.clone(),
+                                    None,
+                                    Some(
+                                        crate::ui::check::indicator(selected.get()).into_element(),
+                                    ),
+                                    vec![],
+                                    selected.get(),
+                                    false,
+                                    move || match kind {
+                                        super::state::FilterMenu::Branches => {
+                                            toggle.toggle_branch_filter(id.clone())
+                                        }
+                                        super::state::FilterMenu::Authors => {
+                                            toggle.toggle_author_filter(id.clone())
+                                        }
+                                    },
+                                )
+                            })
+                        },
+                    )),
+            ),
+        )
+        .child(
+            view()
+                .w_full()
+                .pt(px(crate::ui::GAP))
+                .border_t_1()
+                .border_color(design::line)
+                .flex_row()
+                .justify_end()
+                .gap(px(crate::ui::GAP_SM))
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "filter.reset"),
+                    crate::ui::button::ButtonVariant::Secondary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || {
+                        match kind {
+                            super::state::FilterMenu::Branches => reset.clear_branch_filter(),
+                            super::state::FilterMenu::Authors => reset.clear_author_filter(),
+                        }
+                        reset.apply_quick_filter();
+                    },
+                ))
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "filter.apply"),
+                    crate::ui::button::ButtonVariant::Primary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || apply.apply_quick_filter(),
+                )),
         )
 }
 
@@ -1670,7 +1677,7 @@ fn filter_pop(
                     move || close_filter.set(false),
                 )),
         )
-        .child(section_label(language, "filter.when"))
+        .child(section_label(language, "filter.whenLabel"))
         .child(
             view()
                 .w_full()
@@ -1694,16 +1701,7 @@ fn filter_pop(
                 .gap(px(6.0))
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "filter.apply"),
-                    crate::ui::button::ButtonVariant::Primary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    {
-                        let apply = apply.clone();
-                        move || apply()
-                    },
-                ))
+                .child(view().flex_1())
                 .child(crate::ui::button::button(
                     move || i18n::t(language.get().as_str(), "filter.reset"),
                     crate::ui::button::ButtonVariant::Secondary,
@@ -1714,7 +1712,16 @@ fn filter_pop(
                         move || clear()
                     },
                 ))
-                .child(view().flex_1()),
+                .child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "filter.apply"),
+                    crate::ui::button::ButtonVariant::Primary,
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    {
+                        let apply = apply.clone();
+                        move || apply()
+                    },
+                )),
         );
 }
 
@@ -2099,7 +2106,7 @@ fn compare_refs_dialog(
                                 crate::ui::button::button(
                                     move || i18n::t(language.get().as_str(), "compare.base"),
                                     if selected {
-                                        crate::ui::button::ButtonVariant::Secondary
+                                        crate::ui::button::ButtonVariant::Primary
                                     } else {
                                         crate::ui::button::ButtonVariant::Ghost
                                     },
@@ -2126,7 +2133,7 @@ fn compare_refs_dialog(
                                 crate::ui::button::button(
                                     move || i18n::t(language.get().as_str(), "compare.target"),
                                     if selected {
-                                        crate::ui::button::ButtonVariant::Secondary
+                                        crate::ui::button::ButtonVariant::Primary
                                     } else {
                                         crate::ui::button::ButtonVariant::Ghost
                                     },
@@ -2169,7 +2176,7 @@ fn compare_refs_dialog(
             } else {
                 crate::ui::button::ButtonVariant::Ghost
             },
-            crate::ui::button::ButtonSize::Small,
+            crate::ui::button::ButtonSize::Regular,
             selection.target.is_none(),
             move || draft.update(|value| value.worktree = !value.worktree),
         )
@@ -2188,7 +2195,7 @@ fn compare_refs_dialog(
                 } else {
                     crate::ui::button::ButtonVariant::Ghost
                 },
-                crate::ui::button::ButtonSize::Small,
+                crate::ui::button::ButtonSize::Regular,
                 false,
                 move || draft.update(|value| value.three_dot = false),
             )
@@ -2203,7 +2210,7 @@ fn compare_refs_dialog(
                 } else {
                     crate::ui::button::ButtonVariant::Ghost
                 },
-                crate::ui::button::ButtonSize::Small,
+                crate::ui::button::ButtonSize::Regular,
                 selection.worktree,
                 move || draft.update(|value| value.three_dot = true),
             )
@@ -2276,8 +2283,8 @@ fn compare_refs_dialog(
             let selection = swap_draft.get();
             return crate::ui::button::button(
                 move || i18n::t(language.get().as_str(), "compare.swap"),
-                crate::ui::button::ButtonVariant::Ghost,
-                crate::ui::button::ButtonSize::Small,
+                crate::ui::button::ButtonVariant::Secondary,
+                crate::ui::button::ButtonSize::Regular,
                 selection.base.is_none() || selection.target.is_none() || selection.worktree,
                 move || {
                     swap_draft.update(|selection| {
@@ -2291,8 +2298,8 @@ fn compare_refs_dialog(
             let selection = clear_draft.get();
             return crate::ui::button::button(
                 move || i18n::t(language.get().as_str(), "compare.clear"),
-                crate::ui::button::ButtonVariant::Ghost,
-                crate::ui::button::ButtonSize::Small,
+                crate::ui::button::ButtonVariant::Secondary,
+                crate::ui::button::ButtonSize::Regular,
                 selection.base.is_none() && selection.target.is_none() && !selection.worktree,
                 move || {
                     clear_draft.update(|selection| {
@@ -2307,7 +2314,7 @@ fn compare_refs_dialog(
         crate::ui::button::button(
             move || i18n::t(language.get().as_str(), "compare.done"),
             crate::ui::button::ButtonVariant::Primary,
-            crate::ui::button::ButtonSize::Small,
+            crate::ui::button::ButtonSize::Regular,
             false,
             move || {
                 let selection = draft.get_untracked();

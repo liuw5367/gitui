@@ -12,7 +12,7 @@ pub fn icon(name: &str) -> Option<ImageSrc> {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.9v6.2"></path><circle cx="4.5" cy="3.3" r="1.6"></circle><circle cx="11.5" cy="5.1" r="1.6"></circle><path d="M11.5 6.7c0 2.5-2.1 3.7-6 4.2"></path></g></svg>"#
         }
         "tree" => {
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v10M4 5h4.2a3.2 3.2 0 0 0 3.2-3.2M4 11h4.2a3.2 3.2 0 0 1 3.2 3.2"></path><circle cx="4" cy="3" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="11.4" cy="2" r="1.2" fill="currentColor" stroke="none"></circle><circle cx="11.4" cy="14" r="1.2" fill="currentColor" stroke="none"></circle></g></svg>"#
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h10M5 8h8M7 13h6"></path></g></svg>"#
         }
         "clock" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 4.9v3.3l2.2 1.3"></path></g></svg>"#
@@ -47,6 +47,9 @@ pub fn icon(name: &str) -> Option<ImageSrc> {
         "file" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5.1l3.3 3.3v7.7H4z"></path><path d="M9 2.7V6h3.2"></path></g></svg>"#
         }
+        "stash" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h11v8h-11zM2 2.5h12V5H2zM6 8h4"/></g></svg>"#
+        }
         "folder" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 5.5h4.1l1.2-1.6h6.1v8.3H2.3z"></path></g></svg>"#
         }
@@ -61,7 +64,13 @@ pub fn icon(name: &str) -> Option<ImageSrc> {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="3" width="11.6" height="10" rx="1.6"></rect><path d="M8 3v10"></path></g></svg>"#
         }
         "unified" => {
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.4h10.8M2.6 8h10.8M2.6 11.6h7"></path></g></svg>"#
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 4.4h10.8M2.6 8h10.8M2.6 11.6h10.8"></path></g></svg>"#
+        }
+        "expand-all" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l3-3 3 3M5 11l3 3 3-3M3 8h10"/></g></svg>"#
+        }
+        "collapse-all" => {
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2l3 3 3-3M5 14l3-3 3 3M3 8h10"/></g></svg>"#
         }
         "fold" => {
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 5 5.7 7.5 8.2 5"></path><path d="M7.8 11l2.5-2.5L12.8 11"></path></g></svg>"#

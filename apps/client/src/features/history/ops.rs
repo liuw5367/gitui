@@ -11,7 +11,6 @@ pub(crate) enum CompareFailure {
 }
 
 pub(crate) struct CommitSelectionData {
-    pub(crate) patch: domain::diff::Patch,
     pub(crate) files: Vec<domain::DiffStat>,
     pub(crate) details: Option<git::CommitDetails>,
 }
@@ -172,31 +171,6 @@ pub(crate) fn load_commit_selection(
             return Err(error.detail());
         }
     };
-    let patch = repo
-        .patch(&sha)
-        .inspect(|patch| {
-            log::debug!(
-                target: "gitui::history",
-                "event=commit_select.patch_ok commit={} bytes={} files={} hunks={}",
-                short,
-                patch.raw.len(),
-                patch.files.len(),
-                patch
-                    .lines
-                    .iter()
-                    .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
-                    .count(),
-            );
-        })
-        .inspect_err(|error| {
-            log::warn!(
-                target: "gitui::history",
-                "event=commit_select.patch_failed commit={} reason={}",
-                short,
-                error.summary()
-            );
-        })
-        .unwrap_or_default();
     let files = repo
         .numstat(&sha)
         .inspect(|files| {
@@ -233,11 +207,7 @@ pub(crate) fn load_commit_selection(
         short,
         started.elapsed().as_millis()
     );
-    return Ok(CommitSelectionData {
-        patch,
-        files,
-        details,
-    });
+    return Ok(CommitSelectionData { files, details });
 }
 
 /// 合并多个提交的文件统计。输入按新提交到旧提交排序，文件状态保留最近一次变更。
@@ -276,7 +246,6 @@ pub(crate) fn load_multi_commit_data(
 }
 
 pub(crate) fn apply_commit_selection(tab: &mut Tab, data: CommitSelectionData) {
-    tab.patch = data.patch;
     tab.files = data.files;
     tab.details = data.details;
     tab.error = None;
@@ -302,6 +271,15 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
 /// 显式打开提交补丁并切换中栏；列表选择由命令层异步读取提交数据。
 pub(crate) fn show_commit_diff(tab: &mut Tab, index: usize) {
     select_commit(tab, index);
+    if let Some(commit) = tab.selected_commit() {
+        match tab.open_repo().and_then(|repo| repo.patch(&commit.sha)) {
+            Ok(patch) => tab.patch = patch,
+            Err(error) => {
+                tab.error = Some(error.detail());
+                return;
+            }
+        }
+    }
     tab.show_commit_diff = true;
 }
 
@@ -945,6 +923,8 @@ pub(crate) fn reload_with_filter(tab: &Tab, filter: &LogFilter) -> Tab {
         filter,
         &tab.git_executable,
     );
+    next.id = tab.id;
+    next.load_id = tab.load_id;
     next.comparing = tab.comparing;
     next.sidebar_collapsed = tab.sidebar_collapsed.clone();
     next.compare_three_dot = tab.compare_three_dot;
@@ -1002,6 +982,36 @@ mod tests {
     use crate::app::session::load_tab;
     use crate::test_support::TempRepo;
     use git::LogFilter;
+
+    #[test]
+    fn filter_reload_preserves_tab_and_request_identity() {
+        let repo = TempRepo::new("filter-identity");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        tab.load_id = 12345;
+        let filter = LogFilter {
+            authors: vec!["test@example.com".into()],
+            ..Default::default()
+        };
+        let reloaded = reload_with_filter(&tab, &filter);
+        assert_eq!(reloaded.id, tab.id);
+        assert_eq!(reloaded.load_id, 12345);
+        assert_eq!(reloaded.filter, filter);
+        assert!(!reloaded.loading);
+        assert!(!reloaded.commits.is_empty());
+    }
+
+    #[test]
+    fn commit_selection_defers_patch_until_diff_is_opened() {
+        let repo = TempRepo::new("lazy-commit-patch");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        select_commit(&mut tab, 0);
+        assert!(tab.details.is_some());
+        assert!(!tab.files.is_empty());
+        assert!(tab.patch.raw.is_empty(), "普通选中不预载完整补丁");
+        show_commit_diff(&mut tab, 0);
+        assert!(tab.show_commit_diff);
+        assert!(tab.patch.raw.contains("diff --git"));
+    }
 
     #[test]
     fn multi_commit_file_stats_sum_paths_and_keep_latest_status() {

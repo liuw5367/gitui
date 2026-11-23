@@ -191,10 +191,12 @@ impl AskPassUi {
             )
             .into_element(),
         ];
-        return crate::ui::dialog::dialog(
-            true,
+        return crate::ui::dialog::dialog_panel(
             440.0,
             move || crate::i18n::t(language.get().as_str(), "askpass.title"),
+            Some(std::rc::Rc::new(move || {
+                crate::i18n::t(language.get().as_str(), "common.close")
+            })),
             body,
             footer,
             move || dismiss_ui.answer(id, None),

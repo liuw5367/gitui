@@ -44,14 +44,22 @@ pub(crate) fn tree(
     selected: Option<SharedString>,
     on_select: impl Fn(&str) + 'static,
 ) -> impl IntoElement {
-    return tree_inner(items, Vec::new(), None, selected, on_select, |_| {}, None);
+    return tree_inner(
+        items,
+        Vec::new(),
+        || None,
+        selected,
+        on_select,
+        |_| {},
+        None,
+    );
 }
 
 /// 带应用内行内容的树。树的层级、选中、焦点与键盘样式仍由此公共组件统一处理。
 pub(crate) fn tree_with_renderer(
     items: Vec<TreeItem>,
     default_expanded: Vec<SharedString>,
-    expanded: Option<Vec<SharedString>>,
+    expanded: impl Fn() -> Option<Vec<SharedString>> + 'static,
     selected: Option<SharedString>,
     on_select: impl Fn(&str) + 'static,
     on_expanded: impl Fn(Vec<SharedString>) + 'static,
@@ -71,7 +79,7 @@ pub(crate) fn tree_with_renderer(
 fn tree_inner(
     items: Vec<TreeItem>,
     default_expanded: Vec<SharedString>,
-    expanded: Option<Vec<SharedString>>,
+    expanded: impl Fn() -> Option<Vec<SharedString>> + 'static,
     selected: Option<SharedString>,
     on_select: impl Fn(&str) + 'static,
     on_expanded: impl Fn(Vec<SharedString>) + 'static,
@@ -87,13 +95,12 @@ fn tree_inner(
         .h_full()
         .selected(SelectValue::from(selected))
         .item_class(
-            "group rounded-md hover:bg-secondary selected:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
+            "group hover:bg-secondary selected:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
         )
         .item_style(move |style| {
             style
                 .h(px(ui::ROW))
-                .px(px(ui::GAP))
-                .rounded(px(6.0))
+                .px(px(ui::GAP_XS))
                 .text_size(px(ui::BODY))
                 .text_color(move || design::text())
         });

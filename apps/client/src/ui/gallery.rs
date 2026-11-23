@@ -326,12 +326,11 @@ fn body(
                     ))
                     .child(ui::field::field(
                         move || "Multiline focus outline".to_string(),
-                        ui::text_input::text_area(
-                            area_value,
+                        ui::text_input::text_area_bound(
+                            move || area_value.get(),
                             move || "Description".to_string(),
-                            Some(88.0),
-                            false,
-                            |_text| {},
+                            88.0,
+                            move |text| area_value.set(text),
                         ),
                         Some(Box::new(move || {
                             "Focus the editor to inspect the theme ring.".to_string()

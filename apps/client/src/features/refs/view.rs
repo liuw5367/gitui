@@ -1812,22 +1812,32 @@ pub(crate) fn refs_view(
                         .text_color(move || design::text()),
                 )
                 .child(view().flex_1())
-                .child(create_button(language, "form.newBranch", {
-                    let open_form = open_form.clone();
-                    move || open_form(crate::features::search::FormKind::NewBranch)
-                }))
-                .child(create_button(language, "form.newTag", {
-                    let open_form = open_form.clone();
-                    move || open_form(crate::features::search::FormKind::NewTag)
-                }))
-                .child(create_button(language, "form.addRemote", {
-                    let open_form = open_form.clone();
-                    move || open_form(crate::features::search::FormKind::AddRemote)
-                }))
-                .child(create_button(language, "form.newStash", {
-                    let open_form = open_form.clone();
-                    move || open_form(crate::features::search::FormKind::NewStash)
-                }))
+                .child(when(
+                    move || selected_tab.get() == RefsTab::Refs,
+                    move || {
+                        let open_form = open_form.clone();
+                        view()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(crate::ui::GAP))
+                            .child(create_button(language, "form.newBranch", {
+                                let open_form = open_form.clone();
+                                move || open_form(crate::features::search::FormKind::NewBranch)
+                            }))
+                            .child(create_button(language, "form.newTag", {
+                                let open_form = open_form.clone();
+                                move || open_form(crate::features::search::FormKind::NewTag)
+                            }))
+                            .child(create_button(language, "form.addRemote", {
+                                let open_form = open_form.clone();
+                                move || open_form(crate::features::search::FormKind::AddRemote)
+                            }))
+                            .child(create_button(language, "form.newStash", {
+                                let open_form = open_form.clone();
+                                move || open_form(crate::features::search::FormKind::NewStash)
+                            }))
+                    },
+                ))
                 .child(tab_button(language, RefsTab::Refs, selected_tab))
                 .child(tab_button(language, RefsTab::Reflog, selected_tab)),
         )

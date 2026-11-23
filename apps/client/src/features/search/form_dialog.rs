@@ -3,7 +3,7 @@
 //! `alert_dialog` 只有按钮没有输入框，这里自建一个居中的模态浮层，带 1–2 个输入
 //! 字段与取消/确认。确认后由调用方执行真正的 Git 操作。
 
-use crate::design::{self, metrics};
+use crate::design;
 use crate::i18n;
 use nsh_core::prelude::*;
 use std::collections::BTreeSet;
@@ -48,6 +48,23 @@ impl FormKind {
             FormKind::Identity => "form.authorName",
             FormKind::NewWorktree => "worktree.path",
         };
+    }
+
+    fn placeholder(self, label: &str) -> &'static str {
+        match label {
+            "form.from" | "worktree.startPoint" => "form.placeholders.revision",
+            "form.url" | "form.urlNew" => "form.placeholders.remoteUrl",
+            "form.remoteName" => "form.placeholders.remoteName",
+            "form.authorName" => "form.placeholders.authorName",
+            "form.authorEmail" => "form.placeholders.authorEmail",
+            "worktree.path" => "form.placeholders.worktreePath",
+            "form.message" if matches!(self, Self::NewStash | Self::StashSelectedFiles) => {
+                "form.placeholders.stashMessage"
+            }
+            "form.message" => "form.placeholders.commitMessage",
+            _ if self == Self::NewTag => "form.placeholders.tagName",
+            _ => "form.placeholders.branchName",
+        }
     }
 
     /// 第三个字段的标签（只有附注标签需要说明）。
@@ -157,7 +174,7 @@ pub(crate) fn form_dialog(
     on_cancel: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
     let dismiss = on_cancel.clone();
-    return crate::ui::dialog::modal(
+    crate::ui::dialog::modal(
         move || state.get().is_some(),
         move || {
             state
@@ -167,194 +184,157 @@ pub(crate) fn form_dialog(
         },
         120,
         move || {
-            let state = state;
-            let language = language;
             let on_submit = on_submit.clone();
             let on_cancel = on_cancel.clone();
-            dynamic(move || -> AnyElement {
-                let Some(form) = state.get() else {
-                    return view().w(px(0.0)).h(px(0.0)).into_element();
+            // 文本编辑只更新字段绑定；只有字段结构改变时才重建面板。
+            let structure = computed(move || {
+                state.with(|state| {
+                    state.as_ref().map(|form| {
+                        (
+                            form.kind,
+                            form.track_upstream,
+                            form.kind == FormKind::NewWorktree && form.flag,
+                        )
+                    })
+                })
+            });
+            dynamic(move || {
+                let Some((kind, track_upstream, worktree_branch)) = structure.get() else {
+                    return view().into_element();
                 };
-                let submit_form = form.clone();
-                let on_submit = on_submit.clone();
-                let on_cancel = on_cancel.clone();
-                let form_for_field_one = form.clone();
-                let form_for_field_two = form.clone();
-                let form_for_third = form.clone();
-                let form_for_flag = form.clone();
-                let form_for_stash_paths = form.clone();
-                let form_for_worktree_path = form.clone();
-                return crate::ui::dialog::modality(
-                    view()
-                        .w(px(420.0))
-                        .p(px(16.0))
-                        .flex_col()
-                        .gap(px(10.0))
-                        .rounded(px(metrics::RADIUS_PANEL))
-                        .border_1()
-                        .border_color(move || design::line())
-                        .bg(move || design::token("popover"))
-                        .child(
-                            text(move || i18n::t(language.get().as_str(), form.kind.title()))
-                                .text_size(px(crate::ui::TITLE))
-                                .font_weight(FontWeight(600))
-                                .line_height(px(18.0))
-                                .text_color(move || design::text()),
-                        )
-                        .child(field(
+                let mut fields = vec![
+                    field(
+                        language,
+                        kind.first_label(),
+                        kind.placeholder(kind.first_label()),
+                        state,
+                        |form| form.first.clone(),
+                        |form, value| form.first = value,
+                    )
+                    .into_element(),
+                ];
+                if kind == FormKind::NewWorktree {
+                    fields.push(
+                        dynamic(move || {
+                            choose_worktree_path(language, state.get().unwrap(), state)
+                        })
+                        .into_element(),
+                    );
+                }
+                if let Some(label) = kind.second_label() {
+                    fields.push(
+                        field(
                             language,
-                            form.kind.first_label(),
-                            form_for_field_one.clone(),
-                            |state: &FormState| state.first.clone(),
-                            {
-                                let form = form_for_field_one.clone();
-                                move |text: String| {
-                                    let mut next = form.clone();
-                                    next.first = text;
-                                    state.set(Some(next));
-                                }
-                            },
-                        ))
-                        .child(dynamic(move || -> AnyElement {
-                            if form.kind != FormKind::NewWorktree {
-                                return view().w_full().h(px(0.0)).into_element();
-                            }
-                            return choose_worktree_path(
-                                language,
-                                form_for_worktree_path.clone(),
-                                state,
-                            )
-                            .into_element();
-                        }))
-                        .child(dynamic(move || -> AnyElement {
-                            let Some(label_key) = form.kind.second_label() else {
-                                return view().w_full().h(px(0.0)).into_element();
-                            };
-                            return field(
-                                language,
-                                label_key,
-                                form_for_field_two.clone(),
-                                |state: &FormState| state.second.clone(),
-                                {
-                                    let state = state;
-                                    let form = form_for_field_two.clone();
-                                    move |text: String| {
-                                        let mut next = form.clone();
-                                        next.second = text;
-                                        state.set(Some(next));
-                                    }
-                                },
-                            )
-                            .into_element();
-                        }))
-                        .child(dynamic(move || -> AnyElement {
-                            if form.kind != FormKind::StashSelectedFiles {
-                                return view().w_full().h(px(0.0)).into_element();
-                            }
-                            return stash_file_picker(
-                                language,
-                                form_for_stash_paths.clone(),
-                                state,
-                            )
-                            .into_element();
-                        }))
-                        .child(dynamic(move || -> AnyElement {
-                            let Some(label_key) = form.kind.third_label() else {
-                                return view().w_full().h(px(0.0)).into_element();
-                            };
-                            if form.kind == FormKind::NewWorktree && !form.flag {
-                                return view().w_full().h(px(0.0)).into_element();
-                            }
-                            let form_for_third = form_for_third.clone();
-                            return field(
-                                language,
-                                label_key,
-                                form_for_third.clone(),
-                                |state: &FormState| state.third.clone(),
-                                {
-                                    let state = state;
-                                    let form = form_for_third.clone();
-                                    move |text: String| {
-                                        let mut next = form.clone();
-                                        next.third = text;
-                                        state.set(Some(next));
-                                    }
-                                },
-                            )
-                            .into_element();
-                        }))
-                        .child(dynamic(move || -> AnyElement {
-                            let Some(label_key) = form.kind.flag_label() else {
-                                return view().w_full().h(px(0.0)).into_element();
-                            };
-                            if form.track_upstream {
-                                return view().w_full().h(px(0.0)).into_element();
-                            }
-                            let form_for_flag = form_for_flag.clone();
-                            return flag_row(language, label_key, form_for_flag, state)
-                                .into_element();
-                        }))
-                        .child(
-                            view()
-                                .w_full()
-                                .h(move || {
-                                    if state
-                                        .get()
-                                        .map(|form| form.error.is_some())
-                                        .unwrap_or(false)
-                                    {
-                                        px(16.0)
-                                    } else {
-                                        px(0.0)
-                                    }
-                                })
-                                .overflow_hidden()
-                                .items_center()
-                                .child(
-                                    text(move || {
-                                        state.get().and_then(|form| form.error).unwrap_or_default()
-                                    })
-                                    .text_size(px(crate::ui::SECONDARY))
-                                    .line_height(px(crate::ui::SECONDARY_LINE))
-                                    .text_color(move || design::danger()),
-                                ),
-                        )
-                        .child(
-                            view()
-                                .w_full()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(8.0))
-                                .child(view().flex_1())
-                                .child(crate::ui::button::button(
-                                    move || i18n::t(language.get().as_str(), "common.cancel"),
-                                    crate::ui::button::ButtonVariant::Secondary,
-                                    crate::ui::button::ButtonSize::Regular,
-                                    false,
-                                    {
-                                        let on_cancel = on_cancel.clone();
-                                        move || on_cancel()
-                                    },
-                                ))
-                                .child(crate::ui::button::button(
-                                    move || i18n::t(language.get().as_str(), form.kind.confirm()),
-                                    crate::ui::button::ButtonVariant::Primary,
-                                    crate::ui::button::ButtonSize::Regular,
-                                    form.kind == FormKind::StashSelectedFiles
-                                        && form.selected_stash_paths().is_empty(),
-                                    {
-                                        let on_submit = on_submit.clone();
-                                        move || on_submit(submit_form.clone())
-                                    },
-                                )),
+                            label,
+                            kind.placeholder(label),
+                            state,
+                            |form| form.second.clone(),
+                            |form, value| form.second = value,
                         )
                         .into_element(),
+                    );
+                }
+                if kind == FormKind::StashSelectedFiles {
+                    fields.push(
+                        dynamic(move || stash_file_picker(language, state.get().unwrap(), state))
+                            .into_element(),
+                    );
+                }
+                if let Some(label) = kind.third_label() {
+                    if kind != FormKind::NewWorktree || worktree_branch {
+                        fields.push(
+                            field(
+                                language,
+                                label,
+                                kind.placeholder(label),
+                                state,
+                                |form| form.third.clone(),
+                                |form, value| form.third = value,
+                            )
+                            .into_element(),
+                        );
+                    }
+                }
+                if let Some(label) = kind.flag_label() {
+                    if !track_upstream {
+                        fields.push(
+                            dynamic(move || flag_row(language, label, state.get().unwrap(), state))
+                                .into_element(),
+                        );
+                    }
+                }
+                fields.push(
+                    when(
+                        move || {
+                            state
+                                .with(|form| form.as_ref().is_some_and(|form| form.error.is_some()))
+                        },
+                        move || {
+                            text(move || {
+                                state.get().and_then(|form| form.error).unwrap_or_default()
+                            })
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(design::danger)
+                        },
+                    )
+                    .into_element(),
+                );
+                let body = view()
+                    .w_full()
+                    .flex_col()
+                    .gap(px(crate::ui::GAP))
+                    .children(fields);
+                let cancel_button = on_cancel.clone();
+                let submit = on_submit.clone();
+                let close = on_cancel.clone();
+                let disabled = computed(move || {
+                    state.with(|state| {
+                        state.as_ref().is_none_or(|form| {
+                            form.kind == FormKind::StashSelectedFiles
+                                && form.selected_stash_paths().is_empty()
+                        })
+                    })
+                });
+                let footer = vec![
+                    crate::ui::button::button(
+                        move || i18n::t(language.get().as_str(), "common.cancel"),
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Regular,
+                        false,
+                        move || cancel_button(),
+                    )
+                    .into_element(),
+                    dynamic(move || {
+                        let submit = submit.clone();
+                        crate::ui::button::button(
+                            move || i18n::t(language.get().as_str(), kind.confirm()),
+                            crate::ui::button::ButtonVariant::Primary,
+                            crate::ui::button::ButtonSize::Regular,
+                            disabled.get(),
+                            move || {
+                                if let Some(form) = state.get_untracked() {
+                                    submit(form);
+                                }
+                            },
+                        )
+                    })
+                    .into_element(),
+                ];
+                crate::ui::dialog::dialog_panel(
+                    420.0,
+                    move || i18n::t(language.get().as_str(), kind.title()),
+                    Some(std::rc::Rc::new(move || {
+                        i18n::t(language.get().as_str(), "common.close")
+                    })),
+                    body,
+                    footer,
+                    move || close(),
                 )
-                .into_element();
             })
         },
         move || dismiss(),
-    );
+    )
 }
 
 fn choose_worktree_path(
@@ -506,58 +486,190 @@ fn stash_file_picker(
         .child(picker_content);
 }
 
-/// 一行复选：走 `ui::check::check_inline`（原生 Checkbox + 统一指示器）。
+/// 可选字段变化时复选行会重建，使用按钮复选避免绑定读取已释放的 owner。
 fn flag_row(
     language: Signal<SharedString>,
     label_key: &'static str,
     form: FormState,
     state: Signal<Option<FormState>>,
 ) -> impl IntoElement {
-    let toggle = {
-        let form = form.clone();
-        move |next: bool| {
-            let mut updated = form.clone();
-            updated.flag = next;
-            state.set(Some(updated));
-        }
-    };
-    return view().w_full().h(px(22.0)).flex_row().items_center().child(
-        crate::ui::check::check_inline(
-            move || i18n::t(language.get().as_str(), label_key),
-            form.flag,
-            22.0,
-            14.0,
-            false,
-            toggle,
-        ),
-    );
+    crate::ui::check::check_row_button(
+        move || i18n::t(language.get().as_str(), label_key),
+        form.flag,
+        move |flag| {
+            state.update(|form| {
+                if let Some(form) = form {
+                    form.flag = flag;
+                    form.error = None;
+                }
+            })
+        },
+    )
 }
 
 fn field(
     language: Signal<SharedString>,
     label_key: &'static str,
-    form: FormState,
-    read: impl Fn(&FormState) -> String + 'static,
-    write: impl Fn(String) + 'static,
+    placeholder_key: &'static str,
+    state: Signal<Option<FormState>>,
+    read: fn(&FormState) -> String,
+    write: fn(&mut FormState, String),
 ) -> impl IntoElement {
-    return view()
+    view()
         .w_full()
         .flex_col()
-        .gap(px(4.0))
+        .gap(px(crate::ui::GAP_XS))
         .child(
             text(move || i18n::t(language.get().as_str(), label_key))
                 .text_size(px(crate::ui::SECONDARY))
-                .font_weight(FontWeight(600))
+                .font_weight(FontWeight::SEMIBOLD)
                 .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text2()),
+                .text_color(design::text2),
         )
         .child(crate::ui::text_input::text_input_bound(
-            {
-                let form = form.clone();
-                move || read(&form)
-            },
-            || String::new(),
+            move || state.with(|form| form.as_ref().map(read).unwrap_or_default()),
+            move || i18n::t(language.get().as_str(), placeholder_key),
             false,
-            move |text: String| write(text),
-        ));
+            move |value| {
+                state.update(|form| {
+                    if let Some(form) = form {
+                        write(form, value);
+                        form.error = None;
+                    }
+                })
+            },
+        ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct FixtureProps {
+        kind: u32,
+    }
+
+    #[component]
+    fn FormFixture(props: FixtureProps) -> impl IntoElement {
+        let state = signal(Some(FormState::new(
+            [
+                FormKind::NewBranch,
+                FormKind::NewTag,
+                FormKind::AddRemote,
+                FormKind::NewStash,
+                FormKind::StashSelectedFiles,
+                FormKind::RenameBranch,
+                FormKind::EditRemote,
+                FormKind::Identity,
+                FormKind::NewWorktree,
+            ][props.kind as usize],
+        )));
+        form_dialog(
+            signal(SharedString::from("en")),
+            state,
+            std::sync::Arc::new(move |_| state.set(None)),
+            std::sync::Arc::new(move || state.set(None)),
+        )
+    }
+
+    fn start(kind: FormKind) -> nsh_testing::Headless {
+        let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig {
+            viewport: size(px(800.0), px(700.0)),
+            ..nsh_engine::EngineConfig::new(nsh_core::element::Root::new::<FormFixture>(
+                move || FixtureProps { kind: kind as u32 },
+            ))
+        })
+        .unwrap();
+        app.first_render().unwrap();
+        app
+    }
+
+    #[test]
+    fn form_dialogs_share_compact_header_footer_and_placeholders() {
+        for kind in [
+            FormKind::NewBranch,
+            FormKind::NewTag,
+            FormKind::AddRemote,
+            FormKind::NewStash,
+            FormKind::StashSelectedFiles,
+            FormKind::RenameBranch,
+            FormKind::EditRemote,
+            FormKind::Identity,
+            FormKind::NewWorktree,
+        ] {
+            let mut app = start(kind);
+            let placeholder = i18n::t("en", kind.placeholder(kind.first_label()));
+            assert_ne!(placeholder, kind.placeholder(kind.first_label()));
+            assert!(
+                app.screen()
+                    .input_text(&format!("text:{placeholder}"))
+                    .unwrap()
+                    .is_some(),
+                "{kind:?}: missing placeholder"
+            );
+            let nodes = app.screen().layout_nodes();
+            let height = |id: &str| {
+                nodes
+                    .iter()
+                    .find(|node| node.test_id.as_deref() == Some(id))
+                    .unwrap()
+                    .bounds
+                    .size
+                    .height
+                    .0
+            };
+            assert!((height("dialog-header") - 44.0).abs() < 1.0);
+            assert!((height("dialog-footer") - 48.0).abs() < 1.0);
+            if kind == FormKind::NewStash {
+                assert!(height("dialog-panel") < 260.0);
+            }
+            if kind == FormKind::NewBranch {
+                assert!(height("dialog-panel") < 330.0);
+            }
+            app.press("Cancel").unwrap();
+            assert!(
+                !app.screen()
+                    .layout_nodes()
+                    .iter()
+                    .any(|node| node.test_id.as_deref() == Some("dialog-panel"))
+            );
+        }
+    }
+
+    #[test]
+    fn form_checkbox_keeps_typed_values_and_closes_cleanly() {
+        let mut app = start(FormKind::NewStash);
+        let placeholder = i18n::t("en", "form.placeholders.stashMessage");
+        app.type_text(&placeholder, "work in progress").unwrap();
+        app.press(&i18n::t("en", "form.includeUntracked")).unwrap();
+        assert_eq!(
+            app.screen().input_text("work in progress").unwrap(),
+            Some("work in progress")
+        );
+        app.press("Cancel").unwrap();
+        assert!(
+            !app.screen()
+                .layout_nodes()
+                .iter()
+                .any(|node| node.test_id.as_deref() == Some("dialog-panel"))
+        );
+    }
+
+    #[test]
+    fn typing_in_branch_form_preserves_the_input_view() {
+        let mut app = start(FormKind::NewBranch);
+        let input_ids = |app: &nsh_testing::Headless| {
+            app.screen()
+                .layout_nodes()
+                .into_iter()
+                .filter(|node| node.kind == nsh_core::ViewKind::Input)
+                .map(|node| node.id)
+                .collect::<Vec<_>>()
+        };
+        let before = input_ids(&app);
+        app.type_text("feature/my-change", "topic").unwrap();
+        assert_eq!(app.screen().input_text("topic").unwrap(), Some("topic"));
+        assert_eq!(input_ids(&app), before, "编辑字段不重建输入框");
+    }
 }

@@ -60,7 +60,13 @@ pub(crate) fn indicator(checked: bool) -> impl IntoElement {
         .justify_center()
         .rounded(px(3.0))
         .border_1()
-        .border_color(move || design::line_strong())
+        .border_color(move || {
+            if checked {
+                design::accent()
+            } else {
+                design::line_strong()
+            }
+        })
         .bg(move || {
             if checked {
                 design::accent()

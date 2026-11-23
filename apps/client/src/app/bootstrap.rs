@@ -763,14 +763,8 @@ pub(crate) fn app() -> impl IntoElement {
         .overflow_hidden()
         .bg(move || design::content())
         .text_color(move || design::text())
-        .child(dynamic({
-            let tabs = handles_for_screen.session.tabs;
-            move || -> AnyElement {
-                if tabs.get().is_empty() {
-                    return view().w(px(0.0)).h(px(0.0)).into_element();
-                }
-                return crate::app::workspace::workspace(&handles_for_screen).into_element();
-            }
+        .child(workspace_host(tabs, move || {
+            crate::app::workspace::workspace(&handles_for_screen).into_element()
         }))
         // 两个独立窗口（欢迎、设置）。它们的内容渲染在各自的窗口里。
         .child(crate::app::windows::windows(&handles))
@@ -828,4 +822,73 @@ pub(crate) fn app() -> impl IntoElement {
             }
         }))
         .child(ui::gallery::gallery(gallery_open));
+}
+
+fn workspace_host(
+    tabs: Signal<Vec<crate::app::session::Tab>>,
+    content: impl Fn() -> AnyElement + 'static,
+) -> impl IntoElement {
+    // 只有首个仓库打开或最后一个仓库关闭才替换主区，Tab 内部更新保留组件身份。
+    when(move || tabs.with(|tabs| !tabs.is_empty()), content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[component]
+    fn WorkspaceHostFixture() -> impl IntoElement {
+        let tabs = signal(vec![crate::app::session::Tab::default()]);
+        let builds = std::rc::Rc::new(std::cell::Cell::new(0));
+        view()
+            .w_full()
+            .h_full()
+            .flex_col()
+            .child(ui::button::button(
+                || "Select commit".to_string(),
+                ui::button::ButtonVariant::Secondary,
+                ui::button::ButtonSize::Small,
+                false,
+                move || tabs.update(|tabs| tabs[0].selected = Some(1)),
+            ))
+            .child(workspace_host(tabs, move || {
+                builds.set(builds.get() + 1);
+                let mounted = builds.get();
+                dynamic(move || {
+                    scroll().w_full().h(px(100.0)).child(
+                        view()
+                            .h(px(1000.0))
+                            .child(text(format!("Workspace mount {mounted}"))),
+                    )
+                })
+                .into_element()
+            }))
+    }
+
+    #[test]
+    fn commit_selection_keeps_workspace_scroll_container() {
+        let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig::new(
+            nsh_core::element::Root::of::<WorkspaceHostFixture>(),
+        ))
+        .unwrap();
+        app.first_render().unwrap();
+        app.wait_for("Workspace mount 1").unwrap();
+        let scroll_id = app
+            .screen()
+            .layout_nodes()
+            .into_iter()
+            .find(|node| node.scroll.is_some())
+            .unwrap()
+            .id;
+        app.scroll("Workspace mount 1", px(250.0)).unwrap();
+        app.press("Select commit").unwrap();
+        app.wait(std::time::Duration::from_millis(50)).unwrap();
+        assert!(
+            app.screen()
+                .layout_nodes()
+                .iter()
+                .any(|node| node.id == scroll_id),
+            "选中提交不得重建 workspace 的滚动容器"
+        );
+    }
 }

@@ -6,7 +6,7 @@
 
 use super::commands::CommitCommands;
 use super::state::{CommitState, RewriteKind};
-use crate::design::{self, metrics};
+use crate::design;
 use crate::i18n;
 use nsh_core::prelude::*;
 
@@ -46,235 +46,162 @@ pub(crate) fn rewrite_dialog(
             let on_close = on_close.clone();
             let on_submit = on_submit.clone();
             let on_change = on_change.clone();
-            dynamic(move || -> AnyElement {
-                let Some(dialog) = state.get() else {
-                    return view().w(px(0.0)).h(px(0.0)).into_element();
+            let kind = computed(move || {
+                state.with(|dialog| dialog.as_ref().map(|dialog| dialog.kind.clone()))
+            });
+            dynamic(move || {
+                let Some(kind) = kind.get() else {
+                    return view().into_element();
                 };
-                let kind = dialog.kind.clone();
-                // 提前取成 `&'static str`，闭包里就不用再借用 `kind`。
                 let title_key = kind.title_key();
                 let action_key = kind.action_key();
-                let blocker = dialog.blocker.clone();
-                let error = dialog.error.clone();
-                let message = dialog.message.clone();
-                let can_submit = blocker.is_none() && !message.trim().is_empty();
-                let language_value = language;
-                let on_close = on_close.clone();
-                let on_submit = on_submit.clone();
-                let on_change = on_change.clone();
-
-                let mut body: Vec<AnyElement> = Vec::new();
-                // 合并时先列出被合并的提交，让用户确认范围。
-                if let RewriteKind::Squash { commits, from, to } = &kind {
-                    let mut rows: Vec<AnyElement> = Vec::new();
-                    for (short, summary) in commits.iter() {
-                        let short = short.clone();
-                        let summary = summary.clone();
+                let mut rows = Vec::new();
+                match &kind {
+                    RewriteKind::Squash { commits, from, to } => {
+                        let range = format!(
+                            "{}..{}",
+                            from.chars().take(7).collect::<String>(),
+                            to.chars().take(7).collect::<String>()
+                        );
+                        let count = commits.len().to_string();
                         rows.push(
-                            view()
-                                .w_full()
-                                .h(px(20.0))
-                                .flex_row()
-                                .items_center()
-                                .gap(px(8.0))
-                                .child(
-                                    text(short)
-                                        .w(px(64.0))
-                                        .text_size(px(crate::ui::CODE))
-                                        .line_height(px(13.0))
-                                        .text_color(move || design::text3()),
+                            text(move || {
+                                i18n::with_arguments(
+                                    language.get().as_str(),
+                                    "rewrite.squashRange",
+                                    &[("range", range.clone()), ("count", count.clone())],
                                 )
-                                .child(
-                                    text(summary)
-                                        .flex_1()
-                                        .text_size(px(crate::ui::SECONDARY))
-                                        .line_height(px(crate::ui::SECONDARY_LINE))
-                                        .text_color(move || design::text2())
-                                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                                )
+                            })
+                            .text_size(px(crate::ui::SECONDARY))
+                            .text_color(design::text3)
+                            .into_element(),
+                        );
+                        for (short, summary) in commits {
+                            rows.push(
+                                text(format!("{short} · {summary}"))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
+                                    .text_color(design::text2)
+                                    .into_element(),
+                            );
+                        }
+                    }
+                    RewriteKind::Reword { short, summary, .. } => {
+                        rows.push(
+                            text(format!("{short} · {summary}"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
+                                .text_color(design::text2)
                                 .into_element(),
                         );
                     }
-                    // 先把范围拷成自有字符串：闭包需要 'static，不能借 `kind`。
-                    let from_short: String = from.chars().take(7).collect();
-                    let to_short: String = to.chars().take(7).collect();
-                    let range = format!("{}..{}", from_short, to_short);
-                    let count = commits.len().to_string();
-                    body.push(
-                        view()
-                            .w_full()
-                            .flex_col()
-                            .gap(px(2.0))
-                            .child(
-                                text(move || {
-                                    i18n::with_arguments(
-                                        language_value.get().as_str(),
-                                        "rewrite.squashRange",
-                                        &[("range", range.clone()), ("count", count.clone())],
-                                    )
-                                })
-                                .text_size(px(crate::ui::SECONDARY))
-                                .line_height(px(crate::ui::SECONDARY_LINE))
-                                .text_color(move || design::text3()),
-                            )
-                            .child(rows)
-                            .into_element(),
-                    );
                 }
-                // 改写说明时显示目标提交，避免改错。
-                if let RewriteKind::Reword { short, summary, .. } = &kind {
-                    let short = short.clone();
-                    let summary = summary.clone();
-                    body.push(
-                        view()
-                            .w_full()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(
-                                text(short)
-                                    .text_size(px(crate::ui::CODE))
-                                    .line_height(px(13.0))
-                                    .text_color(move || design::text3()),
-                            )
-                            .child(
-                                text(summary)
-                                    .flex_1()
-                                    .text_size(px(crate::ui::SECONDARY))
-                                    .line_height(px(crate::ui::SECONDARY_LINE))
-                                    .text_color(move || design::text2())
-                                    .text_overflow(nsh_core::EllipsizeMode::Tail),
-                            )
-                            .into_element(),
-                    );
-                }
-
-                return crate::ui::dialog::modality(
-                    view()
-                        .w(px(480.0))
-                        .flex_col()
-                        .rounded(px(12.0))
-                        .border_1()
-                        .border_color(move || design::line())
-                        .bg(move || design::content())
-                        .overflow_hidden()
-                        .child(
-                            view()
-                                .w_full()
-                                .h(px(metrics::DIALOG_HEAD_H))
-                                .flex_shrink_0()
-                                .px(px(14.0))
-                                .flex_row()
-                                .items_center()
-                                .bg(move || design::panel())
-                                .border_b_1()
-                                .border_color(move || design::line())
-                                .child(
-                                    text(move || i18n::t(language_value.get().as_str(), title_key))
-                                        .text_size(px(crate::ui::TITLE))
-                                        .font_weight(FontWeight(600))
-                                        .line_height(px(17.0))
-                                        .text_color(move || design::text()),
-                                ),
-                        )
-                        // `.dialog-body`：padding 11 14。
-                        .child(
+                let edit = on_change.clone();
+                let body = view()
+                    .w_full()
+                    .flex_col()
+                    .gap(px(crate::ui::GAP))
+                    .child(
+                        scroll().w_full().max_h(px(160.0)).child(
                             view()
                                 .w_full()
                                 .flex_col()
-                                .gap(px(10.0))
-                                .px(px(14.0))
-                                .py(px(11.0))
-                                .child(body)
-                                .child(
-                                    view()
-                                        .w_full()
-                                        .min_h(px(72.0))
-                                        .p(px(7.0))
-                                        .rounded(px(metrics::RADIUS_CONTROL))
-                                        .border_1()
-                                        .border_color(move || design::field_border())
-                                        .bg(move || design::field())
-                                        .child(crate::ui::text_input::text_input_bound(
-                                            {
-                                                let message = message.clone();
-                                                move || message.clone()
-                                            },
-                                            move || {
-                                                i18n::t(
-                                                    language_value.get().as_str(),
-                                                    "rewrite.placeholder",
-                                                )
-                                            },
-                                            false,
-                                            {
-                                                let on_change = on_change.clone();
-                                                move |text: String| on_change(text)
-                                            },
-                                        )),
-                                )
-                                // 阻塞原因与错误分开显示：前者是前置条件，后者是执行结果。
-                                .child(view().w_full().when(blocker.is_some(), |this| {
-                                    let blocker = blocker.clone().unwrap_or_default();
-                                    this.child(
-                                        text(blocker)
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                            .text_color(move || design::warn()),
-                                    )
-                                }))
-                                .child(view().w_full().when(error.is_some(), |this| {
-                                    let error = error.clone().unwrap_or_default();
-                                    this.child(
-                                        text(error)
-                                            .text_size(px(crate::ui::SECONDARY))
-                                            .line_height(px(crate::ui::SECONDARY_LINE))
-                                            .text_color(move || design::danger()),
-                                    )
-                                })),
+                                .gap(px(crate::ui::GAP_XS))
+                                .children(rows),
+                        ),
+                    )
+                    .child(crate::ui::text_input::text_area_bound(
+                        move || {
+                            state.with(|dialog| {
+                                dialog
+                                    .as_ref()
+                                    .map(|dialog| dialog.message.clone())
+                                    .unwrap_or_default()
+                            })
+                        },
+                        move || i18n::t(language.get().as_str(), "rewrite.placeholder"),
+                        88.0,
+                        move |message| edit(message),
+                    ))
+                    .child(when(
+                        move || {
+                            state.with(|dialog| {
+                                dialog
+                                    .as_ref()
+                                    .is_some_and(|dialog| dialog.blocker.is_some())
+                            })
+                        },
+                        move || {
+                            text(move || {
+                                state
+                                    .get()
+                                    .and_then(|dialog| dialog.blocker)
+                                    .unwrap_or_default()
+                            })
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(design::warn)
+                        },
+                    ))
+                    .child(when(
+                        move || {
+                            state.with(|dialog| {
+                                dialog.as_ref().is_some_and(|dialog| dialog.error.is_some())
+                            })
+                        },
+                        move || {
+                            text(move || {
+                                state
+                                    .get()
+                                    .and_then(|dialog| dialog.error)
+                                    .unwrap_or_default()
+                            })
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(design::danger)
+                        },
+                    ));
+                let cancel = on_close.clone();
+                let close = on_close.clone();
+                let submit = on_submit.clone();
+                let can_submit = computed(move || {
+                    state.with(|dialog| {
+                        dialog.as_ref().is_some_and(|dialog| {
+                            dialog.blocker.is_none() && !dialog.message.trim().is_empty()
+                        })
+                    })
+                });
+                let footer = vec![
+                    crate::ui::button::button(
+                        move || i18n::t(language.get().as_str(), "common.cancel"),
+                        crate::ui::button::ButtonVariant::Secondary,
+                        crate::ui::button::ButtonSize::Regular,
+                        false,
+                        move || cancel(),
+                    )
+                    .into_element(),
+                    dynamic(move || {
+                        let submit = submit.clone();
+                        crate::ui::button::button(
+                            move || i18n::t(language.get().as_str(), action_key),
+                            crate::ui::button::ButtonVariant::Primary,
+                            crate::ui::button::ButtonSize::Regular,
+                            !can_submit.get(),
+                            move || submit(),
                         )
-                        // `.dialog-foot`：42 高、panel 底色。
-                        .child(
-                            view()
-                                .w_full()
-                                .h(px(metrics::DIALOG_FOOT_H))
-                                .flex_shrink_0()
-                                .px(px(14.0))
-                                .flex_row()
-                                .items_center()
-                                .gap(px(7.0))
-                                .bg(move || design::panel())
-                                .border_t_1()
-                                .border_color(move || design::line())
-                                .child(view().flex_1())
-                                .child(crate::ui::button::button(
-                                    move || i18n::t(language_value.get().as_str(), "common.cancel"),
-                                    crate::ui::button::ButtonVariant::Secondary,
-                                    crate::ui::button::ButtonSize::Regular,
-                                    false,
-                                    {
-                                        let on_close = on_close.clone();
-                                        move || on_close()
-                                    },
-                                ))
-                                .child(crate::ui::button::button(
-                                    move || i18n::t(language_value.get().as_str(), action_key),
-                                    crate::ui::button::ButtonVariant::Primary,
-                                    crate::ui::button::ButtonSize::Regular,
-                                    false,
-                                    {
-                                        let on_submit = on_submit.clone();
-                                        move || {
-                                            if can_submit {
-                                                on_submit()
-                                            }
-                                        }
-                                    },
-                                )),
-                        )
-                        .into_element(),
+                    })
+                    .into_element(),
+                ];
+                crate::ui::dialog::dialog_panel(
+                    480.0,
+                    move || i18n::t(language.get().as_str(), title_key),
+                    Some(std::rc::Rc::new(move || {
+                        i18n::t(language.get().as_str(), "common.close")
+                    })),
+                    body,
+                    footer,
+                    move || close(),
                 )
-                .into_element();
             })
         },
         move || dismiss(),

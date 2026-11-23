@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TAB_ID: AtomicU64 = AtomicU64::new(1);
 
-fn next_tab_id() -> u64 {
+pub(crate) fn next_tab_id() -> u64 {
     return NEXT_TAB_ID.fetch_add(1, Ordering::Relaxed);
 }
 
@@ -674,7 +674,7 @@ mod tests {
         assert!(tab.sidebar_collapsed.contains("group:tags"));
         assert!(!tab.sidebar_collapsed.contains("group:branches"));
         assert!(!tab.sidebar_collapsed.contains("group:remotes"));
-        assert!(!tab.patch.lines.is_empty());
+        assert!(tab.patch.lines.is_empty(), "提交列表不预载完整 patch");
         assert_eq!(tab.files.len(), 1);
         assert_eq!(tab.authors[0].name, "Test");
     }

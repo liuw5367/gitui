@@ -152,6 +152,26 @@ pub(crate) fn text_input_bound(
     );
 }
 
+/// 多行字段使用与单行字段相同的外观，值由调用方状态承载。
+pub(crate) fn text_area_bound(
+    get: impl Fn() -> String + 'static,
+    placeholder: impl Fn() -> String + 'static,
+    height: f32,
+    set: impl Fn(String) + 'static,
+) -> impl IntoElement {
+    style_input(
+        nsh_base::input()
+            .multiline(true)
+            .value(move || get())
+            .placeholder(placeholder)
+            .on_change(move |text: &str| set(text.to_string())),
+        false,
+        Some(height),
+        ui::BODY,
+        None,
+    )
+}
+
 /// 值由结构体信号承载、失焦或回车提交的输入框。
 ///
 /// 设置页的 Name / Email 用它：输入过程只改本地信号，`on_blur` / `on_submit`
@@ -331,7 +351,7 @@ pub(crate) fn search_field_clearable(
     placeholder: impl Fn() -> String + 'static,
     clear_label: impl Fn() -> String + 'static,
     on_change: impl Fn(&str) + 'static,
-) -> impl IntoElement {
+) -> nsh_core::element::View {
     return search_field_inner(
         value,
         placeholder,
@@ -349,7 +369,7 @@ fn search_field_inner(
     on_change: impl Fn(&str) + 'static,
     handle: Option<ElementRef>,
     clear_label: Option<std::rc::Rc<dyn Fn() -> String>>,
-) -> impl IntoElement {
+) -> nsh_core::element::View {
     let placeholder: std::rc::Rc<dyn Fn() -> String> = std::rc::Rc::new(placeholder);
     let input_label = placeholder.clone();
     let mut input = nsh_base::input()
@@ -398,7 +418,7 @@ fn search_field_inner(
 ///
 /// 焦点落在内部输入框上，所以外框用 `focus_within` 变强调色并显示主题 outline；
 /// 写在容器上的 `focus_visible` 不会触发。
-fn field_frame(children: Vec<AnyElement>) -> impl IntoElement {
+fn field_frame(children: Vec<AnyElement>) -> nsh_core::element::View {
     let mut frame = view()
         .w_full()
         .h(px(ui::CONTROL))

@@ -34,59 +34,21 @@ impl HistoryCommands {
     /// 先显示行选中态并切到 History，再异步更新提交数据。
     pub(crate) fn request_commit_selection(&self, tab_id: u64, sha: String) {
         let active = self.session.active.get_untracked();
-        let mut tabs = self.session.tabs.get_untracked();
-        let Some(tab) = tabs.get_mut(active).filter(|tab| tab.id == tab_id) else {
-            return;
-        };
-        let Some(index) = tab.commits.iter().position(|commit| commit.sha == sha) else {
-            return;
-        };
-
-        // 更新行与检查器所依赖的提交选择，并清掉旧 Diff / 比较视图。
-        // 缓存可复用时保留详情；否则由后续后台任务读取 Git 数据。
-        let reuse_current_selection = tab
-            .selected_commit()
-            .is_some_and(|commit| commit.sha == sha)
-            && (tab.details.is_some() && tab.error.is_none()
-                || self
-                    .state
-                    .commit_info_loading
-                    .get_untracked()
-                    .contains(&(tab_id, sha.clone())));
-        self.state.compare_mode.set(false);
-        tab.comparing = false;
-        tab.compare.clear();
-        tab.compare_base = None;
-        tab.compare_target = None;
-        tab.compare_worktree = false;
-        self.state.multi_commit_selection.set(None);
-        self.state.multi_commit_data.set(None);
-        self.mode.set(crate::Mode::History);
-        if reuse_current_selection {
-            tab.show_commit_diff = false;
-            tab.selected_file = None;
-            tab.file_patch = None;
-            if self
-                .state
-                .fast_selection
-                .get_untracked()
-                .as_ref()
-                .is_some_and(|(selected_tab, selected_sha)| {
-                    *selected_tab == tab_id && selected_sha == &sha
-                })
-            {
-                self.state.fast_selection.set(None);
-            }
-            self.session.tabs.set(tabs);
+        let valid = self.session.tabs.with_untracked(|tabs| {
+            tabs.get(active).is_some_and(|tab| {
+                tab.id == tab_id && tab.commits.iter().any(|commit| commit.sha == sha)
+            })
+        });
+        if !valid {
             return;
         }
-        ops::prepare_commit_selection(tab, index);
         self.state.fast_selection.set(Some((tab_id, sha.clone())));
-        self.session.tabs.set(tabs);
         let command = self.clone();
         Owner::detached().run(|| {
             spawn(async move {
-                command.select_commit(tab_id, sha);
+                // 先呈现选中行，再克隆标签数据及更新检查器；旧点击由 fast_selection 淘汰。
+                next_frame().await;
+                batch(|| command.select_commit(tab_id, sha));
             });
         });
     }
@@ -102,6 +64,7 @@ impl HistoryCommands {
             return;
         }
 
+        self.state.fast_selection.set(None);
         let current_selection = self.state.multi_commit_selection.get_untracked();
         let has_multi_selection = current_selection
             .as_ref()
@@ -252,6 +215,15 @@ impl HistoryCommands {
             self.clear_fast_selection(tab_id, requested_sha.as_str());
             return;
         }
+        self.state.compare_mode.set(false);
+        tab.comparing = false;
+        tab.compare.clear();
+        tab.compare_base = None;
+        tab.compare_target = None;
+        tab.compare_worktree = false;
+        self.state.multi_commit_selection.set(None);
+        self.state.multi_commit_data.set(None);
+        self.mode.set(crate::Mode::History);
         let loading = self.state.commit_info_loading;
         let already_loading = loading
             .get_untracked()
@@ -261,12 +233,10 @@ impl HistoryCommands {
             .is_some_and(|commit| commit.sha == requested_sha)
             && (tab.details.is_some() && tab.error.is_none() || already_loading)
         {
-            let needs_return_to_history = tab.show_commit_diff || tab.file_patch.is_some();
-            if needs_return_to_history {
-                tab.show_commit_diff = false;
-                tab.file_patch = None;
-                self.session.tabs.set(list);
-            }
+            tab.show_commit_diff = false;
+            tab.selected_file = None;
+            tab.file_patch = None;
+            self.session.tabs.set(list);
             self.clear_fast_selection(tab_id, requested_sha.as_str());
             return;
         }
@@ -341,6 +311,14 @@ impl HistoryCommands {
                             let mut changed = false;
                             if let Some(tab) = current_tabs.iter_mut().find(|tab| {
                                 tab.id == tab_id
+                                    && command
+                                        .state
+                                        .fast_selection
+                                        .get_untracked()
+                                        .as_ref()
+                                        .is_none_or(|(selected_tab, selected_sha)| {
+                                            *selected_tab != tab_id || selected_sha == &sha
+                                        })
                                     && tab
                                         .selected_commit()
                                         .is_some_and(|commit| commit.sha == sha)
@@ -454,6 +432,33 @@ impl HistoryCommands {
     }
 
     /// Enter the Blame / file history page for the selected commit file.
+    pub(crate) fn show_file_history(&self, tab_id: u64, path: String) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.get_mut(current).filter(|tab| tab.id == tab_id) else {
+            return;
+        };
+        let Some(commit) = tab.selected_commit() else {
+            return;
+        };
+        let sha = commit.sha.clone();
+        ops::open_blame(tab, &path, &sha, crate::Mode::History);
+        self.session.tabs.set(list);
+        self.mode.set(crate::Mode::Blame);
+    }
+
+    /// Enter file history for a file at an explicit commit revision.
+    pub(crate) fn show_file_history_at(&self, tab_id: u64, path: String, sha: String) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.get_mut(current).filter(|tab| tab.id == tab_id) else {
+            return;
+        };
+        ops::open_blame(tab, &path, &sha, crate::Mode::History);
+        self.session.tabs.set(list);
+        self.mode.set(crate::Mode::Blame);
+    }
+
     pub(crate) fn open_blame(&self) {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
@@ -750,6 +755,8 @@ impl HistoryCommands {
         self.state.draft.update(|draft| draft.authors.clear());
     }
     pub(crate) fn apply_quick_filter(&self) {
+        self.state.filter_menu.set(None);
+        self.state.filter_open.set(false);
         let Some(tab_id) = self.active_filter_tab_id() else {
             return;
         };
@@ -780,16 +787,61 @@ impl HistoryCommands {
 
     /// 按当前条件重新读一遍当前仓库（原 `reload`）。
     fn reload_with_filter(&self, filter: &LogFilter) {
+        self.start_filter_load(filter, false);
+    }
+
+    fn start_filter_load(&self, filter: &LogFilter, force: bool) {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get(current).cloned() {
-            list[current] = ops::reload_with_filter(&tab, filter);
-            self.session.tabs.set(list);
+        let Some(tab) = list.get_mut(current) else {
+            return;
+        };
+        if !force && tab.filter == *filter && tab.error.is_none() {
+            return;
         }
+        tab.load_id = crate::app::session::next_tab_id();
+        tab.filter = filter.clone();
+        tab.loading = true;
+        let snapshot = tab.clone();
+        let tab_id = tab.id;
+        let load_id = tab.load_id;
+        let filter = filter.clone();
+        let tabs = self.session.tabs;
+        tabs.set(list);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(ops::reload_with_filter(&snapshot, &filter));
+        });
+        self.session.task_owner.run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(mut loaded) => {
+                            let mut list = tabs.get_untracked();
+                            if let Some(tab) = list
+                                .iter_mut()
+                                .find(|tab| tab.id == tab_id && tab.load_id == load_id)
+                            {
+                                loaded.sidebar_collapsed = tab.sidebar_collapsed.clone();
+                                loaded.summary = tab.summary.clone();
+                                loaded.description = tab.description.clone();
+                                *tab = loaded;
+                                tabs.set(list);
+                            }
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            timer(std::time::Duration::from_millis(16)).await
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                    }
+                }
+            })
+        });
     }
 
     fn reload(&self) {
-        self.reload_with_filter(&(self.state.filter)());
+        self.start_filter_load(&(self.state.filter)(), true);
     }
 
     /// 应用筛选条件并收起浮层（原 `apply_filter`）。

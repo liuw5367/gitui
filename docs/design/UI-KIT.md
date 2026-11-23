@@ -52,7 +52,7 @@ NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、
 | `button_icon` | `ui/button.rs` | 同上 | 同 `button` | 同上 |
 | `icon_button` / `icon_button_tuned` | `ui/button.rs` | 同上 | 同上 | 同上；`label` 必填 |
 | `icon_view` | `ui/icon.rs` | `svg` | `Compact` 11 / `Button` 12 / `Inline` 13 / `Toolbar` 16 | — |
-| `text_input` / `text_area` / `text_input_bound` / `search_field` | `ui/text_input.rs` | `nsh_base::input` | 单行 28；多行高度自定 | focus 时描边强调色 + 2pt 主题 outline、invalid |
+| `text_input` / `text_area` / `text_input_bound` / `text_area_bound` / `search_field` | `ui/text_input.rs` | `nsh_base::input` | 单行 28；多行高度自定 | focus 时描边强调色 + 2pt 主题 outline、invalid |
 | `select` | `ui/select.rs` | `nsh_base::select` + 自定义触发器 | 高 28；弹出选项列表 | 选中、键盘导航、focus、disabled |
 | `field` / `label` / `help` / `error` | `ui/field.rs` | `view` + `text` | 标签 13 + 控件 + 说明/错误 11 | invalid |
 | `check_row` / `check_inline` / `check_group` | `ui/check.rs` | `nsh_base::checkbox` | 行 28；指示器 14（inline 12–14） | checked、disabled |
@@ -62,14 +62,14 @@ NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、
 | `segmented` | `ui/segmented.rs` | `nsh_base::tabs` + `tab` | 高 28，圆角 6 | 选中（底色 + MEDIUM）、hover、focus |
 | `tabs` | `ui/tabs.rs` | `nsh_base::tabs` + `tab` | 行 28，选中底部 2pt | 选中（字重 + 下划线）、focus |
 | `table` | `ui/table.rs` | `nsh_base::data_table` | 行 28、表头 28 | 行选中、键盘、虚拟化 |
-| `tree` / `node` | `ui/tree.rs` | `nsh_base::tree` | 行 28 | 展开、选中、禁用 |
+| `tree` / `node` | `ui/tree.rs` | `nsh_base::tree` | 行 28；item 外层内距 4；方角 hover 与选中底色 | 展开、选中、禁用 |
 | `row` | `ui/row.rs` | `nsh_base::button` | 单行 28 / 双行 44 | selected、hover、focus、disabled |
 | `badge` / `count` / `kbd` | `ui/badge.rs` | `view` + `text` | 高 18；`Tone` 五档 | — |
 | `setting_row` / `read_only_row` | `ui/setting_row.rs` | `view` + `text` | 最小高 36 | 有/无说明、有/无分隔线 |
 | `settings_section` / `settings_section_titled` | `ui/setting_row.rs` | `view` + `text` | 段标题 15/600；分段线到上一行 9、到标题 16（上一行自带 11 底内距） | 首段无分段线；标题右侧可带分段计数 |
 | `pane_header` / `section_label` / `empty` / `skeleton_row` | `ui/section.rs` | `view` + `text` | 28 / 24 | — |
 | `banner` / `banner_sized` / `progress` / `card` | `ui/feedback.rs` | `nsh_base::progress` | `BannerTone` 六档：Info / Warning / Danger / Accent / Neutral / Highlight | 确定与不确定进度 |
-| `dialog` / `modal` / `confirm_destructive` / `notice` | `ui/dialog.rs` | `nsh_base::dialog` + 应用遮罩 | 页头 44、页脚 48、正文内距 16，最大高 760 | Esc、取消回调、遮罩点击 |
+| `dialog` / `dialog_with_close` / `dialog_panel` / `modal` / `confirm_destructive` / `notice` | `ui/dialog.rs` | `nsh_base::dialog` + 应用遮罩 | 页头 44、页脚 48、正文内距 16，字段组间距 8、标签与输入间距 4；操作按钮 Regular 28，最大高 760 | Esc、取消回调、遮罩点击 |
 | `diff_surface` | `ui/diff_surface.rs` | `nsh_base::DiffView` | 分栏 / 统一；软换行、折叠 | hunk 动作回调 |
 | `split` / `Pane` | `ui/split.rs` | `h_resizable` / `v_resizable` | 横向 / 纵向；`fixed` / `flex`，`.min()` / `.max()` / `.visible()`；1pt 指示线 | NSH 拖拽命中区、键盘无障碍调整 |
 | `menu` / `menu_button` | `ui/menu.rs` | 系统 `NSMenu` | `action` / `checkable` / `danger` / `divider` / `section` | 启用、勾选 |
@@ -106,7 +106,7 @@ NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、
 |---|---|
 | 值在 `Signal<String>` 里 | `ui::text_input::text_input(value, placeholder, invalid, on_change)` |
 | 值在结构体信号里 | `ui::text_input::text_input_bound(get, placeholder, invalid, set)` |
-| 多行 | `ui::text_input::text_area(value, placeholder, height, invalid, on_change)` |
+| 多行 | `ui::text_input::text_area(value, placeholder, height, invalid, on_change)`；结构体状态用 `text_area_bound(get, placeholder, height, set)` |
 | 搜索 | `ui::text_input::search_field(value, placeholder, shortcut, on_change)` |
 | 带标签的字段 | `ui::field::field(caption, control, help, error)` |
 
@@ -119,7 +119,7 @@ NSH 0.6.0 没有可供应用直接组合的 `NSButton`、`NSSegmentedControl`、
 | 空态 | `ui::section::empty(..)` |
 | 加载骨架 | `ui::section::skeleton_row(&[..])` |
 | 横幅 / 进度 / 卡片 | `ui::feedback::banner(..)` / `progress(Some(x))` / `card(..)` |
-| 模态框 | `ui::dialog::dialog(..)`；确认类用 `confirm_destructive` / `notice` |
+| 模态框 | `ui::dialog::dialog_with_close(..)`；已有模态层内复用 `dialog_panel(..)`，避免嵌套模态；系统确认用 `confirm_destructive` / `notice` |
 | 表格 | `ui::table::table(TableSpec { .. })` |
 | 可拖拽分栏 | `ui::split::horizontal(vec![Pane::fixed(..).min(..).visible(..), Pane::flex(..)])` |
 

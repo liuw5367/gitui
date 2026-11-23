@@ -1,7 +1,7 @@
 //! 工作区外壳：标题栏（仓库标签页）、工具栏与状态栏。
 //!
 //! 尺寸取自设计稿：`.titlebar.with-tabs` 与 `.toolbar.v2` 使用紧凑 40pt，高度不改变 tabs。
-//! 工具栏提供 Fetch/Pull/Push、Reflog、History/Changes 与 Agent 入口。
+//! 工具栏提供 Fetch/Pull/Push、Stash、Reflog、History/Changes 与 Agent 入口。
 
 use crate::app::session::{RepoProblem, Sync, Tab};
 use crate::design::{self, metrics};
@@ -174,7 +174,7 @@ pub(crate) fn toolbar(
         move || search.set_mode_agent()
     };
     let do_reflog = refs.clone();
-    let selected_refs_tab = refs.state.selected_tab;
+    let do_stash = search.clone();
     let set_history = {
         let search = search.clone();
         std::sync::Arc::new(move || search.set_mode(crate::Mode::History))
@@ -232,16 +232,12 @@ pub(crate) fn toolbar(
             do_push(Sync::Push)
         }))
         .child(crate::ui::v_separator())
-        .child(mode_tool_tab(
-            language,
-            "shell.reflog",
-            "clock",
-            Arc::new(move || {
-                mode.get() == crate::Mode::Refs
-                    && selected_refs_tab.get() == crate::features::refs::state::RefsTab::Reflog
-            }),
-            move || do_reflog.open_reflog(),
-        ))
+        .child(tool_button(language, "stash", "shell.stash", move || {
+            do_stash.open_form(crate::features::search::FormKind::NewStash)
+        }))
+        .child(tool_button(language, "clock", "shell.reflog", move || {
+            do_reflog.open_reflog()
+        }))
         .child(view().flex_1())
         .child(crate::ui::v_separator())
         .child(
@@ -878,56 +874,6 @@ fn mode_tab(
                 }
             }))
         });
-}
-
-/// 工具栏单项主区入口，选中态沿用 History / Changes 分段样式。
-fn mode_tool_tab(
-    language: Signal<SharedString>,
-    key: &'static str,
-    icon: &'static str,
-    active: Arc<dyn Fn() -> bool>,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    let active_background = active.clone();
-    let active_text = active.clone();
-    let active_icon = active;
-    return view()
-        .h(px(22.0))
-        .px(px(9.0))
-        .flex_row()
-        .items_center()
-        .gap(px(5.0))
-        .rounded(px(5.0))
-        .bg(move || {
-            if active_background() {
-                design::content()
-            } else {
-                AdaptiveColor::TRANSPARENT
-            }
-        })
-        .on_press(on_press)
-        .child(crate::ui::icon::icon_view(
-            icon,
-            crate::ui::icon::IconSize::Toolbar,
-            move || {
-                if active_icon() {
-                    design::text()
-                } else {
-                    design::text2()
-                }
-            },
-        ))
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(crate::ui::BODY))
-                .text_color(move || {
-                    if active_text() {
-                        design::text()
-                    } else {
-                        design::text2()
-                    }
-                }),
-        );
 }
 
 /// 可用的工具栏按钮（图标 + 文案）。

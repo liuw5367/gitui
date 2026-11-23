@@ -262,8 +262,31 @@ fn dialog_inner(
     let title = std::rc::Rc::new(title);
     let panel_title = title.clone();
     let dismiss = std::rc::Rc::new(on_dismiss);
-    let dismiss_from_close = dismiss.clone();
+    let panel_dismiss = dismiss.clone();
+    let panel = dialog_panel(
+        width,
+        move || panel_title(),
+        close_label,
+        body,
+        footer,
+        move || panel_dismiss(),
+    );
+    return modal_open(move || title(), 120, panel, move || dismiss());
+}
+
+/// 应用自绘弹窗共用的面板；已由 modal 承载的弹窗使用它，避免嵌套模态层。
+pub(crate) fn dialog_panel(
+    width: f32,
+    title: impl Fn() -> String + 'static,
+    close_label: Option<std::rc::Rc<dyn Fn() -> String>>,
+    body: impl IntoElement,
+    footer: Vec<AnyElement>,
+    on_dismiss: impl Fn() + 'static,
+) -> AnyElement {
+    let panel_title = std::rc::Rc::new(title);
+    let dismiss_from_close = std::rc::Rc::new(on_dismiss);
     let mut header = view()
+        .test_id("dialog-header")
         .w_full()
         .h(px(44.0))
         .flex_row()
@@ -292,6 +315,7 @@ fn dialog_inner(
         ));
     }
     let mut panel = view()
+        .test_id("dialog-panel")
         .w(px(width))
         .max_h(px(760.0))
         .flex_col()
@@ -314,6 +338,7 @@ fn dialog_inner(
         );
     if !footer.is_empty() {
         let mut row = view()
+            .test_id("dialog-footer")
             .w_full()
             .h(px(48.0))
             .flex_row()
@@ -328,5 +353,5 @@ fn dialog_inner(
         }
         panel = panel.child(row);
     }
-    return modal_open(move || title(), 120, panel, move || dismiss());
+    return panel.into_element();
 }
