@@ -15,6 +15,7 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
     let settings = cmd.state.settings_state.get_untracked();
     let helper = cmd.state.credential_helper.get_untracked();
     let keys = cmd.state.ssh_keys.get_untracked();
+    let ssh_busy = cmd.state.ssh_operation.get_untracked();
     let helper_text = if helper.trim().is_empty() {
         i18n::t(language.get_untracked().as_str(), "settings.gitHelperNone")
     } else {
@@ -59,50 +60,38 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
                 .text_color(move || design::text3()),
         );
     }
-    for (name, path, fingerprint) in &keys {
-        let copy_text = if fingerprint.is_empty() {
-            path.clone()
-        } else {
-            fingerprint.clone()
-        };
-        let name_text = name.clone();
-        let hint_text = if fingerprint.is_empty() {
-            i18n::t(language.get_untracked().as_str(), "settings.sshNoPublicKey").to_string()
-        } else {
-            format!("{fingerprint} · {path}")
-        };
+    for entry in &keys {
+        let name_text = entry.name.clone();
+        let hint_text = format!("{} · {}", entry.fingerprint, entry.path_display);
         let copy_cmd = cmd.clone();
         let remove_cmd = cmd.clone();
+        let copy_name = entry.public_name.clone();
+        let remove_entry = entry.clone();
+        let mut actions = view()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(ui::button::button(
+                move || i18n::t(language.get().as_str(), "settings.copyPublicKey"),
+                ui::button::ButtonVariant::Secondary,
+                ui::button::ButtonSize::Small,
+                ssh_busy,
+                move || copy_cmd.copy_ssh_public_key(copy_name.clone()),
+            ));
+        if entry.removable() {
+            actions = actions.child(ui::button::button(
+                move || i18n::t(language.get().as_str(), "settings.remove"),
+                ui::button::ButtonVariant::Secondary,
+                ui::button::ButtonSize::Small,
+                ssh_busy,
+                move || remove_cmd.remove_ssh_key(remove_entry.clone()),
+            ));
+        }
         key_rows = key_rows.child(
             ui::setting_row::setting_row(
                 move || name_text.clone(),
                 Some(Box::new(move || hint_text.clone())),
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .child(ui::button::button(
-                        move || i18n::t(language.get().as_str(), "settings.copy"),
-                        ui::button::ButtonVariant::Secondary,
-                        ui::button::ButtonSize::Small,
-                        false,
-                        {
-                            let copy_cmd = copy_cmd.clone();
-                            let copy_text = copy_text.clone();
-                            move || copy_cmd.copy_ssh_key(copy_text.clone())
-                        },
-                    ))
-                    .child(ui::button::button(
-                        move || i18n::t(language.get().as_str(), "settings.remove"),
-                        ui::button::ButtonVariant::Secondary,
-                        ui::button::ButtonSize::Small,
-                        false,
-                        {
-                            let remove_cmd = remove_cmd.clone();
-                            move || remove_cmd.settings_notice("settings.sshManageUnavailable")
-                        },
-                    ))
-                    .into_element(),
+                actions.into_element(),
                 true,
             )
             .into_element(),
@@ -122,19 +111,28 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
                 move || i18n::t(language.get().as_str(), "settings.addKey"),
                 ui::button::ButtonVariant::Secondary,
                 ui::button::ButtonSize::Small,
-                false,
-                move || add_cmd.settings_notice("settings.sshManageUnavailable"),
+                ssh_busy,
+                move || add_cmd.add_ssh_key(),
             ))
             .child(ui::button::button(
                 move || i18n::t(language.get().as_str(), "settings.generateKey"),
                 ui::button::ButtonVariant::Secondary,
                 ui::button::ButtonSize::Small,
-                false,
-                move || generate_cmd.settings_notice("settings.sshManageUnavailable"),
+                ssh_busy,
+                move || generate_cmd.open_ssh_generate(),
             ))
             .into_element(),
         false,
     ));
+    if ssh_busy {
+        key_rows = key_rows.child(
+            text(move || i18n::t(language.get().as_str(), "settings.sshWorking"))
+                .py(px(8.0))
+                .text_size(px(ui::SECONDARY))
+                .line_height(px(ui::SECONDARY_LINE))
+                .text_color(move || design::text2()),
+        );
+    }
     let editor = select_control(
         language,
         settings.external_editor.clone(),

@@ -52,6 +52,8 @@ pub(crate) struct SettingsCommands {
     pub(crate) theme_mode: Signal<ThemeMode>,
     /// diff 的显示偏好（文件树分组）由 `shared::diff` 持有。
     pub(crate) diff: DiffCommands,
+    /// SSH key import and generation use the same per-operation AskPass UI.
+    pub(crate) askpass: crate::askpass::AskPassClient,
 }
 
 impl SettingsCommands {
@@ -185,19 +187,6 @@ impl SettingsCommands {
         let next = i18n::toggle(self.language.get_untracked().as_str());
         self.language.set(SharedString::from(next));
         store::save_language(&self.store_dir, next);
-    }
-
-    /// 把 SSH 指纹或路径复制到剪贴板。
-    pub(crate) fn copy_ssh_key(&self, text: String) {
-        crate::shared::os::copy_text(self.notice, self.language, text);
-    }
-
-    /// 设置页里未接线的系统动作：只给事实性提示。
-    pub(crate) fn settings_notice(&self, key: &'static str) {
-        crate::interactions::notify(
-            self.notice,
-            i18n::t(self.language.get_untracked().as_str(), key),
-        );
     }
 
     /// 修改任意设置字段并持久化；设置页的通用写入口。

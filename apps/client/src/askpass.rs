@@ -339,6 +339,18 @@ impl AskPassSession {
         return &self.executable;
     }
 
+    /// Apply this operation's AskPass environment to a non-Git OpenSSH command.
+    pub(crate) fn apply_env(&self, command: &mut std::process::Command) {
+        let configured = self.executable.command();
+        for (key, value) in configured.get_envs() {
+            if let Some(value) = value {
+                command.env(key, value);
+            } else {
+                command.env_remove(key);
+            }
+        }
+    }
+
     pub(crate) fn was_cancelled(&self) -> bool {
         return self.cancelled.load(Ordering::Acquire);
     }

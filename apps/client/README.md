@@ -41,6 +41,9 @@ RUST_LOG=gitui::history=debug,gitui::diff=debug,nsh_base=debug nsh run
 | `src/design/` | 颜色 token（`mod.rs`）、几何与原生刻度（`metrics.rs`）、图标 sprite（`icons.rs`） |
 | `src/shell/` | 标题栏（仓库标签页）、工具栏、状态栏与状态横幅 |
 | `src/features/` | 功能切片：`state`（信号集合）、`commands`（用例）、`view`（渲染）与 `ops`（对 `Tab` 的写操作）；欢迎、历史、变更、提交、引用、同步、冲突、恢复、Agent、设置与搜索各一目录 |
+| `src/features/settings/ssh.rs` | 本地 `~/.ssh` 公钥扫描、密钥对导入、Ed25519 生成与确认后删除 |
+| `src/features/settings/ssh_commands.rs` | SSH 密钥管理的文件选择、确认、异步执行、刷新与错误提示 |
+| `src/features/settings/ssh_dialog.rs` | SSH 密钥生成表单与错误/忙碌状态 |
 | `src/shared/` | 跨功能件：diff 视图与显示开关（`diff.rs`）、平台查询（`os.rs`） |
 | `src/ui/` | 应用自有的组件层：按钮、输入、选择、表格、树、分段、菜单、弹层与反馈 |
 | `src/app/` | 应用组装层：引导与首屏（`bootstrap.rs`）、主窗口版式（`workspace.rs`）、菜单（`menu.rs`）、快捷键（`hotkeys.rs`）、窗口与会话持久化（`windows.rs`）、标签页壳（`session.rs`）、句柄集合（`handles.rs`）与跨功能写操作（`ops.rs`） |
@@ -95,6 +98,10 @@ Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并�
 
 HTTP(S) 克隆、同步、远端推送/分支操作、子模块更新与 Agent 发起的同步动作，为当前操作创建单独的短路径 Unix socket。Git 仍先调用本机 credential helper；只有 helper 未提供可用凭据且 Git 实际启动 AskPass 时，App 才打开原生输入窗口。用户名明文显示，密码、令牌与 SSH passphrase 使用遮罩输入。取消会中止当前 Git 操作；回答只通过 AskPass helper 的 stdout 返回给 Git，不写入设置、日志、URL 或命令参数。凭据是否保存、缓存与再次使用由 Git credential helper 决定。并发操作的请求与回答按 socket 隔离。
 
+## 本地 SSH 密钥
+
+Credentials 页只管理当前用户的 `~/.ssh` 文件。列表按有效 `.pub` 文件显示指纹和相邻私钥状态；单独的公钥仍可复制，但不会提供配对删除。Add 选择本地私钥，检查相邻公钥是否匹配；公钥缺失时由系统 `ssh-keygen` 导出。加密私钥只在 OpenSSH 请求时弹出遮罩口令框。Generate 创建 Ed25519 密钥对，支持可选注释和可选 passphrase。导入与生成都不会覆盖同名文件，私钥权限为 `0600`、公钥为 `0644`；Remove 会先显示文件名并要求确认，再删除本地配对文件。私钥内容不显示、不复制到剪贴板或写入日志；SSH agent、SSH config、系统钥匙串与 known_hosts 不由此页面管理。
+
 ## 测试
 
 ```sh
@@ -108,6 +115,7 @@ nsh check
 - `design`：`theme.json` 与 `designs/graft-git` 共享样式表的颜色比对；原生刻度的顺序与最低字号。
 - `i18n`：两种语言的键集合一致、占位符替换、缺键回退、相对时间与日期格式。
 - `ui`：守卫测试、图标 sprite、表格列宽、树节点、组件尺寸、diff 布局。
+- SSH 设置：本地密钥列表、导入、公钥补全、配对校验、权限、冲突与删除前指纹复核；测试使用隔离临时目录。
 - 其余：快捷键注册表、命令面板（常用操作、打开历史、扫描仓库搜索与去重）、菜单文案、筛选换算、确认框与变更行解析。
 
 `theme_tests` 会读取 `designs/graft-git/project/assets/` 下的共享样式表；设计源缺失时这组测试失败。`nsh check` 对客户端执行 `cargo check`；`tools/check-ui.sh` 从仓库根目录运行。

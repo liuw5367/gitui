@@ -26,6 +26,13 @@ pub(crate) enum Section {
     Agent,
 }
 
+#[derive(Clone, PartialEq)]
+pub(crate) struct SshGenerateForm {
+    pub(crate) name: Signal<String>,
+    pub(crate) comment: Signal<String>,
+    pub(crate) error: Signal<Option<String>>,
+}
+
 impl Section {
     /// 侧栏图标（与设计稿 23 的 `.si` 一致；`keys` / `lock` 取自设计 sprite）。
     pub(crate) fn icon(self) -> &'static str {
@@ -110,6 +117,10 @@ pub(crate) struct SettingsState {
     pub(crate) agent_max_tokens: Signal<String>,
     /// App key 只保存在本次会话的内存信号里，不进入 Settings / 磁盘。
     pub(crate) agent_app_key: Signal<String>,
-    /// `~/.ssh` 里的私钥（文件名、路径、公钥指纹）；只读。
-    pub(crate) ssh_keys: Signal<Vec<(String, String, String)>>,
+    /// `~/.ssh` 里的公钥条目与可管理的本地私钥配对。
+    pub(crate) ssh_keys: Signal<Vec<super::ssh::SshKeyEntry>>,
+    /// Ed25519 key generation form, present only while its dialog is open.
+    pub(crate) ssh_generate: Signal<Option<SshGenerateForm>>,
+    /// Prevent duplicate import, generation, and removal operations.
+    pub(crate) ssh_operation: Signal<bool>,
 }
