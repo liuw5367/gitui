@@ -14,6 +14,7 @@ pub(crate) fn blame_view(
     language: Signal<SharedString>,
     tab: Tab,
     cmd: HistoryCommands,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let selected_mode = if tab.blame_show_diff { "diff" } else { "blame" };
     let extension = std::path::Path::new(tab.blame_path.as_str())
@@ -125,7 +126,8 @@ pub(crate) fn blame_view(
                             ("count", line_count.to_string()),
                             (
                                 "date",
-                                crate::dates::format(
+                                crate::dates::format_reactive(
+                                    settings_state,
                                     language_now.as_str(),
                                     timestamp,
                                     store::now_unix(),

@@ -7,6 +7,7 @@
 //! 语言用应用内的 `Signal<SharedString>` 保存（`en` / `zh-Hans`），不走系统的
 //! `set_locale`，这样设置页可以在运行期切换而无需重启。
 
+use chrono::{Datelike, Local, TimeZone, Timelike};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -91,8 +92,8 @@ fn flatten_into(prefix: &str, value: &serde_json::Value, out: &mut HashMap<Strin
 
 /// 相对时间：设计的提交行显示 `2h`、`Yesterday`、`Mon`、`Nov 6`。
 ///
-/// 输入是 `git log` 的 `%at`（UTC 秒）。以 `now` 为基准计算，避免依赖系统
-/// 语言；中文用“2 小时”“昨天”，英文用 `2h`、`Yesterday`。
+/// 输入是 `git log` 的 `%at`（UTC 秒）。持续时间按 Unix 秒计算，日历日期按系统本地
+/// 时区计算；中文用“2 小时”“昨天”，英文用 `2h`、`Yesterday`。
 /// 日期显示方式（设计板 23 的 Date format）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DateStyle {
@@ -126,7 +127,7 @@ impl DateStyle {
 /// 按设置格式化一个时间戳。
 ///
 /// `pattern` 只在 `Custom` 时使用，支持 `%Y %m %d %e %b %B %H %M`，未知占位原样
-/// 保留，方便用户看出自己写错了哪一段。
+/// 保留，方便用户看出自己写错了哪一段。绝对与自定义格式按系统本地时区显示。
 pub fn format_date(
     language: &str,
     style: DateStyle,
@@ -142,18 +143,16 @@ pub fn format_date(
     };
 }
 
-/// 绝对时间：`2026-11-14 09:05`。
+/// 绝对时间：`2026-11-14 09:05`，按系统本地时区显示。
 pub fn absolute_time(language: &str, timestamp: i64) -> String {
-    let (month, day, year) = civil_from_unix(timestamp);
-    let (hour, minute) = clock_from_unix(timestamp);
+    let (month, day, year, hour, minute) = local_components(timestamp);
     let _ = language;
     return format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}");
 }
 
 /// 自定义 pattern。
 pub fn custom_time(language: &str, pattern: &str, timestamp: i64) -> String {
-    let (month, day, year) = civil_from_unix(timestamp);
-    let (hour, minute) = clock_from_unix(timestamp);
+    let (month, day, year, hour, minute) = local_components(timestamp);
     let month_name = t(
         language,
         &format!("time.months.{}", month.saturating_sub(1)),
@@ -185,7 +184,33 @@ pub fn custom_time(language: &str, pattern: &str, timestamp: i64) -> String {
     return out;
 }
 
-/// 一天里的时分（UTC 秒）。
+/// 按系统本地时区拆分 Unix 秒；超出 chrono 表示范围时回退到 UTC 拆分。
+fn local_components(timestamp: i64) -> (i64, i64, i64, i64, i64) {
+    if let Some(datetime) = local_datetime(timestamp) {
+        return (
+            i64::from(datetime.month()),
+            i64::from(datetime.day()),
+            i64::from(datetime.year()),
+            i64::from(datetime.hour()),
+            i64::from(datetime.minute()),
+        );
+    }
+    let (month, day, year) = civil_from_unix(timestamp);
+    let (hour, minute) = clock_from_unix(timestamp);
+    return (month, day, year, hour, minute);
+}
+
+fn local_datetime(timestamp: i64) -> Option<chrono::DateTime<Local>> {
+    return Local.timestamp_opt(timestamp, 0).single();
+}
+
+fn local_day_difference(timestamp: i64, now: i64) -> Option<i64> {
+    let timestamp = local_datetime(timestamp)?;
+    let now = local_datetime(now)?;
+    return Some((now.date_naive() - timestamp.date_naive()).num_days());
+}
+
+/// 一天里的时分（UTC 秒），仅供超出 chrono 日期范围时回退。
 fn clock_from_unix(timestamp: i64) -> (i64, i64) {
     let seconds = timestamp.rem_euclid(86_400);
     return (seconds / 3_600, (seconds % 3_600) / 60);
@@ -204,20 +229,25 @@ pub fn relative_time(language: &str, timestamp: i64, now: i64) -> String {
     if hours < 24 {
         return with_arguments(language, "time.hours", &[("count", hours.to_string())]);
     }
-    let days = hours / 24;
+    let days = local_day_difference(timestamp, now)
+        .unwrap_or_else(|| seconds / 86_400)
+        .max(0);
     if days == 1 {
         return t(language, "time.yesterday");
+    }
+    if days == 0 {
+        return with_arguments(language, "time.hours", &[("count", hours.to_string())]);
     }
     if days < 7 {
         return with_arguments(language, "time.days", &[("count", days.to_string())]);
     }
-    let (month, day, year) = civil_from_unix(timestamp);
+    let (month, day, year, _, _) = local_components(timestamp);
     let month_name = t(
         language,
         &format!("time.months.{}", month.saturating_sub(1)),
     );
     let is_this_year = {
-        let (_, _, now_year) = civil_from_unix(now);
+        let (_, _, now_year, _, _) = local_components(now);
         year == now_year
     };
     if is_this_year {
@@ -238,8 +268,7 @@ pub fn relative_time(language: &str, timestamp: i64, now: i64) -> String {
     );
 }
 
-/// 把 UTC 秒换成 `(月, 日, 年)`。只用于展示，不追求时区精度：按本地时区偏移
-/// 没有跨平台 API，这里用 UTC，跨日误差可忽略。
+/// 把 UTC 秒换成 `(月, 日, 年)`，仅供超出 chrono 日期范围时回退。
 fn civil_from_unix(timestamp: i64) -> (i64, i64, i64) {
     let days = timestamp.div_euclid(86_400);
     let z = days + 719_468;
@@ -309,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn civil_dates_are_correct_for_known_instants() {
+    fn utc_fallback_civil_dates_are_correct_for_known_instants() {
         // 2026-11-14T00:00:00Z
         assert_eq!(civil_from_unix(1_794_614_400), (11, 14, 2026));
     }
@@ -333,15 +362,16 @@ mod tests {
         );
 
         let absolute = format_date("en", DateStyle::Absolute, "", stamp, stamp + 60);
-        assert!(absolute.starts_with("2026-11-14"), "{absolute}");
+        let local = local_datetime(stamp).expect("known timestamp is representable");
+        assert_eq!(absolute, local.format("%Y-%m-%d %H:%M").to_string());
         assert!(absolute.contains(':'), "绝对时间应带时分：{absolute}");
 
         let custom = format_date("en", DateStyle::Custom, "%Y/%m/%d %H:%M", stamp, stamp);
-        assert_eq!(custom, "2026/11/14 09:05");
+        assert_eq!(custom, local.format("%Y/%m/%d %H:%M").to_string());
 
         let named = format_date("en", DateStyle::Custom, "%b %e, %Y", stamp, stamp);
-        assert!(named.contains("2026"), "{named}");
-        assert!(named.contains("14"), "{named}");
+        assert!(named.contains(&local.year().to_string()), "{named}");
+        assert!(named.contains(&local.day().to_string()), "{named}");
     }
 
     #[test]

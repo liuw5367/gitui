@@ -16,6 +16,7 @@ pub(crate) fn agent_panel(
     state: &AgentState,
     cmd: &AgentCommands,
     language: Signal<SharedString>,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement + use<> {
     let plan = state.plan;
     let audit = state.audit;
@@ -228,7 +229,7 @@ pub(crate) fn agent_panel(
                             }
                         }))
                         .child(permissions_block(language, policies, permissions_cmd))
-                        .child(audit_block(language, audit, now)),
+                        .child(audit_block(language, audit, now, settings_state)),
                 ),
             ),
         );
@@ -314,6 +315,7 @@ fn audit_block(
     language: Signal<SharedString>,
     audit: Signal<Vec<AuditEntry>>,
     now: i64,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     return view()
         .w_full()
@@ -376,7 +378,12 @@ fn audit_block(
                         )
                         .child(
                             text(move || {
-                                crate::dates::format(language.get().as_str(), timestamp, now)
+                                crate::dates::format_reactive(
+                                    settings_state,
+                                    language.get().as_str(),
+                                    timestamp,
+                                    now,
+                                )
                             })
                             .text_size(px(crate::ui::SECONDARY))
                             .text_color(move || design::text3()),

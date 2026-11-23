@@ -1,12 +1,13 @@
 //! 日期显示格式的全局设置（设计板 23 的 Date format）。
 //!
-//! 时间到处都要显示（历史、reflog、检查器、Agent 日志、欢迎页），逐个视图串
-//! `Settings` 只会把签名撑大。这里放一份进程内设置：设置页改了就调用
-//! [`set_style`] / [`set_pattern`]，渲染时统一走 [`format`]。
+//! History、Refs / Reflog、Blame、检查器、Git 扫描状态与 Agent 日志共用日期设置，
+//! 避免逐个视图传递格式值。设置页更新进程内状态，页面时间标签通过
+//! [`format_reactive`] 订阅设置变化。
 //!
 //! 不涉及仓库状态，也不做持久化——持久化在 `store::Settings`，启动时读出来写进这里。
 
 use crate::i18n;
+use nsh_core::prelude::Signal;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -69,9 +70,21 @@ pub fn format(language: &str, timestamp: i64, now: i64) -> String {
     return i18n::format_date(language, style(), pattern().as_str(), timestamp, now);
 }
 
+/// 在时间标签的响应式闭包中读取设置，使格式选择变化后刷新该标签。
+pub fn format_reactive(
+    settings: Signal<store::Settings>,
+    language: &str,
+    timestamp: i64,
+    now: i64,
+) -> String {
+    let _ = settings.get();
+    return format(language, timestamp, now);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     #[test]
     fn style_and_pattern_round_trip() {
@@ -83,7 +96,14 @@ mod tests {
         set_style(i18n::DateStyle::Custom);
         set_pattern("%d/%m/%Y");
         let stamp = 1_794_647_100;
-        assert_eq!(format("en", stamp, stamp), "14/11/2026");
+        let local = chrono::Local
+            .timestamp_opt(stamp, 0)
+            .single()
+            .expect("known timestamp is representable");
+        assert_eq!(
+            format("en", stamp, stamp),
+            local.format("%d/%m/%Y").to_string()
+        );
 
         // 未知 id 退回相对时间。
         load("nonsense", "");

@@ -11,6 +11,7 @@ pub(crate) fn blame_history_panel(
     language: Signal<SharedString>,
     tab: Tab,
     cmd: HistoryCommands,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let now = store::now_unix();
     let path = tab.blame_path.clone();
@@ -37,7 +38,12 @@ pub(crate) fn blame_history_panel(
                     Box::new(move || {
                         format!(
                             "{short} · {author} · {}",
-                            crate::dates::format(language.get().as_str(), timestamp, now)
+                            crate::dates::format_reactive(
+                                settings_state,
+                                language.get().as_str(),
+                                timestamp,
+                                now,
+                            )
                         )
                     }),
                     true,

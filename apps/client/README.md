@@ -87,6 +87,7 @@ Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并�
 ## 数据与语言
 
 - 语言：`src/i18n.rs` 用进程内信号保存当前语言，设置页切换后立即生效；缺键时回退英文，再缺失则返回键名。`locales` 两边的键集合由测试保证一致。
+- 日期：General 页选择的格式和自定义 pattern 持久化在 `store::Settings`，由 `src/dates.rs` 提供给 History、提交详情、Blame / File History、Refs / Reflog、Git 扫描状态、Agent 日志与设置预览；Unix 时间戳按系统本地时区转换，日期筛选边界仍由 Git 按本地时区解释。
 - 主题：`theme.json` 提供 light/dark token，经 `theme_overrides` 注入；深色模式与浅色模式各有一组值，`theme_tests` 与设计 CSS 逐键比对。
 - 存储：会话、成功打开过的最近仓库、Git 扫描发现结果及命令面板的扫描搜索资格、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；扫描结果与最近打开历史分开保存。欢迎页查询全部扫描结果，命令面板查询由 Git 设置启用的扫描结果。文件格式见 [crates/store/README.md](../../crates/store/README.md)。
 - 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；产物写入 `files.local/shots/`（已被 `.gitignore` 排除，不提交）。`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME`、`GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT` 可以直接进入指定页面或浮层，完整列表见脚本头注释。`GITUI_MODE=reflog` 会打开 Reflog 并选中首条记录，便于检查右侧提交信息；`GITUI_MODE=blame` 会在仓库标签页里预选第一个提交文件，便于检查 Board 19。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。

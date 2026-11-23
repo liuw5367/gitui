@@ -148,6 +148,7 @@ fn match_body(
             history.clone(),
             session.clone(),
             search.clone(),
+            settings_state,
         ))
         .min(320.0),
         crate::ui::split::Pane::fixed(
@@ -218,6 +219,7 @@ fn center_content(
     history: HistoryCommands,
     session: crate::features::SessionHandle,
     search: SearchCommands,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let mode = search.state.mode;
     let refresh = history.clone();
@@ -282,6 +284,7 @@ fn center_content(
                             &search,
                             &refs,
                             current_selection,
+                            settings_state,
                         )
                         .into_element();
                     }
@@ -416,8 +419,13 @@ fn center_content(
                     let Some(tab) = current.get() else {
                         return empty_workspace(language).into_element();
                     };
-                    crate::features::history::blame_view(language, tab, history.clone())
-                        .into_element()
+                    crate::features::history::blame_view(
+                        language,
+                        tab,
+                        history.clone(),
+                        settings_state,
+                    )
+                    .into_element()
                 }
                 crate::Mode::Refs => {
                     let Some(tab) = current.get() else {
@@ -429,6 +437,7 @@ fn center_content(
                         language,
                         tab,
                         &search,
+                        settings_state,
                     )
                     .into_element()
                 }
@@ -449,6 +458,7 @@ fn center_content(
                             &search,
                             &refs,
                             current_selection,
+                            settings_state,
                         )
                         .into_element()
                     }
@@ -542,10 +552,13 @@ fn right_content(
                     crate::app::session::TreeOptions::from_settings(&settings_state.get()),
                 )
                 .into_element(),
-                crate::Mode::Agent => {
-                    crate::features::agent::view::agent_panel(&agent.state, &agent, language)
-                        .into_element()
-                }
+                crate::Mode::Agent => crate::features::agent::view::agent_panel(
+                    &agent.state,
+                    &agent,
+                    language,
+                    settings_state,
+                )
+                .into_element(),
                 crate::Mode::Changes => {
                     // 「请 Agent 起草」= 切到 Agent 主视图并提议一份计划。
                     let ask_agent: std::sync::Arc<dyn Fn()> = {
@@ -572,6 +585,7 @@ fn right_content(
                     language,
                     tab,
                     history.clone(),
+                    settings_state,
                 )
                 .into_element(),
                 crate::Mode::Refs => {

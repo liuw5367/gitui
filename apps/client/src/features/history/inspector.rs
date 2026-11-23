@@ -847,13 +847,11 @@ fn commit_info_entry(
             let same_identity = details.author == details.committer
                 && details.author_email == details.committer_email;
             let identity = commit_identity(&details.committer, &details.committer_email);
-            let committed_at =
-                crate::i18n::absolute_time(language.get_untracked().as_str(), details.committed_at);
-            let (date, time) = committed_at
-                .split_once(' ')
-                .unwrap_or((committed_at.as_str(), ""));
-            let date = date.to_string();
-            let time = time.to_string();
+            let committed_at = crate::dates::format(
+                language.get_untracked().as_str(),
+                details.committed_at,
+                store::now_unix(),
+            );
             let key = if same_identity {
                 "files.info.committedOn"
             } else {
@@ -863,8 +861,7 @@ fn commit_info_entry(
                 text(move || {
                     let arguments = [
                         ("identity", identity.clone()),
-                        ("date", date.clone()),
-                        ("time", time.clone()),
+                        ("value", committed_at.clone()),
                     ];
                     i18n::with_arguments(language.get_untracked().as_str(), key, &arguments)
                 })

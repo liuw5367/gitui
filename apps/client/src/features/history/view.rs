@@ -108,6 +108,7 @@ pub(crate) fn history(
     search: &SearchCommands,
     refs: &RefsCommands,
     selected_commit: Memo<Option<(u64, String)>>,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement + use<> {
     let language = cmd.language;
     let inspector_open = search.right_panel_open;
@@ -553,10 +554,11 @@ pub(crate) fn history(
                                                     .text_overflow(nsh_core::EllipsizeMode::Tail),
                                             )
                                             .child(
-                                                text({
+                                                text(move || {
                                                     let timestamp =
                                                         commit.date.parse().unwrap_or(0);
-                                                    crate::dates::format(
+                                                    crate::dates::format_reactive(
+                                                        settings_state,
                                                         language_value.get().as_str(),
                                                         timestamp,
                                                         now,

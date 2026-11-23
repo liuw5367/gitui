@@ -1755,6 +1755,7 @@ name = "nsh-app"
 version = "0.1.0"
 dependencies = [
  "agent",
+ "chrono",
  "domain",
  "env_logger",
  "git",

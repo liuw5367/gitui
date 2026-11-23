@@ -1776,6 +1776,7 @@ pub(crate) fn refs_view(
     language: Signal<SharedString>,
     tab: Tab,
     search: &SearchCommands,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement + use<> {
     let now = store::now_unix();
     let reflog_query = state.reflog_query;
@@ -1857,6 +1858,7 @@ pub(crate) fn refs_view(
                         reflog_selection,
                         &table_cmd,
                         &table_search,
+                        settings_state,
                     )
                     .into_element()
                 }
@@ -2378,6 +2380,7 @@ fn reflog_list(
     selected: Signal<Option<super::state::ReflogEntryKey>>,
     cmd: &RefsCommands,
     search: &SearchCommands,
+    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let recovery = cmd.recovery.clone();
     let show_in_history = cmd.history.clone();
@@ -2519,7 +2522,12 @@ fn reflog_list(
                 )
                 .child(
                     text(move || {
-                        crate::dates::format(render_language.get().as_str(), timestamp, now)
+                        crate::dates::format_reactive(
+                            settings_state,
+                            render_language.get().as_str(),
+                            timestamp,
+                            now,
+                        )
                     })
                     .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
