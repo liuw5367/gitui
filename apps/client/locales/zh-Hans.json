@@ -313,7 +313,8 @@
       "committed": "提交时间",
       "refs": "分支与引用",
       "committedBy": "%{identity} 于 %{date} %{time} 提交",
-      "committedOn": "于 %{date} %{time} 提交"
+      "committedOn": "于 %{date} %{time} 提交",
+      "refsInline": "分支与引用："
     },
     "atCommit": "提交 %{short}",
     "empty": "没有文件",

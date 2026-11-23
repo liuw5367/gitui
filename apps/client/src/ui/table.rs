@@ -88,9 +88,15 @@ pub(crate) fn table_with_scroll(
     return table_inner(spec, Some((table_ref, scroll_request)));
 }
 
-/// 直接更新虚拟表格的活动行，避免为了高亮一个 commit 重建整张表。
+/// 只在活动行不同时更新虚拟表格；`DataTableApi::select` 会尝试把行滚动到可见位置。
 pub(crate) fn select_row(table_ref: ComponentRef<nsh_base::DataTable>, row: u32) {
     if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
+        if api
+            .selection()
+            .is_some_and(|selection| selection.row == Some(row) && selection.column.is_none())
+        {
+            return;
+        }
         let mut selection = DataTableSelection::default();
         selection.row = Some(row);
         api.select(Some(selection));

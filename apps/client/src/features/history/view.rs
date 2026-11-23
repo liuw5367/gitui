@@ -419,7 +419,6 @@ pub(crate) fn history(
                             let toggle_for_press = toggle_compare.clone();
                             let toggle_multi_for_press = toggle_multi_commit.clone();
                             let compare_mode_for_press = compare_mode;
-                            let table_ref_for_press = table_ref;
                             let open_diff_for_menu = open_commit_diff.clone();
                             let select_for_context = select.clone();
                             let menu_search = row_search.clone();
@@ -599,10 +598,6 @@ pub(crate) fn history(
                                             toggle_for_press(index);
                                         } else {
                                             inspector_open.set(true);
-                                            crate::ui::table::select_row(
-                                                table_ref_for_press,
-                                                row,
-                                            );
                                             select_for_press(index);
                                         }
                                     })),

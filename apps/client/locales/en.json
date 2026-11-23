@@ -313,7 +313,8 @@
       "committed": "Committed",
       "refs": "Branches and refs",
       "committedBy": "%{identity} committed on %{date} at %{time}",
-      "committedOn": "committed on %{date} at %{time}"
+      "committedOn": "committed on %{date} at %{time}",
+      "refsInline": "Branches and refs:"
     },
     "atCommit": "At commit %{short}",
     "empty": "No files",

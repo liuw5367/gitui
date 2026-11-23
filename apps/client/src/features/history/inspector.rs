@@ -980,7 +980,8 @@ fn commit_header(
     return view()
         .w_full()
         .px(px(12.0))
-        .py(px(12.0))
+        .pt(px(12.0))
+        .pb(px(4.0))
         .flex_col()
         .gap(px(8.0))
         .child(
@@ -1072,29 +1073,20 @@ fn info_ref_value(language: Signal<SharedString>, refs: String) -> AnyElement {
         .w_full()
         .px(px(12.0))
         .py(px(3.0))
-        .flex_row()
-        .items_center()
-        .gap(px(0.0))
         .child(
             text(move || {
                 format!(
-                    "{}: ",
-                    i18n::t(language.get_untracked().as_str(), "files.info.refs")
+                    "{} {}",
+                    i18n::t(language.get_untracked().as_str(), "files.info.refsInline"),
+                    refs
                 )
             })
-            .flex_shrink_0()
+            .w_full()
+            .min_w_0()
+            .select_text()
             .text_size(px(crate::ui::SECONDARY))
             .line_height(px(crate::ui::SECONDARY_LINE))
-            .text_color(move || design::text3()),
-        )
-        .child(
-            text(refs)
-                .flex_1()
-                .min_w_0()
-                .select_text()
-                .text_size(px(crate::ui::SECONDARY))
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(move || design::text()),
+            .text_color(move || design::text()),
         )
         .into_element();
 }
