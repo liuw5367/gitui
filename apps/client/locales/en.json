@@ -312,7 +312,8 @@
       "committer": "Committer",
       "committed": "Committed",
       "refs": "Branches and refs",
-      "committedBy": "%{identity} committed on %{date}"
+      "committedBy": "%{identity} committed on %{date} at %{time}",
+      "committedOn": "committed on %{date} at %{time}"
     },
     "atCommit": "At commit %{short}",
     "empty": "No files",

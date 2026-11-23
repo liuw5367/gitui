@@ -923,19 +923,29 @@ fn commit_info_entry(
             || details.author_email != details.committer_email
             || details.authored_at != details.committed_at
         {
+            let same_identity = details.author == details.committer
+                && details.author_email == details.committer_email;
             let identity = commit_identity(&details.committer, &details.committer_email);
-            let date = crate::dates::format(
-                language.get_untracked().as_str(),
-                details.committed_at,
-                store::now_unix(),
-            );
+            let committed_at =
+                crate::i18n::absolute_time(language.get_untracked().as_str(), details.committed_at);
+            let (date, time) = committed_at
+                .split_once(' ')
+                .unwrap_or((committed_at.as_str(), ""));
+            let date = date.to_string();
+            let time = time.to_string();
+            let key = if same_identity {
+                "files.info.committedOn"
+            } else {
+                "files.info.committedBy"
+            };
             entry = entry.child(
                 text(move || {
-                    i18n::with_arguments(
-                        language.get_untracked().as_str(),
-                        "files.info.committedBy",
-                        &[("identity", identity.clone()), ("date", date.clone())],
-                    )
+                    let arguments = [
+                        ("identity", identity.clone()),
+                        ("date", date.clone()),
+                        ("time", time.clone()),
+                    ];
+                    i18n::with_arguments(language.get_untracked().as_str(), key, &arguments)
                 })
                 .w_full()
                 .px(px(12.0))
@@ -1018,33 +1028,41 @@ fn commit_header(
                                 .text_overflow(nsh_core::EllipsizeMode::Tail),
                         )
                         .child(
-                            text(move || {
-                                crate::dates::format(
-                                    language.get().as_str(),
-                                    timestamp,
-                                    store::now_unix(),
+                            view()
+                                .w_full()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(crate::ui::GAP_XS))
+                                .child(
+                                    text(move || {
+                                        crate::dates::format(
+                                            language.get().as_str(),
+                                            timestamp,
+                                            store::now_unix(),
+                                        )
+                                    })
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_size(px(crate::ui::META))
+                                    .line_height(px(crate::ui::SECONDARY_LINE))
+                                    .text_color(move || design::text3()),
                                 )
-                            })
-                            .text_size(px(crate::ui::META))
-                            .line_height(px(crate::ui::SECONDARY_LINE))
-                            .text_color(move || design::text3()),
+                                .child(crate::ui::button::button_icon_with_accessibility_label(
+                                    move || short.clone(),
+                                    {
+                                        let language = language;
+                                        move || i18n::t(language.get().as_str(), "files.copySha")
+                                    },
+                                    "copy",
+                                    crate::ui::button::ButtonVariant::Ghost,
+                                    crate::ui::button::ButtonSize::Small,
+                                    false,
+                                    move || {
+                                        crate::shared::os::copy_text(notice, language, sha.clone())
+                                    },
+                                )),
                         ),
-                )
-                .child(
-                    text(short)
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(design::text2),
-                )
-                .child(crate::ui::button::icon_button(
-                    "copy",
-                    {
-                        let language = language;
-                        move || i18n::t(language.get().as_str(), "files.copySha")
-                    },
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || crate::shared::os::copy_text(notice, language, sha.clone()),
-                )),
+                ),
         )
         .into_element();
 }
@@ -1054,20 +1072,29 @@ fn info_ref_value(language: Signal<SharedString>, refs: String) -> AnyElement {
         .w_full()
         .px(px(12.0))
         .py(px(3.0))
+        .flex_row()
+        .items_center()
+        .gap(px(0.0))
         .child(
             text(move || {
                 format!(
-                    "{}: {}",
-                    i18n::t(language.get_untracked().as_str(), "files.info.refs"),
-                    refs
+                    "{}: ",
+                    i18n::t(language.get_untracked().as_str(), "files.info.refs")
                 )
             })
-            .w_full()
-            .min_w_0()
-            .select_text()
+            .flex_shrink_0()
             .text_size(px(crate::ui::SECONDARY))
             .line_height(px(crate::ui::SECONDARY_LINE))
-            .text_color(move || design::text2()),
+            .text_color(move || design::text3()),
+        )
+        .child(
+            text(refs)
+                .flex_1()
+                .min_w_0()
+                .select_text()
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
+                .text_color(move || design::text()),
         )
         .into_element();
 }

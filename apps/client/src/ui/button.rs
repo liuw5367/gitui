@@ -79,6 +79,39 @@ pub(crate) fn button_icon(
     disabled: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    return button_icon_inner(label, None, icon, variant, size, disabled, on_press);
+}
+
+/// 带前置图标和独立无障碍名称的文字按钮。
+pub(crate) fn button_icon_with_accessibility_label(
+    label: impl Fn() -> String + 'static,
+    accessibility_label: impl Fn() -> String + 'static,
+    icon: &'static str,
+    variant: ButtonVariant,
+    size: ButtonSize,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return button_icon_inner(
+        label,
+        Some(SharedString::from(accessibility_label())),
+        icon,
+        variant,
+        size,
+        disabled,
+        on_press,
+    );
+}
+
+fn button_icon_inner(
+    label: impl Fn() -> String + 'static,
+    accessibility_label: Option<SharedString>,
+    icon: &'static str,
+    variant: ButtonVariant,
+    size: ButtonSize,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
     let foreground = match variant {
         ButtonVariant::Primary | ButtonVariant::Danger => design::token("primary-foreground"),
         ButtonVariant::Secondary => design::text(),
@@ -115,6 +148,9 @@ pub(crate) fn button_icon(
             .bg(move || design::danger())
             .hover(move |style| style.opacity(0.9)),
     };
+    if let Some(accessibility_label) = accessibility_label {
+        element = element.accessibility_label(Some(accessibility_label));
+    }
     return element.child(crate::ui::icon::inline_icon(icon)).child(
         text(move || label())
             .text_size(px(size.font()))
