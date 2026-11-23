@@ -785,14 +785,12 @@ fn clone_form(
 ) -> impl IntoElement {
     let choose_destination = cmd.clone();
     let clone_repository = cmd.clone();
-    let credentials = cmd.clone();
     let set_url = state.clone_url;
     let set_destination = state.clone_destination;
     let options = state.clone_options;
     let error = state.clone_error;
     let cloning = state.cloning;
     let url_for_hint = set_url;
-    let url_for_account = set_url;
     return view()
         .w_full()
         .pt(px(ui::GAP_SM))
@@ -941,51 +939,6 @@ fn clone_form(
                 ))
                 .into_element();
         }))
-        // 账号行：凭据流程尚未接入，显示未登录状态；按钮只做设置页导航。
-        .child(
-            view()
-                .w_full()
-                .flex_row()
-                .items_center()
-                .gap(px(ui::GAP))
-                .px(px(ui::GAP))
-                .py(px(6.0))
-                .rounded(px(7.0))
-                .border_1()
-                .border_color(move || design::line())
-                .bg(move || design::panel())
-                .child(
-                    view()
-                        .w(px(8.0))
-                        .h(px(8.0))
-                        .rounded(px(4.0))
-                        .bg(move || design::text3()),
-                )
-                .child(
-                    text(move || {
-                        let language = language.get();
-                        let status = i18n::t(language.as_str(), "welcome.notSignedIn");
-                        return match remote_host(url_for_account.get().as_str()) {
-                            Some(host) => format!("{host} · {status}"),
-                            None => status,
-                        };
-                    })
-                    .text_size(px(ui::SECONDARY))
-                    .line_height(px(ui::SECONDARY_LINE))
-                    .text_color(move || design::text2()),
-                )
-                .child(view().flex_1())
-                .child(button(
-                    move || i18n::t(language.get().as_str(), "welcome.credentials"),
-                    ButtonVariant::Secondary,
-                    ButtonSize::Small,
-                    false,
-                    {
-                        let credentials = credentials.clone();
-                        move || credentials.open_settings(Section::Credentials)
-                    },
-                )),
-        )
         .child(
             view()
                 .w_full()
@@ -1176,28 +1129,6 @@ fn bucket_of(opened_at: i64, now: i64) -> RecentBucket {
     };
 }
 
-/// 从克隆 URL 里取主机名；只用于账号行的短提示，不解析完整 URL。
-fn remote_host(url: &str) -> Option<String> {
-    let url = url.trim();
-    if let Some(rest) = url
-        .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-    {
-        return rest
-            .split('/')
-            .next()
-            .filter(|host| !host.is_empty())
-            .map(|host| host.to_string());
-    }
-    // SSH 形式：git@host:owner/repo.git
-    let rest = url.strip_prefix("git@")?;
-    let host = rest.split(':').next().unwrap_or_default();
-    if host.is_empty() {
-        return None;
-    }
-    return Some(host.to_string());
-}
-
 fn matches_query(path: &str, query: &str) -> bool {
     if query.trim().is_empty() {
         return true;
@@ -1241,19 +1172,6 @@ mod tests {
         assert_eq!(bucket_of(now - 86_400, now), RecentBucket::Week);
         assert_eq!(bucket_of(now - 7 * 86_400, now), RecentBucket::Week);
         assert_eq!(bucket_of(now - 8 * 86_400, now), RecentBucket::Earlier);
-    }
-
-    #[test]
-    fn remote_host_reads_https_and_ssh() {
-        assert_eq!(
-            remote_host("https://github.com/mia/gitui.git").as_deref(),
-            Some("github.com")
-        );
-        assert_eq!(
-            remote_host("git@github.com:mia/gitui.git").as_deref(),
-            Some("github.com")
-        );
-        assert_eq!(remote_host(""), None);
     }
 
     #[test]

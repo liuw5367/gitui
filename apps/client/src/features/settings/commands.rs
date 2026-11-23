@@ -52,8 +52,6 @@ pub(crate) struct SettingsCommands {
     pub(crate) theme_mode: Signal<ThemeMode>,
     /// diff 的显示偏好（文件树分组）由 `shared::diff` 持有。
     pub(crate) diff: DiffCommands,
-    /// SSH key import and generation use the same per-operation AskPass UI.
-    pub(crate) askpass: crate::askpass::AskPassClient,
 }
 
 impl SettingsCommands {

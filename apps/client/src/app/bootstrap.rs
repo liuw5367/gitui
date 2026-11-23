@@ -570,8 +570,6 @@ pub(crate) fn app() -> impl IntoElement {
             agent_max_tokens: signal(settings_state.get_untracked().agent_max_tokens.to_string()),
             agent_app_key: signal(String::new()),
             ssh_keys: signal(features::settings::ssh::read_keys()),
-            ssh_generate: signal(None),
-            ssh_operation: signal(false),
         },
         session: session.clone(),
         language,
@@ -579,7 +577,6 @@ pub(crate) fn app() -> impl IntoElement {
         store_dir: store_dir.clone(),
         theme_mode,
         diff: diff_commands.clone(),
-        askpass: askpass_client.clone(),
     };
     settings_commands.refresh_identity();
     // 验收开关：`GITUI_RECORD=<动作 id>` 启动即进入该动作的录制态，截图核对录制卡。

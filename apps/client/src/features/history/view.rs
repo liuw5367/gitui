@@ -543,6 +543,7 @@ pub(crate) fn history(
                                                     .child(
                                                         view()
                                                             .h(px(16.0))
+                                                            .min_w_0()
                                                             .flex_row()
                                                             .items_center()
                                                             .gap(px(4.0))
@@ -559,6 +560,7 @@ pub(crate) fn history(
                                                     .w(move || px(author_column_width.get()))
                                                     .min_w_0()
                                                     .flex_shrink_0()
+                                                    .pl(px(8.0))
                                                     .number_of_lines(1)
                                                     .text_size(px(crate::ui::SECONDARY))
                                                     .text_color(move || design::text2())
@@ -1849,6 +1851,7 @@ fn ref_chips(
         let mut badge = view()
             .h(px(16.0))
             .max_w(px(140.0))
+            .min_w_0()
             .px(px(4.0))
             .flex_row()
             .items_center()
@@ -1889,7 +1892,9 @@ fn ref_chips(
             badge
                 .child(
                     text(label)
+                        .flex_1()
                         .min_w_0()
+                        .number_of_lines(1)
                         .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || {
                             if is_head {
@@ -1910,7 +1915,12 @@ fn ref_chips(
                 .into_element(),
         );
     }
-    return view().flex_row().items_center().gap(px(4.0)).child(chips);
+    return view()
+        .min_w_0()
+        .flex_row()
+        .items_center()
+        .gap(px(4.0))
+        .child(chips);
 }
 
 /// 稳定地把分支名映射到图线使用的四种设计颜色。

@@ -10,6 +10,5 @@ pub(crate) mod git;
 pub(crate) mod shortcuts;
 pub(crate) mod ssh;
 mod ssh_commands;
-mod ssh_dialog;
 pub(crate) mod state;
 pub(crate) mod view;

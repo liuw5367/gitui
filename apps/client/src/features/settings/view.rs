@@ -40,8 +40,7 @@ pub(crate) fn settings(
                 }))
                 .child(main(state, cmd, tab)),
         )
-        .child(restore_confirm(state, cmd))
-        .child(super::ssh_dialog::ssh_generate_dialog(state, cmd));
+        .child(restore_confirm(state, cmd));
 }
 
 /// 「恢复默认快捷键」的确认弹层。
@@ -268,8 +267,6 @@ fn main(
     let shortcut_error = state.shortcut_error;
     let pending_keystroke = state.pending_keystroke;
     let blink_on = state.blink_on;
-    let ssh_keys = state.ssh_keys;
-    let ssh_operation = state.ssh_operation;
     let diff = cmd.diff.clone();
     let set_file_tree: Arc<dyn Fn(bool)> = {
         let diff = diff.clone();
@@ -310,8 +307,6 @@ fn main(
                     let _ = git_cmd.state.scan_found.get();
                     let _ = git_cmd.state.scan_selected.get();
                     let _ = git_cmd.state.scan_last_at.get();
-                    let _ = ssh_keys.get();
-                    let _ = ssh_operation.get();
                     match section.get() {
                         Section::General => super::general::general(
                             language,

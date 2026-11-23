@@ -1,47 +1,29 @@
-//! Local OpenSSH key discovery and management, limited to the current user's `~/.ssh`.
+//! Read-only OpenSSH key discovery, limited to the current user's `~/.ssh`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-mod operations;
 mod storage;
 
-pub(crate) use operations::{generate_key, import_key, remove_key};
 use storage::{
     checked_ssh_directory, parse_public_key, public_fingerprint, read_public_key_file,
     valid_private_path, validate_public_name,
 };
-#[cfg(all(test, unix))]
-use storage::{ssh_keygen_command, unique_token, validate_key_name};
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SshKeyEntry {
     pub(crate) name: String,
     pub(crate) path_display: String,
     pub(crate) fingerprint: String,
     pub(crate) public_name: String,
-    pub(crate) private_name: Option<String>,
-}
-
-impl SshKeyEntry {
-    pub(crate) fn removable(&self) -> bool {
-        return self.private_name.is_some();
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SshError {
     NoHome,
     InvalidName,
-    InvalidComment,
     MissingFile,
     NotRegularFile,
     InvalidPublicKey,
-    NotMatchingKey,
-    NameAlreadyExists,
-    KeyChanged,
-    Cancelled,
-    KeygenFailed,
     Symlink,
     DirectoryUnavailable,
     FileOperation,
@@ -52,15 +34,9 @@ impl SshError {
         return match self {
             Self::NoHome => "settings.sshHomeUnavailable",
             Self::InvalidName => "settings.sshInvalidName",
-            Self::InvalidComment => "settings.sshInvalidComment",
             Self::MissingFile => "settings.sshFileMissing",
             Self::NotRegularFile => "settings.sshNotPrivateKey",
             Self::InvalidPublicKey => "settings.sshInvalidPublicKey",
-            Self::NotMatchingKey => "settings.sshKeyMismatch",
-            Self::NameAlreadyExists => "settings.sshNameExists",
-            Self::KeyChanged => "settings.sshKeyChanged",
-            Self::Cancelled => "askpass.cancelled",
-            Self::KeygenFailed => "settings.sshKeyOperationFailed",
             Self::Symlink => "settings.sshSymlinkRejected",
             Self::DirectoryUnavailable => "settings.sshDirectoryUnavailable",
             Self::FileOperation => "settings.sshFileOperationFailed",
@@ -68,7 +44,7 @@ impl SshError {
     }
 }
 
-/// The production key directory. Tests pass an isolated directory directly to each operation.
+/// The production key directory. Tests pass an isolated directory to scanning helpers.
 pub(crate) fn ssh_dir() -> Result<PathBuf, SshError> {
     let Some(home) = std::env::var_os("HOME") else {
         return Err(SshError::NoHome);
@@ -140,7 +116,6 @@ fn scan_keys(directory: &Path) -> Vec<SshKeyEntry> {
             },
             fingerprint,
             public_name: public_name.to_string(),
-            private_name: private_exists.then(|| name.to_string()),
         });
     }
     keys.sort_by(|left, right| left.name.cmp(&right.name));
@@ -155,7 +130,7 @@ pub(crate) fn read_public_key(name: &str) -> Result<String, SshError> {
 
 fn read_public_key_at(directory: &Path, name: &str) -> Result<String, SshError> {
     validate_public_name(name)?;
-    let directory = checked_ssh_directory(directory, false)?;
+    let directory = checked_ssh_directory(directory)?;
     let path = directory.join(name);
     let metadata = fs::symlink_metadata(&path).map_err(|_| SshError::MissingFile)?;
     if metadata.file_type().is_symlink() {
