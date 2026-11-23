@@ -23,6 +23,7 @@ pub(crate) struct WelcomeCommands {
     pub(crate) language: Signal<SharedString>,
     /// 克隆的取消标志：后台轮询线程读它决定是否提前结束。
     pub(crate) cancel: Arc<AtomicBool>,
+    pub(crate) askpass: crate::askpass::AskPassClient,
 }
 
 impl WelcomeCommands {
@@ -156,6 +157,7 @@ impl WelcomeCommands {
         let language = self.language;
         let cancel = self.cancel.clone();
         let git_executable = session.current_git_executable();
+        let askpass_client = self.askpass.clone();
         let url = clone_url.get_untracked();
         let destination = clone_destination.get_untracked();
         let chosen: CloneOptions = clone_options.get_untracked();
@@ -186,11 +188,20 @@ impl WelcomeCommands {
         clone_error.set(None);
         spawn(async move {
             // 启动后按 100ms 轮询：界面一直可响应，取消也能立刻生效。
+            let askpass = match crate::askpass::AskPassSession::new(git_executable, askpass_client)
+            {
+                Ok(session) => session,
+                Err(error) => {
+                    cloning.set(false);
+                    clone_error.set(Some(error.to_string()));
+                    return;
+                }
+            };
             let mut run = match git::start_clone_with_executable(
                 url.trim(),
                 destination.trim(),
                 &options,
-                &git_executable,
+                askpass.executable(),
             ) {
                 Ok(run) => run,
                 Err(error) => {
@@ -210,6 +221,9 @@ impl WelcomeCommands {
                 }
                 if let Some(outcome) = run.try_finish() {
                     let lang = language.get_untracked();
+                    if askpass.was_cancelled() {
+                        break Err(i18n::t(lang.as_str(), "welcome.cloneCancelled"));
+                    }
                     break outcome.map_err(|error| localized_error(lang.as_str(), &error));
                 }
                 let progress = run.progress();

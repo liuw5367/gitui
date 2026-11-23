@@ -22,6 +22,7 @@ use std::sync::Arc;
 /// 各功能的用例句柄与当前语言；`bootstrap` 构造一次，页面按需克隆。
 #[derive(Clone)]
 pub(crate) struct AppHandles {
+    pub(crate) askpass: crate::askpass::AskPassUi,
     pub(crate) session: SessionHandle,
     pub(crate) history: HistoryCommands,
     pub(crate) changes: ChangesCommands,
@@ -86,6 +87,7 @@ impl AppHandles {
         handles.changes.session = session.clone();
         handles.changes.state.changelist_open = signal(false);
         handles.commit.session = session.clone();
+        handles.commit.sync = handles.sync.clone();
         handles.commit.state = crate::features::commit::state::CommitState {
             summary: signal(String::new()),
             description: signal(String::new()),

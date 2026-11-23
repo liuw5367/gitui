@@ -1,7 +1,6 @@
-//! Credentials & tools 分区（设计板 27）：Connections / SSH keys / Tools / Network。
+//! Credentials & tools 分区（设计板 27）：Git credential helper / SSH keys / Tools。
 //!
-//! 账号与密钥管理没有接线：Connect / Sign out / Remove / Add / Generate 只给
-//! 事实性提示。SSH 指纹与路径来自真实 `~/.ssh`（只读）。
+//! Git 凭据由 Git credential helper 管理；本页不连接 GitHub / GitLab 账号。
 
 use super::commands::SettingsCommands;
 use crate::design;
@@ -16,33 +15,6 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
     let settings = cmd.state.settings_state.get_untracked();
     let helper = cmd.state.credential_helper.get_untracked();
     let keys = cmd.state.ssh_keys.get_untracked();
-    let connect = {
-        let cmd = cmd.clone();
-        Arc::new(move || cmd.settings_notice("settings.accountConnectUnavailable"))
-    };
-    let account_button = |language: Signal<SharedString>, connect: Arc<dyn Fn()>| {
-        ui::button::button(
-            move || i18n::t(language.get().as_str(), "settings.connect"),
-            ui::button::ButtonVariant::Secondary,
-            ui::button::ButtonSize::Small,
-            false,
-            move || connect(),
-        )
-    };
-    let github = setting_row(
-        language,
-        "settings.github",
-        Some("settings.noAccountConnected"),
-        account_button(language, connect.clone()).into_element(),
-        true,
-    );
-    let gitlab = setting_row(
-        language,
-        "settings.gitlab",
-        Some("settings.noAccountConnected"),
-        account_button(language, connect.clone()).into_element(),
-        true,
-    );
     let helper_text = if helper.trim().is_empty() {
         i18n::t(language.get_untracked().as_str(), "settings.gitHelperNone")
     } else {
@@ -271,19 +243,13 @@ pub(super) fn credentials_page(cmd: SettingsCommands) -> AnyElement {
             true,
             {
                 let language = language;
-                move || i18n::t(language.get().as_str(), "settings.connections")
+                move || i18n::t(language.get().as_str(), "settings.gitCredentials")
             },
             Some(Box::new({
                 let language = language;
-                move || i18n::t(language.get().as_str(), "settings.connectionsHint")
+                move || i18n::t(language.get().as_str(), "settings.gitCredentialsHint")
             })),
-            view()
-                .w_full()
-                .flex_col()
-                .child(github)
-                .child(gitlab)
-                .child(helper_row)
-                .child(ssh_row),
+            view().w_full().flex_col().child(helper_row).child(ssh_row),
         ))
         .child(ui::setting_row::settings_section(
             false,

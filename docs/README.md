@@ -8,9 +8,9 @@ History 页面优化要求：标题后显示提交数，分支、作者与高级
 
 `docs/` 按主题分目录：一个主题一个文件夹，文件夹里的 `README.md` 是该主题的入口。
 
-设置窗口的六个分区按 [pages/settings.md](pages/settings.md)、[pages/settings-shortcuts.md](pages/settings-shortcuts.md)、[pages/settings-agent.md](pages/settings-agent.md)、[pages/settings-git.md](pages/settings-git.md)、[pages/settings-credentials.md](pages/settings-credentials.md)、[pages/settings-about.md](pages/settings-about.md) 实现。Updates、Credentials 与 Agent 的跨系统动作只给事实性提示，实现边界以根 README 的「已知限制」为准。
+设置窗口的六个分区按 [pages/settings.md](pages/settings.md)、[pages/settings-shortcuts.md](pages/settings-shortcuts.md)、[pages/settings-agent.md](pages/settings-agent.md)、[pages/settings-git.md](pages/settings-git.md)、[pages/settings-credentials.md](pages/settings-credentials.md)、[pages/settings-about.md](pages/settings-about.md) 实现。Updates 与 Agent 的跨系统动作只给事实性提示；凭据交互只在 Git 实际调用 AskPass 时出现，实现边界以根 README 的「已知限制」为准。
 
-Credentials 与 Git 执行能力的实施范围：移除 GitHub / GitLab 账号连接入口；只有 Git credential helper 未提供可用凭据、Git 实际调用 AskPass 时，应用才询问 HTTP(S) 凭据，保存交给 Git credential helper；实现本地 SSH 密钥管理，并让 Git 可执行文件设置作用于应用发起的 Git 命令。规划已获批准；阶段 1 的 Git 可执行文件设置已实现，阶段 2 的 AskPass/provider 清理与阶段 3 的 SSH 密钥管理待实施。
+Credentials 与 Git 执行能力的实施范围：移除 GitHub / GitLab 账号连接入口；只有 Git credential helper 未提供可用凭据、Git 实际调用 AskPass 时，应用才询问 HTTP(S) 凭据，保存交给 Git credential helper；实现本地 SSH 密钥管理，并让 Git 可执行文件设置作用于应用发起的 Git 命令。规划已获批准；阶段 1 Git 可执行文件设置与阶段 2 AskPass/provider 清理已实现，阶段 3 SSH 密钥管理待实施。
 
 仓库窗口与左侧引用面板的开发需求包括启动时恢复会话或显示欢迎页、仓库标签的打开与关闭及排序，以及引用分组的折叠与右键动作。设计入口见[欢迎页](pages/welcome.md)、[常规设置](pages/settings.md)、[工作区](pages/workspace.md)与[菜单和对话框](pages/menus.md)。
 

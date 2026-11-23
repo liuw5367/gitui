@@ -1,32 +1,57 @@
 //! 本模块负责起 Git 进程：命令拼装、stdout/stderr 收集、输出截断与展示上限。
 
 use domain::GitError;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Git 可执行文件。应用显式选择路径；库测试与兼容入口默认使用 PATH 中的 `git`。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GitExecutable(PathBuf);
+pub struct GitExecutable {
+    path: PathBuf,
+    env: Vec<(OsString, OsString)>,
+}
 
 impl GitExecutable {
     /// 使用进程启动环境 PATH 中的 `git`。
     pub fn system() -> Self {
-        return Self(PathBuf::from("git"));
+        return Self {
+            path: PathBuf::from("git"),
+            env: Vec::new(),
+        };
     }
 
     /// 使用设置页选择的可执行文件路径。
     pub fn from_path(path: impl Into<PathBuf>) -> Self {
-        return Self(path.into());
+        return Self {
+            path: path.into(),
+            env: Vec::new(),
+        };
     }
 
     /// 当前配置的程序路径。
     pub fn path(&self) -> &Path {
-        return &self.0;
+        return &self.path;
+    }
+
+    /// 为此操作启动的 Git 进程及其子进程附加环境变量。
+    pub fn with_env(mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> Self {
+        let key = key.as_ref().to_os_string();
+        if let Some((_, current)) = self.env.iter_mut().find(|(name, _)| name == &key) {
+            *current = value.as_ref().to_os_string();
+        } else {
+            self.env.push((key, value.as_ref().to_os_string()));
+        }
+        return self;
     }
 
     /// 创建一个使用此 executable 的 Git 命令。
     pub fn command(&self) -> Command {
-        return Command::new(&self.0);
+        let mut command = Command::new(&self.path);
+        for (key, value) in &self.env {
+            command.env(key, value);
+        }
+        return command;
     }
 }
 

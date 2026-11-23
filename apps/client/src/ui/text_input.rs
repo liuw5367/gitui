@@ -206,6 +206,27 @@ pub(crate) fn masked_input(
     );
 }
 
+/// Automatically focused username or masked secret input for a blocking Git prompt.
+pub(crate) fn askpass_input(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    secret: bool,
+    on_change: impl Fn(String) + 'static,
+) -> impl IntoElement {
+    return style_input(
+        nsh_base::input()
+            .masked(secret)
+            .auto_focus(true)
+            .value(value)
+            .placeholder(placeholder)
+            .on_change(move |text: &str| on_change(text.to_string())),
+        false,
+        Some(ui::CONTROL),
+        ui::BODY,
+        None,
+    );
+}
+
 /// 路径输入：输入框 + 右侧键帽，整体一个描边容器。
 ///
 /// 用于 Open 的仓库路径、Clone 的目标目录与 Init 的目录；⌘V 由系统输入框处理，

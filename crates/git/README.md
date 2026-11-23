@@ -5,10 +5,10 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 ## 执行约定
 
 - 每条命令带 `-C <工作树>`，参数以独立 argv 传入，不拼接 shell 字符串。
-- 读取命令设置 `GIT_TERMINAL_PROMPT=0` 与 `GIT_OPTIONAL_LOCKS=0`：凭据缺失时直接失败，只读命令不拿可选锁。stdout 超过 8 MiB 截断，错误详情截断到前 4096 个字符。
+- 读取命令设置 `GIT_TERMINAL_PROMPT=0` 与 `GIT_OPTIONAL_LOCKS=0`：没有配置 AskPass 时凭据缺失会直接失败，只读命令不拿可选锁。客户端可通过 `GitExecutable::with_env` 给单次操作附加 AskPass 环境，credential helper 仍由 Git 优先调用。stdout 超过 8 MiB 截断，错误详情截断到前 4096 个字符。
 - fetch、pull、push、merge 等同步调用把 stdout 与 stderr 合并，成功后取最后 3 条有效行作为摘要；失败时把合并输出截断到前 4096 个字符作为 `detail`。后台同步仍把两路合并供日志显示，同时独立保留 stdout 状态记录；Push 使用 porcelain 行，Fetch 由执行前后的本地远端引用与 tag 快照判断变化。
 - 命令以非零状态退出时返回 `GitError::CommandFailed`，保留程序名、参数、退出码与截断后的输出。
-- `Repo::open` 使用 PATH 中的 `git`；`Repo::open_with_executable` 接收明确的 executable，并把该选择保存在 `Repo` 内。`init_with_executable`、`init_repository_with_executable`、`clone_with_executable`、`start_clone_with_executable` 与 `info_with` 也可显式选择程序。设置值由客户端传入，本 crate 不读取应用配置。
+- `Repo::open` 使用 PATH 中的 `git`；`Repo::open_with_executable` 接收明确的 executable，并把该选择保存在 `Repo` 内。`GitExecutable::with_env` 可在不改变程序路径的前提下给进程及其 Git 子进程附加环境变量。`init_with_executable`、`init_repository_with_executable`、`clone_with_executable`、`start_clone_with_executable` 与 `info_with` 也可显式选择程序。设置值由客户端传入，本 crate 不读取应用配置。
 - `reword_commit` 与 `squash_commits` 自行生成 rebase todo，并用临时脚本覆盖 `GIT_SEQUENCE_EDITOR` 与 `GIT_EDITOR`；命令失败后执行 `git rebase --abort`，不把仓库留在改写中间状态。`rebase_onto` 执行普通分支变基，冲突时保留 Git 的 rebase 状态供界面解决。
 
 ## 打开仓库
@@ -82,7 +82,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 - `try_finish()` 非阻塞地检查进程；运行中返回 `None`，结束后返回 `Some(Result<String, GitError>)`。成功值是 Git 输出摘要，失败保留命令与输出详情。
 - 同步命令在独立进程组运行；Git 退出或取消时会停止输出读取器，避免遗留辅助进程占住输出管道后卡住完成与取消。
 - `cancel()` 终止同步进程组、等待退出，并返回已捕获的输出；已完成的远端或工作区变更不会由执行层回滚。
-- 命令关闭终端交互提示，认证仍由系统 Git 与已配置的 credential helper 处理。
+- 命令关闭终端交互提示；默认认证由系统 Git 与已配置的 credential helper 处理，客户端按需提供 AskPass 时也使用 Git 原生认证流程。
 
 旧的 `fetch_with`、`pull_with` 与 `push_with` 同步方法继续供非交互调用使用。
 

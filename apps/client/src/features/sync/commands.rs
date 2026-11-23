@@ -560,6 +560,7 @@ pub(crate) struct SyncCommands {
     pub(crate) language: Signal<SharedString>,
     /// 状态栏短提示（非快进回退的拉取结果）。
     pub(crate) notice: Signal<Option<String>>,
+    pub(crate) askpass: crate::askpass::AskPassClient,
 }
 
 impl SyncCommands {
@@ -767,19 +768,38 @@ impl SyncCommands {
         let worker_path = path.clone();
         let worker_remote = remote.clone();
         let worker_options = options.clone();
+        let git_executable = target.git_executable.clone();
+        let askpass_client = self.askpass.clone();
         std::thread::spawn(move || {
-            let repo = match git::Repo::open(worker_path.as_str()) {
-                Ok(repo) => repo,
+            let askpass = match crate::askpass::AskPassSession::new(git_executable, askpass_client)
+            {
+                Ok(session) => session,
                 Err(error) => {
                     let _ = sender.send(SyncWorkerEvent::Finished {
-                        output: error.detail(),
-                        result: Some(Err(error)),
+                        output: error.to_string(),
+                        result: Some(Err(domain::GitError::Spawn {
+                            program: "AskPass".to_string(),
+                            reason: error.to_string(),
+                        })),
                         summary: None,
                         cancelled: false,
                     });
                     return;
                 }
             };
+            let repo =
+                match git::Repo::open_with_executable(worker_path.as_str(), askpass.executable()) {
+                    Ok(repo) => repo,
+                    Err(error) => {
+                        let _ = sender.send(SyncWorkerEvent::Finished {
+                            output: error.detail(),
+                            result: Some(Err(error)),
+                            summary: None,
+                            cancelled: false,
+                        });
+                        return;
+                    }
+                };
             let remote_name = worker_remote
                 .clone()
                 .or_else(|| {
@@ -811,6 +831,7 @@ impl SyncCommands {
             let mut last = String::new();
             loop {
                 if let Some(result) = run.try_finish() {
+                    let cancelled = askpass.was_cancelled();
                     let output = run.progress();
                     let status_output = run.status_output();
                     let status_complete = !run.status_output_truncated();
@@ -825,10 +846,10 @@ impl SyncCommands {
                         status_complete,
                     );
                     let _ = sender.send(SyncWorkerEvent::Finished {
-                        result: Some(result),
-                        summary,
+                        result: if cancelled { None } else { Some(result) },
+                        summary: if cancelled { None } else { summary },
                         output,
-                        cancelled: false,
+                        cancelled,
                     });
                     return;
                 }

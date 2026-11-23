@@ -12,6 +12,13 @@ use crate::i18n;
 use crate::interactions;
 use nsh_core::prelude::*;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
+
+struct AgentSyncResult {
+    tab: crate::app::session::Tab,
+    cancelled: bool,
+}
 
 #[derive(Clone)]
 pub(crate) struct AgentCommands {
@@ -25,6 +32,8 @@ pub(crate) struct AgentCommands {
     pub(crate) store_dir: PathBuf,
     /// 提交说明（提交功能的状态）：提议计划与执行 Commit 步骤时用它兜底。
     pub(crate) commit_summary: Signal<String>,
+    /// Agent 的网络步骤与手动同步共用按需 AskPass 通道。
+    pub(crate) askpass: crate::askpass::AskPassClient,
 }
 
 impl AgentCommands {
@@ -76,24 +85,49 @@ impl AgentCommands {
     /// 执行计划里的第 `index` 步（原 `run_agent_step`）：受保护分支与 Deny 先拦下，
     /// 其余落到已有的 Git 动作，结果记入审计。
     pub(crate) fn run_agent_step(&self, index: usize) {
+        if self.state.running.get_untracked() {
+            return;
+        }
+        let Some(step) = self
+            .state
+            .plan
+            .get_untracked()
+            .and_then(|plan| plan.steps.get(index).cloned())
+        else {
+            return;
+        };
+        let Some(tab_id) = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(self.session.active.get_untracked())
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
+        self.state.running.set(true);
+        interactions::notify(
+            self.notice,
+            i18n::t(self.language.get_untracked().as_str(), "agent.running"),
+        );
+        let commands = self.clone();
+        spawn(async move {
+            commands.run_agent_step_inner(tab_id, step).await;
+            commands.state.running.set(false);
+        });
+    }
+
+    async fn run_agent_step_inner(&self, tab_id: u64, step: agent::Step) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
-        let agent_plan = self.state.plan;
-        let agent_audit = self.state.audit;
         let agent_policies = self.state.policies;
         let agent_settings = self.state.settings;
         let commit_summary = self.commit_summary;
-        let Some(plan) = agent_plan.get_untracked() else {
-            return;
-        };
-        let Some(step) = plan.steps.get(index).cloned() else {
-            return;
-        };
         let now = store::now_unix();
         // 受保护分支：写动作一律不执行，记审计并说明原因。
         let branch_now = {
             let list = tabs.get_untracked();
-            list.get(active.get_untracked())
+            list.iter()
+                .find(|tab| tab.id == tab_id)
                 .map(|tab| tab.branch.clone())
                 .unwrap_or_default()
         };
@@ -101,31 +135,30 @@ impl AgentCommands {
             .get_untracked()
             .blocks(step.action, branch_now.as_str())
         {
-            let mut audit = agent_audit.get_untracked();
-            audit.insert(
-                0,
-                agent::AuditEntry::new(now, step.action, false, reason.as_str()),
-            );
-            audit.truncate(agent::Audit::LIMIT);
-            agent_audit.set(audit);
-            self.persist_audit();
+            self.record_step(now, step.action, false, reason);
             return;
         }
         // 权限：Deny 直接记审计并跳过；Ask 在界面上就是用户按了这一行。
         if agent_policies.get_untracked().is_denied(step.action) {
-            let mut audit = agent_audit.get_untracked();
-            audit.insert(
-                0,
-                agent::AuditEntry::new(now, step.action, false, "denied by policy"),
-            );
-            audit.truncate(agent::Audit::LIMIT);
-            agent_audit.set(audit);
-            self.persist_audit();
+            self.record_step(now, step.action, false, "denied by policy".to_string());
             return;
         }
-        let current = active.get_untracked();
+
+        if let Some(kind) = sync_kind(step.action) {
+            let Some(tab) = tabs
+                .get_untracked()
+                .into_iter()
+                .find(|tab| tab.id == tab_id)
+            else {
+                return;
+            };
+            let (ok, detail) = self.run_sync_step(tab, kind).await;
+            self.record_step(now, step.action, ok, detail);
+            return;
+        }
+
         let mut list = tabs.get_untracked();
-        let Some(tab) = list.get_mut(current) else {
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
             return;
         };
         let detail = match step.action {
@@ -148,17 +181,8 @@ impl AgentCommands {
                 commit_staged(tab);
                 tab.hook_log.clone().unwrap_or_default()
             }
-            agent::Action::Fetch => {
-                sync(tab, Sync::Fetch);
-                tab.sync_message.clone().unwrap_or_default()
-            }
-            agent::Action::Pull => {
-                sync(tab, Sync::Pull);
-                tab.sync_message.clone().unwrap_or_default()
-            }
-            agent::Action::Push => {
-                sync(tab, Sync::Push);
-                tab.sync_message.clone().unwrap_or_default()
+            agent::Action::Fetch | agent::Action::Pull | agent::Action::Push => {
+                unreachable!("network actions are handled asynchronously")
             }
             agent::Action::Discard => "skipped: destructive".to_string(),
         };
@@ -168,11 +192,84 @@ impl AgentCommands {
             agent::Action::Discard => false,
             _ => true,
         };
-        let mut audit = agent_audit.get_untracked();
-        audit.insert(0, agent::AuditEntry::new(now, step.action, ok, detail));
-        audit.truncate(agent::Audit::LIMIT);
-        agent_audit.set(audit);
         tabs.set(list);
+        self.record_step(now, step.action, ok, detail);
+    }
+
+    async fn run_sync_step(&self, mut tab: crate::app::session::Tab, kind: Sync) -> (bool, String) {
+        let tab_id = tab.id;
+        let path = tab.path.clone();
+        let executable = tab.git_executable.clone();
+        let askpass = self.askpass.clone();
+        let language = self.language.get_untracked().to_string();
+        let cancelled_text = i18n::t(
+            language.as_str(),
+            match kind {
+                Sync::Fetch => "sync.cancelledFetch",
+                Sync::Pull => "sync.cancelledPull",
+                Sync::Push => "sync.cancelledPush",
+            },
+        );
+        let (sender, receiver) = mpsc::channel();
+
+        std::thread::spawn(move || {
+            match crate::askpass::AskPassSession::new(executable.clone(), askpass) {
+                Ok(session) => {
+                    tab.git_executable = session.executable().clone();
+                    sync(&mut tab, kind);
+                    let cancelled = session.was_cancelled();
+                    tab.git_executable = executable;
+                    if cancelled {
+                        crate::features::sync::ops::finish_sync_cancelled(&mut tab, cancelled_text);
+                    }
+                    let _ = sender.send(AgentSyncResult { tab, cancelled });
+                }
+                Err(error) => {
+                    tab.sync_failed = true;
+                    tab.sync_fault = None;
+                    tab.sync_message = Some(
+                        domain::GitError::Spawn {
+                            program: "AskPass".to_string(),
+                            reason: error.to_string(),
+                        }
+                        .detail(),
+                    );
+                    let _ = sender.send(AgentSyncResult {
+                        tab,
+                        cancelled: false,
+                    });
+                }
+            }
+        });
+
+        let result = loop {
+            match receiver.try_recv() {
+                Ok(result) => break result,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    return (false, "Git sync worker stopped unexpectedly".to_string());
+                }
+                Err(mpsc::TryRecvError::Empty) => timer(Duration::from_millis(50)).await,
+            }
+        };
+
+        let mut tabs = self.session.tabs.get_untracked();
+        if let Some(current) = tabs
+            .iter_mut()
+            .find(|current| current.id == tab_id && current.path == path)
+        {
+            apply_sync_updates(current, &result.tab);
+            self.session.tabs.set(tabs);
+        }
+        let detail = result.tab.sync_message.clone().unwrap_or_default();
+        let ok = !result.cancelled && !result.tab.sync_failed;
+        return (ok, detail);
+    }
+
+    fn record_step(&self, now: i64, action: agent::Action, ok: bool, detail: String) {
+        let mut audit = self.state.audit.get_untracked();
+        audit.insert(0, agent::AuditEntry::new(now, action, ok, detail));
+        audit.truncate(agent::Audit::LIMIT);
+        self.state.audit.set(audit);
         self.persist_audit();
     }
 
@@ -210,6 +307,9 @@ impl AgentCommands {
     /// Approve & Run（原 `run_plan`）：先按策略算出可执行范围，列出来让用户确认，
     /// 再按顺序执行。
     pub(crate) fn run_plan(&self) {
+        if self.state.running.get_untracked() {
+            return;
+        }
         let agent_plan = self.state.plan;
         let agent_policies = self.state.policies;
         let agent_settings = self.state.settings;
@@ -230,16 +330,27 @@ impl AgentCommands {
             &agent_settings.get_untracked(),
             branch.as_str(),
         );
+        let Some(target_tab_id) = tabs
+            .get_untracked()
+            .get(active.get_untracked())
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
         let lang = language.get_untracked();
         if runnable.is_empty() {
             interactions::notify(notice, i18n::t(lang.as_str(), "agent.nothingRunnable"));
             return;
         }
-        let listed: Vec<String> = runnable
+        let runnable_steps: Vec<agent::Step> = runnable
             .iter()
             .filter_map(|index| plan.steps.get(*index))
-            .map(|step| format!("• {}", step.label))
+            .cloned()
             .collect();
+        let listed = runnable_steps
+            .iter()
+            .map(|step| format!("• {}", step.label))
+            .collect::<Vec<_>>();
         let message = format!(
             "{}\n\n{}",
             i18n::t(lang.as_str(), "agent.approveMessage"),
@@ -249,6 +360,7 @@ impl AgentCommands {
         let title = i18n::t(lang.as_str(), "agent.approveTitle");
         // 确认框返回后要逐条执行，先把用例克隆一份带进异步块。
         let run_step = self.clone();
+        self.state.running.set(true);
         spawn(async move {
             let ok = interactions::confirm(
                 title,
@@ -260,11 +372,14 @@ impl AgentCommands {
             )
             .await;
             if !ok {
+                run_step.state.running.set(false);
                 return;
             }
-            for index in runnable {
-                run_step.run_agent_step(index);
+            interactions::notify(run_step.notice, i18n::t(lang.as_str(), "agent.running"));
+            for step in runnable_steps {
+                run_step.run_agent_step_inner(target_tab_id, step).await;
             }
+            run_step.state.running.set(false);
         });
     }
 
@@ -322,6 +437,33 @@ impl AgentCommands {
             preferences.protected_branches = protected;
         });
     }
+}
+
+fn sync_kind(action: agent::Action) -> Option<Sync> {
+    return match action {
+        agent::Action::Fetch => Some(Sync::Fetch),
+        agent::Action::Pull => Some(Sync::Pull),
+        agent::Action::Push => Some(Sync::Push),
+        _ => None,
+    };
+}
+
+fn apply_sync_updates(target: &mut crate::app::session::Tab, updated: &crate::app::session::Tab) {
+    target.sync_message = updated.sync_message.clone();
+    target.sync_failed = updated.sync_failed;
+    target.sync_fault = updated.sync_fault;
+    target.status = updated.status.clone();
+    target.changes = updated.changes.clone();
+    target.branch = updated.branch.clone();
+    target.ahead = updated.ahead;
+    target.behind = updated.behind;
+    target.commits = updated.commits.clone();
+    target.refs = updated.refs.clone();
+    target.remote_urls = updated.remote_urls.clone();
+    target.changelists = updated.changelists.clone();
+    target.head = updated.head.clone();
+    target.operation = updated.operation;
+    target.conflicts = updated.conflicts.clone();
 }
 
 /// 动作的文案键：面板、设置页与「补一步」菜单共用。

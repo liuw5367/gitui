@@ -10,6 +10,9 @@ use nsh_platform_macos as platform;
 
 #[cfg(target_os = "macos")]
 fn main() -> impl std::process::Termination {
+    if let Some(code) = nsh_app::run_askpass_helper() {
+        std::process::exit(code);
+    }
     env_logger::init();
     platform::run_app(
         platform::AppSource::Rust(platform::Root::of::<nsh_app::App>()),

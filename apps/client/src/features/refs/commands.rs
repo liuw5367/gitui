@@ -13,7 +13,124 @@ use crate::features::search::commands::SearchCommands;
 use crate::features::search::form_dialog::FormKind;
 use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
+
+#[derive(Clone)]
+enum RemoteOperation {
+    PushTag {
+        name: String,
+        remote: Option<String>,
+    },
+    PushBranch {
+        branch: String,
+        remote: String,
+    },
+    UpdateSubmodule {
+        path: String,
+        latest: bool,
+    },
+    UpdateSubmodules {
+        paths: Vec<String>,
+    },
+    PullBranch {
+        remote: String,
+        branch: String,
+    },
+    DeleteBranch {
+        remote: String,
+        branch: String,
+    },
+}
+
+impl RemoteOperation {
+    fn run(&self, tab: &mut crate::app::session::Tab) -> Result<(), String> {
+        match self {
+            Self::PushTag { name, remote } => {
+                let result = if let Some(remote) = remote {
+                    ops::push_tag_to_remote(tab, name, remote)
+                } else {
+                    ops::push_tag(tab, name)
+                };
+                result.map(|_| ())
+            }
+            Self::PushBranch { branch, remote } => ops::push_branch(tab, branch, remote),
+            Self::UpdateSubmodule { path, latest } => {
+                ops::update_submodule(tab, path, *latest).map_err(|error| error.detail())
+            }
+            Self::UpdateSubmodules { paths } => {
+                let failures = paths
+                    .iter()
+                    .filter_map(|path| {
+                        ops::update_submodule(tab, path, false)
+                            .err()
+                            .map(|error| format!("{path}: {}", error.detail()))
+                    })
+                    .collect::<Vec<_>>();
+                if failures.is_empty() {
+                    Ok(())
+                } else {
+                    Err(failures.join("\n"))
+                }
+            }
+            Self::PullBranch { remote, branch } => {
+                ops::pull_remote_branch(tab, remote, branch).map(|_| ())
+            }
+            Self::DeleteBranch { remote, branch } => ops::delete_remote_branch(tab, remote, branch),
+        }
+    }
+
+    fn apply_tab_updates(
+        &self,
+        target: &mut crate::app::session::Tab,
+        updated: &crate::app::session::Tab,
+    ) {
+        match self {
+            Self::PushTag { .. } | Self::PushBranch { .. } => {}
+            Self::DeleteBranch { .. } => {
+                target.refs = updated.refs.clone();
+                target.remote_urls = updated.remote_urls.clone();
+            }
+            Self::UpdateSubmodule { .. } | Self::UpdateSubmodules { .. } => {
+                target.refs = updated.refs.clone();
+                target.remote_urls = updated.remote_urls.clone();
+                target.status = updated.status.clone();
+                target.changes = updated.changes.clone();
+            }
+            Self::PullBranch { .. } => {
+                target.refs = updated.refs.clone();
+                target.remote_urls = updated.remote_urls.clone();
+                target.status = updated.status.clone();
+                target.changes = updated.changes.clone();
+                target.branch = updated.branch.clone();
+                target.ahead = updated.ahead;
+                target.behind = updated.behind;
+                target.commits = updated.commits.clone();
+                target.conflicts = updated.conflicts.clone();
+                target.operation = updated.operation;
+                target.head = updated.head.clone();
+                target.reflog = updated.reflog.clone();
+                target.error = updated.error.clone();
+            }
+        }
+    }
+
+    fn success_notice_key(&self) -> &'static str {
+        match self {
+            Self::PushTag { .. } | Self::PushBranch { .. } => "toast.pushed",
+            Self::UpdateSubmodule { latest: true, .. } => "submodule.updatedLatest",
+            Self::UpdateSubmodule { latest: false, .. } => "submodule.updated",
+            Self::UpdateSubmodules { .. } => "submodule.updatedAll",
+            Self::PullBranch { .. } | Self::DeleteBranch { .. } => "toast.historyDone",
+        }
+    }
+}
+
+struct RemoteOperationResult {
+    tab: crate::app::session::Tab,
+    result: Result<(), String>,
+    cancelled: bool,
+}
 
 #[derive(Clone)]
 pub(crate) struct RefsCommands {
@@ -32,6 +149,7 @@ pub(crate) struct RefsCommands {
     pub(crate) search: SearchCommands,
     /// 同步功能的用例：Refs 表里远程行的「取回」打开同步面板。
     pub(crate) sync: SyncCommands,
+    pub(crate) askpass: crate::askpass::AskPassClient,
     /// Root session and auxiliary-window registry guard worktree removal.
     pub(crate) main_tabs: Signal<Vec<crate::app::session::Tab>>,
     pub(crate) worktree_windows: Signal<Vec<(String, nsh_core::element::desktop::WindowRef)>>,
@@ -39,6 +157,87 @@ pub(crate) struct RefsCommands {
 }
 
 impl RefsCommands {
+    fn run_remote_operation(&self, tab_id: u64, operation: RemoteOperation) {
+        let tabs = self.session.tabs;
+        let Some(tab) = tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+        else {
+            return;
+        };
+        let path = tab.path.clone();
+        let (sender, receiver) = mpsc::channel();
+        let askpass = self.askpass.clone();
+        let operation_for_worker = operation.clone();
+        std::thread::spawn(move || {
+            let executable = tab.git_executable.clone();
+            let mut tab = tab;
+            let result = match crate::askpass::AskPassSession::new(executable.clone(), askpass) {
+                Ok(session) => {
+                    tab.git_executable = session.executable().clone();
+                    let result = operation_for_worker.run(&mut tab);
+                    let cancelled = session.was_cancelled();
+                    tab.git_executable = executable;
+                    let _ = sender.send(RemoteOperationResult {
+                        tab,
+                        result,
+                        cancelled,
+                    });
+                    return;
+                }
+                Err(error) => Err(error.to_string()),
+            };
+            let _ = sender.send(RemoteOperationResult {
+                tab,
+                result,
+                cancelled: false,
+            });
+        });
+
+        let language = self.language;
+        let notice = self.notice;
+        let operation_for_ui = operation;
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            let mut current_tabs = tabs.get_untracked();
+                            if let Some(current) = current_tabs
+                                .iter_mut()
+                                .find(|tab| tab.id == tab_id && tab.path == path)
+                            {
+                                operation_for_ui.apply_tab_updates(current, &result.tab);
+                                tabs.set(current_tabs);
+                            }
+                            let lang = language.get_untracked();
+                            if result.cancelled {
+                                crate::interactions::notify(
+                                    notice,
+                                    crate::i18n::t(lang.as_str(), "askpass.cancelled"),
+                                );
+                            } else if let Err(detail) = result.result {
+                                crate::interactions::notify(notice, detail);
+                            } else {
+                                crate::interactions::notify(
+                                    notice,
+                                    crate::i18n::t(
+                                        lang.as_str(),
+                                        operation_for_ui.success_notice_key(),
+                                    ),
+                                );
+                            }
+                            return;
+                        }
+                        Err(mpsc::TryRecvError::Disconnected) => return,
+                        Err(mpsc::TryRecvError::Empty) => timer(Duration::from_millis(50)).await,
+                    }
+                }
+            });
+        });
+    }
+
     /// 从工具栏打开引用主区的 Reflog 页签，并显示提交检查器。
     pub(crate) fn open_reflog(&self) {
         self.state.selected_tab.set(RefsTab::Reflog);
@@ -592,33 +791,21 @@ impl RefsCommands {
 
     /// 推送标签（原 `push_tag`）。
     pub(crate) fn push_tag(&self, name: String) {
-        let tabs = self.session.tabs;
-        let active = self.session.active;
-        let notice = self.notice;
-        let language = self.language;
-        let current = active.get_untracked();
-        let mut list = tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            match ops::push_tag(tab, name.as_str()) {
-                Ok(_) => {
-                    let lang = language.get_untracked();
-                    crate::interactions::notify(
-                        notice,
-                        crate::i18n::t(lang.as_str(), "toast.pushed"),
-                    );
-                }
-                Err(detail) => tab.error = Some(detail),
-            }
-            tabs.set(list);
+        if let Some(tab_id) = self.active_tab_id() {
+            self.run_remote_operation(tab_id, RemoteOperation::PushTag { name, remote: None });
         }
     }
 
     pub(crate) fn push_tag_to_remote_at(&self, tab_id: u64, name: String, remote: String) {
-        let tabs = self.session.tabs;
         let notice = self.notice;
         let language = self.language;
-        let mut list = tabs.get_untracked();
-        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+        let Some(tab) = self
+            .session
+            .tabs
+            .get_untracked()
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+        else {
             return;
         };
         if !tab.refs.tags.iter().any(|tag| tag == &name)
@@ -630,43 +817,18 @@ impl RefsCommands {
             );
             return;
         }
-        match ops::push_tag_to_remote(tab, name.as_str(), remote.as_str()) {
-            Ok(_) => crate::interactions::notify(
-                notice,
-                crate::i18n::t(language.get_untracked().as_str(), "toast.pushed"),
-            ),
-            Err(detail) => crate::interactions::notify(notice, detail),
-        }
-        tabs.set(list);
+        let _ = (notice, language);
+        self.run_remote_operation(
+            tab_id,
+            RemoteOperation::PushTag {
+                name,
+                remote: Some(remote),
+            },
+        );
     }
 
     pub(crate) fn update_submodule_at(&self, tab_id: u64, path: String, latest: bool) {
-        let mut list = self.session.tabs.get_untracked();
-        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
-            return;
-        };
-        let result = ops::update_submodule(tab, path.as_str(), latest);
-        self.session.tabs.set(list);
-        match result {
-            Ok(()) => crate::interactions::notify(
-                self.notice,
-                crate::i18n::t(
-                    self.language.get_untracked().as_str(),
-                    if latest {
-                        "submodule.updatedLatest"
-                    } else {
-                        "submodule.updated"
-                    },
-                ),
-            ),
-            Err(error) => crate::interactions::notify(
-                self.notice,
-                crate::features::welcome::commands::localized_error(
-                    self.language.get_untracked().as_str(),
-                    &error,
-                ),
-            ),
-        }
+        self.run_remote_operation(tab_id, RemoteOperation::UpdateSubmodule { path, latest });
     }
 
     pub(crate) fn update_all_submodules_at(&self, tab_id: u64, paths: Vec<String>) {
@@ -688,44 +850,12 @@ impl RefsCommands {
             crate::i18n::t(language_now.as_str(), "common.cancel"),
             false,
         );
-        let tabs = self.session.tabs;
-        let notice = self.notice;
-        let tab_id_for_update = tab_id;
+        let commands = self.clone();
         spawn(async move {
             if !pending.await {
                 return;
             }
-            let mut list = tabs.get_untracked();
-            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id_for_update) else {
-                return;
-            };
-            let mut failures = Vec::new();
-            for path in paths {
-                if let Err(error) = ops::update_submodule(tab, path.as_str(), false) {
-                    let lang = language.get_untracked();
-                    let message =
-                        crate::features::welcome::commands::localized_error(lang.as_str(), &error);
-                    failures.push(format!("{path}: {message}"));
-                }
-            }
-            tabs.set(list);
-            if failures.is_empty() {
-                crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(language.get_untracked().as_str(), "submodule.updatedAll"),
-                );
-            } else {
-                let lang = language.get_untracked();
-                crate::interactions::alert(
-                    crate::i18n::t(lang.as_str(), "submodule.updateAllFailedTitle"),
-                    crate::i18n::with_arguments(
-                        lang.as_str(),
-                        "submodule.updateAllFailedMessage",
-                        &[("paths", failures.join("\n"))],
-                    ),
-                    crate::i18n::t(lang.as_str(), "common.close"),
-                );
-            }
+            commands.run_remote_operation(tab_id, RemoteOperation::UpdateSubmodules { paths });
         });
     }
 
@@ -1361,24 +1491,13 @@ impl RefsCommands {
     }
 
     pub(crate) fn push_branch_at(&self, tab_id: u64, branch: String) {
-        let tabs = self.session.tabs;
-        let mut list = tabs.get_untracked();
-        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
-            return;
-        };
-        match ops::push_branch(tab, branch.as_str(), "origin") {
-            Ok(()) => {
-                tabs.set(list);
-                crate::interactions::notify(
-                    self.notice,
-                    crate::i18n::t(self.language.get_untracked().as_str(), "toast.pushed"),
-                );
-            }
-            Err(detail) => {
-                tabs.set(list);
-                crate::interactions::notify(self.notice, detail);
-            }
-        }
+        self.run_remote_operation(
+            tab_id,
+            RemoteOperation::PushBranch {
+                branch,
+                remote: "origin".to_string(),
+            },
+        );
     }
 
     pub(crate) fn pull_remote_branch_at(&self, tab_id: u64, remote: String, branch: String) {
@@ -1420,6 +1539,7 @@ impl RefsCommands {
             crate::i18n::t(language_now.as_str(), "common.cancel"),
             false,
         );
+        let commands = self.clone();
         spawn(async move {
             if !pending.await {
                 return;
@@ -1452,15 +1572,8 @@ impl RefsCommands {
                 );
                 return;
             }
-            let result = ops::pull_remote_branch(tab, remote.as_str(), branch.as_str());
-            tabs.set(list);
-            match result {
-                Ok(_) => crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
-                ),
-                Err(detail) => crate::interactions::notify(notice, detail),
-            }
+            drop(list);
+            commands.run_remote_operation(tab_id, RemoteOperation::PullBranch { remote, branch });
         });
     }
 
@@ -1486,6 +1599,7 @@ impl RefsCommands {
             crate::i18n::t(language_now.as_str(), "common.cancel"),
             true,
         );
+        let commands = self.clone();
         spawn(async move {
             if !pending.await {
                 return;
@@ -1507,14 +1621,8 @@ impl RefsCommands {
                 );
                 return;
             }
-            match ops::delete_remote_branch(tab, remote.as_str(), branch.as_str()) {
-                Ok(()) => crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
-                ),
-                Err(detail) => crate::interactions::notify(notice, detail),
-            }
-            tabs.set(list);
+            drop(list);
+            commands.run_remote_operation(tab_id, RemoteOperation::DeleteBranch { remote, branch });
         });
     }
 

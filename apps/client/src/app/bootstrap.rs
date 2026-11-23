@@ -41,6 +41,8 @@ pub(crate) fn app() -> impl IntoElement {
     let language = signal(SharedString::from(
         store::load_language(&store_dir).unwrap_or_else(|| i18n::DEFAULT_LANGUAGE.to_string()),
     ));
+    let (askpass_ui, askpass_client, askpass_receiver) = crate::askpass::channel();
+    askpass_ui.install(askpass_receiver);
 
     // 历史快速搜索与筛选浮层草稿分开；草稿在应用前不影响历史结果。
     let history_query = signal(String::new());
@@ -451,6 +453,16 @@ pub(crate) fn app() -> impl IntoElement {
         language,
         notice,
     };
+    let sync_commands = features::sync::commands::SyncCommands {
+        state: features::sync::state::SyncState {
+            dialog: sync_state,
+            task: signal(None),
+        },
+        session: session.clone(),
+        language,
+        notice,
+        askpass: askpass_client.clone(),
+    };
     // 提交（P3 批 A）：说明、描述与改写弹窗收进 CommitState，用例收进
     // CommitCommands；历史表的改写入口与空仓库的初始提交都要用它。
     let commit_commands = features::commit::commands::CommitCommands {
@@ -462,12 +474,14 @@ pub(crate) fn app() -> impl IntoElement {
         session: session.clone(),
         language,
         notice,
+        sync: sync_commands.clone(),
     };
     // Agent（P3 批 B）：计划、权限、运行设置与审计收进 AgentState，用例收进
     // AgentCommands；设置页的 Agent 分区与提交面板的「请 Agent 起草」都用它。
     let agent_commands = features::agent::commands::AgentCommands {
         state: features::agent::state::AgentState {
             plan: agent_plan,
+            running: signal(false),
             policies: agent_policies,
             settings: agent_settings,
             audit: agent_audit,
@@ -477,6 +491,7 @@ pub(crate) fn app() -> impl IntoElement {
         notice,
         store_dir: store_dir.clone(),
         commit_summary: commit_commands.state.summary,
+        askpass: askpass_client.clone(),
     };
     let history_commands = features::history::commands::HistoryCommands {
         state: history_state,
@@ -501,16 +516,6 @@ pub(crate) fn app() -> impl IntoElement {
         merge: merge_commands.clone(),
     };
 
-    // 同步（P3 批 A）：面板状态收进 SyncState，用例收进 SyncCommands。
-    let sync_commands = features::sync::commands::SyncCommands {
-        state: features::sync::state::SyncState {
-            dialog: sync_state,
-            task: signal(None),
-        },
-        session: session.clone(),
-        language,
-        notice,
-    };
     // 设置页（P3 批 B）：设置值、分区与快捷键编辑状态收进 SettingsState，用例收进
     // SettingsCommands。本机 Git 的版本、执行路径与凭据助手在启动时探测一次。
     let git_info = match git::info_with(&initial_git_executable) {
@@ -615,6 +620,7 @@ pub(crate) fn app() -> impl IntoElement {
         settings: settings_commands.clone(),
         language,
         cancel: clone_cancel,
+        askpass: askpass_client.clone(),
     };
 
     // 搜索（P3 最后一片）：命令面板、视图模式与表单浮层收进 SearchState，命令分发
@@ -666,6 +672,7 @@ pub(crate) fn app() -> impl IntoElement {
         recovery: recovery_commands.clone(),
         search: search_commands.clone(),
         sync: sync_commands.clone(),
+        askpass: askpass_client.clone(),
         main_tabs: tabs,
         worktree_windows: signal(Vec::new()),
         open_worktree_window: None,
@@ -676,6 +683,7 @@ pub(crate) fn app() -> impl IntoElement {
 
     // 各功能的句柄收成一个结构：主窗口版式（`app::workspace`）只取这一个参数。
     let mut handles = AppHandles {
+        askpass: askpass_ui.clone(),
         session: session.clone(),
         history: history_commands.clone(),
         changes: changes_commands.clone(),

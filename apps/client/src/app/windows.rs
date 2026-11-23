@@ -29,12 +29,15 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     let settings_window_ref = settings.session.settings_window;
     let tabs = handles.session.tabs;
     let active = handles.session.active;
+    let askpass = handles.askpass.clone();
+    let askpass_open = askpass.open;
     let language = handles.language;
     // 标题在窗口元素构建时定一次：响应式标题会让整扇窗（含整棵内容树）随着语言
     // 变化重建，而内容里的复选控件不支持被这样重建（nsh 会在旧 owner 上写 prop）。
     let lang = language.get_untracked();
     let welcome_title = i18n::t(lang.as_str(), "welcome.windowTitle");
     let settings_title = i18n::t(lang.as_str(), "settings.title");
+    let askpass_title = i18n::t(lang.as_str(), "askpass.title");
 
     let welcome_window = nsh_core::element::desktop::window()
         .id("welcome")
@@ -100,7 +103,33 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
                 ));
         });
 
-    return view().child(welcome_window).child(settings_window);
+    let askpass_window = nsh_core::element::desktop::window()
+        .id("askpass")
+        .kind(WindowKind::Normal)
+        .default_position(WindowPosition::Center)
+        .title(askpass_title)
+        .default_size(size(Points(480.0), Points(280.0)))
+        .open(askpass_open)
+        .on_open_change({
+            let askpass = askpass.clone();
+            move |event| {
+                if !event.open {
+                    askpass_open.set(false);
+                    askpass.dismiss_active();
+                }
+            }
+        })
+        .content(move || {
+            center_this_window();
+            let window = nsh_core::element::desktop::current_window();
+            on_key("mod+w", move |_| window.close());
+            return askpass.view(language);
+        });
+
+    return view()
+        .child(welcome_window)
+        .child(settings_window)
+        .child(askpass_window);
 }
 
 /// 窗口内容挂载后把窗口居中一次。

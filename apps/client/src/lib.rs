@@ -9,6 +9,7 @@
 
 mod acceptance;
 mod app;
+mod askpass;
 pub mod brand;
 mod dates;
 mod design;
@@ -34,6 +35,11 @@ pub use design::metrics;
 
 pub(crate) use app::Mode;
 pub(crate) use app::windows::{persist, window_insets};
+
+/// Run this executable as the lightweight Git/OpenSSH AskPass helper when requested.
+pub fn run_askpass_helper() -> Option<i32> {
+    return askpass::run_askpass_helper();
+}
 
 /// 应用根组件。
 #[component]

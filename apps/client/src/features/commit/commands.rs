@@ -5,9 +5,9 @@
 
 use super::ops;
 use super::state::{CommitState, RewriteKind, RewriteState};
-use crate::app::ops::sync;
 use crate::app::session::Sync;
 use crate::features::SessionHandle;
+use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
@@ -18,6 +18,7 @@ pub(crate) struct CommitCommands {
     pub(crate) language: Signal<SharedString>,
     /// 状态栏短提示（提交后推送、改写完成）。
     pub(crate) notice: Signal<Option<String>>,
+    pub(crate) sync: SyncCommands,
 }
 
 impl CommitCommands {
@@ -32,8 +33,6 @@ impl CommitCommands {
         let active = self.session.active;
         let commit_summary = self.state.summary;
         let commit_description = self.state.description;
-        let notice = self.notice;
-        let language = self.language;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
@@ -50,15 +49,7 @@ impl CommitCommands {
             }
             tabs.set(list.clone());
             if push_after {
-                let mut list = list;
-                if let Some(tab) = list.get_mut(current) {
-                    sync(tab, Sync::Push);
-                    tabs.set(list);
-                }
-                crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(language.get_untracked().as_str(), "commit.pushed"),
-                );
+                self.sync.run_sync(Sync::Push);
             }
         }
     }

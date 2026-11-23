@@ -35,6 +35,7 @@ RUST_LOG=gitui::history=debug,gitui::diff=debug,nsh_base=debug nsh run
 | 路径 | 内容 |
 |---|---|
 | `src/lib.rs` | 根组件：模块声明、`App` 转发与根导出（引导见 `src/app/bootstrap.rs`） |
+| `src/askpass.rs` | 每操作的 AskPass socket、当前进程 helper 模式与原生凭据输入窗口 |
 | `src/main.rs` | 原生后端入口；指定窗口标题、初始尺寸与平台分支 |
 | `src/brand.rs` | 产品名、版本、构建号与存储目录名 |
 | `src/design/` | 颜色 token（`mod.rs`）、几何与原生刻度（`metrics.rs`）、图标 sprite（`icons.rs`） |
@@ -89,6 +90,10 @@ Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并�
 ## Git 可执行文件
 
 客户端启动时从 `store::Settings` 读取 Git 选择。启用 `use_system_git` 时，应用直接启动的 Git 命令使用 App 启动环境 PATH 中解析的 `git`；关闭时使用 `git_path`。打开的仓库标签页保存当前 executable 快照，设置变更后新操作使用新选择，已经启动的子进程继续运行原 executable。自定义路径无法启动时操作返回 Git 错误，不会回退到 PATH。该选择适用于仓库操作、克隆、初始化、同步、子模块、工作树和版本探测；不会传给 hooks、credential helper 等 Git 启动的外部程序。
+
+## Git 凭据提示
+
+HTTP(S) 克隆、同步、远端推送/分支操作、子模块更新与 Agent 发起的同步动作，为当前操作创建单独的短路径 Unix socket。Git 仍先调用本机 credential helper；只有 helper 未提供可用凭据且 Git 实际启动 AskPass 时，App 才打开原生输入窗口。用户名明文显示，密码、令牌与 SSH passphrase 使用遮罩输入。取消会中止当前 Git 操作；回答只通过 AskPass helper 的 stdout 返回给 Git，不写入设置、日志、URL 或命令参数。凭据是否保存、缓存与再次使用由 Git credential helper 决定。并发操作的请求与回答按 socket 隔离。
 
 ## 测试
 
