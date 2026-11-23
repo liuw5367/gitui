@@ -311,11 +311,13 @@
       "authored": "Authored",
       "committer": "Committer",
       "committed": "Committed",
-      "refs": "Branches and refs"
+      "refs": "Branches and refs",
+      "committedBy": "%{identity} committed on %{date}"
     },
     "atCommit": "At commit %{short}",
     "empty": "No files",
     "infoLoading": "Loading commit info…",
+    "infoUnavailable": "Could not load commit info.",
     "copyPath": "Copy Path",
     "openInEditor": "Open in Editor",
     "source": "Source",

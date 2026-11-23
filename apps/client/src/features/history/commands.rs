@@ -4,7 +4,7 @@
 //! 这里只调本功能的 `ops` 并更新状态，不写布局。
 
 use super::ops;
-use super::state::{CommitLoadRequest, HistoryState, MultiCommitFiles, MultiCommitSelection};
+use super::state::{CommitLoadRequest, HistoryState, MultiCommitData, MultiCommitSelection};
 use crate::features::SessionHandle;
 use crate::features::commit::commands::CommitCommands;
 use crate::features::recovery::commands::RecoveryCommands;
@@ -60,7 +60,7 @@ impl HistoryCommands {
         tab.compare_target = None;
         tab.compare_worktree = false;
         self.state.multi_commit_selection.set(None);
-        self.state.multi_commit_files.set(None);
+        self.state.multi_commit_data.set(None);
         self.mode.set(crate::Mode::History);
         if reuse_current_selection {
             tab.show_commit_diff = false;
@@ -91,7 +91,7 @@ impl HistoryCommands {
         });
     }
 
-    /// ⌘ 点击在 History 中增减 commit 多选，并在后台合并右侧文件树统计。
+    /// ⌘ 点击在 History 中增减 commit 多选，并在后台读取合并文件统计与逐项详情。
     pub(crate) fn toggle_multi_commit_selection(&self, tab_id: u64, sha: String) {
         let active = self.session.active.get_untracked();
         let tabs = self.session.tabs.get_untracked();
@@ -128,7 +128,7 @@ impl HistoryCommands {
         }
         if shas.is_empty() {
             self.state.multi_commit_selection.set(None);
-            self.state.multi_commit_files.set(None);
+            self.state.multi_commit_data.set(None);
             return;
         }
         shas.sort_by_key(|selected| {
@@ -143,10 +143,11 @@ impl HistoryCommands {
         self.state
             .multi_commit_selection
             .set(Some(selection.clone()));
-        self.state.multi_commit_files.set(Some(MultiCommitFiles {
+        self.state.multi_commit_data.set(Some(MultiCommitData {
             tab_id,
             shas: selection.shas.clone(),
             files: Vec::new(),
+            details: Vec::new(),
             loading: true,
             failed: false,
         }));
@@ -162,10 +163,11 @@ impl HistoryCommands {
         let Some(tab) = tabs.get(active).filter(|tab| tab.id == selection.tab_id) else {
             return;
         };
-        self.state.multi_commit_files.set(Some(MultiCommitFiles {
+        self.state.multi_commit_data.set(Some(MultiCommitData {
             tab_id: selection.tab_id,
             shas: selection.shas.clone(),
             files: Vec::new(),
+            details: Vec::new(),
             loading: true,
             failed: false,
         }));
@@ -183,7 +185,7 @@ impl HistoryCommands {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let result =
-                ops::load_multi_commit_files(path.as_str(), &git_executable, shas.as_slice());
+                ops::load_multi_commit_data(path.as_str(), &git_executable, shas.as_slice());
             let _ = sender.send(result);
         });
         let state = self.state.clone();
@@ -195,14 +197,21 @@ impl HistoryCommands {
                             if state.multi_commit_selection.get_untracked().as_ref()
                                 == Some(&selection)
                             {
-                                let (files, failed) = match result {
-                                    Ok(files) => (files, false),
-                                    Err(_) => (Vec::new(), true),
+                                let (files, details, failed) = match result {
+                                    Ok((files, details)) => (files, details, false),
+                                    Err(_) => (
+                                        Vec::new(),
+                                        std::iter::repeat_with(|| None)
+                                            .take(selection.shas.len())
+                                            .collect(),
+                                        true,
+                                    ),
                                 };
-                                state.multi_commit_files.set(Some(MultiCommitFiles {
+                                state.multi_commit_data.set(Some(MultiCommitData {
                                     tab_id,
                                     shas: selection.shas,
                                     files,
+                                    details,
                                     loading: false,
                                     failed,
                                 }));

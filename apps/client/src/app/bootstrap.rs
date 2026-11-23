@@ -421,7 +421,7 @@ pub(crate) fn app() -> impl IntoElement {
         compare_refs_draft: signal(features::history::state::CompareRefsDraft::default()),
         fast_selection: signal(None),
         multi_commit_selection: signal(None),
-        multi_commit_files: signal(None),
+        multi_commit_data: signal(None),
         commit_info_loading: signal(Vec::new()),
         commit_load_queue: std::sync::Arc::default(),
         table_ref: component_ref(),

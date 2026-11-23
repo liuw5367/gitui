@@ -37,10 +37,12 @@ pub(crate) struct MultiCommitSelection {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MultiCommitFiles {
+pub(crate) struct MultiCommitData {
     pub(crate) tab_id: u64,
     pub(crate) shas: Vec<String>,
     pub(crate) files: Vec<DiffStat>,
+    /// 与 `shas` 顺序对应；单个提交详情读取失败时该项为 `None`。
+    pub(crate) details: Vec<Option<git::CommitDetails>>,
     pub(crate) loading: bool,
     pub(crate) failed: bool,
 }
@@ -116,8 +118,8 @@ pub(crate) struct HistoryState {
     pub(crate) fast_selection: Signal<Option<(u64, String)>>,
     /// ⌘ 点击选中的提交，按仓库标签页隔离。
     pub(crate) multi_commit_selection: Signal<Option<MultiCommitSelection>>,
-    /// 多选提交对应的合并文件统计，异步结果需与 `multi_commit_selection` 匹配。
-    pub(crate) multi_commit_files: Signal<Option<MultiCommitFiles>>,
+    /// 多选提交的合并文件统计与逐项详情，异步结果需与 `multi_commit_selection` 匹配。
+    pub(crate) multi_commit_data: Signal<Option<MultiCommitData>>,
     /// 当前正在后台读取信息的提交（标签页 ID 与完整 SHA）。
     pub(crate) commit_info_loading: Signal<Vec<(u64, String)>>,
     /// 串行读取提交详情；每个仓库标签页最多保留一个最新等待项。

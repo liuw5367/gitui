@@ -259,18 +259,20 @@ pub(crate) fn aggregate_commit_file_stats(
     return files.into_values().collect();
 }
 
-/// 在线程中读取多个提交的文件统计并合并重复路径。
-pub(crate) fn load_multi_commit_files(
+/// 在线程中读取多个提交的文件统计与元信息，并合并重复路径。
+pub(crate) fn load_multi_commit_data(
     path: &str,
     executable: &GitExecutable,
     shas: &[String],
-) -> Result<Vec<domain::DiffStat>, String> {
+) -> Result<(Vec<domain::DiffStat>, Vec<Option<git::CommitDetails>>), String> {
     let repo = Repo::open_with_executable(path, executable).map_err(|error| error.detail())?;
     let mut commit_files = Vec::with_capacity(shas.len());
+    let mut details = Vec::with_capacity(shas.len());
     for sha in shas {
         commit_files.push(repo.numstat(sha).map_err(|error| error.detail())?);
+        details.push(repo.commit_details(sha).ok());
     }
-    return Ok(aggregate_commit_file_stats(commit_files));
+    return Ok((aggregate_commit_file_stats(commit_files), details));
 }
 
 pub(crate) fn apply_commit_selection(tab: &mut Tab, data: CommitSelectionData) {

@@ -1,7 +1,7 @@
-//! 提交检查器（设计板 08 / 18）：提交头、可滚动文件列表与固定高度的提交信息区。
+//! 提交检查器（设计板 08 / 18）：底部提交信息、可滚动文件列表与固定高度的 Info 区。
 //!
 //! - 文件列表按目录展示提交改动（numstat，含 +/−），可滚动并提供路径动作；
-//! - 提交信息固定在底部，字段可滚动、可选择，分支与引用排在首位；
+//! - 提交头与精简元信息集中在底部 Info，可滚动、可选择，分支与引用列在其后；
 //! - 单文件 Diff 顶部工具栏提供 Blame 入口，进入统一的 board 19 主区视图。
 //!
 //! 宽度由工作区分栏调整，初始宽度与 Commit 面板一致。入口 `inspector` 收本功能的状态与用例；
@@ -38,51 +38,19 @@ pub(crate) fn inspector(
     let commit_info_loading = state.commit_info_loading;
     let fast_selection = state.fast_selection;
     let multi_commit_selection = state.multi_commit_selection;
-    let multi_commit_files = state.multi_commit_files;
+    let multi_commit_data = state.multi_commit_data;
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let select_file: std::sync::Arc<dyn Fn(String)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |id: String| cmd.select_tree_path(id))
     };
     let commit = tab.selected_commit().cloned();
-    let now = store::now_unix();
-    let summary = commit
-        .as_ref()
-        .map(|commit| commit.summary.clone())
-        .unwrap_or_default();
-    let author = commit
-        .as_ref()
-        .map(|commit| commit.author.clone())
-        .unwrap_or_default();
-    let author_email = commit
-        .as_ref()
-        .map(|commit| commit.author_email.clone())
-        .unwrap_or_default();
-    let author_identity = if author_email.is_empty() {
-        author.clone()
-    } else {
-        format!("{author} <{author_email}>")
-    };
-    let short = commit
-        .as_ref()
-        .map(|commit| commit.short.clone())
-        .unwrap_or_default();
-    let timestamp = commit
-        .as_ref()
-        .and_then(|commit| commit.date.parse::<i64>().ok())
-        .unwrap_or(0);
     let notice = cmd.notice;
     let sha = commit
         .as_ref()
         .map(|commit| commit.sha.clone())
         .unwrap_or_default();
     let has_commit = commit.is_some();
-    let initials = author
-        .split_whitespace()
-        .filter_map(|part| part.chars().next())
-        .take(2)
-        .collect::<String>()
-        .to_uppercase();
     let tab_for_info = tab.clone();
     let tab_id = tab.id;
     let repo_path = tab.path.clone();
@@ -105,92 +73,6 @@ pub(crate) fn inspector(
         .child(
             view()
                 .w_full()
-                .px(px(12.0))
-                .py(px(12.0))
-                .flex_col()
-                .gap(px(8.0))
-                .border_b_1()
-                .border_color(move || design::line())
-                .child(
-                    text(summary)
-                        .text_size(px(crate::ui::BODY))
-                        .font_weight(FontWeight(600))
-                        .line_height(px(crate::ui::BODY_LINE))
-                        .text_color(move || design::text())
-                        .number_of_lines(2)
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    view()
-                        .w_full()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(crate::ui::GAP_SM))
-                        .child(
-                            view()
-                                .w(px(24.0))
-                                .h(px(24.0))
-                                .flex_shrink_0()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(12.0))
-                                .bg(move || design::token("avatar-bg"))
-                                .child(
-                                    text(initials)
-                                        .text_size(px(crate::ui::META))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(move || design::token("avatar-fg")),
-                                ),
-                        )
-                        .child(
-                            view()
-                                .flex_1()
-                                .min_w_0()
-                                .flex_col()
-                                .child(
-                                    text(author_identity)
-                                        .text_size(px(crate::ui::SECONDARY))
-                                        .line_height(px(crate::ui::SECONDARY_LINE))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(move || design::text2())
-                                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                                )
-                                .child(
-                                    text(move || {
-                                        crate::dates::format(
-                                            language.get().as_str(),
-                                            timestamp,
-                                            now,
-                                        )
-                                    })
-                                    .text_size(px(crate::ui::META))
-                                    .line_height(px(crate::ui::SECONDARY_LINE))
-                                    .text_color(move || design::text3()),
-                                ),
-                        )
-                        .child(
-                            text(short)
-                                .text_size(px(crate::ui::CODE))
-                                .text_color(design::text2),
-                        )
-                        .child(crate::ui::button::icon_button(
-                            "copy",
-                            {
-                                let language = language;
-                                move || i18n::t(language.get().as_str(), "files.copySha")
-                            },
-                            crate::ui::button::ButtonSize::Small,
-                            !has_commit,
-                            {
-                                let sha = sha.clone();
-                                move || crate::shared::os::copy_text(notice, language, sha.clone())
-                            },
-                        )),
-                ),
-        )
-        .child(
-            view()
-                .w_full()
                 .flex_1()
                 .min_h_0()
                 .child(dynamic(move || -> AnyElement {
@@ -198,9 +80,9 @@ pub(crate) fn inspector(
                         .get()
                         .filter(|selection| selection.tab_id == tab_id);
                     if let Some(selection) = selection {
-                        let data = multi_commit_files
+                        let data = multi_commit_data
                             .get()
-                            .filter(|files| files.tab_id == tab_id && files.shas == selection.shas);
+                            .filter(|data| data.tab_id == tab_id && data.shas == selection.shas);
                         let (files, loading, failed) = data
                             .map(|data| (data.files, data.loading, data.failed))
                             .unwrap_or_else(|| (Vec::new(), true, false));
@@ -238,16 +120,34 @@ pub(crate) fn inspector(
                 })),
         )
         .child(dynamic(move || -> AnyElement {
-            let loading =
+            let selection = multi_commit_selection
+                .get()
+                .filter(|selection| selection.tab_id == tab_for_info.id);
+            let data = multi_commit_data.get().filter(|data| {
+                selection.as_ref().is_some_and(|selection| {
+                    data.tab_id == tab_for_info.id && data.shas == selection.shas
+                })
+            });
+            let loading = if selection.is_some() {
+                data.as_ref().is_none_or(|data| data.loading)
+            } else {
                 tab_for_info.selected_commit().is_some_and(|commit| {
                     fast_selection.get().as_ref().is_some_and(|(tab_id, sha)| {
                         *tab_id == tab_for_info.id && sha == &commit.sha
                     }) || commit_info_loading
                         .get()
                         .contains(&(tab_for_info.id, commit.sha.clone()))
-                });
-            let fields = info_fields(language, tab_for_info.clone(), loading);
-            return view()
+                })
+            };
+            let fields = info_fields(
+                language,
+                tab_for_info.clone(),
+                selection.clone(),
+                data,
+                loading,
+                notice,
+            );
+            let panel = view()
                 .w_full()
                 .h(px(INFO_PANEL_H))
                 .min_h_0()
@@ -255,10 +155,13 @@ pub(crate) fn inspector(
                 .flex_col()
                 .border_t_1()
                 .border_color(move || design::line())
-                .child(scroll().w_full().flex_1().min_h_0().child(fields))
+                .child(scroll().w_full().flex_1().min_h_0().child(fields));
+            if selection.is_some() {
+                return panel.into_element();
+            }
+            return panel
                 .child(info_actions(
                     language,
-                    notice,
                     recovery.clone(),
                     sha.clone(),
                     !has_commit,
@@ -905,51 +808,300 @@ fn flat_file_list(
     .into_element()
 }
 
-fn info_fields(language: Signal<SharedString>, tab: Tab, loading: bool) -> AnyElement {
-    let Some(details) = tab.details.clone() else {
-        let key = if loading {
-            "files.infoLoading"
-        } else {
-            "files.empty"
-        };
+fn info_fields(
+    language: Signal<SharedString>,
+    tab: Tab,
+    selection: Option<super::state::MultiCommitSelection>,
+    data: Option<super::state::MultiCommitData>,
+    loading: bool,
+    notice: Signal<Option<String>>,
+) -> AnyElement {
+    let mut entries = Vec::new();
+    let local_branches = &tab.refs.branches;
+    let remote_branches = &tab.refs.remote_branches;
+    if let Some(selection) = selection {
+        let mut missing_details = false;
+        for sha in &selection.shas {
+            let Some(commit) = tab
+                .commits
+                .iter()
+                .find(|commit| &commit.sha == sha)
+                .cloned()
+            else {
+                continue;
+            };
+            let details = data
+                .as_ref()
+                .and_then(|data| data.shas.iter().position(|selected| selected == sha))
+                .and_then(|index| data.as_ref()?.details.get(index).cloned().flatten());
+            missing_details |= details.is_none();
+            entries.push(commit_info_entry(
+                language,
+                commit,
+                details,
+                local_branches,
+                remote_branches,
+                notice,
+            ));
+        }
+        if loading {
+            entries.push(info_status(language, "files.infoLoading"));
+        } else if missing_details {
+            entries.push(info_status(language, "files.infoUnavailable"));
+        }
+    } else if let Some(commit) = tab.selected_commit().cloned() {
+        let details = tab
+            .details
+            .clone()
+            .filter(|details| details.sha == commit.sha);
+        let missing_details = details.is_none();
+        entries.push(commit_info_entry(
+            language,
+            commit,
+            details,
+            local_branches,
+            remote_branches,
+            notice,
+        ));
+        if missing_details {
+            let key = if loading {
+                "files.infoLoading"
+            } else {
+                "files.infoUnavailable"
+            };
+            entries.push(info_status(language, key));
+        }
+    } else {
         return view()
             .w_full()
             .h_full()
             .items_center()
             .justify_center()
             .child(
-                text(move || i18n::t(language.get().as_str(), key))
+                text(move || i18n::t(language.get().as_str(), "files.empty"))
                     .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),
             )
             .into_element();
-    };
-    let branches = tab
-        .selected_commit()
-        .filter(|commit| commit.sha == details.sha)
-        .map(|commit| commit.branches.clone())
-        .unwrap_or_default();
-    let refs = ordered_commit_refs(
-        &details.refs,
-        &branches,
-        &tab.refs.branches,
-        &tab.refs.remote_branches,
-    );
-    let refs = if refs.is_empty() {
-        "—".to_string()
-    } else {
-        refs.join(", ")
-    };
-    return info_values(language, details, refs);
+    }
+    return view()
+        .w_full()
+        .px(px(12.0))
+        .py(px(8.0))
+        .flex_col()
+        .selectable(true)
+        .child(entries)
+        .into_element();
 }
 
+fn commit_info_entry(
+    language: Signal<SharedString>,
+    commit: domain::Commit,
+    details: Option<git::CommitDetails>,
+    local_branches: &[git::Branch],
+    remote_branches: &[git::RemoteBranch],
+    notice: Signal<Option<String>>,
+) -> AnyElement {
+    let refs = details
+        .as_ref()
+        .map(|details| details.refs.as_slice())
+        .unwrap_or(commit.refs.as_slice());
+    let references = ordered_commit_refs(refs, &commit.branches, local_branches, remote_branches);
+    let references = if references.is_empty() {
+        "—".to_string()
+    } else {
+        references.join(", ")
+    };
+    let mut entry = view()
+        .w_full()
+        .flex_col()
+        .selectable(true)
+        .child(commit_header(language, notice, commit))
+        .child(info_ref_value(language, references));
+    if let Some(details) = details {
+        if details.author != details.committer
+            || details.author_email != details.committer_email
+            || details.authored_at != details.committed_at
+        {
+            let identity = commit_identity(&details.committer, &details.committer_email);
+            let date = crate::dates::format(
+                language.get_untracked().as_str(),
+                details.committed_at,
+                store::now_unix(),
+            );
+            entry = entry.child(
+                text(move || {
+                    i18n::with_arguments(
+                        language.get_untracked().as_str(),
+                        "files.info.committedBy",
+                        &[("identity", identity.clone()), ("date", date.clone())],
+                    )
+                })
+                .w_full()
+                .px(px(12.0))
+                .py(px(3.0))
+                .select_text()
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
+                .text_color(move || design::text3()),
+            );
+        }
+    }
+    return entry.into_element();
+}
+
+fn commit_header(
+    language: Signal<SharedString>,
+    notice: Signal<Option<String>>,
+    commit: domain::Commit,
+) -> AnyElement {
+    let initials = commit
+        .author
+        .split_whitespace()
+        .filter_map(|part| part.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase();
+    let author_identity = commit_identity(&commit.author, &commit.author_email);
+    let timestamp = commit.date.parse::<i64>().unwrap_or(0);
+    let sha = commit.sha.clone();
+    let short = commit.short.clone();
+    return view()
+        .w_full()
+        .px(px(12.0))
+        .py(px(12.0))
+        .flex_col()
+        .gap(px(8.0))
+        .border_b_1()
+        .border_color(move || design::line())
+        .child(
+            text(commit.summary)
+                .text_size(px(crate::ui::BODY))
+                .font_weight(FontWeight(600))
+                .line_height(px(crate::ui::BODY_LINE))
+                .text_color(move || design::text())
+                .number_of_lines(2)
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+        .child(
+            view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .child(
+                    view()
+                        .w(px(24.0))
+                        .h(px(24.0))
+                        .flex_shrink_0()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(12.0))
+                        .bg(move || design::token("avatar-bg"))
+                        .child(
+                            text(initials)
+                                .text_size(px(crate::ui::META))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(move || design::token("avatar-fg")),
+                        ),
+                )
+                .child(
+                    view()
+                        .flex_1()
+                        .min_w_0()
+                        .flex_col()
+                        .child(
+                            text(author_identity)
+                                .text_size(px(crate::ui::SECONDARY))
+                                .line_height(px(crate::ui::SECONDARY_LINE))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(move || design::text2())
+                                .text_overflow(nsh_core::EllipsizeMode::Tail),
+                        )
+                        .child(
+                            text(move || {
+                                crate::dates::format(
+                                    language.get().as_str(),
+                                    timestamp,
+                                    store::now_unix(),
+                                )
+                            })
+                            .text_size(px(crate::ui::META))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(move || design::text3()),
+                        ),
+                )
+                .child(
+                    text(short)
+                        .text_size(px(crate::ui::CODE))
+                        .text_color(design::text2),
+                )
+                .child(crate::ui::button::icon_button(
+                    "copy",
+                    {
+                        let language = language;
+                        move || i18n::t(language.get().as_str(), "files.copySha")
+                    },
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || crate::shared::os::copy_text(notice, language, sha.clone()),
+                )),
+        )
+        .into_element();
+}
+
+fn info_ref_value(language: Signal<SharedString>, refs: String) -> AnyElement {
+    return view()
+        .w_full()
+        .px(px(12.0))
+        .py(px(3.0))
+        .flex_col()
+        .gap(px(1.0))
+        .child(
+            text(move || i18n::t(language.get_untracked().as_str(), "files.info.refs"))
+                .text_size(px(crate::ui::SECONDARY))
+                .line_height(px(crate::ui::SECONDARY_LINE))
+                .text_color(move || design::text3()),
+        )
+        .child(
+            text(refs)
+                .w_full()
+                .min_w_0()
+                .select_text()
+                .text_size(px(crate::ui::CODE))
+                .line_height(px(14.0))
+                .text_color(move || design::text()),
+        )
+        .into_element();
+}
+
+fn info_status(language: Signal<SharedString>, key: &'static str) -> AnyElement {
+    return view()
+        .w_full()
+        .px(px(12.0))
+        .py(px(4.0))
+        .child(
+            text(move || i18n::t(language.get().as_str(), key))
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::text3()),
+        )
+        .into_element();
+}
+
+fn commit_identity(name: &str, email: &str) -> String {
+    if email.is_empty() {
+        return name.to_string();
+    }
+    return format!("{name} <{email}>");
+}
+
+/// Reflog 检查器仍展示完整的只读提交快照；History 提交检查器使用精简字段。
 fn info_values(
     language: Signal<SharedString>,
     details: git::CommitDetails,
     refs: String,
 ) -> AnyElement {
     let now = store::now_unix();
-    let mut rows: Vec<AnyElement> = Vec::new();
     let parents = if details.parents.is_empty() {
         "—".to_string()
     } else {
@@ -967,7 +1119,7 @@ fn info_values(
         ("files.info.parents", parents),
         (
             "files.info.author",
-            format!("{} <{}>", details.author, details.author_email),
+            commit_identity(&details.author, &details.author_email),
         ),
         (
             "files.info.authored",
@@ -975,15 +1127,16 @@ fn info_values(
         ),
         (
             "files.info.committer",
-            format!("{} <{}>", details.committer, details.committer_email),
+            commit_identity(&details.committer, &details.committer_email),
         ),
         (
             "files.info.committed",
             crate::dates::format(language.get_untracked().as_str(), details.committed_at, now),
         ),
     ];
-    for (key, value) in fields {
-        rows.push(
+    let rows = fields
+        .into_iter()
+        .map(|(key, value)| {
             view()
                 .w_full()
                 .py(px(3.0))
@@ -1004,22 +1157,21 @@ fn info_values(
                         .line_height(px(14.0))
                         .text_color(move || design::text()),
                 )
-                .into_element(),
-        );
-    }
-    let values = view()
+                .into_element()
+        })
+        .collect::<Vec<_>>();
+    return view()
         .w_full()
         .px(px(12.0))
         .py(px(8.0))
         .flex_col()
         .selectable(true)
-        .child(rows);
-    return values.into_element();
+        .child(rows)
+        .into_element();
 }
 
 fn info_actions(
     language: Signal<SharedString>,
-    notice: Signal<Option<String>>,
     recovery: RecoveryCommands,
     sha_for_actions: String,
     disabled: bool,
@@ -1060,20 +1212,6 @@ fn info_actions(
                 let revert_commit = recovery.clone();
                 let sha = sha_for_actions.clone();
                 move || revert_commit.revert_commit(sha.clone())
-            },
-        ))
-        .child(view().flex_1())
-        .child(crate::ui::button::button(
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), "files.copySha")
-            },
-            crate::ui::button::ButtonVariant::Secondary,
-            crate::ui::button::ButtonSize::Small,
-            disabled,
-            {
-                let sha = sha_for_actions.clone();
-                move || crate::shared::os::copy_text(notice, language, sha.clone())
             },
         ))
         .into_element();
