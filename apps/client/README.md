@@ -86,6 +86,10 @@ Merge 冲突页从 Git index 的 stage 1/2/3 读取 Base、Ours、Theirs，并�
 - 存储：会话、成功打开过的最近仓库、Git 扫描发现结果及命令面板的扫描搜索资格、设置、变更清单、快捷键、Agent 策略与审计由 `store` 读写；扫描结果与最近打开历史分开保存。欢迎页查询全部扫描结果，命令面板查询由 Git 设置启用的扫描结果。文件格式见 [crates/store/README.md](../../crates/store/README.md)。
 - 截图验收：`tools/shots.sh` 用重定向的 HOME 启动应用并截图；产物写入 `files.local/shots/`（已被 `.gitignore` 排除，不提交）。`GITUI_REPO`、`GITUI_MODE`、`GITUI_SYNC`、`GITUI_FORM`、`GITUI_PALETTE`、`GITUI_SETTINGS`、`GITUI_INSPECTOR`、`GITUI_GALLERY`、`GITUI_NO_WELCOME`、`GITUI_WELCOME_FORM`、`GITUI_WELCOME_STATE`、`GITUI_WELCOME_RECENT` 可以直接进入指定页面或浮层，完整列表见脚本头注释。`GITUI_MODE=reflog` 会打开 Reflog 并选中首条记录，便于检查右侧提交信息；`GITUI_MODE=blame` 会在仓库标签页里预选第一个提交文件，便于检查 Board 19。这些开关**只在 debug 构建里读取**（`src/acceptance.rs`）：`nsh run` 是 debug，读；`nsh package` 的发布二进制不读任何 `GITUI_*`。
 
+## Git 可执行文件
+
+客户端启动时从 `store::Settings` 读取 Git 选择。启用 `use_system_git` 时，应用直接启动的 Git 命令使用 App 启动环境 PATH 中解析的 `git`；关闭时使用 `git_path`。打开的仓库标签页保存当前 executable 快照，设置变更后新操作使用新选择，已经启动的子进程继续运行原 executable。自定义路径无法启动时操作返回 Git 错误，不会回退到 PATH。该选择适用于仓库操作、克隆、初始化、同步、子模块、工作树和版本探测；不会传给 hooks、credential helper 等 Git 启动的外部程序。
+
 ## 测试
 
 ```sh

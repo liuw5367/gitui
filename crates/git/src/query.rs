@@ -3,13 +3,20 @@
 use domain::{GitError, RepoSummary};
 use std::path::{Path, PathBuf};
 
-use crate::exec::run_git;
+use crate::exec::{
+    GitExecutable, run_git_combined_with_executable, run_git_combined_with_executable_env,
+    run_git_full_with, run_git_with,
+};
 use crate::parse::parse_track;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 /// 一个已经校验过的仓库。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Repo {
     pub(crate) root: PathBuf,
+    pub(crate) executable: GitExecutable,
 }
 
 impl Repo {
@@ -18,6 +25,11 @@ impl Repo {
     /// `path` 不存在或不可读时返回 [`GitError::Unreadable`]；存在但不是仓库时
     /// 返回 [`GitError::NotARepository`]。
     pub fn open(path: &str) -> Result<Repo, GitError> {
+        return Self::open_with_executable(path, &GitExecutable::system());
+    }
+
+    /// 用指定 Git 可执行文件校验工作树并构造仓库句柄。
+    pub fn open_with_executable(path: &str, executable: &GitExecutable) -> Result<Repo, GitError> {
         let path = Path::new(path);
         if !path.exists() {
             return Err(GitError::Unreadable {
@@ -27,7 +39,7 @@ impl Repo {
         }
         // 在非仓库目录里 `rev-parse --show-toplevel` 以非零退出，这是探测的
         // 正常结果；只有无法启动 Git 才向上传递。
-        let probe = match run_git(path, &["rev-parse", "--show-toplevel"]) {
+        let probe = match run_git_with(executable, path, &["rev-parse", "--show-toplevel"]) {
             Ok(output) => output,
             Err(GitError::CommandFailed { .. }) => {
                 return Err(GitError::NotARepository {
@@ -44,7 +56,28 @@ impl Repo {
         }
         return Ok(Repo {
             root: PathBuf::from(root),
+            executable: executable.clone(),
         });
+    }
+
+    pub(crate) fn run_git(&self, args: &[&str]) -> Result<Vec<u8>, GitError> {
+        return run_git_with(&self.executable, &self.root, args);
+    }
+
+    pub(crate) fn run_git_full(&self, args: &[&str]) -> Result<Vec<u8>, GitError> {
+        return run_git_full_with(&self.executable, &self.root, args);
+    }
+
+    pub(crate) fn run_git_combined(&self, args: &[&str]) -> Result<String, GitError> {
+        return run_git_combined_with_executable(&self.executable, &self.root, args);
+    }
+
+    pub(crate) fn run_git_combined_with_env(
+        &self,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Result<String, GitError> {
+        return run_git_combined_with_executable_env(&self.executable, &self.root, args, envs);
     }
 
     /// 工作树根目录的绝对路径。
@@ -79,13 +112,13 @@ impl Repo {
     /// 空仓库还没有提交，`rev-parse --abbrev-ref HEAD` 会失败；这时用
     /// `symbolic-ref` 读出尚未落地的分支名（刚 `git init` 的仓库要能显示 `main`）。
     pub fn abbrev_branch(&self) -> Result<String, GitError> {
-        if let Ok(output) = run_git(&self.root, &["rev-parse", "--abbrev-ref", "HEAD"]) {
+        if let Ok(output) = self.run_git(&["rev-parse", "--abbrev-ref", "HEAD"]) {
             let branch = String::from_utf8_lossy(&output).trim().to_string();
             if !branch.is_empty() {
                 return Ok(branch);
             }
         }
-        let output = run_git(&self.root, &["symbolic-ref", "--short", "HEAD"])?;
+        let output = self.run_git(&["symbolic-ref", "--short", "HEAD"])?;
         let branch = String::from_utf8_lossy(&output).trim().to_string();
         return Ok(if branch.is_empty() {
             "HEAD".to_string()
@@ -97,17 +130,17 @@ impl Repo {
     /// HEAD 当前指向什么（设计板 16 的 detached / 空仓库状态）。
     pub fn head_state(&self) -> HeadState {
         // 有符号引用 → 在某个分支上；否则是游离头。仓库还没有提交时两者都不是。
-        if let Ok(output) = run_git(&self.root, &["symbolic-ref", "--quiet", "--short", "HEAD"]) {
+        if let Ok(output) = self.run_git(&["symbolic-ref", "--quiet", "--short", "HEAD"]) {
             let name = String::from_utf8_lossy(&output).trim().to_string();
             if !name.is_empty() {
                 // 分支存在但还没有提交：`rev-parse HEAD` 会失败。
-                if run_git(&self.root, &["rev-parse", "--verify", "HEAD"]).is_err() {
+                if self.run_git(&["rev-parse", "--verify", "HEAD"]).is_err() {
                     return HeadState::Unborn { branch: name };
                 }
                 return HeadState::Branch(name);
             }
         }
-        if let Ok(output) = run_git(&self.root, &["rev-parse", "--verify", "HEAD"]) {
+        if let Ok(output) = self.run_git(&["rev-parse", "--verify", "HEAD"]) {
             let sha = String::from_utf8_lossy(&output).trim().to_string();
             if !sha.is_empty() {
                 return HeadState::Detached { sha };
@@ -120,13 +153,11 @@ impl Repo {
 
     /// 与上游的 `(ahead, behind)`；没有上游时返回 `(0, 0)`。
     pub fn ahead_behind(&self) -> (u32, u32) {
-        let output = match run_git(
-            &self.root,
-            &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
-        ) {
-            Ok(output) => output,
-            Err(_) => return (0, 0),
-        };
+        let output =
+            match self.run_git(&["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]) {
+                Ok(output) => output,
+                Err(_) => return (0, 0),
+            };
         let text = String::from_utf8_lossy(&output);
         let mut parts = text.split_whitespace();
         let behind = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
@@ -136,7 +167,7 @@ impl Repo {
 
     /// 读取一条配置（`git config --get <key>`）；没有该键时返回 `None`。
     pub fn config_get(&self, key: &str) -> Option<String> {
-        let output = run_git(&self.root, &["config", "--get", key]).ok()?;
+        let output = self.run_git(&["config", "--get", key]).ok()?;
         let value = String::from_utf8_lossy(&output).trim().to_string();
         if value.is_empty() {
             return None;
@@ -148,7 +179,7 @@ impl Repo {
     ///
     /// 与 `config_get` 的区别：不回落全局，用于「本仓库是否覆盖了身份」这种判断。
     pub fn config_get_local(&self, key: &str) -> Option<String> {
-        let output = run_git(&self.root, &["config", "--local", "--get", key]).ok()?;
+        let output = self.run_git(&["config", "--local", "--get", key]).ok()?;
         let value = String::from_utf8_lossy(&output).trim().to_string();
         if value.is_empty() {
             return None;
@@ -161,7 +192,7 @@ impl Repo {
         let names = self.lines(&["remote"])?;
         let mut pairs: Vec<(String, String)> = Vec::new();
         for name in names {
-            let url = run_git(&self.root, &["remote", "get-url", name.as_str()])?;
+            let url = self.run_git(&["remote", "get-url", name.as_str()])?;
             pairs.push((name, String::from_utf8_lossy(&url).trim().to_string()));
         }
         return Ok(pairs);
@@ -298,8 +329,13 @@ pub struct GitInfo {
 
 /// 读取本机 Git 版本与执行路径；找不到 Git 时返回错误。
 pub fn info() -> Result<GitInfo, GitError> {
-    let version = run_git(Path::new("."), &["--version"])?;
-    let exec_path = run_git(Path::new("."), &["--exec-path"])?;
+    return info_with(&GitExecutable::system());
+}
+
+/// 读取指定 Git 的版本与执行路径。
+pub fn info_with(executable: &GitExecutable) -> Result<GitInfo, GitError> {
+    let version = run_git_with(executable, Path::new("."), &["--version"])?;
+    let exec_path = run_git_with(executable, Path::new("."), &["--exec-path"])?;
     return Ok(GitInfo {
         version: String::from_utf8_lossy(&version).trim().to_string(),
         exec_path: String::from_utf8_lossy(&exec_path).trim().to_string(),
@@ -308,7 +344,13 @@ pub fn info() -> Result<GitInfo, GitError> {
 
 /// 读取某个仓库的 `credential.helper`；未配置时为空串。
 pub fn credential_helper(repo: &Path) -> Result<String, GitError> {
-    let output = run_git(repo, &["config", "--get", "credential.helper"]).unwrap_or_default();
+    return credential_helper_with(&GitExecutable::system(), repo);
+}
+
+/// 用指定 Git 读取某个仓库的 `credential.helper`；未配置时为空串。
+pub fn credential_helper_with(executable: &GitExecutable, repo: &Path) -> Result<String, GitError> {
+    let output = run_git_with(executable, repo, &["config", "--get", "credential.helper"])
+        .unwrap_or_default();
     return Ok(String::from_utf8_lossy(&output).trim().to_string());
 }
 
@@ -345,14 +387,11 @@ impl Repo {
     }
 
     fn branches(&self) -> Result<Vec<Branch>, GitError> {
-        let output = run_git(
-            &self.root,
-            &[
-                "for-each-ref",
-                "--format=%(refname:short)%1f%(HEAD)%1f%(upstream:track)",
-                "refs/heads",
-            ],
-        )?;
+        let output = self.run_git(&[
+            "for-each-ref",
+            "--format=%(refname:short)%1f%(HEAD)%1f%(upstream:track)",
+            "refs/heads",
+        ])?;
         let mut branches = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let mut fields = line.split('\u{1f}');
@@ -379,14 +418,11 @@ impl Repo {
     }
 
     fn remote_branches(&self, remotes: &[String]) -> Result<Vec<RemoteBranch>, GitError> {
-        let output = run_git(
-            &self.root,
-            &[
-                "for-each-ref",
-                "--format=%(refname)%1f%(symref)",
-                "refs/remotes",
-            ],
-        )?;
+        let output = self.run_git(&[
+            "for-each-ref",
+            "--format=%(refname)%1f%(symref)",
+            "refs/remotes",
+        ])?;
         let mut branches = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let mut fields = line.split('\u{1f}');
@@ -418,7 +454,7 @@ impl Repo {
     }
 
     fn stashes(&self) -> Result<Vec<Stash>, GitError> {
-        let output = run_git(&self.root, &["stash", "list", "--format=%gd%x1f%H%x1f%s"])?;
+        let output = self.run_git(&["stash", "list", "--format=%gd%x1f%H%x1f%s"])?;
         let mut stashes = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let mut fields = line.split('\u{1f}');
@@ -439,16 +475,13 @@ impl Repo {
         if !self.root.join(".gitmodules").exists() {
             return Ok(Vec::new());
         }
-        let output = match run_git(
-            &self.root,
-            &[
-                "config",
-                "--file",
-                ".gitmodules",
-                "--get-regexp",
-                r"^submodule\..*\.path$",
-            ],
-        ) {
+        let output = match self.run_git(&[
+            "config",
+            "--file",
+            ".gitmodules",
+            "--get-regexp",
+            r"^submodule\..*\.path$",
+        ]) {
             Ok(output) => output,
             Err(GitError::CommandFailed { code: Some(1), .. }) => return Ok(Vec::new()),
             Err(error) => return Err(error),
@@ -483,22 +516,25 @@ impl Repo {
             let branch = self.submodule_config(name, "branch");
             let module_path = self.root.join(path);
             let parent_root = self.root.canonicalize().ok();
-            let child = Repo::open(module_path.to_string_lossy().as_ref())
-                .ok()
-                .filter(|repo| {
-                    match (
-                        repo.root.canonicalize(),
-                        module_path.canonicalize(),
-                        parent_root.as_ref(),
-                    ) {
-                        (Ok(root), Ok(module), Some(parent)) => {
-                            root == module && root != *parent && root.starts_with(parent)
-                        }
-                        _ => false,
+            let child = Repo::open_with_executable(
+                module_path.to_string_lossy().as_ref(),
+                &self.executable,
+            )
+            .ok()
+            .filter(|repo| {
+                match (
+                    repo.root.canonicalize(),
+                    module_path.canonicalize(),
+                    parent_root.as_ref(),
+                ) {
+                    (Ok(root), Ok(module), Some(parent)) => {
+                        root == module && root != *parent && root.starts_with(parent)
                     }
-                });
+                    _ => false,
+                }
+            });
             let current_oid = child.as_ref().and_then(|repo| {
-                run_git(&repo.root, &["rev-parse", "--verify", "HEAD"])
+                repo.run_git(&["rev-parse", "--verify", "HEAD"])
                     .ok()
                     .map(|output| String::from_utf8_lossy(&output).trim().to_string())
             });
@@ -510,7 +546,8 @@ impl Repo {
                         .unwrap_or(true)
                 })
                 .unwrap_or(false);
-            let index_oid = run_git(&self.root, &["ls-files", "--stage", "--", path])
+            let index_oid = self
+                .run_git(&["ls-files", "--stage", "--", path])
                 .ok()
                 .and_then(|output| {
                     String::from_utf8_lossy(&output).lines().find_map(|line| {
@@ -536,17 +573,15 @@ impl Repo {
 
     fn submodule_config(&self, name: &str, field: &str) -> Option<String> {
         let key = format!("submodule.{name}.{field}");
-        let output = run_git(
-            &self.root,
-            &["config", "--file", ".gitmodules", "--get", key.as_str()],
-        )
-        .ok()?;
+        let output = self
+            .run_git(&["config", "--file", ".gitmodules", "--get", key.as_str()])
+            .ok()?;
         let value = String::from_utf8_lossy(&output).trim().to_string();
         return (!value.is_empty()).then_some(value);
     }
 
     fn worktrees(&self) -> Result<Vec<WorktreeInfo>, GitError> {
-        let output = run_git(&self.root, &["worktree", "list", "--porcelain"])?;
+        let output = self.run_git(&["worktree", "list", "--porcelain"])?;
         let mut worktrees = Vec::new();
         let mut current: Option<WorktreeInfo> = None;
         for line in String::from_utf8_lossy(&output).lines() {
@@ -584,7 +619,10 @@ impl Repo {
             worktree.exists = path.is_dir();
             if worktree.exists {
                 if let Ok(path) = path.canonicalize() {
-                    if let Ok(repo) = Repo::open(path.to_string_lossy().as_ref()) {
+                    if let Ok(repo) = Repo::open_with_executable(
+                        path.to_string_lossy().as_ref(),
+                        &self.executable,
+                    ) {
                         let repo_root = repo
                             .root()
                             .canonicalize()
@@ -614,7 +652,7 @@ impl Repo {
     }
 
     pub(crate) fn lines(&self, args: &[&str]) -> Result<Vec<String>, GitError> {
-        let output = run_git(&self.root, args)?;
+        let output = self.run_git(args)?;
         return Ok(String::from_utf8_lossy(&output)
             .lines()
             .map(|line| line.trim().to_string())
@@ -710,6 +748,51 @@ mod tests {
         let path = dir.path().display().to_string();
         let error = Repo::open(&path).expect_err("not a repo");
         assert!(matches!(error, GitError::NotARepository { .. }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_with_executable_uses_the_selected_program_for_follow_up_commands() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new("selected-git");
+        let root = dir.path().display().to_string();
+        let wrapper = dir.path().join("git-wrapper");
+        let calls = dir.path().join("git-calls.log");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"{}\"\ncase \"$*\" in\n  *'rev-parse --show-toplevel'*) printf '%s\\n' \"{}\" ;;\n  *'status --porcelain=v1 -z'*) printf '' ;;\n  *) exit 1 ;;\nesac\n",
+            calls.display(),
+            root
+        );
+        std::fs::write(&wrapper, script).expect("write Git wrapper");
+        let mut permissions = std::fs::metadata(&wrapper)
+            .expect("wrapper metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&wrapper, permissions).expect("make wrapper executable");
+
+        let executable = GitExecutable::from_path(&wrapper);
+        let repo = Repo::open_with_executable(&root, &executable).expect("open through wrapper");
+        repo.status().expect("status through wrapper");
+
+        let calls = std::fs::read_to_string(calls).expect("read wrapper log");
+        assert!(calls.contains("rev-parse --show-toplevel"));
+        assert!(calls.contains("status --porcelain=v1 -z"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn invalid_selected_executable_returns_spawn_error_without_falling_back() {
+        let dir = TempDir::new("missing-selected-git");
+        let path = dir.path().display().to_string();
+        let executable_path = dir.path().join("missing-git");
+        let executable = GitExecutable::from_path(&executable_path);
+
+        let error = Repo::open_with_executable(&path, &executable).expect_err("missing Git");
+
+        assert!(
+            matches!(error, GitError::Spawn { program, .. } if program == executable_path.display().to_string())
+        );
     }
 
     #[test]

@@ -1,5 +1,7 @@
 # docs
 
+当前能力与未接入项分别记录在根 README 的[「当前能力」](../README.md#当前能力)与[「已知限制」](../README.md#已知限制)中。页面目录包含 32 个画板条目与 30 份说明，Welcome 的 01b / 01c 合并在一份文档中；页面说明描述设计目标，不代表实现验收结果。页面完成标准见[页面验收规范](development/verification.md)。
+
 History 提交表与各 Diff 入口必须为内部虚拟化组件设置可见视口；提交行随中栏宽度调整，作者和日期保留在可视范围内。Changes 与 Stash 使用 NSH DiffView 的语法高亮，逐行、逐段暂存仍按原始 Git 补丁定位。具体行为见[历史筛选](pages/history-filters.md)与[暂存和提交](pages/changes.md)。
 
 History 页面优化要求：标题后显示提交数，分支、作者与高级筛选入口成组；分支和作者浮层输入即搜索、关闭时应用选择，高级筛选移除重复条件。检查器统一文件视图切换，目录遵循设置，文件名与状态按变更类型着色，完整路径支持悬停查看。远端内部的分支目录组默认折叠。交互契约见[历史筛选](pages/history-filters.md)。
@@ -7,6 +9,8 @@ History 页面优化要求：标题后显示提交数，分支、作者与高级
 `docs/` 按主题分目录：一个主题一个文件夹，文件夹里的 `README.md` 是该主题的入口。
 
 设置窗口的六个分区按 [pages/settings.md](pages/settings.md)、[pages/settings-shortcuts.md](pages/settings-shortcuts.md)、[pages/settings-agent.md](pages/settings-agent.md)、[pages/settings-git.md](pages/settings-git.md)、[pages/settings-credentials.md](pages/settings-credentials.md)、[pages/settings-about.md](pages/settings-about.md) 实现。Updates、Credentials 与 Agent 的跨系统动作只给事实性提示，实现边界以根 README 的「已知限制」为准。
+
+Credentials 与 Git 执行能力的实施范围：移除 GitHub / GitLab 账号连接入口；只有 Git credential helper 未提供可用凭据、Git 实际调用 AskPass 时，应用才询问 HTTP(S) 凭据，保存交给 Git credential helper；实现本地 SSH 密钥管理，并让 Git 可执行文件设置作用于应用发起的 Git 命令。规划已获批准；阶段 1 的 Git 可执行文件设置已实现，阶段 2 的 AskPass/provider 清理与阶段 3 的 SSH 密钥管理待实施。
 
 仓库窗口与左侧引用面板的开发需求包括启动时恢复会话或显示欢迎页、仓库标签的打开与关闭及排序，以及引用分组的折叠与右键动作。设计入口见[欢迎页](pages/welcome.md)、[常规设置](pages/settings.md)、[工作区](pages/workspace.md)与[菜单和对话框](pages/menus.md)。
 

@@ -44,6 +44,8 @@ pub(crate) struct SessionHandle {
     pub(crate) store_dir: PathBuf,
     /// 当前历史筛选条件：打开仓库时用它建占位标签页。
     pub(crate) filter: Arc<dyn Fn() -> git::LogFilter>,
+    /// 每次新操作读取当前设置；Repo 与后台任务保存启动时的 executable 快照。
+    pub(crate) git_executable: Arc<dyn Fn() -> git::GitExecutable + Send + Sync>,
     /// 状态栏短提示（「在此初始化」的成功与失败都要提示）。
     pub(crate) notice: Signal<Option<String>>,
     /// 当前界面语言（「在此初始化」的提示文案按它取）。
@@ -59,12 +61,38 @@ pub(crate) struct SessionHandle {
 }
 
 impl SessionHandle {
+    pub(crate) fn current_git_executable(&self) -> git::GitExecutable {
+        return (self.git_executable)();
+    }
+
+    pub(crate) fn open_repo(&self, path: &str) -> Result<git::Repo, domain::GitError> {
+        let executable = self.current_git_executable();
+        return git::Repo::open_with_executable(path, &executable);
+    }
+
+    /// 设置页变更 Git 路径后，更新已打开标签；已经克隆出的 Repo 仍保留旧快照。
+    pub(crate) fn refresh_git_executable(&self) {
+        let executable = self.current_git_executable();
+        let mut tabs = self.tabs.get_untracked();
+        let mut changed = false;
+        for tab in &mut tabs {
+            if tab.git_executable != executable {
+                tab.git_executable = executable.clone();
+                changed = true;
+            }
+        }
+        if changed {
+            self.tabs.set(tabs);
+        }
+    }
+
     /// 打开一个仓库（原 `Actions::open_path`）。
     ///
     /// 先插入一个「加载中」的占位标签页，再在后台读仓库：大仓库的
     /// `git log`/`status` 不再卡住界面，用户也能看到骨架。
     pub(crate) fn open_path(&self, path: String) {
-        let repo = match git::Repo::open(path.trim()) {
+        let executable = self.current_git_executable();
+        let repo = match git::Repo::open_with_executable(path.trim(), &executable) {
             Ok(repo) => repo,
             Err(error) => {
                 if !self.auxiliary {
@@ -108,7 +136,9 @@ impl SessionHandle {
             }
             return;
         }
-        list.push(crate::app::session::placeholder_tab(path.as_str(), &filter));
+        let mut placeholder = crate::app::session::placeholder_tab(path.as_str(), &filter);
+        placeholder.git_executable = executable.clone();
+        list.push(placeholder);
         active.set(list.len() - 1);
         let tab_id = list.last().map(|tab| tab.id).unwrap_or_default();
         let load_id = list
@@ -136,7 +166,11 @@ impl SessionHandle {
         // 欢迎窗口关闭会销毁其内容 owner；在会话 owner 下启动，保证切换窗口后任务仍能完成。
         self.task_owner.run(|| {
             spawn(async move {
-                let loaded = crate::app::session::load_tab(path_for_load.as_str(), &filter);
+                let loaded = crate::app::session::load_tab_with_executable(
+                    path_for_load.as_str(),
+                    &filter,
+                    &executable,
+                );
                 // 读到 HEAD 后把分支写回最近仓库，欢迎页下次打开时能显示 chip。
                 let branch = match &loaded.head {
                     git::HeadState::Branch(name) => Some(name.clone()),
@@ -173,11 +207,13 @@ impl SessionHandle {
     pub(crate) fn refresh_recent_branches(&self) {
         let recent = self.recent;
         let store_dir = self.store_dir.clone();
+        let executable = self.current_git_executable();
         spawn(async move {
             let list = recent.get_untracked();
             let mut changed = false;
             for entry in &list {
-                let Ok(repo) = git::Repo::open(entry.path.as_str()) else {
+                let Ok(repo) = git::Repo::open_with_executable(entry.path.as_str(), &executable)
+                else {
                     continue;
                 };
                 let branch = match repo.head_state() {
@@ -234,7 +270,7 @@ impl SessionHandle {
                 return;
             };
             let chosen = path.display().to_string();
-            let Ok(repo) = git::Repo::open(chosen.as_str()) else {
+            let Ok(repo) = session.open_repo(chosen.as_str()) else {
                 return;
             };
             let chosen_path = repo.root().display().to_string();
@@ -436,6 +472,7 @@ mod session_tab_tests {
             recent: signal(Vec::new()),
             store_dir: std::path::PathBuf::new(),
             filter: Arc::new(git::LogFilter::default),
+            git_executable: Arc::new(git::GitExecutable::system),
             notice: signal(None),
             language: signal(SharedString::from("en")),
             task_owner: Owner::current(),
@@ -445,6 +482,36 @@ mod session_tab_tests {
             welcome_window: signal(None),
             settings_window: signal(None),
         };
+    }
+
+    #[test]
+    fn changing_git_executable_updates_open_tabs_and_keeps_operation_snapshot() {
+        let runtime = nsh_core::element::reactive::Runtime::default();
+        let _entered = runtime.enter();
+        let (_owner, mut session) =
+            nsh_core::element::reactive::create_root(|| session_with_tabs(&[1], 0));
+        let selected = Arc::new(std::sync::Mutex::new(git::GitExecutable::from_path(
+            "/custom/git-old",
+        )));
+        let resolver_state = selected.clone();
+        session.git_executable = Arc::new(move || resolver_state.lock().unwrap().clone());
+        let mut tabs = session.tabs.get_untracked();
+        tabs[0].git_executable = git::GitExecutable::from_path("/custom/git-old");
+        let in_flight_snapshot = tabs[0].git_executable.clone();
+        session.tabs.set(tabs);
+
+        *selected.lock().unwrap() = git::GitExecutable::from_path("/custom/git-new");
+        session.refresh_git_executable();
+
+        let current = session.tabs.get_untracked();
+        assert_eq!(
+            current[0].git_executable,
+            git::GitExecutable::from_path("/custom/git-new")
+        );
+        assert_eq!(
+            in_flight_snapshot,
+            git::GitExecutable::from_path("/custom/git-old")
+        );
     }
 
     #[test]

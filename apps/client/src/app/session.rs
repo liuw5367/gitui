@@ -3,7 +3,7 @@
 use crate::features::changes::ops::{load_changes, refresh_changes};
 use crate::features::history::ops::select_commit;
 use domain::{Commit, DiffStat, StatusEntry};
-use git::{LogFilter, Refs, Repo};
+use git::{GitExecutable, LogFilter, Refs, Repo};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -41,6 +41,8 @@ pub(crate) struct Tab {
     /// 每次装载请求的身份。关闭后同路径重开时，旧任务不能覆盖新标签。
     pub(crate) load_id: u64,
     pub(crate) path: String,
+    /// 该仓库当前使用的 Git executable；在途操作的 Repo 会保留自己的快照。
+    pub(crate) git_executable: GitExecutable,
     pub(crate) name: String,
     /// 仓库打不开的原因；正常时为 `None`。
     pub(crate) problem: RepoProblem,
@@ -291,6 +293,10 @@ fn normalise_status(status: char) -> char {
 }
 
 impl Tab {
+    pub(crate) fn open_repo(&self) -> Result<Repo, domain::GitError> {
+        return Repo::open_with_executable(self.path.as_str(), &self.git_executable);
+    }
+
     /// 当前选中的提交。
     pub(crate) fn selected_commit(&self) -> Option<&Commit> {
         return self.selected.and_then(|index| self.commits.get(index));
@@ -317,7 +323,16 @@ impl Tab {
 }
 
 /// 打开 `path` 并按 `filter` 装载数据；失败时返回带 `error` 的空标签页。
+#[cfg(test)]
 pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
+    return load_tab_with_executable(path, filter, &GitExecutable::system());
+}
+
+pub(crate) fn load_tab_with_executable(
+    path: &str,
+    filter: &LogFilter,
+    executable: &GitExecutable,
+) -> Tab {
     let started = std::time::Instant::now();
     log::debug!(
         target: "gitui::history",
@@ -331,7 +346,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         !filter.message.is_empty(),
         filter.since.is_some() || filter.until.is_some(),
     );
-    let repo = match Repo::open(path) {
+    let repo = match Repo::open_with_executable(path, executable) {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -350,6 +365,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
                 path: path.to_string(),
                 name: last_segment(path),
                 filter: filter.clone(),
+                git_executable: executable.clone(),
                 error: Some(error.detail()),
                 problem,
                 ..Tab::default()
@@ -433,6 +449,7 @@ pub(crate) fn load_tab(path: &str, filter: &LogFilter) -> Tab {
         id: next_tab_id(),
         load_id: next_tab_id(),
         path: repo.root().display().to_string(),
+        git_executable: executable.clone(),
         name: summary.name,
         branch: summary.branch,
         ahead: summary.ahead,
@@ -538,7 +555,8 @@ pub(crate) fn reload(tab: &mut Tab) {
     let sidebar_collapsed = tab.sidebar_collapsed.clone();
     let path = tab.path.clone();
     let filter = tab.filter.clone();
-    *tab = load_tab(path.as_str(), &filter);
+    let executable = tab.git_executable.clone();
+    *tab = load_tab_with_executable(path.as_str(), &filter, &executable);
     tab.id = id;
     tab.load_id = load_id;
     tab.sidebar_collapsed = sidebar_collapsed;
@@ -546,8 +564,12 @@ pub(crate) fn reload(tab: &mut Tab) {
 
 /// 在标签页指向的目录里初始化仓库（设计板 16 的「不是仓库」动作）。
 pub(crate) fn init_here(tab: &mut Tab) -> Result<(), String> {
-    git::init_with(tab.path.as_str(), &git::InitOptions::default())
-        .map_err(|error| error.detail())?;
+    git::init_with_executable(
+        tab.path.as_str(),
+        &git::InitOptions::default(),
+        &tab.git_executable,
+    )
+    .map_err(|error| error.detail())?;
     reload(tab);
     return Ok(());
 }
@@ -564,7 +586,7 @@ pub(crate) fn parent_path(path: &str) -> String {
 pub(crate) fn reload_after_history_change(tab: &mut Tab) -> Result<String, String> {
     refresh_changes(tab);
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = load_tab_with_executable(tab.path.as_str(), &filter, &tab.git_executable);
     tab.commits = refreshed.commits;
     tab.refs = refreshed.refs;
     tab.branch = refreshed.branch.clone();

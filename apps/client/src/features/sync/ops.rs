@@ -1,9 +1,8 @@
 //! 同步的操作：按选项执行 fetch/pull/push 与清掉同步失败状态。
 
-use crate::app::session::{Sync, SyncOptions, Tab, load_tab};
+use crate::app::session::{Sync, SyncOptions, Tab};
 use crate::features::changes::ops::refresh_changes;
 use domain::GitError;
-use git::Repo;
 
 /// 清掉同步失败的状态（重试或用户主动关闭横幅）。
 pub(crate) fn clear_sync_fault(tab: &mut Tab) {
@@ -20,7 +19,7 @@ pub(crate) fn sync_with_remote(
     options: &SyncOptions,
     remote_override: Option<&str>,
 ) {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -72,7 +71,11 @@ pub(crate) fn finish_sync_cancelled(tab: &mut Tab, message: String) {
 fn refresh_synced_tab(tab: &mut Tab) {
     refresh_changes(tab);
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.branch = refreshed.branch;
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;

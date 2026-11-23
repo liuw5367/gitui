@@ -5,7 +5,7 @@
 
 use crate::filters::FilterDraft;
 use domain::DiffStat;
-use git::LogFilter;
+use git::{GitExecutable, LogFilter};
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -49,6 +49,7 @@ pub(crate) struct MultiCommitFiles {
 pub(crate) struct CommitLoadRequest {
     pub(crate) tab_id: u64,
     pub(crate) path: String,
+    pub(crate) git_executable: GitExecutable,
     pub(crate) sha: String,
     pub(crate) short: String,
 }
@@ -140,6 +141,7 @@ mod tests {
         CommitLoadRequest {
             tab_id,
             path: String::from("/repo"),
+            git_executable: GitExecutable::system(),
             sha: sha.to_string(),
             short: sha.to_string(),
         }

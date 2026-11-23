@@ -3,7 +3,8 @@
 use domain::GitError;
 
 use crate::error::rewrite_error;
-use crate::exec::{run_git, run_git_combined_with_env};
+#[cfg(test)]
+use crate::exec::run_git;
 use crate::merge::Operation;
 use crate::query::Repo;
 
@@ -113,14 +114,17 @@ impl Repo {
         args.extend(options.flags());
         args.push("-m");
         args.push(message.as_str());
-        let output = std::process::Command::new("git")
+        let program = self.executable.path().display().to_string();
+        let output = self
+            .executable
+            .command()
             .arg("-C")
             .arg(&self.root)
             .args(&args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(|error| GitError::Spawn {
-                program: "git".to_string(),
+                program: program.clone(),
                 reason: error.to_string(),
             })?;
         let log = {
@@ -131,7 +135,7 @@ impl Repo {
         if !output.status.success() {
             return Err(GitError::HookFailed { log });
         }
-        let sha = run_git(&self.root, &["rev-parse", "HEAD"])?;
+        let sha = self.run_git(&["rev-parse", "HEAD"])?;
         return Ok(CommitOutcome {
             sha: String::from_utf8_lossy(&sha).trim().to_string(),
             log,
@@ -219,19 +223,22 @@ impl Repo {
     }
 
     fn full_sha(&self, reference: &str) -> Result<String, GitError> {
-        let output = run_git(&self.root, &["rev-parse", reference])?;
+        let output = self.run_git(&["rev-parse", reference])?;
         return Ok(String::from_utf8_lossy(&output).trim().to_string());
     }
 
     pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, GitError> {
-        let status = std::process::Command::new("git")
+        let program = self.executable.path().display().to_string();
+        let status = self
+            .executable
+            .command()
             .arg("-C")
             .arg(&self.root)
             .args(["merge-base", "--is-ancestor", ancestor, descendant])
             .env("GIT_TERMINAL_PROMPT", "0")
             .status()
             .map_err(|error| GitError::Spawn {
-                program: "git".to_string(),
+                program,
                 reason: error.to_string(),
             })?;
         // 0 = 是祖先，1 = 不是，其它按失败处理。
@@ -303,8 +310,7 @@ impl Repo {
                 let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
             }
         }
-        let result = run_git_combined_with_env(
-            &self.root,
+        let result = self.run_git_combined_with_env(
             &["rebase", "-i", base],
             &[
                 (
@@ -320,7 +326,7 @@ impl Repo {
         }
         if result.is_err() {
             // 失败就回到改写前，别把仓库留在半截状态。
-            let _ = run_git(&self.root, &["rebase", "--abort"]);
+            let _ = self.run_git(&["rebase", "--abort"]);
         }
         result?;
         return Ok(());
@@ -330,7 +336,7 @@ impl Repo {
     ///
     /// 用于 reflog 的撤销；调用方必须先确认，未提交的改动会被丢弃。
     pub fn reset_hard(&self, sha: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["reset", "--hard", sha])?;
+        self.run_git(&["reset", "--hard", sha])?;
         return Ok(());
     }
 
@@ -341,7 +347,7 @@ impl Repo {
             ResetMode::Mixed => "--mixed",
             ResetMode::Hard => "--hard",
         };
-        run_git(&self.root, &["reset", flag, sha])?;
+        self.run_git(&["reset", flag, sha])?;
         return Ok(());
     }
 }

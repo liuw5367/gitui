@@ -14,12 +14,12 @@
 - **引用与恢复**：分支、标签、远程、贮藏、子模块与工作树的常用操作；侧栏分组可折叠，远端组显示实际 Fetch/Push URL 和可折叠的远端跟踪分支树，支持指定远端获取、建立本地跟踪分支、定向拉取与删除远端分支；贮藏支持全量或选择文件保存、指定条目应用/弹出/删除与差异查看；子模块支持更新到记录版本或配置分支最新版本、同步 URL、在新标签打开、暂存 gitlink 变更与安全移除；工作树支持创建已有分支或新分支的关联工作树、安全移除干净且未打开的工作树、清理失效登记，并可在独立窗口使用。工具栏可直接打开 Reflog；中栏保留 Refs 总表与 Reflog 页签互切，选择记录后右栏显示提交信息与文件变更统计。Reflog 可撤销；支持固定形态的 reword 与 squash。
 - **冲突**：从 Git index stage 1/2/3 显示 Base、Ours、Theirs，三侧按文件类型语法高亮；Result 可编辑并按路径保留草稿。缺少的 stage 显示为删除，二进制文件可选择一侧；标记解决只写回并暂存当前文件，残留冲突标记会阻止标记，继续操作前会重新读取 Git 状态。
 - **同步**：Fetch、Pull、Push 及各自选项；以后台 Git 子进程执行并显示实时输出；关闭弹窗后任务继续，Cancel 会终止子进程。成功后说明目标是否已是最新，或列出更新引用和提交节点数；Push 部分拒绝时同时显示已推送与被拒绝数量，无法确认的计数明确标为未知。面板继续保留原始 Git 输出；强推警告与非快进处理保留现有安全语义。
-- **Agent**：按仓库状态生成计划；逐条确认；Approve & Run 先列出范围；权限、受保护分支与审计。
+- **Agent**：根据当前仓库状态生成本地计划；可逐项编辑与确认，Approve & Run 会先列出执行范围，再运行已有的 Git 动作；权限、受保护分支与审计持续生效。模型接入状态见下方「已知限制」。
 - **设置与入口**：通用、Git、快捷键、凭据、Agent、About 六个分区；主题、语言、日期格式与启动行为；欢迎页和主窗口设置入口、macOS 应用菜单中的 Settings（⌘,）；命令面板；可改键的快捷键；独立窗口中的组件画廊（⌘⇧D）。
 
 ## 设计与实现
 
-设计稿与样式由 design 单独维护，位于 `designs/graft-git`，包含 30 个画板与共享样式。页面开发以 NSH 原生组件为基础，尽量采用平台原生样式；设计板提供结构与信息层级。生产实现只引用设计源，不把 HTML/CSS 或 WebView 带进应用。
+设计稿与样式由 design 单独维护，位于 `designs/graft-git`，包含 32 个画板条目与共享样式；逐页说明共 30 份，Welcome 的 01b / 01c 两种状态合并在 `docs/pages/welcome.md`。页面说明记录设计目标，不表示实现已逐项验收；当前没有逐页完成度账本，验收方式见[页面验收规范](docs/development/verification.md)。页面开发以 NSH 原生组件为基础，尽量采用平台原生样式；生产实现只引用设计源，不把 HTML/CSS 或 WebView 带进应用。
 
 ## 目录结构
 
@@ -89,13 +89,13 @@ python3 tools/design/tokens.py
 
 ## 已知限制
 
-- 设置窗口的六个分区已按 `docs/pages/settings*.md` 重做。General、Shortcuts、Git 真实读写；Updates、Credentials、Agent 只做界面与本地偏好，跨系统动作只给事实性提示。
+- 设置窗口的六个分区已按 `docs/pages/settings*.md` 实现。General、Shortcuts、Git 有对应的本地读写；Updates、Credentials 与 Agent 保存本地偏好，尚未接入相应的发布、账号或模型服务。
 - 账号连接与登录流程没有接入。Credentials 页的 GitHub / GitLab 显示真实空态，Connect / Sign out 只给提示；不保存 token，同步失败仍归类为 auth、offline 或 rejected。
 - 更新检查没有发布源。General 与 About 的更新状态显示 `Not checked`，Check Now 只给说明。
-- Credentials 的凭据助手来自本机 `git config`，SSH 密钥只读取 `~/.ssh` 的文件名与公钥指纹；不生成、不删除、不上传，也不读取私钥内容。
-- 设置里的 Git 路径（`use_system_git`、`git_path`）会保存并用于探测，`crates/git` 仍固定调用 PATH 中的 `git`。
+- Credentials 的凭据助手读取本机 `git config`；SSH 密钥只读取 `~/.ssh` 中的文件名与公钥指纹，不生成、删除或上传密钥，也不读取私钥内容。外部编辑器、diff / merge 工具、终端、代理、SSL 校验、系统 Git 配置和新远端的 SSH 偏好目前只保存为本地设置，尚未影响对应的外部工具或网络操作。
+- 设置里的 Git 路径（`use_system_git`、`git_path`）会用于应用直接启动的 Git 命令，包括仓库操作、克隆、初始化、同步、子模块、工作树与版本探测。自定义路径无效时操作报错，不静默回退到 PATH；已启动操作继续使用启动时的 executable。
 - 历史改写只有固定形态的 reword（单条提交）与 squash（连续区间），交互式 rebase 的 todo 编辑未实现。
-- Agent 的协议、端点、模型、温度与隐私偏好会保存，App key 只保存在会话内存；没有 provider 与网络运行时，因此不会发起请求。旧的动作权限与受保护分支仍然生效。
-- 同步用本机 bare 远程测试；第三方远程与真实凭据流程未验收，OAuth 与 SSH 密钥管理未实现。
+- Agent 根据仓库状态生成本地计划；批准后可运行已有的暂存、提交与同步动作，权限拒绝和受保护分支规则会拦截操作并记录审计。协议、端点、模型、温度与隐私偏好会保存，App key 只保存在会话内存；模型 provider、网络请求与模型生成计划尚未实现。
+- 同步用本机 bare 远程测试；第三方远程与真实凭据流程未验收，HTTP(S) AskPass 与 SSH 密钥管理尚未实现。
 - DiffView 的语言高亮由文件扩展名识别；未知扩展名按纯文本展示。
 - 其他平台尚未适配，构建与验证只在 macOS 上完成。

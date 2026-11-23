@@ -118,7 +118,7 @@ impl WelcomeCommands {
             )));
             return;
         }
-        match git::Repo::open(path.trim()) {
+        match session.open_repo(path.trim()) {
             Ok(_) => {
                 open_error.set(None);
                 session.open_path(path.trim().to_string());
@@ -155,6 +155,7 @@ impl WelcomeCommands {
         let session = self.session.clone();
         let language = self.language;
         let cancel = self.cancel.clone();
+        let git_executable = session.current_git_executable();
         let url = clone_url.get_untracked();
         let destination = clone_destination.get_untracked();
         let chosen: CloneOptions = clone_options.get_untracked();
@@ -185,7 +186,12 @@ impl WelcomeCommands {
         clone_error.set(None);
         spawn(async move {
             // 启动后按 100ms 轮询：界面一直可响应，取消也能立刻生效。
-            let mut run = match git::start_clone(url.trim(), destination.trim(), &options) {
+            let mut run = match git::start_clone_with_executable(
+                url.trim(),
+                destination.trim(),
+                &options,
+                &git_executable,
+            ) {
                 Ok(run) => run,
                 Err(error) => {
                     cloning.set(false);
@@ -253,7 +259,11 @@ impl WelcomeCommands {
             name: self.state.init_name.get_untracked(),
             branch: self.state.init_branch.get_untracked(),
         };
-        match git::init_with(path.trim(), &options) {
+        match git::init_with_executable(
+            path.trim(),
+            &options,
+            &self.session.current_git_executable(),
+        ) {
             Ok(()) => session.open_path(path.trim().to_string()),
             Err(error) => init_error.set(Some(localized_error(
                 language.get_untracked().as_str(),

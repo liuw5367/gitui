@@ -2,13 +2,15 @@
 
 use domain::GitError;
 
-use crate::exec::run_git;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 impl Repo {
     /// 从某个引用新建并切换到本地分支（`git checkout -b <name> <from>`）。
     pub fn checkout_new_branch(&self, name: &str, from: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["checkout", "-b", name, from])?;
+        self.run_git(&["checkout", "-b", name, from])?;
         return Ok(());
     }
 
@@ -18,10 +20,7 @@ impl Repo {
         name: &str,
         remote_branch: &str,
     ) -> Result<(), GitError> {
-        run_git(
-            &self.root,
-            &["checkout", "--track", "-b", name, remote_branch],
-        )?;
+        self.run_git(&["checkout", "--track", "-b", name, remote_branch])?;
         return Ok(());
     }
 
@@ -31,7 +30,7 @@ impl Repo {
             Some(from) => vec!["branch", name, from],
             None => vec!["branch", name],
         };
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
@@ -45,7 +44,7 @@ impl Repo {
                 detail: "分支名不能为空".to_string(),
             });
         }
-        run_git(&self.root, &["branch", "-m", old, new])?;
+        self.run_git(&["branch", "-m", old, new])?;
         return Ok(());
     }
 
@@ -61,13 +60,13 @@ impl Repo {
                 detail: "不能删除当前分支".to_string(),
             });
         }
-        run_git(&self.root, &["branch", "-d", branch])?;
+        self.run_git(&["branch", "-d", branch])?;
         return Ok(());
     }
 
     /// 切换到 `branch`（`git checkout <branch>`）。
     pub fn checkout_branch(&self, branch: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["checkout", branch])?;
+        self.run_git(&["checkout", branch])?;
         return Ok(());
     }
 
@@ -99,37 +98,37 @@ impl Repo {
         if let Some(from) = from {
             args.push(from);
         }
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
     /// 删除标签。
     pub fn delete_tag(&self, name: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["tag", "-d", name])?;
+        self.run_git(&["tag", "-d", name])?;
         return Ok(());
     }
 
     /// 添加远程（`git remote add <name> <url>`）。
     pub fn add_remote(&self, name: &str, url: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["remote", "add", name, url])?;
+        self.run_git(&["remote", "add", name, url])?;
         return Ok(());
     }
 
     /// 删除远程。
     pub fn remove_remote(&self, name: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["remote", "remove", name])?;
+        self.run_git(&["remote", "remove", name])?;
         return Ok(());
     }
 
     /// 改写远程的 URL（`git remote set-url <name> <url>`）。
     pub fn set_remote_url(&self, name: &str, url: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["remote", "set-url", name, url])?;
+        self.run_git(&["remote", "set-url", name, url])?;
         return Ok(());
     }
 
     /// 写入仓库级配置（`git config <key> <value>`）。
     pub fn config_set(&self, key: &str, value: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["config", key, value])?;
+        self.run_git(&["config", key, value])?;
         return Ok(());
     }
 
@@ -137,7 +136,7 @@ impl Repo {
     ///
     /// 键本来就不存在时 `--unset` 会以非零退出，这里视为成功。
     pub fn config_unset(&self, key: &str) -> Result<(), GitError> {
-        let result = run_git(&self.root, &["config", "--unset", key]);
+        let result = self.run_git(&["config", "--unset", key]);
         return match result {
             Ok(_) => Ok(()),
             Err(GitError::CommandFailed { code, .. }) if code == Some(5) => Ok(()),
@@ -160,7 +159,7 @@ impl Repo {
             args.push("-m");
             args.push(message.trim());
         }
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
@@ -190,7 +189,7 @@ impl Repo {
         args.push("--".to_string());
         args.extend(paths.iter().map(|path| format!(":(literal){path}")));
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
@@ -201,24 +200,24 @@ impl Repo {
             args.push("--include-untracked");
         }
         args.push(oid);
-        return run_git(&self.root, &args);
+        return self.run_git(&args);
     }
 
     /// 取出最近一条贮藏（`git stash pop`）。
     pub fn stash_pop(&self) -> Result<(), GitError> {
-        run_git(&self.root, &["stash", "pop"])?;
+        self.run_git(&["stash", "pop"])?;
         return Ok(());
     }
 
     /// 应用某条贮藏但保留它（`git stash apply <reference>`）。
     pub fn stash_apply(&self, reference: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["stash", "apply", reference])?;
+        self.run_git(&["stash", "apply", reference])?;
         return Ok(());
     }
 
     /// 丢弃某条贮藏（`git stash drop`）。
     pub fn stash_drop(&self, reference: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["stash", "drop", reference])?;
+        self.run_git(&["stash", "drop", reference])?;
         return Ok(());
     }
 }

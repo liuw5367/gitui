@@ -1,6 +1,6 @@
 # git
 
-Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出解析成 `domain` 的类型。crate 名与 `git` 命令同名；运行时调用 PATH 中的系统 Git，不链接 libgit2。
+Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出解析成 `domain` 的类型。crate 名与 `git` 命令同名；不链接 libgit2。兼容入口默认调用 PATH 中的 `git`；客户端可为每个仓库创建指定 `GitExecutable` 的 `Repo`，同一仓库的查询、写操作、同步和关联仓库查询都沿用该 executable。
 
 ## 执行约定
 
@@ -8,11 +8,12 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 - 读取命令设置 `GIT_TERMINAL_PROMPT=0` 与 `GIT_OPTIONAL_LOCKS=0`：凭据缺失时直接失败，只读命令不拿可选锁。stdout 超过 8 MiB 截断，错误详情截断到前 4096 个字符。
 - fetch、pull、push、merge 等同步调用把 stdout 与 stderr 合并，成功后取最后 3 条有效行作为摘要；失败时把合并输出截断到前 4096 个字符作为 `detail`。后台同步仍把两路合并供日志显示，同时独立保留 stdout 状态记录；Push 使用 porcelain 行，Fetch 由执行前后的本地远端引用与 tag 快照判断变化。
 - 命令以非零状态退出时返回 `GitError::CommandFailed`，保留程序名、参数、退出码与截断后的输出。
+- `Repo::open` 使用 PATH 中的 `git`；`Repo::open_with_executable` 接收明确的 executable，并把该选择保存在 `Repo` 内。`init_with_executable`、`init_repository_with_executable`、`clone_with_executable`、`start_clone_with_executable` 与 `info_with` 也可显式选择程序。设置值由客户端传入，本 crate 不读取应用配置。
 - `reword_commit` 与 `squash_commits` 自行生成 rebase todo，并用临时脚本覆盖 `GIT_SEQUENCE_EDITOR` 与 `GIT_EDITOR`；命令失败后执行 `git rebase --abort`，不把仓库留在改写中间状态。`rebase_onto` 执行普通分支变基，冲突时保留 Git 的 rebase 状态供界面解决。
 
 ## 打开仓库
 
-`Repo::open` 用 `git rev-parse --show-toplevel` 校验工作树：
+`Repo::open` 与 `Repo::open_with_executable` 用 `git rev-parse --show-toplevel` 校验工作树：
 
 - 路径不存在或不可读时返回 `GitError::Unreadable`；
 - 路径存在但不是仓库时返回 `GitError::NotARepository`；
@@ -22,7 +23,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 | 分组 | 方法 |
 |---|---|
-| 打开与状态 | `Repo::open`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs`、`sync_ref_snapshot`、`upstream_ref`、`head_oid`、`resolve_commit_oid`、`commit_oids_between`、`is_ancestor` |
+| 打开与状态 | `Repo::open`、`Repo::open_with_executable`、`GitExecutable`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs`、`sync_ref_snapshot`、`upstream_ref`、`head_oid`、`resolve_commit_oid`、`commit_oids_between`、`is_ancestor` |
 | 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`merge_base`、`diff_between`、`diff_between_with_whitespace`、`diff_trees_with_whitespace`、`diff_worktree_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog` |
 | 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
@@ -31,8 +32,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 工作树 | `WorktreeInfo`、`add_worktree`、`remove_worktree`、`prune_worktrees` |
 | 同步 | `fetch`、`fetch_with`、`start_fetch_with`、`pull`、`pull_with`、`start_pull_with`、`pull_remote_branch`、`push`、`push_with`、`start_push_with`、`push_branch`、`delete_remote_branch`、`push_tag`、`upstream_incoming`、`parse_push_porcelain`、`PushRefUpdate`、`SyncRun` |
 | 冲突与多步操作 | `operation`、`conflict_content`、`conflict_worktree_content`、`conflict_sides`、`conflicts`、`resolve_conflict`、`resolve_conflict_bytes`、`resolve_conflict_delete`、`resolve_with`、`continue_operation`、`abort_operation` |
-| 克隆与初始化 | `clone`、`clone_with`、`start_clone`、`init_repository`、`init_with` |
-| 本机信息与底层执行 | `info`、`credential_helper`、`run_git` |
+| 克隆与初始化 | `clone`、`clone_with`、`clone_with_executable`、`start_clone`、`start_clone_with_executable`、`init_repository`、`init_repository_with_executable`、`init_with`、`init_with_executable` |
+| 本机信息与底层执行 | `info`、`info_with`、`credential_helper`、`credential_helper_with` |
 
 `diff_between`、`patch`、`patch_for_path`、`file_diff` 返回已解析的 `domain::diff::Patch`；Git 的原始文本保存在 `Patch::raw` 里，导出 patch 与复制直接用它，保证字节一致。带 `with_whitespace` 的方法可附加 Git `--ignore-all-space`，只改变展示查询；提交差异固定以第一父提交为基准，根提交与空 tree 比较，merge commit 不使用 combined diff。
 

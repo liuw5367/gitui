@@ -2,8 +2,10 @@
 
 use domain::GitError;
 
-use crate::exec::run_git;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 impl Repo {
     /// 初始化并检出父仓库记录的子模块提交；`latest` 跟随 `.gitmodules` 分支更新。
@@ -27,7 +29,7 @@ impl Repo {
             args.push("--remote");
         }
         args.extend(["--", path]);
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
@@ -44,7 +46,7 @@ impl Repo {
                 "子模块登记已变化，请重新打开菜单。",
             ));
         }
-        run_git(&self.root, &["submodule", "sync", "--", path])?;
+        self.run_git(&["submodule", "sync", "--", path])?;
         return Ok(());
     }
 
@@ -64,7 +66,7 @@ impl Repo {
                 "子模块有本地改动或未记录的提交；请先处理改动后再移除。",
             ));
         }
-        run_git(&self.root, &["rm", "--", path])?;
+        self.run_git(&["rm", "--", path])?;
         return Ok(());
     }
 }

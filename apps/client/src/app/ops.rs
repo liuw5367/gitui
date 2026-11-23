@@ -7,7 +7,7 @@ use git::Repo;
 
 /// 暂存或取消暂存全部。
 pub(crate) fn stage_all_or_none(tab: &mut Tab, stage: bool) {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -32,7 +32,7 @@ pub(crate) fn sync(tab: &mut Tab, kind: Sync) {
 
 /// 仓库级提交身份（`user.name` / `user.email`）。
 pub(crate) fn identity(tab: &Tab) -> (String, String) {
-    let Ok(repo) = Repo::open(tab.path.as_str()) else {
+    let Ok(repo) = tab.open_repo() else {
         return (String::new(), String::new());
     };
     let name = repo.config_get_local("user.name").unwrap_or_default();

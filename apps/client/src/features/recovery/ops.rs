@@ -1,20 +1,19 @@
 //! 恢复的操作：检出提交、拣选、回滚、重置与按 reflog 撤销。
 
-use crate::app::session::{Tab, load_tab, reload_after_history_change};
+use crate::app::session::{Tab, reload_after_history_change};
 use crate::features::changes::ops::refresh_changes;
-use git::Repo;
 
 /// 把某个引用合并进当前分支。
 /// 切到某个提交（detached HEAD）。调用方先确认，因为离开当前分支容易误提交。
 pub(crate) fn checkout_commit(tab: &mut Tab, sha: &str) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.checkout_branch(sha).map_err(|error| error.detail())?;
     return reload_after_history_change(tab);
 }
 
 /// 拣选一个提交到当前分支；冲突时进入冲突态，由冲突界面接手。
 pub(crate) fn cherry_pick(tab: &mut Tab, sha: &str) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let outcome = repo.cherry_pick(sha);
     let summary = reload_after_history_change(tab)?;
     match outcome {
@@ -25,7 +24,7 @@ pub(crate) fn cherry_pick(tab: &mut Tab, sha: &str) -> Result<String, String> {
 
 /// 反向提交一个提交；冲突处理同上。
 pub(crate) fn revert_commit(tab: &mut Tab, sha: &str) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let outcome = repo.revert(sha);
     let summary = reload_after_history_change(tab)?;
     match outcome {
@@ -36,11 +35,15 @@ pub(crate) fn revert_commit(tab: &mut Tab, sha: &str) -> Result<String, String> 
 
 /// 把当前分支重置到某个提交。
 pub(crate) fn reset_to(tab: &mut Tab, sha: &str, mode: git::ResetMode) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.reset_to(sha, mode).map_err(|error| error.detail())?;
     refresh_changes(tab);
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.commits = refreshed.commits;
     tab.branch = refreshed.branch;
     tab.ahead = refreshed.ahead;
@@ -53,7 +56,7 @@ pub(crate) fn undo_to_reflog(tab: &mut Tab, index: usize) {
     let Some(entry) = tab.reflog.get(index).cloned() else {
         return;
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -64,7 +67,11 @@ pub(crate) fn undo_to_reflog(tab: &mut Tab, index: usize) {
         Ok(()) => {
             refresh_changes(tab);
             let filter = tab.filter.clone();
-            let refreshed = load_tab(tab.path.as_str(), &filter);
+            let refreshed = crate::app::session::load_tab_with_executable(
+                tab.path.as_str(),
+                &filter,
+                &tab.git_executable,
+            );
             tab.commits = refreshed.commits;
             tab.branch = refreshed.branch;
             tab.ahead = refreshed.ahead;

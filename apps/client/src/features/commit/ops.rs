@@ -1,12 +1,11 @@
 //! 提交的操作：提交暂存区、创建首个提交、改写说明与合并提交。
 
-use crate::app::session::{Tab, load_tab, reload_after_history_change};
+use crate::app::session::{Tab, reload_after_history_change};
 use crate::features::changes::ops::refresh_changes;
-use git::Repo;
 
 /// 空仓库里创建第一个提交（`--allow-empty`，只为了让分支有起点）。
 pub(crate) fn create_initial_commit(tab: &mut Tab, summary: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let options = git::CommitOptions {
         allow_empty: true,
         ..git::CommitOptions::default()
@@ -14,7 +13,11 @@ pub(crate) fn create_initial_commit(tab: &mut Tab, summary: &str) -> Result<(), 
     repo.commit_with(summary, "", &options)
         .map_err(|error| error.detail())?;
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.commits = refreshed.commits;
     tab.head = refreshed.head;
     tab.branch = refreshed.branch;
@@ -27,7 +30,7 @@ pub(crate) fn create_initial_commit(tab: &mut Tab, summary: &str) -> Result<(), 
 
 /// 改写提交说明。
 pub(crate) fn reword_commit(tab: &mut Tab, sha: &str, message: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.reword_commit(sha, message)
         .map_err(|error| error.detail())?;
     reload_after_history_change(tab)?;
@@ -41,7 +44,7 @@ pub(crate) fn squash_commits(
     to: &str,
     message: &str,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.squash_commits(from, to, message)
         .map_err(|error| error.detail())?;
     reload_after_history_change(tab)?;
@@ -50,7 +53,7 @@ pub(crate) fn squash_commits(
 
 /// 当前是否能改写历史；`Err` 里是给用户看的原因。
 pub(crate) fn rewrite_blocker(tab: &Tab) -> Option<String> {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => return Some(error.detail()),
     };
@@ -79,7 +82,7 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
         no_verify,
         allow_empty: false,
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -101,7 +104,11 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
             refresh_changes(tab);
             // 提交后历史新增一条，重新读取以显示。
             let filter = tab.filter.clone();
-            let refreshed = load_tab(tab.path.as_str(), &filter);
+            let refreshed = crate::app::session::load_tab_with_executable(
+                tab.path.as_str(),
+                &filter,
+                &tab.git_executable,
+            );
             tab.commits = refreshed.commits;
             tab.authors = refreshed.authors;
             tab.refs = refreshed.refs;

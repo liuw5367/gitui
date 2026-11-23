@@ -1,7 +1,7 @@
 //! 引用的操作：分支/标签/远程/贮藏的写路径与工作区是否干净的判断。
 
 use crate::app::ops::refresh_refs;
-use crate::app::session::{Tab, load_tab, reload_after_history_change};
+use crate::app::session::{Tab, reload_after_history_change};
 use crate::features::changes::ops::{load_change_diff, refresh_changes};
 use git::Repo;
 
@@ -15,7 +15,7 @@ pub(crate) fn is_dirty(tab: &Tab) -> bool {
 /// 带改动切换会让 git 在会覆盖本地修改时拒绝；由界面先问「贮藏 / 带过去 / 取消」。
 pub(crate) fn checkout_branch_with(tab: &mut Tab, branch: &str, stash: bool) {
     if stash {
-        let repo = match Repo::open(tab.path.as_str()) {
+        let repo = match tab.open_repo() {
             Ok(repo) => repo,
             Err(error) => {
                 tab.error = Some(error.detail());
@@ -32,7 +32,7 @@ pub(crate) fn checkout_branch_with(tab: &mut Tab, branch: &str, stash: bool) {
 
 /// 切换分支并刷新标签页（历史、引用、变更都要跟着变）。
 pub(crate) fn checkout_branch(tab: &mut Tab, branch: &str) {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -44,7 +44,11 @@ pub(crate) fn checkout_branch(tab: &mut Tab, branch: &str) {
         return;
     }
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.branch = refreshed.branch;
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;
@@ -64,7 +68,7 @@ pub(crate) fn checkout_branch(tab: &mut Tab, branch: &str) {
 
 /// 删除本地分支；失败（例如未合并或当前分支）时把原因写进错误。
 pub(crate) fn delete_branch(tab: &mut Tab, branch: &str) {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -82,11 +86,15 @@ pub(crate) fn delete_branch(tab: &mut Tab, branch: &str) {
 
 /// 从引用新建并切换到本地分支。
 pub(crate) fn checkout_new_branch(tab: &mut Tab, name: &str, from: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.checkout_new_branch(name, from)
         .map_err(|error| error.detail())?;
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.branch = refreshed.branch;
     tab.refs = refreshed.refs;
     tab.commits = refreshed.commits;
@@ -97,7 +105,7 @@ pub(crate) fn checkout_new_branch(tab: &mut Tab, name: &str, from: &str) -> Resu
 
 /// 游离头时回到默认分支（本地没有就用远端同名分支建一个）。
 pub(crate) fn checkout_default_branch(tab: &mut Tab) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let branches = repo.refs().map_err(|error| error.detail())?.branches;
     let target = if branches.iter().any(|branch| branch.name == "main") {
         "main".to_string()
@@ -109,7 +117,11 @@ pub(crate) fn checkout_default_branch(tab: &mut Tab) -> Result<(), String> {
     repo.checkout_branch(target.as_str())
         .map_err(|error| error.detail())?;
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.commits = refreshed.commits;
     tab.head = refreshed.head;
     tab.branch = refreshed.branch;
@@ -122,11 +134,15 @@ pub(crate) fn checkout_default_branch(tab: &mut Tab) -> Result<(), String> {
 }
 
 pub(crate) fn merge_reference(tab: &mut Tab, reference: &str) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let summary = repo.merge(reference).map_err(|error| error.detail())?;
     refresh_changes(tab);
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.commits = refreshed.commits;
     tab.refs = refreshed.refs;
     tab.operation = refreshed.operation;
@@ -136,7 +152,7 @@ pub(crate) fn merge_reference(tab: &mut Tab, reference: &str) -> Result<String, 
 
 /// 把当前分支变基到指定本地分支；冲突时保留 Git 的 rebase 状态供冲突面板继续处理。
 pub(crate) fn rebase_reference(tab: &mut Tab, reference: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let result = repo.rebase_onto(reference).map_err(|error| error.detail());
     reload_after_history_change(tab)?;
     match result {
@@ -151,7 +167,7 @@ pub(crate) fn rebase_reference(tab: &mut Tab, reference: &str) -> Result<(), Str
 
 /// 推送指定本地分支，不依赖当前检出的分支。
 pub(crate) fn push_branch(tab: &mut Tab, branch: &str, remote: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.push_branch(remote, branch)
         .map_err(|error| error.detail())?;
     return Ok(());
@@ -159,7 +175,7 @@ pub(crate) fn push_branch(tab: &mut Tab, branch: &str, remote: &str) -> Result<(
 
 /// 丢弃一条贮藏。
 pub(crate) fn drop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.stash_drop(reference).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     tab.stash_diff = None;
@@ -168,7 +184,7 @@ pub(crate) fn drop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
 
 /// 按贮藏 OID 应用、弹出或删除，避免 `stash@{n}` 重排后指向另一条记录。
 pub(crate) fn apply_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     if !repo
         .refs()
         .map_err(|error| error.detail())?
@@ -183,7 +199,7 @@ pub(crate) fn apply_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, Strin
 }
 
 pub(crate) fn pop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     if !repo
         .refs()
         .map_err(|error| error.detail())?
@@ -215,7 +231,7 @@ pub(crate) fn pop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String>
 }
 
 pub(crate) fn drop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let Some(reference) = repo
         .refs()
         .map_err(|error| error.detail())?
@@ -237,7 +253,7 @@ pub(crate) fn show_stash_diff(
     tab: &Tab,
     oid: &str,
 ) -> Result<Option<(String, domain::diff::Patch)>, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let Some(stash) = repo
         .refs()
         .map_err(|error| error.detail())?
@@ -257,7 +273,7 @@ pub(crate) fn show_stash_diff(
 
 /// 推送标签到首个远端。
 pub(crate) fn push_tag(tab: &mut Tab, name: &str) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let remote = repo
         .refs()
         .ok()
@@ -274,7 +290,7 @@ pub(crate) fn push_tag_to_remote(
     name: &str,
     remote: &str,
 ) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     return repo
         .push_tag(name, Some(remote))
         .map_err(|error| error.detail());
@@ -282,14 +298,14 @@ pub(crate) fn push_tag_to_remote(
 
 /// 应用贮藏但保留条目。
 pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     apply_stash_and_refresh(tab, &repo, reference)?;
     return Ok(());
 }
 
 /// 弹出贮藏：取出并删除条目。
 pub(crate) fn pop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     // `git stash pop` 只取最近一条；指定引用时用 `apply` + `drop` 组合，语义一致。
     if apply_stash_and_refresh(tab, &repo, reference)? {
         return Ok(());
@@ -322,7 +338,7 @@ fn apply_stash_and_refresh(tab: &mut Tab, repo: &Repo, reference: &str) -> Resul
 
 /// 清掉仓库级身份，回到全局配置。
 pub(crate) fn clear_identity(tab: &Tab) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.config_unset("user.name")
         .map_err(|error| error.detail())?;
     repo.config_unset("user.email")
@@ -332,7 +348,7 @@ pub(crate) fn clear_identity(tab: &Tab) -> Result<(), String> {
 
 /// 删除标签。
 pub(crate) fn drop_tag(tab: &mut Tab, name: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.delete_tag(name).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     return Ok(());
@@ -340,7 +356,7 @@ pub(crate) fn drop_tag(tab: &mut Tab, name: &str) -> Result<(), String> {
 
 /// 移除远程。
 pub(crate) fn drop_remote(tab: &mut Tab, name: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.remove_remote(name).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     return Ok(());
@@ -352,7 +368,7 @@ pub(crate) fn update_submodule(
     path: &str,
     latest: bool,
 ) -> Result<(), domain::GitError> {
-    let repo = Repo::open(tab.path.as_str())?;
+    let repo = tab.open_repo()?;
     let result = repo.update_submodule(path, latest);
     refresh_refs(tab, &repo);
     refresh_changes(tab);
@@ -361,7 +377,7 @@ pub(crate) fn update_submodule(
 
 /// 把 `.gitmodules` 地址同步到本地配置，并刷新父仓库状态。
 pub(crate) fn sync_submodule(tab: &mut Tab, path: &str) -> Result<(), domain::GitError> {
-    let repo = Repo::open(tab.path.as_str())?;
+    let repo = tab.open_repo()?;
     let result = repo.sync_submodule(path);
     refresh_refs(tab, &repo);
     refresh_changes(tab);
@@ -370,7 +386,7 @@ pub(crate) fn sync_submodule(tab: &mut Tab, path: &str) -> Result<(), domain::Gi
 
 /// 按 Git 安全规则移除子模块；删除会暂存父仓库的 gitlink 与 `.gitmodules`。
 pub(crate) fn remove_submodule(tab: &mut Tab, path: &str) -> Result<(), domain::GitError> {
-    let repo = Repo::open(tab.path.as_str())?;
+    let repo = tab.open_repo()?;
     let result = repo.remove_submodule(path);
     refresh_refs(tab, &repo);
     refresh_changes(tab);
@@ -382,7 +398,7 @@ pub(crate) fn stage_submodule_change(
     tab: &mut Tab,
     path: &str,
 ) -> Result<Option<Vec<String>>, domain::GitError> {
-    let repo = Repo::open(tab.path.as_str())?;
+    let repo = tab.open_repo()?;
     let module = repo
         .refs()?
         .submodules
@@ -430,13 +446,17 @@ pub(crate) fn pull_remote_branch(
     remote: &str,
     branch: &str,
 ) -> Result<String, String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let result = repo
         .pull_remote_branch(remote, branch)
         .map_err(|error| error.detail());
     refresh_changes(tab);
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.branch = refreshed.branch;
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;
@@ -457,7 +477,7 @@ pub(crate) fn delete_remote_branch(
     remote: &str,
     branch: &str,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.delete_remote_branch(remote, branch)
         .map_err(|error| error.detail())?;
     let fetch_result = repo.fetch(remote).map_err(|error| error.detail());
@@ -472,7 +492,7 @@ pub(crate) fn create_worktree(
     branch: &str,
     start_point: Option<&str>,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.add_worktree(path, branch, start_point)
         .map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
@@ -481,7 +501,7 @@ pub(crate) fn create_worktree(
 }
 
 pub(crate) fn remove_worktree(tab: &mut Tab, path: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.remove_worktree(path).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     tab.error = None;
@@ -489,7 +509,7 @@ pub(crate) fn remove_worktree(tab: &mut Tab, path: &str) -> Result<(), String> {
 }
 
 pub(crate) fn prune_worktrees(tab: &mut Tab) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.prune_worktrees().map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     tab.error = None;

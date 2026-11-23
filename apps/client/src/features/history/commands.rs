@@ -150,7 +150,7 @@ impl HistoryCommands {
             loading: true,
             failed: false,
         }));
-        self.load_multi_commit_files(selection, tab.path.clone());
+        self.load_multi_commit_files(selection, tab.path.clone(), tab.git_executable.clone());
     }
 
     pub(crate) fn retry_multi_commit_files(&self) {
@@ -169,15 +169,21 @@ impl HistoryCommands {
             loading: true,
             failed: false,
         }));
-        self.load_multi_commit_files(selection, tab.path.clone());
+        self.load_multi_commit_files(selection, tab.path.clone(), tab.git_executable.clone());
     }
 
-    fn load_multi_commit_files(&self, selection: MultiCommitSelection, path: String) {
+    fn load_multi_commit_files(
+        &self,
+        selection: MultiCommitSelection,
+        path: String,
+        git_executable: git::GitExecutable,
+    ) {
         let tab_id = selection.tab_id;
         let shas = selection.shas.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let result = ops::load_multi_commit_files(path.as_str(), shas.as_slice());
+            let result =
+                ops::load_multi_commit_files(path.as_str(), &git_executable, shas.as_slice());
             let _ = sender.send(result);
         });
         let state = self.state.clone();
@@ -268,6 +274,7 @@ impl HistoryCommands {
             return;
         };
         let path = tab.path.clone();
+        let git_executable = tab.git_executable.clone();
         let tabs = self.session.tabs;
         loading.update(|items| {
             items.retain(|(loading_tab, _)| *loading_tab != tab_id);
@@ -279,6 +286,7 @@ impl HistoryCommands {
         let request = CommitLoadRequest {
             tab_id,
             path,
+            git_executable,
             sha,
             short,
         };
@@ -297,6 +305,7 @@ impl HistoryCommands {
         let CommitLoadRequest {
             tab_id,
             path,
+            git_executable,
             sha,
             short,
         } = request;
@@ -306,8 +315,12 @@ impl HistoryCommands {
         let (sender, receiver) = std::sync::mpsc::channel();
         let load_sha = sha.clone();
         std::thread::spawn(move || {
-            let result =
-                ops::load_commit_selection(path.as_str(), load_sha.as_str(), short.as_str());
+            let result = ops::load_commit_selection(
+                path.as_str(),
+                &git_executable,
+                load_sha.as_str(),
+                short.as_str(),
+            );
             let _ = sender.send(result);
         });
         Owner::detached().run(|| {
@@ -500,17 +513,19 @@ impl HistoryCommands {
 
     /// 左侧分支、远端分支或 tag 按完整 ref 定位，stash 直接传 OID。
     pub(crate) fn show_reference_at(&self, tab_id: u64, reference: String) {
-        let Some(path) = self
+        let Some((path, git_executable)) = self
             .session
             .tabs
             .get_untracked()
             .iter()
             .find(|tab| tab.id == tab_id)
-            .map(|tab| tab.path.clone())
+            .map(|tab| (tab.path.clone(), tab.git_executable.clone()))
         else {
             return;
         };
-        let sha = match Repo::open(path.as_str()).and_then(|repo| repo.resolve_commit(&reference)) {
+        let sha = match Repo::open_with_executable(path.as_str(), &git_executable)
+            .and_then(|repo| repo.resolve_commit(&reference))
+        {
             Ok(sha) => sha,
             Err(_) => {
                 self.notify_reference_not_found();

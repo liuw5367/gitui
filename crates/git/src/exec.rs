@@ -1,8 +1,40 @@
 //! 本模块负责起 Git 进程：命令拼装、stdout/stderr 收集、输出截断与展示上限。
 
 use domain::GitError;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Git 可执行文件。应用显式选择路径；库测试与兼容入口默认使用 PATH 中的 `git`。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GitExecutable(PathBuf);
+
+impl GitExecutable {
+    /// 使用进程启动环境 PATH 中的 `git`。
+    pub fn system() -> Self {
+        return Self(PathBuf::from("git"));
+    }
+
+    /// 使用设置页选择的可执行文件路径。
+    pub fn from_path(path: impl Into<PathBuf>) -> Self {
+        return Self(path.into());
+    }
+
+    /// 当前配置的程序路径。
+    pub fn path(&self) -> &Path {
+        return &self.0;
+    }
+
+    /// 创建一个使用此 executable 的 Git 命令。
+    pub fn command(&self) -> Command {
+        return Command::new(&self.0);
+    }
+}
+
+impl Default for GitExecutable {
+    fn default() -> Self {
+        return Self::system();
+    }
+}
 
 /// 单条命令的输出上限，避免异常输出占满内存；超出的部分截断。
 const MAX_OUTPUT: usize = 8 * 1024 * 1024;
@@ -11,17 +43,34 @@ pub(crate) const MAX_DETAIL: usize = 4096;
 
 /// 在 `directory` 里运行 `git args...`，返回 stdout。
 pub fn run_git(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
-    return run_git_inner(directory, args, true);
+    return run_git_with(&GitExecutable::system(), directory, args);
 }
 
-/// 读取需要完整输出的只读命令，例如全引用历史。
-pub(crate) fn run_git_full(directory: &Path, args: &[&str]) -> Result<Vec<u8>, GitError> {
-    return run_git_inner(directory, args, false);
+/// 在 `directory` 里运行指定 Git 并返回 stdout。
+pub(crate) fn run_git_with(
+    executable: &GitExecutable,
+    directory: &Path,
+    args: &[&str],
+) -> Result<Vec<u8>, GitError> {
+    return run_git_inner(executable, directory, args, true);
 }
 
-fn run_git_inner(directory: &Path, args: &[&str], limit_stdout: bool) -> Result<Vec<u8>, GitError> {
-    let program = "git";
-    let mut command = Command::new(program);
+pub(crate) fn run_git_full_with(
+    executable: &GitExecutable,
+    directory: &Path,
+    args: &[&str],
+) -> Result<Vec<u8>, GitError> {
+    return run_git_inner(executable, directory, args, false);
+}
+
+fn run_git_inner(
+    executable: &GitExecutable,
+    directory: &Path,
+    args: &[&str],
+    limit_stdout: bool,
+) -> Result<Vec<u8>, GitError> {
+    let program = executable.path().display().to_string();
+    let mut command = executable.command();
     command
         .arg("-C")
         .arg(directory)
@@ -29,7 +78,7 @@ fn run_git_inner(directory: &Path, args: &[&str], limit_stdout: bool) -> Result<
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0");
     let output = command.output().map_err(|error| GitError::Spawn {
-        program: program.to_string(),
+        program: program.clone(),
         reason: error.to_string(),
     })?;
     if !output.status.success() {
@@ -39,7 +88,7 @@ fn run_git_inner(directory: &Path, args: &[&str], limit_stdout: bool) -> Result<
         // `rev-parse --show-toplevel` 在非仓库目录失败属于正常探测，调用方
         // 需要区分“不是仓库”和“命令出错”，因此这里保留原始错误。
         return Err(GitError::CommandFailed {
-            program: program.to_string(),
+            program,
             args: joined,
             code: output.status.code(),
             detail,
@@ -52,16 +101,14 @@ fn run_git_inner(directory: &Path, args: &[&str], limit_stdout: bool) -> Result<
     return Ok(stdout);
 }
 
-/// 运行 Git 并把 stdout 与 stderr 合并返回。
-///
-/// 同步命令（fetch/pull/push）的进度与结果都写在 stderr，只读 stdout 会得到空串。
-/// 带额外环境变量的合并输出版本（继续操作要关掉编辑器）。
-pub(crate) fn run_git_combined_with_env(
+pub(crate) fn run_git_combined_with_executable_env(
+    executable: &GitExecutable,
     directory: &Path,
     args: &[&str],
     envs: &[(&str, &str)],
 ) -> Result<String, GitError> {
-    let mut command = Command::new("git");
+    let program = executable.path().display().to_string();
+    let mut command = executable.command();
     command
         .arg("-C")
         .arg(directory)
@@ -71,7 +118,7 @@ pub(crate) fn run_git_combined_with_env(
         command.env(key, value);
     }
     let output = command.output().map_err(|error| GitError::Spawn {
-        program: "git".to_string(),
+        program: program.clone(),
         reason: error.to_string(),
     })?;
     let mut text = String::from_utf8_lossy(&output.stdout).to_string();
@@ -81,7 +128,7 @@ pub(crate) fn run_git_combined_with_env(
     }
     if !output.status.success() {
         return Err(GitError::CommandFailed {
-            program: "git".to_string(),
+            program,
             args: args.join(" "),
             code: output.status.code(),
             detail: truncate(text.trim(), MAX_DETAIL),
@@ -90,15 +137,20 @@ pub(crate) fn run_git_combined_with_env(
     return Ok(text);
 }
 
-pub(crate) fn run_git_combined(directory: &Path, args: &[&str]) -> Result<String, GitError> {
-    let mut command = Command::new("git");
+pub(crate) fn run_git_combined_with_executable(
+    executable: &GitExecutable,
+    directory: &Path,
+    args: &[&str],
+) -> Result<String, GitError> {
+    let program = executable.path().display().to_string();
+    let mut command = executable.command();
     command
         .arg("-C")
         .arg(directory)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0");
     let output = command.output().map_err(|error| GitError::Spawn {
-        program: "git".to_string(),
+        program: program.clone(),
         reason: error.to_string(),
     })?;
     let mut text = String::from_utf8_lossy(&output.stdout).to_string();
@@ -108,7 +160,7 @@ pub(crate) fn run_git_combined(directory: &Path, args: &[&str]) -> Result<String
     }
     if !output.status.success() {
         return Err(GitError::CommandFailed {
-            program: "git".to_string(),
+            program,
             args: args.join(" "),
             code: output.status.code(),
             detail: truncate(text.trim(), MAX_DETAIL),

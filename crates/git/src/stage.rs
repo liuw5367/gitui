@@ -2,14 +2,16 @@
 
 use domain::{GitError, StatusEntry};
 
-use crate::exec::run_git;
 use crate::parse::parse_status;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 impl Repo {
     /// 工作区与 index 的变更文件。
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
-        let output = run_git(&self.root, &["status", "--porcelain=v1", "-z"])?;
+        let output = self.run_git(&["status", "--porcelain=v1", "-z"])?;
         return parse_status(&output);
     }
 
@@ -20,13 +22,13 @@ impl Repo {
         }
         let mut args: Vec<&str> = vec!["add", "--"];
         args.extend(paths.iter().map(|path| path.as_str()));
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
     /// 暂存全部改动，包含未跟踪文件（`git add -A`）。
     pub fn stage_all(&self) -> Result<(), GitError> {
-        run_git(&self.root, &["add", "-A"])?;
+        self.run_git(&["add", "-A"])?;
         return Ok(());
     }
 
@@ -37,13 +39,13 @@ impl Repo {
         }
         let mut args: Vec<&str> = vec!["restore", "--staged", "--"];
         args.extend(paths.iter().map(|path| path.as_str()));
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
     /// 取消全部暂存（`git restore --staged .`）。
     pub fn unstage_all(&self) -> Result<(), GitError> {
-        run_git(&self.root, &["restore", "--staged", "."])?;
+        self.run_git(&["restore", "--staged", "."])?;
         return Ok(());
     }
 
@@ -56,7 +58,7 @@ impl Repo {
         }
         let mut args: Vec<&str> = vec!["restore", "--worktree", "--"];
         args.extend(paths.iter().map(|path| path.as_str()));
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 }

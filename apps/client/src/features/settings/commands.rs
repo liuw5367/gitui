@@ -82,7 +82,7 @@ impl SettingsCommands {
     pub(crate) fn refresh_identity(&self) {
         let (name, email) = match self.current_tab() {
             Some(tab) => crate::app::ops::identity(&tab),
-            None => global_identity(),
+            None => global_identity(&self.session.current_git_executable()),
         };
         self.state
             .identity_use_global
@@ -256,6 +256,7 @@ impl SettingsCommands {
         settings_state.set(next.clone());
         store::save_settings(&store_dir, &next);
         self.state.git_path.set(path.clone());
+        self.session.refresh_git_executable();
         self.probe_git(Some(path));
     }
 
@@ -267,6 +268,7 @@ impl SettingsCommands {
         next.use_system_git = enabled;
         settings_state.set(next.clone());
         store::save_settings(&store_dir, &next);
+        self.session.refresh_git_executable();
         let configured = self.state.git_path.get_untracked();
         self.probe_git(if enabled { None } else { Some(configured) });
     }
@@ -285,18 +287,12 @@ impl SettingsCommands {
 
     fn probe_git(&self, path: Option<String>) {
         let language = self.language.get_untracked();
-        let result = match path {
-            Some(path) => std::process::Command::new(path.as_str())
-                .arg("--version")
-                .output()
-                .ok()
-                .filter(|output| output.status.success())
-                .map(|output| {
-                    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    (version, path)
-                }),
-            None => git::info().ok().map(|info| (info.version, info.exec_path)),
-        };
+        let executable = path
+            .map(git::GitExecutable::from_path)
+            .unwrap_or_else(git::GitExecutable::system);
+        let result = git::info_with(&executable)
+            .ok()
+            .map(|info| (info.version, info.exec_path));
         match result {
             Some((version, exec)) => {
                 self.state.git_version.set(version);
@@ -574,9 +570,10 @@ mod scan_search_tests {
 }
 
 /// 没有打开仓库时编辑框显示的全局身份。
-fn global_identity() -> (String, String) {
+fn global_identity(executable: &git::GitExecutable) -> (String, String) {
     let read = |key: &str| {
-        return std::process::Command::new("git")
+        return executable
+            .command()
             .args(["config", "--get", key])
             .output()
             .ok()

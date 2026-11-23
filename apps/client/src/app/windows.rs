@@ -132,11 +132,12 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
         .get_untracked()
         .iter()
         .find(|tab| tab.id == tab_id)
-        .map(|tab| tab.path.clone())
+        .map(|tab| (tab.path.clone(), tab.git_executable.clone()))
     else {
         return;
     };
-    let registered = git::Repo::open(parent.as_str())
+    let (parent, git_executable) = parent;
+    let registered = git::Repo::open_with_executable(parent.as_str(), &git_executable)
         .ok()
         .and_then(|repo| repo.refs().ok())
         .and_then(|refs| refs.worktrees.into_iter().find(|tree| tree.path == path));
@@ -150,7 +151,8 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
         );
         return;
     };
-    let Ok(repo) = git::Repo::open(registered.path.as_str()) else {
+    let Ok(repo) = git::Repo::open_with_executable(registered.path.as_str(), &git_executable)
+    else {
         crate::interactions::notify(
             handles.session.notice,
             crate::i18n::t(

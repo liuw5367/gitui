@@ -68,6 +68,7 @@ impl AppHandles {
             recent: self.session.recent,
             store_dir: self.session.store_dir.clone(),
             filter: filter.clone(),
+            git_executable: self.session.git_executable.clone(),
             notice: signal(None),
             language: self.language,
             auxiliary: true,

@@ -75,6 +75,18 @@ pub(crate) fn app() -> impl IntoElement {
     // 组件画廊是独立验收窗口：⌘⇧D 打开或关闭；`GITUI_GALLERY=1` 用于截图启动时打开。
     let gallery_open = signal(acceptance::flag("GITUI_GALLERY"));
     let settings_state = signal(store::load_settings(&store_dir));
+    let git_executable: Arc<dyn Fn() -> git::GitExecutable + Send + Sync> = {
+        let settings_state = settings_state;
+        Arc::new(move || {
+            let settings = settings_state.get_untracked();
+            if settings.use_system_git {
+                git::GitExecutable::system()
+            } else {
+                git::GitExecutable::from_path(settings.git_path)
+            }
+        })
+    };
+    let initial_git_executable = git_executable();
     {
         // 日期格式是全局显示偏好，装进 dates 模块供各视图直接读取。
         let loaded = settings_state.get_untracked();
@@ -200,7 +212,13 @@ pub(crate) fn app() -> impl IntoElement {
         session
             .paths
             .iter()
-            .map(|path| crate::app::session::load_tab(path, &initial_filter))
+            .map(|path| {
+                crate::app::session::load_tab_with_executable(
+                    path,
+                    &initial_filter,
+                    &initial_git_executable,
+                )
+            })
             .collect()
     } else {
         Vec::new()
@@ -209,7 +227,11 @@ pub(crate) fn app() -> impl IntoElement {
     // 优先于会话恢复。截图验收需要它——没有打开的仓库，历史表与变更页
     // 根本不会渲染，截图只能看到欢迎页。
     if let Some(path) = acceptance::value("GITUI_REPO") {
-        initial_tabs = vec![crate::app::session::load_tab(&path, &initial_filter)];
+        initial_tabs = vec![crate::app::session::load_tab_with_executable(
+            &path,
+            &initial_filter,
+            &initial_git_executable,
+        )];
     }
     if mode.get_untracked() == Mode::Blame
         && let Some(tab) = initial_tabs.first_mut()
@@ -338,6 +360,7 @@ pub(crate) fn app() -> impl IntoElement {
         recent,
         store_dir: store_dir.clone(),
         filter: current_filter.clone(),
+        git_executable: git_executable.clone(),
         notice,
         language,
         auxiliary: false,
@@ -490,11 +513,12 @@ pub(crate) fn app() -> impl IntoElement {
     };
     // 设置页（P3 批 B）：设置值、分区与快捷键编辑状态收进 SettingsState，用例收进
     // SettingsCommands。本机 Git 的版本、执行路径与凭据助手在启动时探测一次。
-    let git_info = match git::info() {
+    let git_info = match git::info_with(&initial_git_executable) {
         Ok(info) => (
             info.version,
             info.exec_path,
-            git::credential_helper(std::path::Path::new(".")).unwrap_or_default(),
+            git::credential_helper_with(&initial_git_executable, std::path::Path::new("."))
+                .unwrap_or_default(),
         ),
         Err(error) => (error.detail(), String::new(), String::new()),
     };

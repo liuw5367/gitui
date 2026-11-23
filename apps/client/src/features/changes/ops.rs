@@ -1,6 +1,6 @@
 //! 变更页的操作：装载/刷新变更、单文件 diff、按 hunk 暂存与清单管理。
 
-use crate::app::session::{ChangeEntry, Tab, load_tab};
+use crate::app::session::{ChangeEntry, Tab};
 use git::Repo;
 
 /// 读取工作区与暂存区的变更，并附上逐文件行数统计。
@@ -40,7 +40,7 @@ pub(crate) fn load_changes(repo: &Repo) -> Vec<ChangeEntry> {
 
 /// 刷新变更列表（暂存、取消暂存、丢弃之后调用），保留选中项。
 pub(crate) fn refresh_changes(tab: &mut Tab) {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -76,7 +76,7 @@ pub(crate) fn load_change_diff(tab: &mut Tab, index: usize) {
     let Some(entry) = tab.changes.get(index).cloned() else {
         return;
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -159,14 +159,18 @@ pub(crate) fn apply_piece(
         None => sections.hunk_patch(0, hunk_index),
     }
     .ok_or_else(|| "这一段没有可暂存的内容".to_string())?;
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.apply_cached(patch.as_str(), reverse)
         .map_err(|error| error.detail())?;
     refresh_changes(tab);
     // 重新装载当前选中文件的 diff，让刚改的片段立刻反映出来。
     let selected = tab.selected_change;
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.commits = refreshed.commits;
     tab.changes = refreshed.changes;
     tab.status = refreshed.status;
@@ -186,7 +190,7 @@ pub(crate) fn toggle_stage(tab: &mut Tab, index: usize) {
     let Some(entry) = tab.changes.get(index).cloned() else {
         return;
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -210,7 +214,7 @@ pub(crate) fn discard_change(tab: &mut Tab, index: usize) {
     let Some(entry) = tab.changes.get(index).cloned() else {
         return;
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());

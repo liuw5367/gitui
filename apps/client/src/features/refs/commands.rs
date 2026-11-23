@@ -86,10 +86,11 @@ impl RefsCommands {
             .reflog_detail
             .set(Some(ReflogDetailState::Loading(selection.clone())));
         let path = tab.path.clone();
+        let git_executable = tab.git_executable.clone();
         let sha = selection.sha.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let result = git::Repo::open(path.as_str())
+            let result = git::Repo::open_with_executable(path.as_str(), &git_executable)
                 .and_then(|repo| {
                     let details = repo.commit_details(sha.as_str())?;
                     let files = repo.numstat(sha.as_str())?;
@@ -439,7 +440,8 @@ impl RefsCommands {
     }
 
     fn fresh_worktree(&self, parent: &str, path: &str) -> Option<git::WorktreeInfo> {
-        git::Repo::open(parent)
+        self.session
+            .open_repo(parent)
             .ok()?
             .refs()
             .ok()?
@@ -449,7 +451,8 @@ impl RefsCommands {
     }
 
     fn fresh_worktrees(&self, parent: &str) -> Vec<git::WorktreeInfo> {
-        git::Repo::open(parent)
+        self.session
+            .open_repo(parent)
             .ok()
             .and_then(|repo| repo.refs().ok())
             .map(|refs| refs.worktrees)
@@ -804,7 +807,9 @@ impl RefsCommands {
             );
             return;
         };
-        let Ok(repo) = git::Repo::open(path.to_string_lossy().as_ref()) else {
+        let Ok(repo) =
+            git::Repo::open_with_executable(path.to_string_lossy().as_ref(), &tab.git_executable)
+        else {
             crate::interactions::notify(
                 self.notice,
                 crate::i18n::t(

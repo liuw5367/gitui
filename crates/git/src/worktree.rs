@@ -2,8 +2,10 @@
 
 use domain::GitError;
 
-use crate::exec::run_git;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 impl Repo {
     /// 在 `path` 创建 worktree；`start_point` 有值时从该引用新建分支。
@@ -19,7 +21,7 @@ impl Repo {
         } else {
             args.extend(["--", path, branch]);
         }
-        run_git(&self.root, &args)?;
+        self.run_git(&args)?;
         return Ok(());
     }
 
@@ -43,16 +45,13 @@ impl Repo {
         if worktree.dirty {
             return Err(worktree_error("The worktree has uncommitted changes."));
         }
-        run_git(
-            &self.root,
-            &["worktree", "remove", "--", worktree.path.as_str()],
-        )?;
+        self.run_git(&["worktree", "remove", "--", worktree.path.as_str()])?;
         return Ok(());
     }
 
     /// 清理 Git 已标记为可 prune 的失效 worktree 登记。
     pub fn prune_worktrees(&self) -> Result<(), GitError> {
-        run_git(&self.root, &["worktree", "prune", "--expire", "now"])?;
+        self.run_git(&["worktree", "prune", "--expire", "now"])?;
         return Ok(());
     }
 }

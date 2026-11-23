@@ -1,7 +1,7 @@
 //! 提交历史的操作：选中提交/文件、对比、按 SHA 定位与换筛选条件重载。
 
-use crate::app::session::{Tab, load_tab};
-use git::{LogFilter, Repo};
+use crate::app::session::Tab;
+use git::{GitExecutable, LogFilter, Repo};
 use std::collections::HashSet;
 
 pub(crate) enum CompareFailure {
@@ -30,7 +30,7 @@ pub(crate) fn select_by_sha(tab: &mut Tab, sha: &str) -> bool {
         .iter()
         .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
         .collect::<Vec<_>>();
-    if let Ok(repo) = Repo::open(tab.path.as_str())
+    if let Ok(repo) = tab.open_repo()
         && let Ok(mut commits) = repo.log_all()
     {
         let refs = repo.refs().unwrap_or_default();
@@ -61,7 +61,7 @@ pub(crate) fn select_reference_sha(tab: &mut Tab, sha: &str, filter: &LogFilter)
         .collect::<Vec<_>>();
     let compare_refs_active = tab.compare_base.is_some() && tab.compare_target.is_some();
     let compare_refs_patch = tab.patch.clone();
-    let Ok(repo) = Repo::open(tab.path.as_str()) else {
+    let Ok(repo) = tab.open_repo() else {
         return false;
     };
     // 引用导航必须跨所有分支定位。关键字留给表格处理，目标会作为当前选中行滚入视口。
@@ -150,6 +150,7 @@ pub(crate) fn prepare_commit_selection(tab: &mut Tab, index: usize) -> Option<(S
 /// 在线程中读取提交补丁、文件统计与完整信息。
 pub(crate) fn load_commit_selection(
     path: &str,
+    executable: &GitExecutable,
     sha: &str,
     short: &str,
 ) -> Result<CommitSelectionData, String> {
@@ -159,7 +160,7 @@ pub(crate) fn load_commit_selection(
         "event=commit_select.start commit={}",
         short
     );
-    let repo = match Repo::open(path) {
+    let repo = match Repo::open_with_executable(path, executable) {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -261,9 +262,10 @@ pub(crate) fn aggregate_commit_file_stats(
 /// 在线程中读取多个提交的文件统计并合并重复路径。
 pub(crate) fn load_multi_commit_files(
     path: &str,
+    executable: &GitExecutable,
     shas: &[String],
 ) -> Result<Vec<domain::DiffStat>, String> {
-    let repo = Repo::open(path).map_err(|error| error.detail())?;
+    let repo = Repo::open_with_executable(path, executable).map_err(|error| error.detail())?;
     let mut commit_files = Vec::with_capacity(shas.len());
     for sha in shas {
         commit_files.push(repo.numstat(sha).map_err(|error| error.detail())?);
@@ -284,7 +286,12 @@ pub(crate) fn select_commit(tab: &mut Tab, index: usize) {
         return;
     };
     let path = tab.path.clone();
-    match load_commit_selection(path.as_str(), sha.as_str(), short.as_str()) {
+    match load_commit_selection(
+        path.as_str(),
+        &tab.git_executable,
+        sha.as_str(),
+        short.as_str(),
+    ) {
         Ok(data) => apply_commit_selection(tab, data),
         Err(error) => tab.error = Some(error),
     }
@@ -340,7 +347,7 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
     let sha = commit.sha.clone();
     tab.selected_file = Some(index);
     tab.file_patch = None;
-    match Repo::open(tab.path.as_str()) {
+    match tab.open_repo() {
         Ok(repo) => {
             let history = repo
                 .file_history(path, sha.as_str(), 50)
@@ -365,7 +372,7 @@ pub(crate) fn select_file_in_tree(tab: &mut Tab, path: Option<&str>) {
 /// Prepare the Blame / file history page for a commit file or a current worktree file.
 pub(crate) fn open_blame(tab: &mut Tab, path: &str, revision: &str, return_mode: crate::Mode) {
     tab.blame_return_mode = Some(return_mode);
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -425,7 +432,7 @@ pub(crate) fn select_blame_history(tab: &mut Tab, sha: &str) {
     else {
         return;
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -586,7 +593,7 @@ pub(crate) fn diff_patch_for_tab(tab: &Tab, ignore_whitespace: bool) -> domain::
             })
             .unwrap_or_default();
     }
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -676,7 +683,7 @@ pub(crate) fn select_file(tab: &mut Tab, index: usize) {
         short,
         extension
     );
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             log::warn!(
@@ -794,7 +801,7 @@ pub(crate) fn comparison_patch(
     tab: &Tab,
     ignore_whitespace: bool,
 ) -> Result<domain::diff::Patch, CompareFailure> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|_| CompareFailure::Git)?;
+    let repo = tab.open_repo().map_err(|_| CompareFailure::Git)?;
     if tab.compare_worktree {
         let target = tab.compare_target.as_deref().ok_or(CompareFailure::Git)?;
         let target = repo
@@ -859,7 +866,11 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
         tab.compare_target = None;
         tab.compare_worktree = false;
         let filter = tab.filter.clone();
-        let refreshed = load_tab(tab.path.as_str(), &filter);
+        let refreshed = crate::app::session::load_tab_with_executable(
+            tab.path.as_str(),
+            &filter,
+            &tab.git_executable,
+        );
         tab.commits = refreshed.commits;
         tab.graph_commits = refreshed.graph_commits;
         tab.selected = refreshed.selected;
@@ -885,7 +896,7 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
         }
         return;
     };
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -927,7 +938,11 @@ pub(crate) fn set_compare_refs(tab: &mut Tab, base: Option<String>, target: Opti
 
 /// 换一组筛选条件后重新装载。
 pub(crate) fn reload_with_filter(tab: &Tab, filter: &LogFilter) -> Tab {
-    let mut next = load_tab(tab.path.as_str(), filter);
+    let mut next = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        filter,
+        &tab.git_executable,
+    );
     next.comparing = tab.comparing;
     next.sidebar_collapsed = tab.sidebar_collapsed.clone();
     next.compare_three_dot = tab.compare_three_dot;

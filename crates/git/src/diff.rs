@@ -7,8 +7,10 @@
 use domain::diff::Patch;
 use domain::{DiffStat, GitError};
 
-use crate::exec::run_git;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 impl Repo {
     /// 比较两个 tree-ish 端点；`from` 为空时以 `to` 为基准比较当前工作区。
@@ -34,14 +36,14 @@ impl Repo {
         }
         args.push(from);
         args.push(to);
-        let output = run_git(&self.root, &args)?;
+        let output = self.run_git(&args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
     }
 
     /// Merge base for two commits. Unrelated histories return `Ok(None)`.
     pub fn merge_base(&self, left: &str, right: &str) -> Result<Option<String>, GitError> {
-        let output = match run_git(&self.root, &["merge-base", left, right]) {
+        let output = match self.run_git(&["merge-base", left, right]) {
             Ok(output) => output,
             Err(GitError::CommandFailed { code: Some(1), .. }) => return Ok(None),
             Err(error) => return Err(error),
@@ -71,7 +73,7 @@ impl Repo {
             args.push("--ignore-all-space");
         }
         args.push(revision);
-        let output = run_git(&self.root, &args)?;
+        let output = self.run_git(&args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
     }
@@ -133,7 +135,7 @@ impl Repo {
             args.push("--");
             args.push(path);
         }
-        let output = run_git(&self.root, &args)?;
+        let output = self.run_git(&args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
     }
@@ -147,26 +149,23 @@ impl Repo {
         } else {
             vec!["diff", "--no-color", "--", path]
         };
-        let output = run_git(&self.root, &args)?;
+        let output = self.run_git(&args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));
     }
 
     /// 一个提交改动的文件与行数统计。
     pub fn numstat(&self, sha: &str) -> Result<Vec<DiffStat>, GitError> {
-        let output = run_git(
-            &self.root,
-            &[
-                "show",
-                "--numstat",
-                "--no-renames",
-                "-z",
-                "--format=",
-                "--root",
-                "--diff-merges=first-parent",
-                sha,
-            ],
-        )?;
+        let output = self.run_git(&[
+            "show",
+            "--numstat",
+            "--no-renames",
+            "-z",
+            "--format=",
+            "--root",
+            "--diff-merges=first-parent",
+            sha,
+        ])?;
         let mut stats = Vec::new();
         for record in output
             .split(|byte| *byte == 0)
@@ -185,19 +184,16 @@ impl Repo {
             });
         }
         // name-status 提供真实文件类型，不能从增删行数推断新增或删除（空文件和二进制也有状态）。
-        let output = run_git(
-            &self.root,
-            &[
-                "show",
-                "--name-status",
-                "-z",
-                "--no-renames",
-                "--format=",
-                "--root",
-                "--diff-merges=first-parent",
-                sha,
-            ],
-        )?;
+        let output = self.run_git(&[
+            "show",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            "--format=",
+            "--root",
+            "--diff-merges=first-parent",
+            sha,
+        ])?;
         let fields = output.split(|byte| *byte == 0).collect::<Vec<_>>();
         for pair in fields.chunks_exact(2) {
             let status = pair[0].first().copied().unwrap_or(b'M') as char;
@@ -216,7 +212,7 @@ impl Repo {
         } else {
             vec!["diff", "--numstat"]
         };
-        let output = run_git(&self.root, &args)?;
+        let output = self.run_git(&args)?;
         let mut stats = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let mut parts = line.splitn(3, '\t');

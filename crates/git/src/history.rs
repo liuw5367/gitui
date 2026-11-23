@@ -2,9 +2,12 @@
 
 use domain::{Commit, GitError};
 
-use crate::exec::{portable_separator, run_git, run_git_full};
+use crate::exec::portable_separator;
 use crate::parse::parse_log;
 use crate::query::{Refs, RemoteBranch, Repo};
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 const LOG_FORMAT: &str =
     "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%B%x1f%D%x1f%P%x1e";
@@ -111,7 +114,7 @@ impl Repo {
         ];
         args.extend(stashes.iter().map(|(_, oid)| oid.clone()));
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let output = run_git_full(&self.root, &args)?;
+        let output = self.run_git_full(&args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         decorate_stashes(&mut commits, &stashes);
         return Ok(commits);
@@ -127,7 +130,7 @@ impl Repo {
         };
         let args = history_args(filter, true, &stashes);
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let output = run_git_full(&self.root, &args)?;
+        let output = self.run_git_full(&args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         decorate_stashes(&mut commits, &stashes);
         filter_query(&mut commits, &filter.query);
@@ -144,14 +147,14 @@ impl Repo {
         };
         let args = history_args(filter, false, &stashes);
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let output = run_git_full(&self.root, &args)?;
+        let output = self.run_git_full(&args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         decorate_stashes(&mut commits, &stashes);
         return Ok(commits);
     }
 
     fn stash_entries(&self) -> Result<Vec<(String, String)>, GitError> {
-        let output = run_git(&self.root, &["stash", "list", "--format=%gd%x1f%H"])?;
+        let output = self.run_git(&["stash", "list", "--format=%gd%x1f%H"])?;
         let entries = String::from_utf8_lossy(&output)
             .lines()
             .filter_map(|line| {
@@ -166,15 +169,12 @@ impl Repo {
     /// 将完整引用解析为提交 SHA。`^{commit}` 同时支持轻量与 annotated tag。
     pub fn resolve_commit(&self, reference: &str) -> Result<String, GitError> {
         let revision = format!("{reference}^{{commit}}");
-        let output = run_git(
-            &self.root,
-            &[
-                "rev-parse",
-                "--verify",
-                "--end-of-options",
-                revision.as_str(),
-            ],
-        )?;
+        let output = self.run_git(&[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            revision.as_str(),
+        ])?;
         return Ok(String::from_utf8_lossy(&output).trim().to_string());
     }
 
@@ -183,10 +183,7 @@ impl Repo {
         let limit_arg = format!("-{}", limit.max(1));
         // 字段分隔符用单元分隔符（U+001F），记录分隔符用记录分隔符（U+001E），
         // 避免摘要里的标点与分隔符冲突。
-        let output = run_git(
-            &self.root,
-            &["log", limit_arg.as_str(), "--date=unix", LOG_FORMAT],
-        )?;
+        let output = self.run_git(&["log", limit_arg.as_str(), "--date=unix", LOG_FORMAT])?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         filter_query(&mut commits, query);
         return Ok(commits);
@@ -229,7 +226,7 @@ impl Repo {
         }
         push_path(&mut args, filter.path.as_deref());
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let output = run_git(&self.root, &args)?;
+        let output = self.run_git(&args)?;
         let mut commits = parse_log(&String::from_utf8_lossy(&output))?;
         filter_query(&mut commits, &filter.query);
         filter_message_and_authors(&mut commits, filter);
@@ -238,7 +235,7 @@ impl Repo {
 
     /// 历史里出现过的作者，按最近提交的先后去重。
     pub fn authors(&self) -> Result<Vec<String>, GitError> {
-        let output = run_git(&self.root, &["log", "--all", "--format=%an"])?;
+        let output = self.run_git(&["log", "--all", "--format=%an"])?;
         let mut authors: Vec<String> = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let name = line.trim();
@@ -254,7 +251,7 @@ impl Repo {
 
     /// 历史里出现过的作者身份，按最近提交先后按 email 去重。
     pub fn authors_with_email(&self) -> Result<Vec<Author>, GitError> {
-        let output = run_git(&self.root, &["log", "--all", "--format=%an%x1f%ae"])?;
+        let output = self.run_git(&["log", "--all", "--format=%an%x1f%ae"])?;
         let mut authors: Vec<Author> = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let Some((name, email)) = line.split_once('\u{1f}') else {
@@ -280,7 +277,7 @@ impl Repo {
     /// 一个提交的完整元信息。
     pub fn commit_details(&self, sha: &str) -> Result<CommitDetails, GitError> {
         let format = "--pretty=format:%H%x1f%h%x1f%T%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%s%x1f%b%x1f%D";
-        let output = run_git(&self.root, &["show", "-s", "--date=unix", format, sha])?;
+        let output = self.run_git(&["show", "-s", "--date=unix", format, sha])?;
         let text = String::from_utf8_lossy(&output);
         let mut fields = text.split('\u{1f}');
         let mut next = || fields.next().unwrap_or("").to_string();
@@ -312,26 +309,20 @@ impl Repo {
     /// 两个引用之间的提交列表（`base..target`，包含 target 一侧）。
     pub fn commits_between(&self, base: &str, target: &str) -> Result<Vec<Commit>, GitError> {
         let range = format!("{}..{}", base, target);
-        let output = run_git(
-            &self.root,
-            &["log", "--date=unix", LOG_FORMAT, range.as_str()],
-        )?;
+        let output = self.run_git(&["log", "--date=unix", LOG_FORMAT, range.as_str()])?;
         return parse_log(&String::from_utf8_lossy(&output));
     }
 
     /// A file's line attribution at `revision`; `--follow` tracks renames backward.
     pub fn blame(&self, path: &str, revision: &str) -> Result<Vec<BlameLine>, GitError> {
-        let output = run_git(
-            &self.root,
-            &[
-                "blame",
-                "--line-porcelain",
-                "--follow",
-                revision,
-                "--",
-                path,
-            ],
-        )?;
+        let output = self.run_git(&[
+            "blame",
+            "--line-porcelain",
+            "--follow",
+            revision,
+            "--",
+            path,
+        ])?;
         let text = String::from_utf8_lossy(&output);
         let mut lines: Vec<BlameLine> = Vec::new();
         let mut sha = String::new();
@@ -381,36 +372,30 @@ impl Repo {
         limit: usize,
     ) -> Result<Vec<FileHistoryEntry>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
-        let output = run_git(
-            &self.root,
-            &[
-                "log",
-                "--follow",
-                "--name-status",
-                "-z",
-                "--date=unix",
-                limit_arg.as_str(),
-                FILE_HISTORY_FORMAT,
-                revision,
-                "--",
-                path,
-            ],
-        )?;
+        let output = self.run_git(&[
+            "log",
+            "--follow",
+            "--name-status",
+            "-z",
+            "--date=unix",
+            limit_arg.as_str(),
+            FILE_HISTORY_FORMAT,
+            revision,
+            "--",
+            path,
+        ])?;
         return parse_file_history(&String::from_utf8_lossy(&output), path);
     }
 
     /// 读取当前分支的 reflog（最近的在前）。
     pub fn reflog(&self, limit: usize) -> Result<Vec<ReflogEntry>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
-        let output = run_git(
-            &self.root,
-            &[
-                "reflog",
-                limit_arg.as_str(),
-                "--date=unix",
-                "--format=%H%x1f%h%x1f%gs%x1f%ct",
-            ],
-        )?;
+        let output = self.run_git(&[
+            "reflog",
+            limit_arg.as_str(),
+            "--date=unix",
+            "--format=%H%x1f%h%x1f%gs%x1f%ct",
+        ])?;
         let mut entries = Vec::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let mut fields = line.split('\u{1f}');

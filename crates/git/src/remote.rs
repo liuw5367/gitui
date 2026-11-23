@@ -8,9 +8,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use crate::exec::{MAX_DETAIL, run_git, run_git_combined, truncate};
+use crate::exec::{GitExecutable, MAX_DETAIL, truncate};
 use crate::parse::summarise;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 /// 取回选项（设计板 28）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -149,6 +152,7 @@ pub fn parse_push_porcelain(output: &str) -> Vec<PushRefUpdate> {
 
 pub struct SyncRun {
     child: Child,
+    program: String,
     process_group: Option<u32>,
     args: String,
     output: Arc<Mutex<String>>,
@@ -159,13 +163,26 @@ pub struct SyncRun {
 }
 
 impl SyncRun {
-    fn start(directory: &Path, args: &[String]) -> Result<SyncRun, GitError> {
-        let mut command = Command::new("git");
+    fn start(
+        executable: &GitExecutable,
+        directory: &Path,
+        args: &[String],
+    ) -> Result<SyncRun, GitError> {
+        let mut command = executable.command();
         command.arg("-C").arg(directory).args(args);
-        return Self::spawn(command, args);
+        return Self::spawn_with_program(command, args, executable.path().display().to_string());
     }
 
-    fn spawn(mut command: Command, args: &[String]) -> Result<SyncRun, GitError> {
+    #[cfg(test)]
+    fn spawn(command: Command, args: &[String]) -> Result<SyncRun, GitError> {
+        return Self::spawn_with_program(command, args, "git".to_string());
+    }
+
+    fn spawn_with_program(
+        mut command: Command,
+        args: &[String],
+        program: String,
+    ) -> Result<SyncRun, GitError> {
         let process_group = configure_sync_process_group(&mut command);
         let mut child = command
             .env("GIT_TERMINAL_PROMPT", "0")
@@ -173,7 +190,7 @@ impl SyncRun {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| GitError::Spawn {
-                program: "git".to_string(),
+                program: program.clone(),
                 reason: error.to_string(),
             })?;
         let output = Arc::new(Mutex::new(String::new()));
@@ -202,6 +219,7 @@ impl SyncRun {
         return Ok(SyncRun {
             process_group: process_group.then(|| child.id()),
             child,
+            program,
             args: args.join(" "),
             output,
             stdout: status_output,
@@ -238,7 +256,7 @@ impl SyncRun {
             Ok(status) => status,
             Err(error) => {
                 return Some(Err(GitError::Spawn {
-                    program: "git".to_string(),
+                    program: self.program.clone(),
                     reason: error.to_string(),
                 }));
             }
@@ -251,7 +269,7 @@ impl SyncRun {
             return Some(Ok(summarise(&output)));
         }
         return Some(Err(GitError::CommandFailed {
-            program: "git".to_string(),
+            program: self.program.clone(),
             args: self.args.clone(),
             code: status.code(),
             detail: crate::exec::truncate(output.trim(), MAX_DETAIL),
@@ -434,15 +452,12 @@ fn append_sync_output(output: &Arc<Mutex<String>>, bytes: &[u8]) -> bool {
 impl Repo {
     /// Capture local remote-tracking refs and tags before/after fetch.
     pub fn sync_ref_snapshot(&self) -> Result<BTreeMap<String, String>, GitError> {
-        let output = run_git(
-            &self.root,
-            &[
-                "for-each-ref",
-                "--format=%(refname)%1f%(objectname)%1f%(symref)",
-                "refs/remotes",
-                "refs/tags",
-            ],
-        )?;
+        let output = self.run_git(&[
+            "for-each-ref",
+            "--format=%(refname)%1f%(objectname)%1f%(symref)",
+            "refs/remotes",
+            "refs/tags",
+        ])?;
         let mut refs = BTreeMap::new();
         for line in String::from_utf8_lossy(&output).lines() {
             let Some((name, details)) = line.split_once('\u{1f}') else {
@@ -463,13 +478,11 @@ impl Repo {
 
     /// Current upstream full ref name and commit OID, if the branch has a readable upstream.
     pub fn upstream_ref(&self) -> Option<(String, String)> {
-        let name = run_git(
-            &self.root,
-            &["rev-parse", "--symbolic-full-name", "@{upstream}"],
-        )
-        .ok()
-        .map(|output| String::from_utf8_lossy(&output).trim().to_string())
-        .filter(|name| !name.is_empty())?;
+        let name = self
+            .run_git(&["rev-parse", "--symbolic-full-name", "@{upstream}"])
+            .ok()
+            .map(|output| String::from_utf8_lossy(&output).trim().to_string())
+            .filter(|name| !name.is_empty())?;
         let oid = self.resolve_commit_oid(name.as_str()).ok()?;
         return Some((name, oid));
     }
@@ -482,15 +495,12 @@ impl Repo {
     /// Resolve a ref or abbreviated OID to a commit OID.
     pub fn resolve_commit_oid(&self, reference: &str) -> Result<String, GitError> {
         let revision = format!("{reference}^{{commit}}");
-        let output = run_git(
-            &self.root,
-            &[
-                "rev-parse",
-                "--verify",
-                "--end-of-options",
-                revision.as_str(),
-            ],
-        )?;
+        let output = self.run_git(&[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            revision.as_str(),
+        ])?;
         return Ok(String::from_utf8_lossy(&output).trim().to_string());
     }
 
@@ -533,7 +543,7 @@ impl Repo {
         } else {
             args.push(remote);
         }
-        let output = run_git_combined(&self.root, &args)?;
+        let output = self.run_git_combined(&args)?;
         return Ok(summarise(&output));
     }
 
@@ -554,12 +564,12 @@ impl Repo {
         } else {
             args.push(remote.to_string());
         }
-        return SyncRun::start(&self.root, &args);
+        return SyncRun::start(&self.executable, &self.root, &args);
     }
 
     /// 上游新增的提交数（`HEAD..@{u}`）；没有上游时为 0。
     pub fn upstream_incoming(&self) -> u32 {
-        let output = match run_git(&self.root, &["rev-list", "--count", "HEAD..@{upstream}"]) {
+        let output = match self.run_git(&["rev-list", "--count", "HEAD..@{upstream}"]) {
             Ok(output) => output,
             Err(_) => return 0,
         };
@@ -583,7 +593,7 @@ impl Repo {
         if options.rebase_local && options.strategy == PullStrategy::Rebase {
             args.push("--rebase-merges");
         }
-        let output = run_git_combined(&self.root, &args)?;
+        let output = self.run_git_combined(&args)?;
         return Ok(summarise(&output));
     }
 
@@ -600,21 +610,19 @@ impl Repo {
         if options.rebase_local && options.strategy == PullStrategy::Rebase {
             args.push("--rebase-merges".to_string());
         }
-        return SyncRun::start(&self.root, &args);
+        return SyncRun::start(&self.executable, &self.root, &args);
     }
 
     /// 从指定远端分支拉取并合并到当前分支。
     pub fn pull_remote_branch(&self, remote: &str, branch: &str) -> Result<String, GitError> {
-        let output = run_git_combined(
-            &self.root,
-            &["pull", "--no-rebase", "--no-edit", remote, branch],
-        )?;
+        let output =
+            self.run_git_combined(&["pull", "--no-rebase", "--no-edit", remote, branch])?;
         return Ok(summarise(&output));
     }
 
     /// 从服务器删除一条分支，不使用强制推送。
     pub fn delete_remote_branch(&self, remote: &str, branch: &str) -> Result<String, GitError> {
-        let output = run_git_combined(&self.root, &["push", remote, "--delete", branch])?;
+        let output = self.run_git_combined(&["push", remote, "--delete", branch])?;
         return Ok(summarise(&output));
     }
 
@@ -631,7 +639,7 @@ impl Repo {
     ) -> Result<String, GitError> {
         let args = self.push_args(remote, options)?;
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        let output = run_git_combined(&self.root, &refs)?;
+        let output = self.run_git_combined(&refs)?;
         return Ok(summarise(&output));
     }
 
@@ -643,7 +651,7 @@ impl Repo {
         let mut args = self.push_args(remote, options)?;
         args.insert(1, "--porcelain".to_string());
         args.insert(2, "--progress".to_string());
-        return SyncRun::start(&self.root, &args);
+        return SyncRun::start(&self.executable, &self.root, &args);
     }
 
     fn push_args(
@@ -652,16 +660,14 @@ impl Repo {
         options: &PushOptions,
     ) -> Result<Vec<String>, GitError> {
         let branch = self.abbrev_branch()?;
-        let has_upstream = run_git(
-            &self.root,
-            &[
+        let has_upstream = self
+            .run_git(&[
                 "rev-parse",
                 "--abbrev-ref",
                 "--symbolic-full-name",
                 "@{upstream}",
-            ],
-        )
-        .is_ok();
+            ])
+            .is_ok();
         let mut args: Vec<String> = vec!["push".to_string()];
         if options.force_with_lease {
             args.push("--force-with-lease".to_string());
@@ -695,14 +701,14 @@ impl Repo {
     /// 推送一个标签（`git push <remote> <tag>`）。
     pub fn push_tag(&self, tag: &str, remote: Option<&str>) -> Result<String, GitError> {
         let remote = remote.unwrap_or("origin");
-        let output = run_git_combined(&self.root, &["push", remote, tag])?;
+        let output = self.run_git_combined(&["push", remote, tag])?;
         return Ok(summarise(&output));
     }
 
     /// 把指定本地分支推送到远端的同名分支，不要求它当前已检出。
     pub fn push_branch(&self, remote: &str, branch: &str) -> Result<String, GitError> {
         let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
-        let output = run_git_combined(&self.root, &["push", remote, refspec.as_str()])?;
+        let output = self.run_git_combined(&["push", remote, refspec.as_str()])?;
         return Ok(summarise(&output));
     }
 
@@ -738,7 +744,7 @@ impl Repo {
             args.push("--reverse");
         }
         args.push(path.to_str().unwrap_or_default());
-        let result = run_git(&self.root, &args);
+        let result = self.run_git(&args);
         let _ = std::fs::remove_file(&path);
         result?;
         return Ok(());
@@ -747,11 +753,18 @@ impl Repo {
 
 /// 在 `directory` 初始化一个空仓库（`git init -b main`）。
 pub fn init_repository(directory: &str) -> Result<(), GitError> {
-    return init_branch(directory, "main");
+    return init_repository_with_executable(directory, &GitExecutable::system());
+}
+
+pub fn init_repository_with_executable(
+    directory: &str,
+    executable: &GitExecutable,
+) -> Result<(), GitError> {
+    return init_branch(directory, "main", executable);
 }
 
 /// 用指定分支初始化；分支为空时回退 `main`。
-fn init_branch(directory: &str, branch: &str) -> Result<(), GitError> {
+fn init_branch(directory: &str, branch: &str, executable: &GitExecutable) -> Result<(), GitError> {
     let branch = if branch.trim().is_empty() {
         "main"
     } else {
@@ -762,7 +775,11 @@ fn init_branch(directory: &str, branch: &str) -> Result<(), GitError> {
         path: path.display().to_string(),
         reason: error.to_string(),
     })?;
-    run_git(Path::new("."), &["init", "-q", "-b", branch, directory])?;
+    crate::exec::run_git_with(
+        executable,
+        Path::new("."),
+        &["init", "-q", "-b", branch, directory],
+    )?;
     return Ok(());
 }
 
@@ -795,7 +812,15 @@ impl Default for InitOptions {
 
 /// 带附带文件的初始化；目录非空时只初始化、不追加文件。
 pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError> {
-    init_branch(directory, options.branch.as_str())?;
+    return init_with_executable(directory, options, &GitExecutable::system());
+}
+
+pub fn init_with_executable(
+    directory: &str,
+    options: &InitOptions,
+    executable: &GitExecutable,
+) -> Result<(), GitError> {
+    init_branch(directory, options.branch.as_str(), executable)?;
     let root = Path::new(directory);
     let name = match options.name.trim() {
         "" => root
@@ -821,7 +846,7 @@ pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError>
         })?;
     }
     if options.license && !root.join("LICENSE").exists() {
-        let holder = license_holder(root, name.as_str());
+        let holder = license_holder(root, name.as_str(), executable);
         let year = utc_year();
         std::fs::write(
             root.join("LICENSE"),
@@ -836,9 +861,9 @@ pub fn init_with(directory: &str, options: &InitOptions) -> Result<(), GitError>
 }
 
 /// LICENSE 的版权人：优先 Git 用户名，其次邮箱，最后用仓库作者。
-fn license_holder(root: &Path, name: &str) -> String {
+fn license_holder(root: &Path, name: &str, executable: &GitExecutable) -> String {
     for key in ["user.name", "user.email"] {
-        if let Ok(bytes) = run_git(root, &["config", "--get", key]) {
+        if let Ok(bytes) = crate::exec::run_git_with(executable, root, &["config", "--get", key]) {
             let value = String::from_utf8_lossy(&bytes).trim().to_string();
             if !value.is_empty() {
                 return value;
@@ -877,7 +902,12 @@ const DEFAULT_GITIGNORE: &str =
 const MIT_BODY: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.";
 
 pub fn clone(url: &str, destination: &str) -> Result<(), GitError> {
-    return clone_with(url, destination, &CloneOptions::default());
+    return clone_with_executable(
+        url,
+        destination,
+        &CloneOptions::default(),
+        &GitExecutable::system(),
+    );
 }
 
 /// 克隆选项（设计板 03 的 Clone 表单）。
@@ -893,6 +923,15 @@ pub struct CloneOptions {
 
 /// 带选项的克隆。目录非空时直接报错，不覆盖已有内容。
 pub fn clone_with(url: &str, destination: &str, options: &CloneOptions) -> Result<(), GitError> {
+    return clone_with_executable(url, destination, options, &GitExecutable::system());
+}
+
+pub fn clone_with_executable(
+    url: &str,
+    destination: &str,
+    options: &CloneOptions,
+    executable: &GitExecutable,
+) -> Result<(), GitError> {
     let destination_path = Path::new(destination);
     if destination_path.exists() {
         let empty = std::fs::read_dir(destination_path)
@@ -933,7 +972,7 @@ pub fn clone_with(url: &str, destination: &str, options: &CloneOptions) -> Resul
     }
     args.push(url);
     args.push(destination_text.as_str());
-    run_git(Path::new("."), &args)?;
+    crate::exec::run_git_with(executable, Path::new("."), &args)?;
     return Ok(());
 }
 
@@ -943,6 +982,7 @@ pub fn clone_with(url: &str, destination: &str, options: &CloneOptions) -> Resul
 /// 调用方（界面）在主线程轮询 [`CloneRun::progress`]，不需要阻塞界面。
 pub struct CloneRun {
     child: std::process::Child,
+    program: String,
     stderr: std::sync::Arc<std::sync::Mutex<String>>,
     reader: Option<std::thread::JoinHandle<()>>,
     destination: std::path::PathBuf,
@@ -969,7 +1009,7 @@ impl CloneRun {
             Ok(status) => status,
             Err(error) => {
                 return Some(Err(GitError::Spawn {
-                    program: "git".to_string(),
+                    program: self.program.clone(),
                     reason: error.to_string(),
                 }));
             }
@@ -989,7 +1029,7 @@ impl CloneRun {
             .unwrap_or_default();
         let detail = truncate(detail.trim(), MAX_DETAIL);
         return Some(Err(GitError::CommandFailed {
-            program: "git".to_string(),
+            program: self.program.clone(),
             args: "clone".to_string(),
             code: status.code(),
             detail,
@@ -1024,6 +1064,15 @@ pub fn start_clone(
     url: &str,
     destination: &str,
     options: &CloneOptions,
+) -> Result<CloneRun, GitError> {
+    return start_clone_with_executable(url, destination, options, &GitExecutable::system());
+}
+
+pub fn start_clone_with_executable(
+    url: &str,
+    destination: &str,
+    options: &CloneOptions,
+    executable: &GitExecutable,
 ) -> Result<CloneRun, GitError> {
     let destination_path = Path::new(destination);
     if destination_path.exists() {
@@ -1066,7 +1115,8 @@ pub fn start_clone(
     }
     args.push(url);
     args.push(destination_text.as_str());
-    let mut command = Command::new("git");
+    let program = executable.path().display().to_string();
+    let mut command = executable.command();
     command
         .arg("-C")
         .arg(".")
@@ -1075,7 +1125,7 @@ pub fn start_clone(
         .stderr(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null());
     let mut child = command.spawn().map_err(|error| GitError::Spawn {
-        program: "git".to_string(),
+        program: program.clone(),
         reason: error.to_string(),
     })?;
     let stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
@@ -1105,6 +1155,7 @@ pub fn start_clone(
     });
     return Ok(CloneRun {
         child,
+        program,
         stderr,
         reader,
         destination: destination_path.to_path_buf(),

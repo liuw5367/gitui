@@ -95,7 +95,7 @@ fn load_conflict_text(tab: &mut Tab) {
         };
         return;
     }
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -198,8 +198,9 @@ pub(crate) fn mark_conflict_resolved(
     if !tab.conflicts.contains(&path) {
         return Ok(());
     }
-    let repo =
-        Repo::open(tab.path.as_str()).map_err(|error| MarkResolvedError::Git(error.detail()))?;
+    let repo = tab
+        .open_repo()
+        .map_err(|error| MarkResolvedError::Git(error.detail()))?;
     let result = tab
         .conflict_drafts
         .get(&path)
@@ -248,7 +249,9 @@ pub(crate) fn mark_conflict_resolved(
 
 /// 继续被冲突打断的操作；成功后刷新整个 tab。
 pub(crate) fn continue_operation(tab: &mut Tab) -> Result<String, ContinueError> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| ContinueError::Git(error.detail()))?;
+    let repo = tab
+        .open_repo()
+        .map_err(|error| ContinueError::Git(error.detail()))?;
     let operation = repo.operation();
     let conflicts = repo
         .conflicts()
@@ -291,7 +294,7 @@ pub(crate) fn continue_operation(tab: &mut Tab) -> Result<String, ContinueError>
 
 /// 用一侧内容解决冲突（`ours` 为真取当前分支）。
 pub(crate) fn resolve_conflict(tab: &mut Tab, path: &str, ours: bool) {
-    let repo = match Repo::open(tab.path.as_str()) {
+    let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
@@ -357,7 +360,9 @@ pub(crate) fn abort_operation(
     tab: &mut Tab,
     expected_operation: git::Operation,
 ) -> Result<(), AbortError> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| AbortError::Git(error.detail()))?;
+    let repo = tab
+        .open_repo()
+        .map_err(|error| AbortError::Git(error.detail()))?;
     let operation = repo.operation();
     if operation == git::Operation::None {
         refresh_operation_state(tab, &repo, true, false, true).map_err(AbortError::Git)?;

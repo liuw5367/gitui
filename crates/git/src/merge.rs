@@ -3,9 +3,11 @@
 use domain::{GitError, conflict::ConflictSides};
 use std::path::PathBuf;
 
-use crate::exec::{run_git, run_git_combined, run_git_combined_with_env, run_git_full};
 use crate::parse::summarise;
 use crate::query::Repo;
+
+#[cfg(test)]
+use crate::exec::run_git;
 
 /// 仓库处于哪种多步操作中（决定顶部的操作条与可用动作）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -37,14 +39,13 @@ impl Repo {
     ///
     /// 冲突时返回 `HookFailed`，日志里有 Git 的提示；操作状态由 `operation()` 读出。
     pub fn merge(&self, reference: &str) -> Result<String, GitError> {
-        let output = run_git_combined(&self.root, &["merge", "--no-edit", reference])?;
+        let output = self.run_git_combined(&["merge", "--no-edit", reference])?;
         return Ok(summarise(&output));
     }
 
     /// 把当前分支变基到指定引用；冲突保留给 `operation()` 与冲突流程处理。
     pub fn rebase_onto(&self, reference: &str) -> Result<String, GitError> {
-        let output = run_git_combined_with_env(
-            &self.root,
+        let output = self.run_git_combined_with_env(
             &["rebase", reference],
             &[("GIT_EDITOR", "true"), ("GIT_TERMINAL_PROMPT", "0")],
         )?;
@@ -56,13 +57,13 @@ impl Repo {
     /// 冲突时命令失败，但仓库已经进入冲突状态；调用方据 [`Repo::operation`]
     /// 判断该走解决还是放弃。
     pub fn cherry_pick(&self, sha: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["cherry-pick", sha])?;
+        self.run_git(&["cherry-pick", sha])?;
         return Ok(());
     }
 
     /// 反向提交一个提交（`git revert --no-edit <sha>`）。
     pub fn revert(&self, sha: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["revert", "--no-edit", sha])?;
+        self.run_git(&["revert", "--no-edit", sha])?;
         return Ok(());
     }
 
@@ -72,7 +73,7 @@ impl Repo {
     /// `CHERRY_PICK_HEAD`、`REVERT_HEAD`。顺序上合并优先于拣选，因为合并也可以由
     /// 拣选触发。
     pub fn operation(&self) -> Operation {
-        let output = match run_git(&self.root, &["rev-parse", "--git-dir"]) {
+        let output = match self.run_git(&["rev-parse", "--git-dir"]) {
             Ok(output) => output,
             Err(_) => return Operation::None,
         };
@@ -110,8 +111,7 @@ impl Repo {
         };
         // `--continue` 默认会打开编辑器写合并提交信息；界面不接管编辑器，
         // 因此把编辑器设为 true（保留默认信息）并禁止交互提示。
-        let output = run_git_combined_with_env(
-            &self.root,
+        let output = self.run_git_combined_with_env(
             args,
             &[("GIT_EDITOR", "true"), ("GIT_TERMINAL_PROMPT", "0")],
         )?;
@@ -127,7 +127,7 @@ impl Repo {
             Operation::Revert => &["revert", "--abort"],
             Operation::None => return Ok(()),
         };
-        run_git(&self.root, args)?;
+        self.run_git(args)?;
         return Ok(());
     }
 
@@ -157,10 +157,7 @@ impl Repo {
     /// bytes 返回，避免把二进制冲突改写成 lossy UTF-8。
     pub fn conflict_sides(&self, path: &str) -> Result<ConflictSides, GitError> {
         let pathspec = format!(":(top,literal){path}");
-        let output = run_git_full(
-            &self.root,
-            &["ls-files", "-u", "-z", "--", pathspec.as_str()],
-        )?;
+        let output = self.run_git_full(&["ls-files", "-u", "-z", "--", pathspec.as_str()])?;
         let mut sides = ConflictSides {
             path: path.to_string(),
             ..ConflictSides::default()
@@ -194,7 +191,7 @@ impl Repo {
             if record_path != path {
                 continue;
             }
-            let content = run_git_full(&self.root, &["cat-file", "blob", oid])?;
+            let content = self.run_git_full(&["cat-file", "blob", oid])?;
             let target = match stage {
                 "1" => &mut sides.base,
                 "2" => &mut sides.ours,
@@ -246,13 +243,13 @@ impl Repo {
             path: target.display().to_string(),
             reason: error.to_string(),
         })?;
-        run_git(&self.root, &["add", "--", path])?;
+        self.run_git(&["add", "--", path])?;
         return Ok(());
     }
 
     /// 以删除该路径的方式解决冲突。
     pub fn resolve_conflict_delete(&self, path: &str) -> Result<(), GitError> {
-        run_git(&self.root, &["rm", "--force", "--", path])?;
+        self.run_git(&["rm", "--force", "--", path])?;
         return Ok(());
     }
 
@@ -268,8 +265,8 @@ impl Repo {
             return self.resolve_conflict_delete(path);
         }
         let flag = if ours { "--ours" } else { "--theirs" };
-        run_git(&self.root, &["checkout", flag, "--", path])?;
-        run_git(&self.root, &["add", "--", path])?;
+        self.run_git(&["checkout", flag, "--", path])?;
+        self.run_git(&["add", "--", path])?;
         return Ok(());
     }
 }

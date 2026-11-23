@@ -1,9 +1,8 @@
 //! 搜索页表单的操作：分支/标签/远程的创建与改写、贮藏与提交身份。
 
 use crate::app::ops::refresh_refs;
-use crate::app::session::{Tab, load_tab};
+use crate::app::session::Tab;
 use crate::features::changes::ops::refresh_changes;
-use git::Repo;
 
 /// 新建分支；`from` 为空时基于当前 HEAD。
 pub(crate) fn create_branch(
@@ -12,7 +11,7 @@ pub(crate) fn create_branch(
     from: &str,
     checkout: bool,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let from = if from.trim().is_empty() {
         None
     } else {
@@ -33,7 +32,11 @@ pub(crate) fn create_branch(
     refresh_refs(tab, &repo);
     if checkout {
         let filter = tab.filter.clone();
-        let refreshed = load_tab(tab.path.as_str(), &filter);
+        let refreshed = crate::app::session::load_tab_with_executable(
+            tab.path.as_str(),
+            &filter,
+            &tab.git_executable,
+        );
         tab.branch = refreshed.branch;
         tab.ahead = refreshed.ahead;
         tab.behind = refreshed.behind;
@@ -51,11 +54,15 @@ pub(crate) fn checkout_tracking_branch(
     name: &str,
     remote_branch: &str,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.checkout_tracking_branch(name, remote_branch)
         .map_err(|error| error.detail())?;
     let filter = tab.filter.clone();
-    let refreshed = load_tab(tab.path.as_str(), &filter);
+    let refreshed = crate::app::session::load_tab_with_executable(
+        tab.path.as_str(),
+        &filter,
+        &tab.git_executable,
+    );
     tab.branch = refreshed.branch;
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;
@@ -80,7 +87,7 @@ pub(crate) fn create_tag(
     message: &str,
     annotated: bool,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     let from = if from.trim().is_empty() {
         None
     } else {
@@ -94,7 +101,7 @@ pub(crate) fn create_tag(
 
 /// 添加远程。
 pub(crate) fn add_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.add_remote(name, url).map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
     return Ok(());
@@ -106,7 +113,7 @@ pub(crate) fn stash_changes(
     message: &str,
     include_untracked: bool,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.stash_push_with(message, include_untracked)
         .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
@@ -122,7 +129,7 @@ pub(crate) fn stash_selected_files(
     paths: &[String],
     include_untracked: bool,
 ) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     if paths.is_empty() {
         return Err("Select at least one changed file.".to_string());
     }
@@ -144,7 +151,7 @@ pub(crate) fn stash_selected_files(
 
 /// 重命名分支。
 pub(crate) fn rename_branch(tab: &mut Tab, old: &str, new: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.rename_branch(old, new)
         .map_err(|error| error.detail())?;
     tab.refs = repo.refs().unwrap_or_default();
@@ -154,7 +161,7 @@ pub(crate) fn rename_branch(tab: &mut Tab, old: &str, new: &str) -> Result<(), S
 
 /// 写入仓库级提交身份。
 pub(crate) fn set_identity(tab: &Tab, name: &str, email: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.config_set("user.name", name)
         .map_err(|error| error.detail())?;
     repo.config_set("user.email", email)
@@ -164,7 +171,7 @@ pub(crate) fn set_identity(tab: &Tab, name: &str, email: &str) -> Result<(), Str
 
 /// 改写远端的 URL。
 pub(crate) fn edit_remote(tab: &mut Tab, name: &str, url: &str) -> Result<(), String> {
-    let repo = Repo::open(tab.path.as_str()).map_err(|error| error.detail())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
     repo.set_remote_url(name, url)
         .map_err(|error| error.detail())?;
     refresh_refs(tab, &repo);
