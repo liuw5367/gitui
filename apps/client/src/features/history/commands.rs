@@ -434,6 +434,41 @@ impl HistoryCommands {
         }
     }
 
+    /// 在当前提交的文件差异之间前后切换。
+    pub(crate) fn select_file_relative(&self, tab_id: u64, offset: isize) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.get_mut(current).filter(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if tab.files.is_empty() {
+            return;
+        }
+        let selected = tab.selected_file.unwrap_or(0) as isize;
+        let next = (selected + offset).clamp(0, tab.files.len().saturating_sub(1) as isize);
+        ops::select_file(tab, next as usize);
+        self.session.tabs.set(list);
+    }
+
+    pub(crate) fn reload_blame_diff(&self, ignore_whitespace: bool) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        let Some(tab) = list.get_mut(current) else {
+            return;
+        };
+        let patch = tab.open_repo().and_then(|repo| {
+            repo.patch_for_path_with_whitespace(
+                tab.blame_revision.as_str(),
+                tab.blame_path.as_str(),
+                ignore_whitespace,
+            )
+        });
+        if let Ok(patch) = patch {
+            tab.blame_patch = patch;
+            self.session.tabs.set(list);
+        }
+    }
+
     /// Enter the Blame / file history page for the selected commit file.
     pub(crate) fn show_file_history(&self, tab_id: u64, path: String) {
         let current = self.session.active.get_untracked();

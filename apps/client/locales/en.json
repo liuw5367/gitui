@@ -1223,10 +1223,6 @@
     "openParent": "Open parent"
   },
   "diff": {
-    "export": "Export",
-    "exported": "Patch exported",
-    "exportName": "changes.patch",
-    "nothingToExport": "Nothing selected to export",
     "folded": "%{count} unchanged lines",
     "fold": "Fold unchanged lines",
     "unfold": "Expand unchanged lines",
@@ -1236,6 +1232,8 @@
     "changePosition": "%{current} of %{total}",
     "previousChange": "Previous change",
     "nextChange": "Next change",
+    "previousFile": "Previous file",
+    "nextFile": "Next file",
     "copy": "Copy patch",
     "copyHunk": "Copy hunk",
     "noTextChanges": "There are no text changes to show"

@@ -8,12 +8,14 @@ use super::state::ChangesState;
 use crate::app::ops::stage_all_or_none;
 use crate::features::SessionHandle;
 use crate::features::merge::commands::MergeCommands;
+use crate::shared::diff::DiffState;
 use nsh_core::prelude::*;
 
 #[derive(Clone)]
 pub(crate) struct ChangesCommands {
     pub(crate) state: ChangesState,
     pub(crate) session: SessionHandle,
+    pub(crate) diff_state: DiffState,
     /// 丢弃前的确认文案与分段提示要按当前语言取。
     pub(crate) language: Signal<SharedString>,
     /// 状态栏短提示（按 hunk/行应用成功后的提示）。
@@ -47,7 +49,22 @@ impl ChangesCommands {
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             tab.stash_diff = None;
-            ops::load_change_diff(tab, index);
+            ops::load_change_diff_with_whitespace(
+                tab,
+                index,
+                self.diff_state.ignore_whitespace.get_untracked(),
+            );
+            self.session.tabs.set(list);
+        }
+    }
+
+    pub(crate) fn reload_selected_diff(&self, ignore_whitespace: bool) {
+        let current = self.session.active.get_untracked();
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            if let Some(index) = tab.selected_change {
+                ops::load_change_diff_with_whitespace(tab, index, ignore_whitespace);
+            }
             self.session.tabs.set(list);
         }
     }
@@ -68,6 +85,29 @@ impl ChangesCommands {
         if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
             tab.stash_diff = None;
             self.session.tabs.set(list);
+        }
+    }
+
+    pub(crate) fn reload_stash_diff_at(&self, tab_id: u64, oid: String, ignore_whitespace: bool) {
+        let mut tabs = self.session.tabs.get_untracked();
+        let Some(index) = tabs.iter().position(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if !tabs[index]
+            .stash_diff
+            .as_ref()
+            .is_some_and(|stash| stash.oid == oid)
+        {
+            return;
+        }
+        let patch = tabs[index].open_repo().and_then(|repo| {
+            repo.stash_show_with_whitespace(oid.as_str(), true, ignore_whitespace)
+        });
+        if let Ok(bytes) = patch {
+            if let Some(stash) = tabs[index].stash_diff.as_mut() {
+                stash.patch = domain::diff::Patch::parse(String::from_utf8_lossy(&bytes).as_ref());
+            }
+            self.session.tabs.set(tabs);
         }
     }
 
@@ -155,7 +195,13 @@ impl ChangesCommands {
     }
 
     /// 按 hunk / 单行暂存或取消暂存（原 `apply_piece`）。
-    pub(crate) fn apply_piece(&self, hunk: usize, line: Option<usize>, reverse: bool) {
+    pub(crate) fn apply_piece(
+        &self,
+        hunk: usize,
+        line: Option<usize>,
+        reverse: bool,
+        ignore_whitespace: bool,
+    ) {
         let tabs = self.session.tabs;
         let active = self.session.active;
         let notice = self.notice;
@@ -163,7 +209,7 @@ impl ChangesCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match ops::apply_piece(tab, hunk, line, reverse) {
+            match ops::apply_piece_with_whitespace(tab, hunk, line, reverse, ignore_whitespace) {
                 Ok(()) => {
                     let lang = language.get_untracked();
                     crate::interactions::notify(

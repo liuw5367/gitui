@@ -21,7 +21,7 @@
 
 ## 1. 骨架
 
-当前工作区文件 Diff 与 Stash Diff 使用 NSH DiffView，按补丁内的文件路径识别语法，显示行号和增删状态。工作区 Diff 使用 Unified 视图，增删行下方保留暂存或取消暂存按钮，每个原始 Git hunk 的首个变更行还提供整段操作。操作索引包含上下文行，保持与原始补丁一致，不使用 DiffView 重新计算的 hunk 编号。无文本 hunk 的二进制文件或模式变更显示无文本变化提示。
+当前工作区文件 Diff 与 Stash Diff 使用共享的 NSH DiffView 面板，支持 Split / Unified、折叠上下文、软换行、显示空白、改动导航、复制 patch 和按文件路径语法高亮。差异行只使用红／绿背景，不显示左侧加减号。工具条显示新增与删除行数；Export 已移除。Changes 标题显示返回 Commits 和当前文件名。Stage Hunk 位于原有 hunk 分隔行，Stage Line 位于悬浮 gutter 操作槽，两者不增加 DiffView 的代码行高度。暂存索引仍依据原始 Git 补丁的上下文与变更行，不依赖 DiffView 重新编号。无文本 hunk 的二进制文件或模式变更显示无文本变化提示。
 
 ```
 ┌────────────────┬──────────────────────────────────────────────────┬───────────────────────────────────┐
@@ -73,7 +73,7 @@
 
 - **横幅** 30 高、`accent-soft` 底、下边框 1、10 `text2`：图标位 14×14（`accent` 分支图标）→ `<b>Merging origin/main into main</b>`（600、`text`）→ `· 2 conflicts to resolve.` → 弹性空隙 → `Resolve…`（`<a>` 链 14）与 `Abort` 两个小按钮都被压到 20 高、9.5、内距 0×7。样式表另有 `.op-banner.warn`（`warn` 11% 混底、图标转 `warn`），板上没用。
 - **返回条与工具条**：返回条是 `< Commits` chip（22 高、左箭头 10、`aria-label="Back to commit list"`）→ `Staged` 徽章（18 高、圆角 4、内距 0×6、`panel-2` 底、1px `line-soft`、9.5）→ 文件名（10.5 `text3`）→ 空隙 → `12 files · +149 −90`；工具条左簇是同一枚徽章 + 10 的右箭头 + 路径（mono 11）+ `+42` / `−17`（mono 9.5），右簇为 `Split | Unified`（tiny：项高 21、内距 0×7、10.5）、1×18 竖线、三个 24×24 图标（折叠/换行/`¶`）、竖线、`1 of 3`（10.5 等宽数字）、只有 `Next change` 一个箭头。
-- **主体**：与 04b 同一套四格表（行号 42 + 代码 + 行号 42 + 代码、行高 19），hunk 行 21 高、右端 mini `Unstage Hunk`（17 高、内距 0×5、9.5），折叠行 20 高写 `9 unchanged lines`。新增行 `</button>` 之后多一个行内按钮 `Unstage line`（8.5/14、内距 0×5、1px `line`、圆角 4、左距 10、基线抬 1px），这是本板独有的按行反暂存入口。
+- **主体**：由 NSH DiffView 绘制，行号与语法高亮随文件路径识别；新增／删除行仅使用对应背景色。Stage Hunk 复用 hunk 标题行，Stage Line 通过行号 gutter 的悬浮动作槽出现，不插入行下注释。
 
 ## 3. 提交面板的 Changelists 段
 

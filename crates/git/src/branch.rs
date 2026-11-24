@@ -195,9 +195,22 @@ impl Repo {
 
     /// 读取某条贮藏的补丁，可附带其未跟踪文件。
     pub fn stash_show(&self, oid: &str, include_untracked: bool) -> Result<Vec<u8>, GitError> {
+        return self.stash_show_with_whitespace(oid, include_untracked, false);
+    }
+
+    /// 读取某条贮藏的补丁，可附带未跟踪文件并选择忽略纯空白差异。
+    pub fn stash_show_with_whitespace(
+        &self,
+        oid: &str,
+        include_untracked: bool,
+        ignore_whitespace: bool,
+    ) -> Result<Vec<u8>, GitError> {
         let mut args = vec!["stash", "show", "--patch"];
         if include_untracked {
             args.push("--include-untracked");
+        }
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
         }
         args.push(oid);
         return self.run_git(&args);

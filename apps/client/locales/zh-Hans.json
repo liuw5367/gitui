@@ -1223,10 +1223,6 @@
     "openParent": "打开上级目录"
   },
   "diff": {
-    "export": "导出",
-    "exported": "已导出 patch",
-    "exportName": "changes.patch",
-    "nothingToExport": "当前没有可导出的 diff",
     "folded": "%{count} 行未改动",
     "fold": "折叠未改动行",
     "unfold": "展开未改动行",
@@ -1236,6 +1232,8 @@
     "changePosition": "第 %{current} / %{total} 处",
     "previousChange": "上一处改动",
     "nextChange": "下一处改动",
+    "previousFile": "上一个文件",
+    "nextFile": "下一个文件",
     "copy": "复制 patch",
     "copyHunk": "复制此块",
     "noTextChanges": "没有可显示的文本差异"

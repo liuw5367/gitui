@@ -1162,7 +1162,11 @@ impl RefsCommands {
         let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
             return;
         };
-        match ops::show_stash_diff(tab, oid.as_str()) {
+        match ops::show_stash_diff(
+            tab,
+            oid.as_str(),
+            self.history.diff.state.ignore_whitespace.get_untracked(),
+        ) {
             Ok(Some(diff)) => {
                 tab.stash_diff = Some(diff);
                 tabs.set(list);

@@ -144,11 +144,25 @@ impl Repo {
     ///
     /// 需要原始文本时用返回值的 [`Patch::raw`]。
     pub fn file_diff(&self, path: &str, staged: bool) -> Result<Patch, GitError> {
-        let args: Vec<&str> = if staged {
-            vec!["diff", "--no-color", "--cached", "--", path]
-        } else {
-            vec!["diff", "--no-color", "--", path]
-        };
+        return self.file_diff_with_whitespace(path, staged, false);
+    }
+
+    /// 某个文件的工作区 diff，可选择忽略纯空白差异。
+    pub fn file_diff_with_whitespace(
+        &self,
+        path: &str,
+        staged: bool,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        let mut args = vec!["diff", "--no-color"];
+        if staged {
+            args.push("--cached");
+        }
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push("--");
+        args.push(path);
         let output = self.run_git(&args)?;
         let text = String::from_utf8_lossy(&output).to_string();
         return Ok(Patch::parse(text.as_str()));

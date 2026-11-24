@@ -405,6 +405,28 @@ fn center_content(
                         std::sync::Arc::new(move || history.open_blame())
                             as std::sync::Arc<dyn Fn()>
                     });
+                    let file_name = if compare_active {
+                        None
+                    } else {
+                        tab.file_patch.as_ref().map(|(path, _)| path.clone())
+                    };
+                    let file_navigation = if !compare_active && tab.file_patch.is_some() {
+                        let tab_id = tab.id;
+                        let previous_history = history.clone();
+                        let next_history = history.clone();
+                        Some(diff::FileNavigation {
+                            current: tab.selected_file.unwrap_or(0),
+                            total: tab.files.len(),
+                            previous: std::sync::Arc::new(move || {
+                                previous_history.select_file_relative(tab_id, -1)
+                            }),
+                            next: std::sync::Arc::new(move || {
+                                next_history.select_file_relative(tab_id, 1)
+                            }),
+                        })
+                    } else {
+                        None
+                    };
                     return diff::diff(
                         &history.diff.state,
                         &history.diff,
@@ -416,6 +438,8 @@ fn center_content(
                         file_count,
                         return_to_history,
                         open_blame,
+                        file_name,
+                        file_navigation,
                     )
                     .into_element();
                 }
@@ -456,7 +480,12 @@ fn center_content(
                         return empty_workspace(language).into_element();
                     };
                     if tab.stash_diff.is_some() || tab.selected_change.is_some() {
-                        crate::features::changes::view::change_diff(&changes, tab)
+                        crate::features::changes::view::change_diff(
+                            &changes,
+                            &history.diff.state,
+                            &history.diff,
+                            tab,
+                        )
                     } else {
                         let Some(tab) = history_tab.get() else {
                             return empty_workspace(language).into_element();

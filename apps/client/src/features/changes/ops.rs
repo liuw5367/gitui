@@ -91,6 +91,14 @@ pub(crate) fn apply_changelist_assignments(tab: &mut Tab) {
 
 /// 选中一条变更并读取它的 diff。
 pub(crate) fn load_change_diff(tab: &mut Tab, index: usize) {
+    return load_change_diff_with_whitespace(tab, index, false);
+}
+
+pub(crate) fn load_change_diff_with_whitespace(
+    tab: &mut Tab,
+    index: usize,
+    ignore_whitespace: bool,
+) {
     let Some(entry) = tab.changes.get(index).cloned() else {
         return;
     };
@@ -106,7 +114,7 @@ pub(crate) fn load_change_diff(tab: &mut Tab, index: usize) {
     tab.change_diff = if entry.untracked {
         domain::diff::Patch::default()
     } else {
-        repo.file_diff(entry.path.as_str(), entry.staged)
+        repo.file_diff_with_whitespace(entry.path.as_str(), entry.staged, ignore_whitespace)
             .unwrap_or_default()
     };
 }
@@ -257,6 +265,16 @@ pub(crate) fn apply_piece(
     line_index: Option<usize>,
     reverse: bool,
 ) -> Result<(), String> {
+    return apply_piece_with_whitespace(tab, hunk_index, line_index, reverse, false);
+}
+
+pub(crate) fn apply_piece_with_whitespace(
+    tab: &mut Tab,
+    hunk_index: usize,
+    line_index: Option<usize>,
+    reverse: bool,
+    ignore_whitespace: bool,
+) -> Result<(), String> {
     let sections = domain::stage::Sections::parse(tab.change_diff.raw.as_str());
     let patch = match line_index {
         Some(line) => sections.line_patch(0, hunk_index, line),
@@ -280,7 +298,7 @@ pub(crate) fn apply_piece(
     tab.status = refreshed.status;
     if let Some(index) = selected {
         if index < tab.changes.len() {
-            load_change_diff(tab, index);
+            load_change_diff_with_whitespace(tab, index, ignore_whitespace);
         } else {
             tab.selected_change = None;
             tab.change_diff = domain::diff::Patch::default();

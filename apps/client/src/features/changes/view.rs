@@ -13,10 +13,15 @@ use crate::i18n;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
-pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
+pub(crate) fn change_diff(
+    cmd: &ChangesCommands,
+    diff_state: &crate::shared::diff::DiffState,
+    diff_cmd: &crate::shared::diff::DiffCommands,
+    tab: Tab,
+) -> AnyElement {
     let language = cmd.language;
-    if let Some((label, patch)) = tab.stash_diff.clone() {
-        return stash_diff_view(language, cmd, tab.id, label, patch);
+    if let Some(stash) = tab.stash_diff.clone() {
+        return stash_diff_view(language, cmd, diff_state, diff_cmd, tab.id, stash);
     }
     let patch = tab.change_diff.clone();
     let label = tab
@@ -24,208 +29,149 @@ pub(crate) fn change_diff(cmd: &ChangesCommands, tab: Tab) -> AnyElement {
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.path.clone())
         .unwrap_or_default();
-    let blame_cmd = cmd.clone();
     let blame_path = label.clone();
-    let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
-    let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
     // 逐行走一遍，记住当前在第几个 hunk、hunk 内第几行，供行级操作定位。
     let staged_selection = tab
         .selected_change
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.staged)
         .unwrap_or(false);
+    let ignore_whitespace = diff_state.ignore_whitespace.get();
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let apply_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |hunk: usize, line: Option<usize>, reverse: bool| {
-            cmd.apply_piece(hunk, line, reverse)
+            cmd.apply_piece(hunk, line, reverse, ignore_whitespace)
         })
     };
     let clear = cmd.clone();
+    let open_blame: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        let path = blame_path.clone();
+        std::sync::Arc::new(move || cmd.open_blame(path.clone()))
+    };
+    let reload_cmd = cmd.clone();
+    let on_ignore_whitespace: std::sync::Arc<dyn Fn(bool)> =
+        std::sync::Arc::new(move |ignore| reload_cmd.reload_selected_diff(ignore));
+    let header = view()
+        .w_full()
+        .h(px(metrics::DIFF_RETURN_H))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(11.0))
+        .border_b_1()
+        .border_color(move || design::line())
+        .bg(move || design::panel())
+        .child(crate::ui::button::button_icon(
+            move || i18n::t(language.get().as_str(), "history.backToList"),
+            "chev-left",
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || clear.clear_selected_change(),
+        ))
+        .child(crate::ui::icon::icon_view(
+            "file",
+            crate::ui::icon::IconSize::Button,
+            design::text3,
+        ))
+        .child(
+            text(label)
+                .flex_1()
+                .min_w_0()
+                .text_size(px(crate::ui::CODE))
+                .text_color(move || design::text())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        );
+    let raw_patch = patch.clone();
     return view()
         .w_full()
         .h_full()
         .min_h_0()
         .flex_col()
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::DIFFBAR_H))
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(11.0))
-                .border_b_1()
-                .border_color(move || design::line())
-                .child(crate::ui::button::button_icon(
-                    move || i18n::t(language.get().as_str(), "history.backToList"),
-                    "chev-left",
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || clear.clear_selected_change(),
-                ))
-                .child(crate::ui::icon::icon_view(
-                    "file",
-                    crate::ui::icon::IconSize::Button,
-                    design::text3,
-                ))
-                .child(
-                    text(label)
-                        .flex_1()
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "files.blame"),
-                    crate::ui::button::ButtonVariant::Ghost,
-                    crate::ui::button::ButtonSize::Small,
-                    blame_path.is_empty(),
-                    move || blame_cmd.open_blame(blame_path.clone()),
-                ))
-                .child(
-                    text(format!("+{} −{}", additions, deletions))
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text3()),
-                ),
-        )
-        .child(
-            view().w_full().flex_1().min_h_0().child(
-                if patch.raw.trim().is_empty()
-                    || !patch
-                        .lines
-                        .iter()
-                        .any(|line| line.kind == domain::diff::DiffLineKind::Hunk)
-                {
-                    view()
-                        .w_full()
-                        .h_full()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            text(move || {
-                                i18n::t(
-                                    language.get().as_str(),
-                                    if patch.raw.trim().is_empty() {
-                                        "changes.selectFile"
-                                    } else {
-                                        "diff.noTextChanges"
-                                    },
-                                )
-                            })
-                            .text_size(px(crate::ui::BODY))
-                            .text_color(design::text3),
-                        )
-                        .into_element()
-                } else {
-                    crate::ui::diff_surface::staging_surface(
-                        SharedString::from(patch.raw),
-                        staged_selection,
-                        language,
-                        apply_piece,
-                    )
-                    .into_element()
-                },
-            ),
-        )
+        .child(header)
+        .child(crate::shared::diff::diff_panel(
+            diff_state,
+            diff_cmd,
+            language,
+            patch,
+            raw_patch,
+            Some("changes.selectFile"),
+            Some(open_blame),
+            Some(on_ignore_whitespace),
+            Some(crate::ui::diff_surface::StagingActions {
+                staged: staged_selection,
+                on_piece: apply_piece,
+            }),
+        ))
         .into_element();
 }
 
 fn stash_diff_view(
     language: Signal<SharedString>,
     cmd: &ChangesCommands,
+    diff_state: &crate::shared::diff::DiffState,
+    diff_cmd: &crate::shared::diff::DiffCommands,
     tab_id: u64,
-    label: String,
-    patch: domain::diff::Patch,
+    stash: crate::app::session::StashDiff,
 ) -> AnyElement {
-    let additions: u32 = patch.files.iter().map(|file| file.additions).sum();
-    let deletions: u32 = patch.files.iter().map(|file| file.deletions).sum();
     let clear = cmd.clone();
+    let header = view()
+        .w_full()
+        .h(px(metrics::DIFF_RETURN_H))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(11.0))
+        .border_b_1()
+        .border_color(move || design::line())
+        .bg(move || design::panel())
+        .child(crate::ui::button::button_icon(
+            move || i18n::t(language.get().as_str(), "stash.backToChanges"),
+            "chev-left",
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || clear.clear_stash_diff_at(tab_id),
+        ))
+        .child(crate::ui::icon::icon_view(
+            "archive",
+            crate::ui::icon::IconSize::Button,
+            design::text3,
+        ))
+        .child(
+            text(stash.label.clone())
+                .flex_1()
+                .min_w_0()
+                .text_size(px(crate::ui::CODE))
+                .text_color(move || design::text())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        );
+    let raw_patch = stash.patch.clone();
+    let patch = stash.patch;
     return view()
         .w_full()
         .h_full()
         .flex_col()
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::DIFFBAR_H))
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(11.0))
-                .border_b_1()
-                .border_color(move || design::line())
-                .child(crate::ui::icon::icon_view(
-                    "archive",
-                    crate::ui::icon::IconSize::Button,
-                    design::text3,
-                ))
-                .child(
-                    text(label)
-                        .flex_1()
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(format!("+{} −{}", additions, deletions))
-                        .text_size(px(crate::ui::CODE))
-                        .text_color(move || design::text3()),
-                )
-                .child(crate::ui::button::button(
-                    move || i18n::t(language.get().as_str(), "stash.backToChanges"),
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || clear.clear_stash_diff_at(tab_id),
-                )),
-        )
-        .child(
-            view().w_full().flex_1().min_h_0().child(
-                if patch.raw.trim().is_empty()
-                    || !patch
-                        .lines
-                        .iter()
-                        .any(|line| line.kind == domain::diff::DiffLineKind::Hunk)
-                {
-                    view()
-                        .w_full()
-                        .h_full()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            text(move || {
-                                i18n::t(
-                                    language.get().as_str(),
-                                    if patch.raw.trim().is_empty() {
-                                        "stash.diffEmpty"
-                                    } else {
-                                        "diff.noTextChanges"
-                                    },
-                                )
-                            })
-                            .text_size(px(crate::ui::BODY))
-                            .text_color(design::text3),
-                        )
-                        .into_element()
-                } else {
-                    let handle = crate::ui::diff_surface::DiffHandle::new();
-                    let copy =
-                        crate::shared::diff::copy_hunk_handler(&patch.raw, cmd.notice, language);
-                    crate::ui::diff_surface::diff_surface(
-                        SharedString::from(patch.raw),
-                        crate::ui::diff_surface::Layout::Unified,
-                        false,
-                        true,
-                        &handle,
-                        language,
-                        copy,
-                    )
-                    .into_element()
-                },
-            ),
-        )
+        .child(header)
+        .child(crate::shared::diff::diff_panel(
+            diff_state,
+            diff_cmd,
+            language,
+            patch,
+            raw_patch,
+            Some("stash.diffEmpty"),
+            None,
+            Some({
+                let cmd = cmd.clone();
+                let oid = stash.oid;
+                std::sync::Arc::new(move |ignore| {
+                    cmd.reload_stash_diff_at(tab_id, oid.clone(), ignore)
+                })
+            }),
+            None,
+        ))
         .into_element();
 }
 

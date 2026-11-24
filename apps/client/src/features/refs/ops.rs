@@ -252,7 +252,8 @@ pub(crate) fn drop_stash_by_oid(tab: &mut Tab, oid: &str) -> Result<bool, String
 pub(crate) fn show_stash_diff(
     tab: &Tab,
     oid: &str,
-) -> Result<Option<(String, domain::diff::Patch)>, String> {
+    ignore_whitespace: bool,
+) -> Result<Option<crate::app::session::StashDiff>, String> {
     let repo = tab.open_repo().map_err(|error| error.detail())?;
     let Some(stash) = repo
         .refs()
@@ -263,12 +264,15 @@ pub(crate) fn show_stash_diff(
     else {
         return Ok(None);
     };
-    let patch = repo.stash_show(oid, true).map_err(|error| error.detail())?;
+    let patch = repo
+        .stash_show_with_whitespace(oid, true, ignore_whitespace)
+        .map_err(|error| error.detail())?;
     let patch = domain::diff::Patch::parse(String::from_utf8_lossy(&patch).as_ref());
-    return Ok(Some((
-        format!("{} · {}", stash.reference, stash.summary),
+    return Ok(Some(crate::app::session::StashDiff {
+        oid: oid.to_string(),
+        label: format!("{} · {}", stash.reference, stash.summary),
         patch,
-    )));
+    }));
 }
 
 /// 推送标签到首个远端。
@@ -661,11 +665,11 @@ mod tests {
         let second_oid = tab.refs.stashes[0].oid.clone();
         assert_ne!(first_oid, second_oid);
 
-        let (label, patch) = show_stash_diff(&tab, first_oid.as_str())
+        let stash_diff = show_stash_diff(&tab, first_oid.as_str(), false)
             .expect("stash diff query")
             .expect("first stash still listed");
-        assert!(label.contains("first"));
-        assert!(patch.raw.contains("first stash"));
+        assert!(stash_diff.label.contains("first"));
+        assert!(stash_diff.patch.raw.contains("first stash"));
 
         assert!(apply_stash_by_oid(&mut tab, first_oid.as_str()).expect("apply by oid"));
         assert_eq!(

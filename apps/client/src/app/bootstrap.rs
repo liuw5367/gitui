@@ -539,6 +539,7 @@ pub(crate) fn app() -> impl IntoElement {
     let changes_commands = features::changes::commands::ChangesCommands {
         state: changes_state,
         session: session.clone(),
+        diff_state: diff_commands.state.clone(),
         language,
         notice,
         mode,

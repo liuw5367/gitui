@@ -4,7 +4,10 @@
 //! 提供；本层固定外观，并把只读历史 hunk 的复制动作接到应用剪贴板。
 
 use crate::ui;
-use nsh_base::{DiffHunk, DiffIndicators, DiffLayout, DiffViewApi, diff_view};
+use nsh_base::{
+    DiffExpand, DiffHunk, DiffIndicators, DiffLayout, DiffLineRange, DiffSeparator, DiffSide,
+    DiffViewApi, diff_view,
+};
 use nsh_core::prelude::*;
 
 /// 当前 DiffView 的导航入口。历史差异只读，不显示变更暂存按钮。
@@ -33,6 +36,12 @@ impl DiffHandle {
             .api::<DiffViewApi>()
             .and_then(|api| api.previous_hunk());
     }
+
+    pub(crate) fn expand(&self, gap: u32) {
+        if let Some(api) = self.reference.api::<DiffViewApi>() {
+            api.expand(gap, Some(DiffExpand::All), Some(0));
+        }
+    }
 }
 
 /// 两种视图。
@@ -56,6 +65,34 @@ pub(crate) fn diff_surface(
     language: Signal<SharedString>,
     on_hunk_copy: std::sync::Arc<dyn Fn(&DiffHunk)>,
 ) -> impl IntoElement + use<> {
+    return configured_surface(
+        patch,
+        layout,
+        wrap,
+        expand_all,
+        handle,
+        language,
+        on_hunk_copy,
+        None,
+    );
+}
+
+#[derive(Clone)]
+pub(crate) struct StagingActions {
+    pub(crate) staged: bool,
+    pub(crate) on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
+}
+
+pub(crate) fn configured_surface(
+    patch: SharedString,
+    layout: Layout,
+    wrap: bool,
+    expand_all: bool,
+    handle: &DiffHandle,
+    language: Signal<SharedString>,
+    on_hunk_copy: std::sync::Arc<dyn Fn(&DiffHunk)>,
+    staging: Option<StagingActions>,
+) -> impl IntoElement + use<> {
     let layout_name = match layout {
         Layout::Split => "split",
         Layout::Unified => "unified",
@@ -75,8 +112,9 @@ pub(crate) fn diff_surface(
         Layout::Split => DiffLayout::Split,
         Layout::Unified => DiffLayout::Unified,
     };
+    let locations = staging.as_ref().map(|_| staging_locations(patch_text));
     let on_hunk_copy = std::rc::Rc::new(on_hunk_copy);
-    return diff_view()
+    let mut surface = diff_view()
         .w_full()
         .h_full()
         .component_ref(&handle.reference)
@@ -85,90 +123,95 @@ pub(crate) fn diff_surface(
         .soft_wrap(wrap)
         .expand_all(expand_all)
         .line_numbers(true)
-        .background(false)
+        .background(true)
         .font_family(ui::MONO)
         .font_size(Points(ui::CODE))
         .line_height(Points(ui::CODE_LINE))
-        .indicators(DiffIndicators::Classic)
+        .indicators(DiffIndicators::None)
         .render_hunk_actions(move |hunk: &DiffHunk| -> AnyElement {
             let handler = on_hunk_copy.clone();
             let hunk = hunk.clone();
-            return crate::ui::button::button(
+            return crate::ui::button::icon_button(
+                "copy",
                 {
                     let language = language;
                     move || crate::i18n::t(language.get().as_str(), "diff.copyHunk")
                 },
-                crate::ui::button::ButtonVariant::Ghost,
                 crate::ui::button::ButtonSize::Small,
                 false,
                 move || handler(&hunk),
             )
             .into_element();
         });
-}
-
-/// 可写变更仍由原始 Git hunk / 行定位，DiffView 只负责显示与高亮。
-pub(crate) fn staging_surface(
-    patch: SharedString,
-    staged: bool,
-    language: Signal<SharedString>,
-    on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
-) -> impl IntoElement {
-    let locations = staging_annotations(patch.as_str());
-    let annotations = locations
-        .iter()
-        .map(|(annotation, _, _, _)| annotation.clone())
-        .collect::<Vec<_>>();
-    diff_view()
-        .w_full()
-        .h_full()
-        .patch(Some(patch))
-        .layout(DiffLayout::Unified)
-        .expand_all(true)
-        .line_numbers(true)
-        .background(true)
-        .font_family(ui::MONO)
-        .font_size(Points(ui::CODE))
-        .line_height(Points(ui::CODE_LINE))
-        .indicators(DiffIndicators::Classic)
-        .annotations(annotations)
-        .render_annotation(move |annotation: &nsh_base::DiffAnnotation| -> AnyElement {
-            let Some((_, hunk, line, first)) = locations
-                .iter()
-                .find(|(item, _, _, _)| item.id == annotation.id)
-            else {
-                return view().into_element();
-            };
-            let (hunk, line, first) = (*hunk, *line, *first);
-            let apply = on_piece.clone();
-            let mut actions = view()
-                .w_full()
-                .h(px(ui::ROW))
-                .flex_row()
-                .items_center()
-                .justify_end()
-                .gap(px(ui::GAP_SM));
-            if first {
-                let apply = apply.clone();
-                actions = actions.child(ui::button::button(
-                    move || {
-                        crate::i18n::t(
-                            language.get().as_str(),
-                            if staged {
-                                "changes.unstageHunk"
-                            } else {
-                                "changes.stageHunk"
-                            },
-                        )
-                    },
-                    ui::button::ButtonVariant::Secondary,
-                    ui::button::ButtonSize::Small,
-                    false,
-                    move || apply(hunk, None, staged),
-                ));
-            }
-            actions
-                .child(ui::button::button(
+    if let Some(staging) = staging {
+        let locations = locations.unwrap_or_default();
+        let on_piece = staging.on_piece.clone();
+        let line_piece = on_piece.clone();
+        let staged = staging.staged;
+        let stage_handle = handle.clone();
+        surface = surface
+            .render_separator(move |separator: &DiffSeparator| -> AnyElement {
+                let lines = separator.lines;
+                let gap = separator.gap;
+                let header = separator.header.clone().unwrap_or_default();
+                let language = language;
+                let mut row = view()
+                    .w_full()
+                    .h_full()
+                    .px(px(ui::GAP_SM))
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .bg(move || crate::design::panel2());
+                if lines > 0 {
+                    let handle = stage_handle.clone();
+                    row = row.child(crate::ui::button::button(
+                        move || format!("⋯ {lines}"),
+                        crate::ui::button::ButtonVariant::Ghost,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || handle.expand(gap),
+                    ));
+                } else {
+                    row = row.child(
+                        text(header)
+                            .flex_1()
+                            .text_size(px(ui::CODE))
+                            .text_color(move || crate::design::text3()),
+                    );
+                    let apply = on_piece.clone();
+                    let gap = separator.gap as usize;
+                    row = row.child(crate::ui::button::button(
+                        move || {
+                            crate::i18n::t(
+                                language.get().as_str(),
+                                if staged {
+                                    "changes.unstageHunk"
+                                } else {
+                                    "changes.stageHunk"
+                                },
+                            )
+                        },
+                        crate::ui::button::ButtonVariant::Ghost,
+                        crate::ui::button::ButtonSize::Small,
+                        false,
+                        move || apply(gap, None, staged),
+                    ));
+                }
+                row.into_element()
+            })
+            .render_add_annotation(move |range: &DiffLineRange| -> AnyElement {
+                let Some((hunk, line)) = locations
+                    .iter()
+                    .find(|(side, line, _, _)| {
+                        *side == range.side && *line == range.start && range.start == range.end
+                    })
+                    .map(|(_, _, hunk, line)| (*hunk, *line))
+                else {
+                    return view().into_element();
+                };
+                let on_piece = line_piece.clone();
+                crate::ui::button::button(
                     move || {
                         crate::i18n::t(
                             language.get().as_str(),
@@ -179,22 +222,46 @@ pub(crate) fn staging_surface(
                             },
                         )
                     },
-                    ui::button::ButtonVariant::Secondary,
-                    ui::button::ButtonSize::Small,
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
                     false,
-                    move || apply(hunk, Some(line), staged),
-                ))
+                    move || on_piece(hunk, Some(line), staged),
+                )
                 .into_element()
-        })
+            });
+    }
+    return surface;
 }
 
-fn staging_annotations(patch: &str) -> Vec<(nsh_base::DiffAnnotation, usize, usize, bool)> {
+/// 可写变更仍由原始 Git hunk / 行定位，DiffView 只负责显示与高亮。
+pub(crate) fn staging_surface(
+    patch: SharedString,
+    staged: bool,
+    language: Signal<SharedString>,
+    on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
+) -> impl IntoElement {
+    let handle = DiffHandle::new();
+    return configured_surface(
+        patch,
+        Layout::Unified,
+        false,
+        true,
+        &handle,
+        language,
+        std::sync::Arc::new(|_| {}),
+        Some(StagingActions { staged, on_piece }),
+    );
+}
+
+fn staging_locations(patch: &str) -> Vec<(DiffSide, u32, usize, usize)> {
     let sections = domain::stage::Sections::parse(patch);
     let mut annotations = Vec::new();
-    let (mut old, mut new) = (0, 0);
     if let Some(file) = sections.files.first() {
         for (hunk, section) in file.hunks.iter().enumerate() {
-            let mut first = true;
+            let (mut old, mut new) = (
+                section.old_start.saturating_sub(1),
+                section.new_start.saturating_sub(1),
+            );
             // 行号是 DiffView 拼接各个 hunk 后的位置；应用索引保留原始正文中的上下文与无换行标记。
             for (line, raw) in section.lines.iter().enumerate() {
                 let kind = domain::stage::classify(raw);
@@ -203,16 +270,12 @@ fn staging_annotations(patch: &str) -> Vec<(nsh_base::DiffAnnotation, usize, usi
                     Some(domain::stage::LineKind::Add | domain::stage::LineKind::Remove)
                 ) {
                     let removed = kind == Some(domain::stage::LineKind::Remove);
-                    let mut annotation = nsh_base::DiffAnnotation::default();
-                    annotation.id = format!("piece:{hunk}:{line}").into();
-                    annotation.side = if removed {
-                        nsh_base::DiffSide::Old
+                    let side = if removed {
+                        DiffSide::Old
                     } else {
-                        nsh_base::DiffSide::New
+                        DiffSide::New
                     };
-                    annotation.line = if removed { old } else { new };
-                    annotations.push((annotation, hunk, line, first));
-                    first = false;
+                    annotations.push((side, if removed { old } else { new }, hunk, line));
                 }
                 match kind {
                     Some(domain::stage::LineKind::Context) => {
@@ -268,15 +331,12 @@ mod tests {
 
     #[test]
     fn staging_preserves_context_offsets_and_actions() {
-        let locations = staging_annotations(STAGING_PATCH);
+        let locations = staging_locations(STAGING_PATCH);
         assert_eq!(locations.len(), 1);
-        assert_eq!(
-            (locations[0].1, locations[0].2, locations[0].3),
-            (0, 1, true)
-        );
-        assert_eq!(locations[0].0.line, 1);
+        assert_eq!((locations[0].2, locations[0].3), (0, 1));
+        assert_eq!(locations[0].1, 1);
         let patch = domain::stage::Sections::parse(STAGING_PATCH)
-            .line_patch(0, locations[0].1, locations[0].2)
+            .line_patch(0, locations[0].2, locations[0].3)
             .unwrap();
         assert!(patch.contains("+    let count = 42;"));
         ACTIONS.lock().unwrap().clear();
@@ -298,17 +358,17 @@ mod tests {
     #[test]
     fn staging_locations_keep_raw_indices_across_hunks() {
         let raw = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -10,2 +10,2 @@\n context\n-old\n+new\n@@ -30 +30,2 @@\n tail\n+added\n";
-        let locations = staging_annotations(raw);
+        let locations = staging_locations(raw);
         let indices = locations
             .iter()
-            .map(|(a, h, l, first)| (a.side, a.line, *h, *l, *first))
+            .map(|(side, line, hunk, raw_line)| (*side, *line, *hunk, *raw_line))
             .collect::<Vec<_>>();
         assert_eq!(
             indices,
             vec![
-                (nsh_base::DiffSide::Old, 1, 0, 1, true),
-                (nsh_base::DiffSide::New, 1, 0, 2, false),
-                (nsh_base::DiffSide::New, 3, 1, 1, true)
+                (nsh_base::DiffSide::Old, 10, 0, 1),
+                (nsh_base::DiffSide::New, 10, 0, 2),
+                (nsh_base::DiffSide::New, 30, 1, 1)
             ]
         );
     }

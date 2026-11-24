@@ -1,10 +1,10 @@
-//! diff 视图与它的显示开关：顶部工具栏（导出、复制、布局/视图开关）+ 正文。
+//! diff 视图与它的显示开关：共享工具栏与 NSH DiffView 正文。
 //!
 //! 正文自 P2 起交给 `ui::diff_surface`（包装 `nsh_base::DiffView`），等宽 12 / 行高
 //! 18、行号与正负行配色都由它负责。本文件只剩工具栏与开关。
 //!
 //! 补丁在 `git` 边界就解析成 `domain::diff::Patch`，这里只负责展示与开关。
-//! 选项与开关动作放在 `shared`：历史页与变更页共用同一份显示偏好。
+//! 选项与开关动作放在 `shared`：History、Changes、Stash 和 Blame 共用同一份显示偏好。
 
 use crate::design::{self, metrics};
 use crate::features::SessionHandle;
@@ -41,7 +41,7 @@ pub(crate) struct DiffCommands {
     /// 文件树两项开关写进设置，因此需要设置与它所在目录。
     pub(crate) settings: Signal<store::Settings>,
     pub(crate) store_dir: std::path::PathBuf,
-    /// 导出补丁要读当前标签页、写状态栏提示；这三样都在会话句柄里。
+    /// 剪贴板提示等会话级状态。
     pub(crate) session: SessionHandle,
 }
 
@@ -69,35 +69,6 @@ impl DiffCommands {
         self.state.options.set(next);
     }
 
-    /// 导出当前显示的原始补丁到用户选择的路径（原 `Actions::export_patch`）。
-    ///
-    /// 没有选择路径就不写，不落默认文件名；补丁为空时只提示，不弹保存框。
-    pub(crate) fn export_patch(&self, patch: String) {
-        let notice = self.session.notice;
-        let language = self.session.language;
-        if patch.trim().is_empty() {
-            let lang = language.get_untracked();
-            crate::interactions::notify(notice, i18n::t(lang.as_str(), "diff.nothingToExport"));
-            return;
-        }
-        let lang = language.get_untracked();
-        let suggested = i18n::t(lang.as_str(), "diff.exportName");
-        let pending = pick_save_path(nsh_core::file_dialog::SaveDialog::new().file_name(suggested));
-        spawn(async move {
-            let Ok(Some(path)) = pending.await else {
-                return;
-            };
-            match std::fs::write(&path, patch.as_bytes()) {
-                Ok(()) => {
-                    crate::interactions::notify(notice, i18n::t(lang.as_str(), "diff.exported"));
-                }
-                Err(error) => {
-                    crate::interactions::notify(notice, error.to_string());
-                }
-            }
-        });
-    }
-
     /// 设置文件树的整体开关（原 `set_file_tree`）。
     pub(crate) fn set_file_tree(&self, enabled: bool) {
         let mut next = self.settings.get_untracked();
@@ -119,6 +90,14 @@ impl DiffCommands {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct FileNavigation {
+    pub(crate) current: usize,
+    pub(crate) total: usize,
+    pub(crate) previous: std::sync::Arc<dyn Fn()>,
+    pub(crate) next: std::sync::Arc<dyn Fn()>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn diff(
     state: &DiffState,
@@ -131,8 +110,122 @@ pub(crate) fn diff(
     file_count: usize,
     return_to_history: std::sync::Arc<dyn Fn()>,
     open_blame: Option<std::sync::Arc<dyn Fn()>>,
+    file_name: Option<String>,
+    file_navigation: Option<FileNavigation>,
 ) -> impl IntoElement {
-    // 只改展示文本；复制、导出与统计都取未转换的原始补丁。
+    let title_bar = view()
+        .w_full()
+        .h(px(metrics::DIFF_RETURN_H))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(11.0))
+        .border_b_1()
+        .border_color(move || design::line())
+        .bg(move || design::panel())
+        .child(crate::ui::button::button_icon(
+            move || i18n::t(language.get().as_str(), "history.backToList"),
+            "chev-left",
+            crate::ui::button::ButtonVariant::Secondary,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || return_to_history(),
+        ))
+        .child(
+            text(return_title)
+                .flex_1()
+                .min_w_0()
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::text3())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        );
+    let title_bar = if let Some(file_name) = file_name {
+        title_bar.child(
+            text(file_name)
+                .max_w(px(320.0))
+                .text_size(px(crate::ui::CODE))
+                .text_color(move || design::text())
+                .text_overflow(nsh_core::EllipsizeMode::Tail),
+        )
+    } else {
+        title_bar
+    };
+    let title_bar = if let Some(navigation) = file_navigation {
+        let current = navigation.current + 1;
+        let previous = navigation.previous;
+        let next = navigation.next;
+        title_bar
+            .child(crate::ui::button::icon_button(
+                "chev-left",
+                {
+                    let language = language;
+                    move || i18n::t(language.get().as_str(), "diff.previousFile")
+                },
+                crate::ui::button::ButtonSize::Small,
+                navigation.current == 0,
+                move || previous(),
+            ))
+            .child(crate::ui::button::icon_button(
+                "chev-right",
+                {
+                    let language = language;
+                    move || i18n::t(language.get().as_str(), "diff.nextFile")
+                },
+                crate::ui::button::ButtonSize::Small,
+                navigation.current + 1 >= navigation.total,
+                move || next(),
+            ))
+            .child(
+                text(format!("{current}/{}", navigation.total))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+            )
+    } else {
+        title_bar
+    }
+    .child(
+        text(move || {
+            i18n::with_arguments(
+                language.get().as_str(),
+                "files.changedCount",
+                &[("count", file_count.to_string())],
+            )
+        })
+        .text_size(px(crate::ui::SECONDARY))
+        .text_color(move || design::text3()),
+    );
+
+    return view()
+        .w_full()
+        .flex_1()
+        .min_h_0()
+        .flex_col()
+        .bg(move || design::content())
+        .child(title_bar)
+        .child(diff_panel(
+            state,
+            cmd,
+            language,
+            patch,
+            raw_patch,
+            empty_feedback,
+            open_blame,
+            None,
+            None,
+        ));
+}
+
+pub(crate) fn diff_panel(
+    state: &DiffState,
+    cmd: &DiffCommands,
+    language: Signal<SharedString>,
+    patch: Patch,
+    raw_patch: Patch,
+    empty_feedback: Option<&'static str>,
+    open_blame: Option<std::sync::Arc<dyn Fn()>>,
+    on_ignore_whitespace: Option<std::sync::Arc<dyn Fn(bool)>>,
+    staging: Option<crate::ui::diff_surface::StagingActions>,
+) -> AnyElement {
     let options = state.options.get();
     let ignore_whitespace = state.ignore_whitespace.get();
     let patch_for_view = if options.whitespace {
@@ -148,44 +241,26 @@ pub(crate) fn diff(
         .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
         .count() as u32;
     let hunk_position = signal(if hunk_count > 0 { Some(1_u32) } else { None });
-    let diff_handle = crate::ui::diff_surface::DiffHandle::new();
-    let file_label = raw_patch
-        .files
-        .first()
-        .map(|file| file.path.clone())
-        .unwrap_or_default();
-    // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
-    let split_view = state.split.get();
-    let toggle_option: std::sync::Arc<dyn Fn(&'static str)> = {
+    let handle = crate::ui::diff_surface::DiffHandle::new();
+    let split = state.split.get();
+    let toggle: std::sync::Arc<dyn Fn(&'static str)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |which: &'static str| cmd.toggle_diff_option(which))
-    };
-    let set_split_mode: std::sync::Arc<dyn Fn(bool)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |split: bool| cmd.set_diff_split(split))
-    };
-    let copy_patch = {
-        let cmd = cmd.clone();
-        let notice = cmd.session.notice;
-        move |text: String| crate::shared::os::copy_text(notice, language, text)
-    };
-    let hunk_patches = raw_hunks(&patch.raw);
-    let copy_hunk: std::sync::Arc<dyn Fn(&nsh_base::DiffHunk)> = {
-        let notice = cmd.session.notice;
-        std::sync::Arc::new(move |hunk: &nsh_base::DiffHunk| {
-            if let Some(patch) = hunk_patches.get(hunk.index as usize) {
-                crate::shared::os::copy_text(notice, language, patch.clone());
+        let ignore_whitespace = state.ignore_whitespace;
+        std::sync::Arc::new(move |which| {
+            cmd.toggle_diff_option(which);
+            if which == "ignore_whitespace"
+                && let Some(refresh) = on_ignore_whitespace.as_ref()
+            {
+                refresh(ignore_whitespace.get_untracked());
             }
         })
     };
-    let export_patch = {
+    let set_split: std::sync::Arc<dyn Fn(bool)> = {
         let cmd = cmd.clone();
-        let patch = raw_patch.raw.clone();
-        move || cmd.export_patch(patch.clone())
+        std::sync::Arc::new(move |value| cmd.set_diff_split(value))
     };
-    let copy_text = raw_patch.raw.clone();
-    let previous_hunk = {
-        let handle = diff_handle.clone();
+    let previous = {
+        let handle = handle.clone();
         let position = hunk_position;
         move || {
             if let Some(index) = handle.previous_hunk() {
@@ -193,8 +268,8 @@ pub(crate) fn diff(
             }
         }
     };
-    let next_hunk = {
-        let handle = diff_handle.clone();
+    let next = {
+        let handle = handle.clone();
         let position = hunk_position;
         move || {
             if let Some(index) = handle.next_hunk() {
@@ -202,7 +277,15 @@ pub(crate) fn diff(
             }
         }
     };
-    let mut file_toolbar = view()
+    let copy_patch_text = raw_patch.raw.clone();
+    let copy_patch_disabled = copy_patch_text.trim().is_empty();
+    let copy_patch = {
+        let notice = cmd.session.notice;
+        let text = copy_patch_text.clone();
+        move || crate::shared::os::copy_text(notice, language, text.clone())
+    };
+    let copy_hunk = copy_hunk_handler(&patch.raw, cmd.session.notice, language);
+    let mut toolbar = view()
         .w_full()
         .h(px(metrics::DIFFBAR_H))
         .flex_row()
@@ -217,24 +300,6 @@ pub(crate) fn diff(
             design::text3,
         ))
         .child(
-            text(file_label)
-                .flex_1()
-                .min_w_0()
-                .text_size(px(crate::ui::CODE))
-                .text_color(move || design::text())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
-        );
-    if let Some(open_blame) = open_blame {
-        file_toolbar = file_toolbar.child(crate::ui::button::button(
-            move || i18n::t(language.get().as_str(), "files.blame"),
-            crate::ui::button::ButtonVariant::Ghost,
-            crate::ui::button::ButtonSize::Small,
-            false,
-            move || open_blame(),
-        ));
-    }
-    file_toolbar = file_toolbar
-        .child(
             text(format!("+{additions}"))
                 .font_family(crate::ui::MONO)
                 .text_size(px(crate::ui::CODE))
@@ -246,15 +311,15 @@ pub(crate) fn diff(
                 .text_size(px(crate::ui::CODE))
                 .text_color(move || design::del_fg()),
         )
-        .child(mode_toggle(language, split_view, set_split_mode.clone()))
+        .child(mode_toggle(language, split, set_split))
         .child(toolbar_separator())
-        .child(fold_toggle(language, options, toggle_option.clone()))
-        .child(wrap_toggle(language, options, toggle_option.clone()))
-        .child(space_toggle(language, options, toggle_option.clone()))
+        .child(fold_toggle(language, options, toggle.clone()))
+        .child(wrap_toggle(language, options, toggle.clone()))
+        .child(space_toggle(language, options, toggle.clone()))
         .child(ignore_whitespace_toggle(
             language,
             ignore_whitespace,
-            toggle_option.clone(),
+            toggle,
         ))
         .child(toolbar_separator())
         .child(
@@ -279,7 +344,7 @@ pub(crate) fn diff(
             },
             crate::ui::button::ButtonSize::Small,
             hunk_count == 0,
-            move || previous_hunk(),
+            move || previous(),
         ))
         .child(crate::ui::button::icon_button(
             "chev-right",
@@ -289,131 +354,70 @@ pub(crate) fn diff(
             },
             crate::ui::button::ButtonSize::Small,
             hunk_count == 0,
-            move || next_hunk(),
-        ))
-        .child(toolbar_separator())
-        .child(crate::ui::button::button(
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), "diff.export")
-            },
-            crate::ui::button::ButtonVariant::Secondary,
+            move || next(),
+        ));
+    if let Some(open_blame) = open_blame {
+        toolbar = toolbar.child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "files.blame"),
+            crate::ui::button::ButtonVariant::Ghost,
             crate::ui::button::ButtonSize::Small,
             false,
-            move || export_patch(),
-        ))
-        .child(crate::ui::button::icon_button(
-            "copy",
-            {
-                let language = language;
-                move || i18n::t(language.get().as_str(), "diff.copy")
-            },
-            crate::ui::button::ButtonSize::Small,
-            copy_text.trim().is_empty(),
-            move || copy_patch(copy_text.clone()),
+            move || open_blame(),
         ));
+    }
+    toolbar = toolbar.child(crate::ui::button::icon_button(
+        "copy",
+        {
+            let language = language;
+            move || i18n::t(language.get().as_str(), "diff.copy")
+        },
+        crate::ui::button::ButtonSize::Small,
+        copy_patch_disabled,
+        move || copy_patch(),
+    ));
+    let display_patch = patch_for_view.clone();
+    let raw_empty = raw_patch.raw.trim().is_empty();
+    let view_empty = patch.raw.trim().is_empty();
     return view()
         .w_full()
         .flex_1()
         .min_h_0()
         .flex_col()
-        .bg(move || design::content())
-        .child(
-            view()
-                .w_full()
-                .h(px(metrics::DIFF_RETURN_H))
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(11.0))
-                .border_b_1()
-                .border_color(move || design::line())
-                .bg(move || design::panel())
-                .child(crate::ui::button::button_icon(
-                    move || i18n::t(language.get().as_str(), "history.backToList"),
-                    "chev-left",
-                    crate::ui::button::ButtonVariant::Secondary,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || return_to_history(),
-                ))
-                .child(
-                    text(return_title)
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3())
-                        .text_overflow(nsh_core::EllipsizeMode::Tail),
-                )
-                .child(
-                    text(move || {
-                        i18n::with_arguments(
-                            language.get().as_str(),
-                            "files.changedCount",
-                            &[("count", file_count.to_string())],
-                        )
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .text_color(move || design::text3()),
-                ),
-        )
-        .child(file_toolbar)
+        .child(toolbar)
         .child(
             view()
                 .w_full()
                 .flex_1()
                 .min_h_0()
                 .child(dynamic(move || -> AnyElement {
-                    if raw_patch.raw.trim().is_empty() {
-                        log::debug!(
-                            target: "gitui::diff",
-                            "event=diff_body.render decision=empty_patch feedback={}",
-                            empty_feedback.is_some()
-                        );
+                    if raw_empty {
                         if let Some(key) = empty_feedback {
                             return feedback_state(language, key).into_element();
                         }
                         return empty_state(language).into_element();
                     }
-                    if patch.raw.trim().is_empty() || hunk_count == 0 {
-                        log::debug!(
-                            target: "gitui::diff",
-                            "event=diff_body.render decision=no_text_changes raw_bytes={} view_bytes={} files={} hunks={}",
-                            raw_patch.raw.len(),
-                            patch.raw.len(),
-                            raw_patch.files.len(),
-                            hunk_count
-                        );
+                    if view_empty || hunk_count == 0 {
                         return no_text_changes(language).into_element();
                     }
-                    // 渲染交给 nsh 的 DiffView：分栏/统一、折叠、软换行、行号与
-                    // 指示条都由它提供，这里只传 patch 与两个显示开关。
-                    let layout = if split_view {
+                    let layout = if split {
                         crate::ui::diff_surface::Layout::Split
                     } else {
                         crate::ui::diff_surface::Layout::Unified
                     };
-                    log::debug!(
-                        target: "gitui::diff",
-                        "event=diff_body.render decision=diff_view raw_bytes={} view_bytes={} files={} hunks={} layout={:?}",
-                        raw_patch.raw.len(),
-                        patch_for_view.len(),
-                        raw_patch.files.len(),
-                        hunk_count,
-                        layout
-                    );
-                    return crate::ui::diff_surface::diff_surface(
-                        SharedString::from(patch_for_view.clone()),
+                    crate::ui::diff_surface::configured_surface(
+                        SharedString::from(display_patch.clone()),
                         layout,
                         options.wrap,
                         !options.fold,
-                        &diff_handle,
+                        &handle,
                         language,
                         copy_hunk.clone(),
+                        staging.clone(),
                     )
-                    .into_element();
+                    .into_element()
                 })),
-        );
+        )
+        .into_element();
 }
 
 fn toolbar_separator() -> impl IntoElement {
