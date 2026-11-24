@@ -138,6 +138,7 @@ pub(crate) fn app() -> impl IntoElement {
     let reflog_query = signal(String::new());
     let reflog_selection = signal(None);
     let reflog_detail = signal(None);
+    let reflog_file_diff = signal(None);
     // 冲突视图的 Base 区域显隐。
     let conflict_base_open = signal(false);
     let conflict_files_open = signal(false);
@@ -692,6 +693,7 @@ pub(crate) fn app() -> impl IntoElement {
         reflog_query,
         reflog_selection,
         reflog_detail,
+        reflog_file_diff,
     };
     let refs_commands = features::refs::commands::RefsCommands {
         state: refs_state,

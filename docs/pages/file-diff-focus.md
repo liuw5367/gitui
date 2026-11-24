@@ -63,7 +63,7 @@ History 中栏在提交列表与 Diff 之间整栏切换，两个视图不会上
 
 `Show whitespace` 只把显示副本中的空格和 tab 换成可见符号；`Ignore whitespace` 由 Git 查询过滤后的差异。两者互不影响，复制始终保留原始 patch。DiffView 依据每个文件的路径独立选择内置语法，未知扩展名回退纯文本。
 
-History、Changes、Stash 和 Blame 的 Diff 共用工具条：增删行数、Split / Unified、折叠、软换行、显示空白、忽略空白、改动位置和前后导航、复制 patch。Export 已移除。Changes 与 Stash 的标题按场景显示返回入口和当前文件名；History 的单文件标题另提供前后文件切换和提交文件总数。增删数字分别使用 `add-fg` / `del-fg`。
+History、Changes、Stash、Blame 和 Reflog 的 Diff 共用 NSH DiffView 正文与工具条：增删行数、Split / Unified、折叠、软换行、显示空白、忽略空白、改动位置和前后导航、复制 patch。Export 已移除。Changes、Stash 和 Reflog 的标题按场景显示返回入口和当前文件名；History 与 Reflog 的单文件标题另提供前后文件切换和提交文件总数。增删数字分别使用 `add-fg` / `del-fg`。
 
 语法高亮由 NSH DiffView 处理，应用启用了 `highlight` feature。它按每个文件的目标路径（删除文件回退到旧路径）调用 NSH 语言目录解析扩展名或文件名；多文件 patch 会为每个文件建立独立的语法段。桌面语法集来自 two-face（bat / syntect），覆盖其内置语法；无法识别的路径会以纯文本呈现，因此不能承诺覆盖所有语言，也没有额外应用自建映射表。
 

@@ -465,6 +465,54 @@ fn center_content(
                     let Some(tab) = current.get() else {
                         return empty_workspace(language).into_element();
                     };
+                    if refs.state.selected_tab.get() == refs::state::RefsTab::Reflog
+                        && let Some(selection) = refs.state.reflog_selection.get().filter(|key| {
+                            key.tab_id == tab.id && key.path == tab.path
+                        })
+                        && let Some(file_diff) = refs
+                            .state
+                            .reflog_file_diff
+                            .get()
+                            .filter(|diff| diff.selection == selection)
+                    {
+                        match file_diff.status.clone() {
+                            refs::state::ReflogFileDiffStatus::Loading => {
+                                return inspector::reflog_commit_placeholder(
+                                    language,
+                                    "reflog.diffLoading",
+                                )
+                                .into_element();
+                            }
+                            refs::state::ReflogFileDiffStatus::Failed => {
+                                return inspector::reflog_commit_placeholder(
+                                    language,
+                                    "reflog.diffFailed",
+                                )
+                                .into_element();
+                            }
+                            refs::state::ReflogFileDiffStatus::Loaded { patch, raw_patch } => {
+                                let title = match refs.state.reflog_detail.get() {
+                                    Some(refs::state::ReflogDetailState::Loaded {
+                                        selection: loaded,
+                                        details,
+                                        ..
+                                    }) if loaded == selection => details.subject,
+                                    _ => selection.summary.clone(),
+                                };
+                                return reflog_file_diff_view(
+                                    language,
+                                    &history.diff.state,
+                                    &history.diff,
+                                    refs.clone(),
+                                    file_diff,
+                                    title,
+                                    patch,
+                                    raw_patch,
+                                )
+                                .into_element();
+                            }
+                        }
+                    }
                     refs::view::refs_view(
                         &refs.state,
                         &refs,
@@ -504,6 +552,66 @@ fn center_content(
                 }
             };
         }));
+}
+
+fn reflog_file_diff_view(
+    language: Signal<SharedString>,
+    diff_state: &crate::shared::diff::DiffState,
+    diff_cmd: &crate::shared::diff::DiffCommands,
+    refs: RefsCommands,
+    file_diff: refs::state::ReflogFileDiffState,
+    title: String,
+    patch: domain::diff::Patch,
+    raw_patch: domain::diff::Patch,
+) -> AnyElement {
+    let index = file_diff
+        .files
+        .iter()
+        .position(|file| file.path == file_diff.path)
+        .unwrap_or(0);
+    let file_count = file_diff.files.len();
+    let previous_refs = refs.clone();
+    let next_refs = refs.clone();
+    let file_navigation = crate::shared::diff::FileNavigation {
+        current: index,
+        total: file_count,
+        previous: std::sync::Arc::new(move || previous_refs.select_reflog_file_relative(-1)),
+        next: std::sync::Arc::new(move || next_refs.select_reflog_file_relative(1)),
+    };
+    let return_refs = refs.clone();
+    let back: std::sync::Arc<dyn Fn()> =
+        std::sync::Arc::new(move || return_refs.return_to_reflog());
+    let header = crate::shared::diff::diff_title_bar(
+        language,
+        "reflog.backToList",
+        back,
+        title,
+        Some(file_diff.path.clone()),
+        file_count,
+        Some(file_navigation),
+    );
+    let reload_refs = refs.clone();
+    let on_ignore_whitespace: std::sync::Arc<dyn Fn(bool)> =
+        std::sync::Arc::new(move |ignore| reload_refs.reload_reflog_file_diff(ignore));
+    return view()
+        .w_full()
+        .h_full()
+        .min_h_0()
+        .flex_col()
+        .bg(move || design::content())
+        .child(header)
+        .child(crate::shared::diff::diff_panel(
+            diff_state,
+            diff_cmd,
+            language,
+            patch.clone(),
+            raw_patch,
+            Some("reflog.diffEmpty"),
+            None,
+            Some(on_ignore_whitespace),
+            None,
+        ))
+        .into_element();
 }
 
 fn history_list_snapshot(tab: &Tab) -> Tab {
@@ -830,6 +938,13 @@ fn right_content(
                                     std::sync::Arc::new(move |path| {
                                         history.show_file_history_at(tab_id, path, sha.clone())
                                     });
+                                let file_selection = selected.clone().expect("selected reflog row");
+                                let select_file: std::sync::Arc<dyn Fn(String)> = {
+                                    let refs = refs.clone();
+                                    std::sync::Arc::new(move |path| {
+                                        refs.select_reflog_file(file_selection.clone(), path)
+                                    })
+                                };
                                 inspector::reflog_commit_inspector(
                                     language,
                                     details,
@@ -842,6 +957,7 @@ fn right_content(
                                     reflog_file_tree_expanded,
                                     refs.notice,
                                     file_history,
+                                    select_file,
                                 )
                                 .into_element()
                             }

@@ -4,7 +4,7 @@
 //! 18、行号与正负行配色都由它负责。本文件只剩工具栏与开关。
 //!
 //! 补丁在 `git` 边界就解析成 `domain::diff::Patch`，这里只负责展示与开关。
-//! 选项与开关动作放在 `shared`：History、Changes、Stash 和 Blame 共用同一份显示偏好。
+//! 选项与开关动作放在 `shared`：History、Changes、Stash、Blame 和 Reflog 共用同一份显示偏好。
 
 use crate::design::{self, metrics};
 use crate::features::SessionHandle;
@@ -34,7 +34,7 @@ pub(crate) struct DiffState {
     pub(crate) ignore_whitespace: Signal<bool>,
 }
 
-/// diff 的用例：切换视图与显示开关、文件树的两项开关、导出当前补丁。
+/// diff 的用例：切换视图与显示开关、文件树的两项开关。
 #[derive(Clone)]
 pub(crate) struct DiffCommands {
     pub(crate) state: DiffState,
@@ -98,21 +98,15 @@ pub(crate) struct FileNavigation {
     pub(crate) next: std::sync::Arc<dyn Fn()>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn diff(
-    state: &DiffState,
-    cmd: &DiffCommands,
+pub(crate) fn diff_title_bar(
     language: Signal<SharedString>,
-    patch: Patch,
-    raw_patch: Patch,
-    empty_feedback: Option<&'static str>,
-    return_title: String,
-    file_count: usize,
-    return_to_history: std::sync::Arc<dyn Fn()>,
-    open_blame: Option<std::sync::Arc<dyn Fn()>>,
+    back_key: &'static str,
+    back: std::sync::Arc<dyn Fn()>,
+    title: String,
     file_name: Option<String>,
+    file_count: usize,
     file_navigation: Option<FileNavigation>,
-) -> impl IntoElement {
+) -> AnyElement {
     let title_bar = view()
         .w_full()
         .h(px(metrics::DIFF_RETURN_H))
@@ -124,15 +118,15 @@ pub(crate) fn diff(
         .border_color(move || design::line())
         .bg(move || design::panel())
         .child(crate::ui::button::button_icon(
-            move || i18n::t(language.get().as_str(), "history.backToList"),
+            move || i18n::t(language.get().as_str(), back_key),
             "chev-left",
             crate::ui::button::ButtonVariant::Secondary,
             crate::ui::button::ButtonSize::Small,
             false,
-            move || return_to_history(),
+            move || back(),
         ))
         .child(
-            text(return_title)
+            text(title)
                 .flex_1()
                 .min_w_0()
                 .text_size(px(crate::ui::SECONDARY))
@@ -182,17 +176,45 @@ pub(crate) fn diff(
             )
     } else {
         title_bar
-    }
-    .child(
-        text(move || {
-            i18n::with_arguments(
-                language.get().as_str(),
-                "files.changedCount",
-                &[("count", file_count.to_string())],
-            )
-        })
-        .text_size(px(crate::ui::SECONDARY))
-        .text_color(move || design::text3()),
+    };
+    return title_bar
+        .child(
+            text(move || {
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "files.changedCount",
+                    &[("count", file_count.to_string())],
+                )
+            })
+            .text_size(px(crate::ui::SECONDARY))
+            .text_color(move || design::text3()),
+        )
+        .into_element();
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn diff(
+    state: &DiffState,
+    cmd: &DiffCommands,
+    language: Signal<SharedString>,
+    patch: Patch,
+    raw_patch: Patch,
+    empty_feedback: Option<&'static str>,
+    return_title: String,
+    file_count: usize,
+    return_to_history: std::sync::Arc<dyn Fn()>,
+    open_blame: Option<std::sync::Arc<dyn Fn()>>,
+    file_name: Option<String>,
+    file_navigation: Option<FileNavigation>,
+) -> impl IntoElement {
+    let title_bar = diff_title_bar(
+        language,
+        "history.backToList",
+        return_to_history,
+        return_title,
+        file_name,
+        file_count,
+        file_navigation,
     );
 
     return view()

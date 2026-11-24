@@ -822,7 +822,11 @@
     "noMatches": "No entries match this filter.",
     "selectEntry": "Select a reflog entry to inspect its commit.",
     "detailsLoading": "Loading commit details…",
-    "detailsFailed": "Couldn't load this commit's details. The commit may have been removed."
+    "detailsFailed": "Couldn't load this commit's details. The commit may have been removed.",
+    "backToList": "Reflog",
+    "diffLoading": "Loading file diff…",
+    "diffFailed": "Couldn't load this file diff. The commit or file may no longer be available.",
+    "diffEmpty": "No file diff available."
   },
   "agent": {
     "name": "Agent",

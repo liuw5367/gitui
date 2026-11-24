@@ -70,6 +70,26 @@ pub(crate) enum ReflogDetailState {
     Failed(ReflogEntryKey),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ReflogFileDiffStatus {
+    Loading,
+    Loaded {
+        patch: domain::diff::Patch,
+        raw_patch: domain::diff::Patch,
+    },
+    Failed,
+}
+
+/// The selected file diff in the center column. Its identity includes the exact reflog row,
+/// because the same commit can appear at multiple positions in a reflog snapshot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ReflogFileDiffState {
+    pub(crate) selection: ReflogEntryKey,
+    pub(crate) path: String,
+    pub(crate) files: Vec<domain::DiffStat>,
+    pub(crate) status: ReflogFileDiffStatus,
+}
+
 #[derive(Clone)]
 pub(crate) struct RefsState {
     /// Refs / Reflog 的页签选择，工具栏直达入口与中栏页签共用这份状态。
@@ -80,6 +100,8 @@ pub(crate) struct RefsState {
     pub(crate) reflog_selection: Signal<Option<ReflogEntryKey>>,
     /// 右栏提交详情只读加载状态。
     pub(crate) reflog_detail: Signal<Option<ReflogDetailState>>,
+    /// 中栏当前打开的 Reflog 文件差异。
+    pub(crate) reflog_file_diff: Signal<Option<ReflogFileDiffState>>,
 }
 
 #[cfg(test)]

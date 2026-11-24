@@ -175,6 +175,7 @@ pub(crate) fn reflog_commit_inspector(
     file_tree_expanded: Signal<Option<Vec<SharedString>>>,
     notice: Signal<Option<String>>,
     file_history: std::sync::Arc<dyn Fn(String)>,
+    select_file: std::sync::Arc<dyn Fn(String)>,
 ) -> impl IntoElement + use<> {
     let commit = domain::Commit {
         sha: details.sha.clone(),
@@ -201,7 +202,7 @@ pub(crate) fn reflog_commit_inspector(
         files,
         root_path,
         None,
-        std::sync::Arc::new(|_| {}),
+        select_file,
         file_list_mode,
         tree,
         file_tree_expanded,

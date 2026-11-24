@@ -4,8 +4,12 @@
 //! 这里只调本功能的 `ops` 与 `app::ops`，不写布局。
 
 use super::ops;
-use super::state::{ReflogDetailState, ReflogEntryKey, RefsState, RefsTab};
+use super::state::{
+    ReflogDetailState, ReflogEntryKey, ReflogFileDiffState, ReflogFileDiffStatus, RefsState,
+    RefsTab,
+};
 use crate::app::ops::identity;
+use crate::app::session::Tab;
 use crate::features::SessionHandle;
 use crate::features::history::commands::HistoryCommands;
 use crate::features::recovery::commands::RecoveryCommands;
@@ -15,6 +19,16 @@ use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
+
+fn reflog_selection_exists(tabs: &[Tab], selection: &ReflogEntryKey) -> bool {
+    return tabs.iter().any(|tab| {
+        tab.id == selection.tab_id
+            && tab.path == selection.path
+            && tab.reflog.get(selection.index).is_some_and(|entry| {
+                selection.matches_entry(tab.id, tab.path.as_str(), selection.index, entry)
+            })
+    });
+}
 
 #[derive(Clone)]
 enum RemoteOperation {
@@ -260,6 +274,10 @@ impl RefsCommands {
         };
 
         let current = self.state.reflog_detail.get_untracked();
+        let previous_selection = self.state.reflog_selection.get_untracked();
+        if previous_selection.as_ref() != Some(&selection) {
+            self.state.reflog_file_diff.set(None);
+        }
         let already_loading_or_loaded = self
             .state
             .reflog_selection
@@ -365,6 +383,206 @@ impl RefsCommands {
                 }
             });
         });
+    }
+
+    /// 从 Reflog 检查器文件树打开提交内的单文件差异。
+    pub(crate) fn select_reflog_file(&self, selection: ReflogEntryKey, path: String) {
+        self.select_reflog_file_with_whitespace(
+            selection,
+            path,
+            self.history.diff.state.ignore_whitespace.get_untracked(),
+            false,
+        );
+    }
+
+    fn select_reflog_file_with_whitespace(
+        &self,
+        selection: ReflogEntryKey,
+        path: String,
+        ignore_whitespace: bool,
+        force: bool,
+    ) {
+        if self.state.selected_tab.get_untracked() != RefsTab::Reflog
+            || self.state.reflog_selection.get_untracked().as_ref() != Some(&selection)
+        {
+            return;
+        }
+        let current_diff = self.state.reflog_file_diff.get_untracked();
+        if !force
+            && current_diff.as_ref().is_some_and(|current| {
+                current.selection == selection
+                    && current.path == path
+                    && (matches!(current.status, ReflogFileDiffStatus::Loading)
+                        || matches!(current.status, ReflogFileDiffStatus::Loaded { .. }))
+            })
+        {
+            return;
+        }
+        let files = match self.state.reflog_detail.get_untracked() {
+            Some(ReflogDetailState::Loaded {
+                selection: loaded,
+                files,
+                ..
+            }) if loaded == selection && files.iter().any(|file| file.path == path) => files,
+            _ => return,
+        };
+        let tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs
+            .iter()
+            .find(|tab| tab.id == selection.tab_id && tab.path == selection.path)
+            .filter(|_| reflog_selection_exists(tabs.as_slice(), &selection))
+        else {
+            return;
+        };
+        self.state.reflog_file_diff.set(Some(ReflogFileDiffState {
+            selection: selection.clone(),
+            path: path.clone(),
+            files: files.clone(),
+            status: ReflogFileDiffStatus::Loading,
+        }));
+        let repo_path = tab.path.clone();
+        let git_executable = tab.git_executable.clone();
+        let sha = selection.sha.clone();
+        let query_path = path.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = git::Repo::open_with_executable(repo_path.as_str(), &git_executable)
+                .and_then(|repo| {
+                    let raw_patch = repo.patch_for_path_with_whitespace(
+                        sha.as_str(),
+                        query_path.as_str(),
+                        false,
+                    )?;
+                    let patch = if ignore_whitespace {
+                        repo.patch_for_path_with_whitespace(
+                            sha.as_str(),
+                            query_path.as_str(),
+                            true,
+                        )?
+                    } else {
+                        raw_patch.clone()
+                    };
+                    Ok((patch, raw_patch))
+                })
+                .map_err(|_| ());
+            let _ = sender.send(result);
+        });
+
+        let diff_state = self.state.reflog_file_diff;
+        let current_selection = self.state.reflog_selection;
+        let detail_state = self.state.reflog_detail;
+        let tabs = self.session.tabs;
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            let still_exists = reflog_selection_exists(
+                                tabs.get_untracked().as_slice(),
+                                &selection,
+                            );
+                            let still_selected = current_selection
+                                .get_untracked()
+                                .as_ref()
+                                .is_some_and(|selected| selected == &selection);
+                            let still_loading =
+                                diff_state.get_untracked().as_ref().is_some_and(|current| {
+                                    current.selection == selection
+                                        && current.path == path
+                                        && current.status == ReflogFileDiffStatus::Loading
+                                });
+                            let details_current = matches!(
+                                detail_state.get_untracked(),
+                                Some(ReflogDetailState::Loaded { selection: loaded, .. })
+                                    if loaded == selection
+                            );
+                            if still_exists && still_selected && still_loading && details_current {
+                                diff_state.set(Some(ReflogFileDiffState {
+                                    selection,
+                                    path,
+                                    files,
+                                    status: match result {
+                                        Ok((patch, raw_patch)) => {
+                                            ReflogFileDiffStatus::Loaded { patch, raw_patch }
+                                        }
+                                        Err(()) => ReflogFileDiffStatus::Failed,
+                                    },
+                                }));
+                            }
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            let still_exists = reflog_selection_exists(
+                                tabs.get_untracked().as_slice(),
+                                &selection,
+                            );
+                            let still_selected = current_selection
+                                .get_untracked()
+                                .as_ref()
+                                .is_some_and(|selected| selected == &selection);
+                            let still_loading =
+                                diff_state.get_untracked().as_ref().is_some_and(|current| {
+                                    current.selection == selection
+                                        && current.path == path
+                                        && current.status == ReflogFileDiffStatus::Loading
+                                });
+                            let details_current = matches!(
+                                detail_state.get_untracked(),
+                                Some(ReflogDetailState::Loaded { selection: loaded, .. })
+                                    if loaded == selection
+                            );
+                            if still_exists && still_selected && still_loading && details_current {
+                                diff_state.set(Some(ReflogFileDiffState {
+                                    selection,
+                                    path,
+                                    files,
+                                    status: ReflogFileDiffStatus::Failed,
+                                }));
+                            }
+                            return;
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            let _ = next_frame().await;
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    pub(crate) fn select_reflog_file_relative(&self, offset: isize) {
+        let Some(current) = self.state.reflog_file_diff.get_untracked() else {
+            return;
+        };
+        let Some(index) = current
+            .files
+            .iter()
+            .position(|file| file.path == current.path)
+        else {
+            return;
+        };
+        let next = index as isize + offset;
+        if next < 0 || next >= current.files.len() as isize {
+            return;
+        }
+        let path = current.files[next as usize].path.clone();
+        self.select_reflog_file(current.selection, path);
+    }
+
+    pub(crate) fn reload_reflog_file_diff(&self, ignore_whitespace: bool) {
+        let Some(current) = self.state.reflog_file_diff.get_untracked() else {
+            return;
+        };
+        self.select_reflog_file_with_whitespace(
+            current.selection,
+            current.path,
+            ignore_whitespace,
+            true,
+        );
+    }
+
+    pub(crate) fn return_to_reflog(&self) {
+        self.state.reflog_file_diff.set(None);
     }
 
     fn active_tab_id(&self) -> Option<u64> {

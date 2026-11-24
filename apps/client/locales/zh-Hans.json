@@ -822,7 +822,11 @@
     "noMatches": "没有符合过滤条件的记录。",
     "selectEntry": "选择一条引用日志记录以查看提交信息。",
     "detailsLoading": "正在读取提交信息…",
-    "detailsFailed": "无法读取此提交的信息。该提交对象可能已被清理。"
+    "detailsFailed": "无法读取此提交的信息。该提交对象可能已被清理。",
+    "backToList": "引用日志",
+    "diffLoading": "正在读取文件差异…",
+    "diffFailed": "无法读取此文件差异。提交或文件可能已不可用。",
+    "diffEmpty": "没有可显示的文件差异。"
   },
   "agent": {
     "name": "助手",
