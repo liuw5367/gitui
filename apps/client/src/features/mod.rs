@@ -102,11 +102,12 @@ impl SessionHandle {
             return;
         }
         let current = self.active.get_untracked();
-        let tab = self.tabs.with_untracked(|tabs| tabs.get(current).cloned());
-        let Some(tab) = tab else {
-            return;
-        };
-        if tab.id != tab_id || !tab.loaded || tab.error.is_some() {
+        let can_refresh = self.tabs.with_untracked(|tabs| {
+            tabs.get(current)
+                .filter(|tab| tab.id == tab_id && tab.loaded && tab.error.is_none())
+                .is_some()
+        });
+        if !can_refresh {
             return;
         }
         let should_start = {
@@ -134,19 +135,34 @@ impl SessionHandle {
             spawn(async move {
                 loop {
                     let current = session.active.get_untracked();
-                    let tab = session.tabs.with_untracked(|list| {
-                        list.get(current).filter(|tab| tab.id == tab_id).cloned()
+                    let request = session.tabs.with_untracked(|list| {
+                        list.get(current)
+                            .filter(|tab| tab.id == tab_id && tab.loaded && tab.error.is_none())
+                            .map(|tab| {
+                                (
+                                    tab.id,
+                                    tab.load_id,
+                                    tab.path.clone(),
+                                    crate::app::session::RefreshInput::from_tab(tab),
+                                )
+                            })
                     });
-                    let Some(tab) = tab else {
+                    let Some((tab_id_at_start, load_id_at_start, path_at_start, refresh_input)) =
+                        request
+                    else {
                         session.finish_refresh_request(tab_id);
                         return;
                     };
-                    let tab_id_at_start = tab.id;
-                    let load_id_at_start = tab.load_id;
-                    let path_at_start = tab.path.clone();
                     let mode = session.mode.get_untracked();
                     let refresh_started = std::time::Instant::now();
-                    let refresh_result = crate::app::session::read_refresh_snapshot(&tab, mode);
+                    let refresh_result = match blocking(move || {
+                        crate::app::session::read_refresh_snapshot(&refresh_input, mode)
+                    })
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(error) => Err(format!("仓库刷新任务失败：{error}")),
+                    };
                     match refresh_result {
                         Ok(snapshot) => {
                             log::debug!(
@@ -240,21 +256,31 @@ impl SessionHandle {
     /// 按标签身份启动一次延迟装载；重复激活和在途任务不会启动重复 Git 读取。
     fn ensure_tab_loaded(&self, tab_id: u64) {
         let tabs = self.tabs;
-        let mut list = tabs.get_untracked();
-        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
-            return;
-        };
-        if tab.loaded || tab.loading || tab.path.is_empty() || self.auxiliary {
+        if self.auxiliary {
             return;
         }
-
         let load_id = crate::app::session::next_tab_id();
-        tab.load_id = load_id;
-        tab.loading = true;
-        let path = tab.path.clone();
-        let filter = tab.filter.clone();
-        let executable = tab.git_executable.clone();
-        tabs.set(list);
+        let request = tabs.with_untracked(|list| {
+            list.iter()
+                .find(|tab| tab.id == tab_id)
+                .filter(|tab| !tab.loaded && !tab.loading && !tab.path.is_empty())
+                .map(|tab| {
+                    (
+                        tab.path.clone(),
+                        tab.filter.clone(),
+                        tab.git_executable.clone(),
+                    )
+                })
+        });
+        let Some((path, filter, executable)) = request else {
+            return;
+        };
+        tabs.update(|list| {
+            if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+                tab.load_id = load_id;
+                tab.loading = true;
+            }
+        });
 
         let recent = self.recent;
         let store_dir = self.store_dir.clone();
@@ -267,28 +293,58 @@ impl SessionHandle {
         );
         self.task_owner.run(|| {
             spawn(async move {
-                let mut loaded = crate::app::session::load_tab_with_executable(
-                    path.as_str(),
-                    &filter,
-                    &executable,
-                );
+                let loaded_result = blocking(move || {
+                    crate::app::session::load_tab_with_executable(
+                        path.as_str(),
+                        &filter,
+                        &executable,
+                    )
+                })
+                .await;
+                let mut loaded = match loaded_result {
+                    Ok(loaded) => loaded,
+                    Err(error) => {
+                        tabs.update(|list| {
+                            if let Some(tab) = list
+                                .iter_mut()
+                                .find(|tab| tab.id == tab_id && tab.load_id == load_id)
+                            {
+                                tab.loading = false;
+                                tab.error = Some(error.to_string());
+                            }
+                        });
+                        log::error!(
+                            target: "gitui::history",
+                            "event=repo_load.failed tab_id={} reason={}",
+                            tab_id,
+                            error,
+                        );
+                        return;
+                    }
+                };
                 let branch = match &loaded.head {
                     git::HeadState::Branch(name) => Some(name.clone()),
                     git::HeadState::Unborn { branch } => Some(branch.clone()),
                     git::HeadState::Detached { .. } => None,
                 };
                 let loaded_path = loaded.path.clone();
-                let mut list = tabs.get_untracked();
-                let Some(index) = list
-                    .iter()
-                    .position(|tab| tab.id == tab_id && tab.load_id == load_id)
-                else {
+                let exists = tabs.with_untracked(|list| {
+                    list.iter()
+                        .any(|tab| tab.id == tab_id && tab.load_id == load_id)
+                });
+                if !exists {
                     return;
-                };
+                }
                 loaded.id = tab_id;
                 loaded.load_id = load_id;
-                list[index] = loaded;
-                tabs.set(list);
+                tabs.update(|list| {
+                    if let Some(tab) = list
+                        .iter_mut()
+                        .find(|tab| tab.id == tab_id && tab.load_id == load_id)
+                    {
+                        *tab = loaded;
+                    }
+                });
                 log::debug!(
                     target: "gitui::history",
                     "event=repo_load.available tab_id={} elapsed_ms={}",
@@ -321,8 +377,8 @@ impl SessionHandle {
 
     /// 打开一个仓库（原 `Actions::open_path`）。
     ///
-    /// 先插入一个「加载中」的占位标签页，再在后台读仓库：大仓库的
-    /// `git log`/`status` 不再卡住界面，用户也能看到骨架。
+    /// 先插入占位标签页并切换选中态，下一帧再启动后台装载：大仓库的
+    /// `git log`/`status` 不会卡住界面，用户能先看到新标签被选中。
     pub(crate) fn open_path(&self, path: String) {
         let executable = self.current_git_executable();
         let repo = match git::Repo::open_with_executable(path.trim(), &executable) {
@@ -343,7 +399,6 @@ impl SessionHandle {
         let path = repo.root().display().to_string();
         let welcome_open = self.welcome_open;
         let tabs = self.tabs;
-        let active = self.active;
         let recent = self.recent;
         let store_dir = self.store_dir.clone();
         let current_filter = self.filter.clone();
@@ -355,11 +410,7 @@ impl SessionHandle {
             .iter()
             .position(|candidate| candidate.path == path.as_str())
         {
-            let tab_id = list[index].id;
-            active.set(index);
-            tabs.set(list);
-            self.ensure_tab_loaded(tab_id);
-            self.refresh_tab(tab_id);
+            self.activate_tab(index);
             if !auxiliary {
                 welcome_open.set(false);
                 nsh_core::element::desktop::main_window().show();
@@ -368,21 +419,15 @@ impl SessionHandle {
             if persist_session {
                 store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
                 recent.set(store::load_recent(&store_dir));
-                crate::persist(&store_dir, active, tabs);
             }
             return;
         }
         let mut placeholder = crate::app::session::placeholder_tab(path.as_str(), &filter);
         placeholder.git_executable = executable.clone();
         list.push(placeholder);
-        active.set(list.len() - 1);
-        let tab_id = list.last().map(|tab| tab.id).unwrap_or_default();
-        let load_id = list
-            .iter()
-            .find(|tab| tab.id == tab_id)
-            .map(|tab| tab.load_id)
-            .unwrap_or_default();
+        let index = list.len() - 1;
         tabs.set(list);
+        self.activate_tab(index);
         if persist_session {
             store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
             recent.set(store::load_recent(&store_dir));
@@ -394,45 +439,8 @@ impl SessionHandle {
             nsh_core::element::desktop::main_window().focus();
         }
         if persist_session {
-            crate::persist(&store_dir, active, tabs);
+            self.persist();
         }
-
-        let path_for_load = path.clone();
-        let branch_dir = store_dir.clone();
-        // 欢迎窗口关闭会销毁其内容 owner；在会话 owner 下启动，保证切换窗口后任务仍能完成。
-        self.task_owner.run(|| {
-            spawn(async move {
-                let loaded = crate::app::session::load_tab_with_executable(
-                    path_for_load.as_str(),
-                    &filter,
-                    &executable,
-                );
-                // 读到 HEAD 后把分支写回最近仓库，欢迎页下次打开时能显示 chip。
-                let branch = match &loaded.head {
-                    git::HeadState::Branch(name) => Some(name.clone()),
-                    git::HeadState::Unborn { branch } => Some(branch.clone()),
-                    git::HeadState::Detached { .. } => None,
-                };
-                let loaded_path = loaded.path.clone();
-                let mut list = tabs.get_untracked();
-                // 关闭后同路径重开会得到新 load_id，旧任务不能写回新标签。
-                let Some(index) = list
-                    .iter()
-                    .position(|candidate| candidate.id == tab_id && candidate.load_id == load_id)
-                else {
-                    return;
-                };
-                let mut loaded = loaded;
-                loaded.id = tab_id;
-                loaded.load_id = load_id;
-                list[index] = loaded;
-                tabs.set(list);
-                if persist_session && let Some(branch) = branch {
-                    store::set_recent_branch(&branch_dir, &loaded_path, &branch);
-                    recent.set(store::load_recent(&branch_dir));
-                }
-            });
-        });
     }
 
     /// 刷新最近仓库记录里的当前分支，供欢迎页名称右侧的分支 tag 使用。
@@ -587,11 +595,9 @@ impl SessionHandle {
         self.tabs.set(list);
         self.active.set(next_active);
         if let Some(tab_id) = next_tab_id {
-            self.ensure_tab_loaded(tab_id);
-            self.refresh_tab(tab_id);
-        }
-        self.persist();
-        if self.tabs.get_untracked().is_empty() {
+            self.schedule_active_tab_work(tab_id);
+        } else {
+            self.persist();
             self.finish_empty_session();
         }
     }
@@ -627,20 +633,39 @@ impl SessionHandle {
         self.persist();
     }
 
+    fn schedule_active_tab_work(&self, tab_id: u64) {
+        if self.auxiliary {
+            return;
+        }
+        let session = self.clone();
+        self.task_owner.run(|| {
+            spawn(async move {
+                // Give the active-tab change a complete frame before loading or refreshing.
+                next_frame().await;
+                let active_tab_id = session.tabs.with_untracked(|list| {
+                    list.get(session.active.get_untracked()).map(|tab| tab.id)
+                });
+                if active_tab_id != Some(tab_id) {
+                    return;
+                }
+                session.ensure_tab_loaded(tab_id);
+                session.refresh_tab(tab_id);
+                session.persist();
+            });
+        });
+    }
+
     /// 切到第 `index` 个标签页并写回会话（原 `Actions::activate_tab`）。
     pub(crate) fn activate_tab(&self, index: usize) {
         let started = std::time::Instant::now();
         let active = self.active;
         let tabs = self.tabs;
-        let session = self.clone();
         let tab = tabs.with_untracked(|list| list.get(index).map(|tab| (tab.id, tab.loaded)));
         let Some((tab_id, content_cached)) = tab else {
             return;
         };
         active.set(index);
-        session.ensure_tab_loaded(tab_id);
-        session.refresh_tab(tab_id);
-        session.persist();
+        self.schedule_active_tab_work(tab_id);
         let tab_count = tabs.with_untracked(|list| list.len());
         log::debug!(
             target: "gitui::history",
@@ -715,6 +740,89 @@ impl SessionHandle {
 mod session_tab_tests {
     use super::*;
 
+    #[derive(Clone, PartialEq, Props)]
+    struct TabActivationFixtureProps {
+        path: String,
+        git_wrapper: String,
+        started: String,
+        release: String,
+        selected_painted: String,
+        loading_painted: String,
+    }
+
+    #[component]
+    fn TabActivationFixture(props: TabActivationFixtureProps) -> impl IntoElement {
+        let mut session = session_with_tabs(&[1, 2], 0);
+        session.auxiliary = false;
+        let executable = git::GitExecutable::from_path(props.git_wrapper)
+            .with_env("GITUI_TEST_STARTED", props.started)
+            .with_env("GITUI_TEST_RELEASE", props.release);
+        session.tabs.update(|tabs| {
+            tabs[0].name = "repo-1".to_string();
+            tabs[0].path = props.path.clone();
+            tabs[0].loaded = true;
+            let id = tabs[1].id;
+            let mut placeholder = crate::app::session::placeholder_tab(
+                props.path.as_str(),
+                &git::LogFilter::default(),
+            );
+            placeholder.id = id;
+            placeholder.git_executable = executable;
+            tabs[1] = placeholder;
+        });
+        let active = session.active;
+        let tabs = session.tabs;
+        let activate = session.clone();
+        let selected_painted = std::path::PathBuf::from(props.selected_painted);
+        let loading_painted = std::path::PathBuf::from(props.loading_painted);
+        return view()
+            .child(crate::ui::button::button(
+                || "Select repository 2".to_string(),
+                crate::ui::button::ButtonVariant::Secondary,
+                crate::ui::button::ButtonSize::Small,
+                false,
+                move || activate.activate_tab(1),
+            ))
+            .child(dynamic(move || {
+                let index = active.get();
+                let (loaded, loading) = tabs.with(|list| {
+                    list.get(index)
+                        .map(|tab| (tab.loaded, tab.loading))
+                        .unwrap_or((false, false))
+                });
+                let selected_painted = selected_painted.clone();
+                let loading_painted = loading_painted.clone();
+                let state = if loaded {
+                    "loaded"
+                } else if loading {
+                    "loading"
+                } else {
+                    "waiting"
+                };
+                view()
+                    .w_full()
+                    .h(px(if index == 1 && loaded {
+                        34.0
+                    } else if index == 1 && loading {
+                        32.0
+                    } else if index == 1 {
+                        30.0
+                    } else {
+                        28.0
+                    }))
+                    .on_layout(move |_: &Bounds<Points>| {
+                        if index == 1 && !loaded && !loading && !selected_painted.exists() {
+                            let _ = std::fs::write(&selected_painted, "painted");
+                        }
+                        if index == 1 && loading && !loading_painted.exists() {
+                            let _ = std::fs::write(&loading_painted, "painted");
+                        }
+                    })
+                    .child(text(format!("selected {index} {state}")))
+                    .into_element()
+            }));
+    }
+
     fn session_with_tabs(ids: &[u64], active_index: usize) -> SessionHandle {
         let tabs = ids
             .iter()
@@ -775,6 +883,100 @@ mod session_tab_tests {
             in_flight_snapshot,
             git::GitExecutable::from_path("/custom/git-old")
         );
+    }
+
+    #[test]
+    fn selected_tab_is_painted_before_its_git_load_finishes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repo = crate::test_support::TempRepo::new("tab-activation");
+        let gate_dir = std::env::temp_dir().join(format!(
+            "nsh-app-tab-activation-{}-{}",
+            std::process::id(),
+            crate::app::session::next_tab_id()
+        ));
+        std::fs::create_dir_all(&gate_dir).expect("gate dir");
+        let git_wrapper = gate_dir.join("git-wrapper.sh");
+        let started = gate_dir.join("started");
+        let release = gate_dir.join("release");
+        let selected_painted = gate_dir.join("selected-painted");
+        let loading_painted = gate_dir.join("loading-painted");
+        std::fs::write(
+            &git_wrapper,
+            "#!/bin/sh\n\
+             if [ ! -e \"$GITUI_TEST_RELEASE\" ]; then\n\
+               : > \"$GITUI_TEST_STARTED\"\n\
+               while [ ! -e \"$GITUI_TEST_RELEASE\" ]; do /bin/sleep 0.01; done\n\
+             fi\n\
+             exec git \"$@\"\n",
+        )
+        .expect("write git wrapper");
+        std::fs::set_permissions(&git_wrapper, std::fs::Permissions::from_mode(0o755))
+            .expect("make git wrapper executable");
+        let started_for_release = started.clone();
+        let release_for_thread = release.clone();
+        let loading_painted_for_release = loading_painted.clone();
+        let release_thread = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while (!started_for_release.exists() || !loading_painted_for_release.exists())
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            if started_for_release.exists() {
+                let _ = std::fs::write(release_for_thread, "continue");
+            }
+        });
+        let path = repo.path.display().to_string();
+        let git_wrapper_path = git_wrapper.display().to_string();
+        let started_path = started.display().to_string();
+        let release_path = release.display().to_string();
+        let selected_painted_path = selected_painted.display().to_string();
+        let loading_painted_path = loading_painted.display().to_string();
+        let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig {
+            viewport: size(px(500.0), px(120.0)),
+            ..nsh_engine::EngineConfig::new(nsh_core::element::Root::new::<TabActivationFixture>(
+                move || TabActivationFixtureProps {
+                    path: path.clone(),
+                    git_wrapper: git_wrapper_path.clone(),
+                    started: started_path.clone(),
+                    release: release_path.clone(),
+                    selected_painted: selected_painted_path.clone(),
+                    loading_painted: loading_painted_path.clone(),
+                },
+            ))
+        })
+        .expect("headless app");
+        app.first_render().expect("first render");
+        app.wait_for("selected 0 loaded").expect("initial tab");
+        app.press("Select repository 2").expect("select second tab");
+        assert!(
+            selected_painted.exists(),
+            "selected state should paint before loading starts"
+        );
+        assert!(
+            loading_painted.exists(),
+            "loading state should paint while Git is still running"
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !started.exists() && std::time::Instant::now() < deadline {
+            app.next_frame(std::time::Duration::from_millis(20))
+                .expect("advance loading");
+        }
+        assert!(started.exists(), "Git load should have started");
+        while !release.exists() && std::time::Instant::now() < deadline {
+            app.next_frame(std::time::Duration::from_millis(20))
+                .expect("wait for Git release");
+        }
+        assert!(
+            release.exists(),
+            "test should release the Git load after paint"
+        );
+        app.wait_for_within("selected 1 loaded", std::time::Duration::from_secs(10))
+            .expect("loaded tab");
+        let _ = release_thread.join();
+        drop(app);
+        let _ = std::fs::remove_dir_all(gate_dir);
     }
 
     #[test]

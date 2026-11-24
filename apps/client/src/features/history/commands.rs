@@ -581,7 +581,7 @@ impl HistoryCommands {
         };
         self.state.scroll_request.set(Some(row));
         self.session.tabs.set(list);
-        self.session.active.set(index);
+        self.session.activate_tab(index);
         self.mode.set(crate::Mode::History);
     }
 

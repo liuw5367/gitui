@@ -1028,6 +1028,36 @@ mod tests {
     }
 
     #[component]
+    fn NestedFileTreeFixture() -> impl IntoElement {
+        let files = ["src/git/deep/one.rs", "src/ui/two.rs", "docs/guide.md"]
+            .into_iter()
+            .map(|path| domain::DiffStat {
+                path: path.to_string(),
+                status: 'M',
+                ..Default::default()
+            })
+            .collect();
+        let language = signal(SharedString::from("en"));
+        let notice = signal(None);
+        files_body(
+            language,
+            files,
+            "/repo".into(),
+            None,
+            std::sync::Arc::new(|_| {}),
+            signal(FileListMode::Tree),
+            crate::app::session::TreeOptions::default(),
+            signal(None),
+            notice,
+            None,
+            false,
+            false,
+            std::sync::Arc::new(|| {}),
+            None,
+        )
+    }
+
+    #[component]
     fn FlatFileFixture() -> impl IntoElement {
         file_list_fixture(FileListMode::Flat)
     }
@@ -1110,6 +1140,31 @@ mod tests {
         assert!(
             (anchor_y(&app) - before).abs() < 1.0,
             "再次展开目录应恢复原有可见行位置"
+        );
+    }
+
+    #[test]
+    fn expand_all_file_folders_opens_every_nested_directory() {
+        let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig {
+            viewport: size(px(400.0), px(350.0)),
+            ..nsh_engine::EngineConfig::new(nsh_core::element::Root::of::<NestedFileTreeFixture>())
+        })
+        .unwrap();
+        app.first_render().unwrap();
+        let visible = |app: &nsh_testing::Headless, name: &str| {
+            app.screen().layout_nodes().iter().any(|node| {
+                node.text
+                    .as_ref()
+                    .is_some_and(|text| text.text.text == name)
+            })
+        };
+        assert!(!visible(&app, "one.rs"), "nested folders start collapsed");
+        app.press("Expand All Folders").unwrap();
+        assert!(visible(&app, "one.rs"), "all directory levels should open");
+        app.press("Collapse All Folders").unwrap();
+        assert!(
+            !visible(&app, "one.rs"),
+            "all directory levels should close"
         );
     }
 

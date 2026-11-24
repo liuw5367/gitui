@@ -508,14 +508,15 @@ fn initial_sidebar_collapsed(refs: &Refs) -> BTreeSet<String> {
     return collapsed;
 }
 
-/// 生成一个「正在加载」的占位标签页：只有路径与名称，列表都是空的。
+/// 生成一个尚未启动装载任务的占位标签页：只有路径与名称，列表都是空的。
+/// `loading` 只在后台任务实际启动时设置，避免占位页被误判成已有任务。
 pub(crate) fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
     return Tab {
         id: next_tab_id(),
         load_id: next_tab_id(),
         path: path.to_string(),
         name: last_segment(path),
-        loading: true,
+        loading: false,
         filter: filter.clone(),
         branch: "…".to_string(),
         ..Tab::default()
@@ -562,6 +563,78 @@ pub(crate) struct RefreshSnapshot {
     blame: Option<BlameRefresh>,
 }
 
+/// 刷新所需的轻量输入，不复制标签中缓存的完整提交历史、diff 和 blame 数据。
+pub(crate) struct RefreshInput {
+    path: String,
+    git_executable: GitExecutable,
+    changelists: Vec<store::Changelist>,
+    selected_change_path: Option<String>,
+    selected_change_index: Option<usize>,
+    refs: Refs,
+    ref_oids: BTreeMap<String, String>,
+    head: git::HeadState,
+    head_oid: Option<String>,
+    filter: LogFilter,
+    selected_commit_sha: Option<String>,
+    selected_index: Option<usize>,
+    compare_shas: Vec<String>,
+    show_commit_diff: bool,
+    operation: git::Operation,
+    conflict_open: bool,
+    selected_conflict_path: Option<String>,
+    blame_path: String,
+    blame_revision: String,
+    blame_return_mode: Option<crate::Mode>,
+    blame_focus_sha: Option<String>,
+    blame_selected_line: Option<u32>,
+}
+
+impl RefreshInput {
+    pub(crate) fn from_tab(tab: &Tab) -> RefreshInput {
+        let selected_change_path = tab
+            .selected_change
+            .and_then(|index| tab.changes.get(index))
+            .map(|change| change.path.clone());
+        let selected_commit_sha = tab.selected_commit().map(|commit| commit.sha.clone());
+        let compare_shas = tab
+            .compare
+            .iter()
+            .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.clone()))
+            .collect();
+        let selected_conflict_path = tab
+            .conflict_paths
+            .get(tab.conflict_index)
+            .filter(|path| {
+                tab.conflicts.contains(path) || tab.resolved_conflicts.contains_key(*path)
+            })
+            .cloned();
+        return RefreshInput {
+            path: tab.path.clone(),
+            git_executable: tab.git_executable.clone(),
+            changelists: tab.changelists.clone(),
+            selected_change_path,
+            selected_change_index: tab.selected_change,
+            refs: tab.refs.clone(),
+            ref_oids: tab.ref_oids.clone(),
+            head: tab.head.clone(),
+            head_oid: tab.head_oid.clone(),
+            filter: tab.filter.clone(),
+            selected_commit_sha,
+            selected_index: tab.selected,
+            compare_shas,
+            show_commit_diff: tab.show_commit_diff,
+            operation: tab.operation,
+            conflict_open: tab.conflict_open,
+            selected_conflict_path,
+            blame_path: tab.blame_path.clone(),
+            blame_revision: tab.blame_revision.clone(),
+            blame_return_mode: tab.blame_return_mode,
+            blame_focus_sha: tab.blame_focus_sha.clone(),
+            blame_selected_line: tab.blame_selected_line,
+        };
+    }
+}
+
 struct HistoryRefresh {
     commits: Vec<Commit>,
     graph_commits: Vec<Commit>,
@@ -593,30 +666,29 @@ struct ConflictEditorRefresh {
 
 /// 在后台读取当前仓库状态。任一必要查询失败时保留整个上次成功快照。
 pub(crate) fn read_refresh_snapshot(
-    tab: &Tab,
+    input: &RefreshInput,
     mode: crate::Mode,
 ) -> Result<RefreshSnapshot, String> {
-    let repo = tab.open_repo().map_err(|error| error.detail())?;
+    let repo = Repo::open_with_executable(input.path.as_str(), &input.git_executable)
+        .map_err(|error| error.detail())?;
     let summary = repo.summary().map_err(|error| error.detail())?;
     let refs = repo.refs().map_err(|error| error.detail())?;
     let ref_oids = repo.ref_oid_snapshot().map_err(|error| error.detail())?;
     let (status, mut changes) = load_changes_checked(&repo).map_err(|error| error.detail())?;
     for change in &mut changes {
-        change.changelist = tab
+        change.changelist = input
             .changelists
             .iter()
             .find(|list| list.paths.iter().any(|path| path == &change.path))
             .map(|list| list.name.clone());
     }
     let selected_change = (mode == crate::Mode::Changes)
-        .then_some(tab.selected_change)
+        .then_some(input.selected_change_index)
         .flatten()
         .map(|old_index| -> Result<_, String> {
-            let old_path = tab
-                .changes
-                .get(old_index)
-                .map(|change| change.path.as_str());
-            let index = old_path
+            let index = input
+                .selected_change_path
+                .as_deref()
                 .and_then(|path| changes.iter().position(|change| change.path == path))
                 .or_else(|| {
                     (!changes.is_empty()).then_some(old_index.min(changes.len().saturating_sub(1)))
@@ -635,7 +707,7 @@ pub(crate) fn read_refresh_snapshot(
     };
     let operation = repo.operation();
     let conflicts = repo.conflicts().map_err(|error| error.detail())?;
-    let conflict_editor = refreshed_conflict_path(tab, operation, &conflicts)
+    let conflict_editor = refreshed_conflict_path(input, operation, &conflicts)
         .map(|path| -> Result<_, String> {
             let worktree = repo
                 .conflict_worktree_content(path.as_str())
@@ -663,53 +735,58 @@ pub(crate) fn read_refresh_snapshot(
     let head_oid = repo.head_oid();
     let remote_urls = repo.remote_urls().map_err(|error| error.detail())?;
     let reflog = repo.reflog(100).map_err(|error| error.detail())?;
-    let history = if head != tab.head
-        || head_oid != tab.head_oid
-        || refs != tab.refs
-        || ref_oids != tab.ref_oids
+    let history = if head != input.head
+        || head_oid != input.head_oid
+        || refs != input.refs
+        || ref_oids != input.ref_oids
     {
-        Some(read_history_refresh(tab, &repo, &refs)?)
+        Some(read_history_refresh(input, &repo, &refs)?)
     } else {
         None
     };
-    let blame =
-        if mode == crate::Mode::Blame && tab.blame_revision == "HEAD" && !tab.blame_path.is_empty()
-        {
-            let mut refreshed = tab.clone();
-            crate::features::history::ops::open_blame(
-                &mut refreshed,
-                tab.blame_path.as_str(),
-                "HEAD",
-                tab.blame_return_mode.unwrap_or(crate::Mode::Changes),
-            );
-            if let Some(focused) = tab.blame_focus_sha.as_ref().filter(|sha| {
-                refreshed
-                    .file_history
-                    .iter()
-                    .any(|entry| &entry.commit.sha == *sha)
-            }) {
-                refreshed.blame_focus_sha = Some(focused.clone());
-            }
-            if let Some(line) = tab
-                .blame_selected_line
-                .filter(|line| *line > 0 && *line as usize <= refreshed.blame.len())
-            {
-                refreshed.blame_selected_line = Some(line);
-            }
-            Some(BlameRefresh {
-                blame: refreshed.blame,
-                blame_path: refreshed.blame_path,
-                blame_revision: refreshed.blame_revision,
-                blame_return_mode: refreshed.blame_return_mode,
-                blame_focus_sha: refreshed.blame_focus_sha,
-                blame_selected_line: refreshed.blame_selected_line,
-                blame_patch: refreshed.blame_patch,
-                blame_error: refreshed.blame_error,
-                file_history: refreshed.file_history,
-            })
-        } else {
-            None
+    let blame = if mode == crate::Mode::Blame
+        && input.blame_revision == "HEAD"
+        && !input.blame_path.is_empty()
+    {
+        let mut refreshed = Tab {
+            path: input.path.clone(),
+            git_executable: input.git_executable.clone(),
+            ..Tab::default()
         };
+        crate::features::history::ops::open_blame(
+            &mut refreshed,
+            input.blame_path.as_str(),
+            "HEAD",
+            input.blame_return_mode.unwrap_or(crate::Mode::Changes),
+        );
+        if let Some(focused) = input.blame_focus_sha.as_ref().filter(|sha| {
+            refreshed
+                .file_history
+                .iter()
+                .any(|entry| &entry.commit.sha == *sha)
+        }) {
+            refreshed.blame_focus_sha = Some(focused.clone());
+        }
+        if let Some(line) = input
+            .blame_selected_line
+            .filter(|line| *line > 0 && *line as usize <= refreshed.blame.len())
+        {
+            refreshed.blame_selected_line = Some(line);
+        }
+        Some(BlameRefresh {
+            blame: refreshed.blame,
+            blame_path: refreshed.blame_path,
+            blame_revision: refreshed.blame_revision,
+            blame_return_mode: refreshed.blame_return_mode,
+            blame_focus_sha: refreshed.blame_focus_sha,
+            blame_selected_line: refreshed.blame_selected_line,
+            blame_patch: refreshed.blame_patch,
+            blame_error: refreshed.blame_error,
+            file_history: refreshed.file_history,
+        })
+    } else {
+        None
+    };
     return Ok(RefreshSnapshot {
         summary,
         status,
@@ -730,56 +807,59 @@ pub(crate) fn read_refresh_snapshot(
 }
 
 fn refreshed_conflict_path(
-    tab: &Tab,
+    input: &RefreshInput,
     operation: git::Operation,
     conflicts: &[String],
 ) -> Option<String> {
-    if !tab.conflict_open || operation == git::Operation::None {
+    if !input.conflict_open || operation == git::Operation::None {
         return None;
     }
-    if operation != tab.operation {
+    if operation != input.operation {
         return conflicts.first().cloned();
     }
-    let selected = tab
-        .conflict_paths
-        .get(tab.conflict_index)
-        .filter(|path| tab.conflicts.contains(path) || tab.resolved_conflicts.contains_key(*path))
-        .cloned();
-    return selected.or_else(|| conflicts.first().cloned());
+    return input
+        .selected_conflict_path
+        .clone()
+        .or_else(|| conflicts.first().cloned());
 }
 
-fn read_history_refresh(tab: &Tab, repo: &Repo, refs: &Refs) -> Result<HistoryRefresh, String> {
+fn read_history_refresh(
+    input: &RefreshInput,
+    repo: &Repo,
+    refs: &Refs,
+) -> Result<HistoryRefresh, String> {
     let mut commits = repo
-        .log_history(&tab.filter)
+        .log_history(&input.filter)
         .map_err(|error| error.detail())?;
-    let graph_commits = if tab.filter.query.is_empty()
-        && tab.filter.author.is_none()
-        && tab.filter.authors.is_empty()
-        && tab.filter.since.is_none()
-        && tab.filter.until.is_none()
-        && tab.filter.path.is_none()
-        && tab.filter.message.is_empty()
+    let graph_commits = if input.filter.query.is_empty()
+        && input.filter.author.is_none()
+        && input.filter.authors.is_empty()
+        && input.filter.since.is_none()
+        && input.filter.until.is_none()
+        && input.filter.path.is_none()
+        && input.filter.message.is_empty()
     {
         commits.clone()
     } else {
-        repo.log_history_graph(&tab.filter)
+        repo.log_history_graph(&input.filter)
             .map_err(|error| error.detail())?
     };
     let branch_graph_commits =
-        if tab.filter.reference.is_some() || !tab.filter.references.is_empty() {
+        if input.filter.reference.is_some() || !input.filter.references.is_empty() {
             repo.log_all().map_err(|error| error.detail())?
         } else {
             graph_commits.clone()
         };
     git::decorate_commit_branch_history(&mut commits, &branch_graph_commits, refs);
 
-    let previous_selected_sha = tab.selected_commit().map(|commit| commit.sha.clone());
+    let previous_selected_sha = input.selected_commit_sha.clone();
     let selected = previous_selected_sha
         .as_ref()
         .and_then(|sha| commits.iter().position(|commit| &commit.sha == sha))
         .or_else(|| {
             (!commits.is_empty()).then(|| {
-                tab.selected
+                input
+                    .selected_index
                     .unwrap_or_default()
                     .min(commits.len().saturating_sub(1))
             })
@@ -790,16 +870,13 @@ fn read_history_refresh(tab: &Tab, repo: &Repo, refs: &Refs) -> Result<HistoryRe
         .and_then(|index| commits.get(index))
         .map(|commit| load_commit_selection_from_repo(repo, &commit.sha, &commit.short))
         .transpose()?;
-    let compare_shas = tab
-        .compare
-        .iter()
-        .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.as_str()))
-        .collect::<Vec<_>>();
-    let compare = compare_shas
+    let compare = input
+        .compare_shas
         .iter()
         .filter_map(|sha| commits.iter().position(|commit| commit.sha == *sha))
         .collect();
-    let show_commit_patch = if tab.show_commit_diff && previous_selected_sha != next_selected_sha {
+    let show_commit_patch = if input.show_commit_diff && previous_selected_sha != next_selected_sha
+    {
         Some(match next_selected_sha.as_deref() {
             Some(sha) => repo.patch(sha).map_err(|error| error.detail())?,
             None => domain::diff::Patch::default(),
@@ -1192,7 +1269,8 @@ mod tests {
         run_test_git(&repo.path, &["add", "-A"]);
         run_test_git(&repo.path, &["commit", "-q", "-m", "outside commit"]);
 
-        let snapshot = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("refresh snapshot");
+        let snapshot = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::Changes)
+            .expect("refresh snapshot");
         assert!(apply_refresh_snapshot(&mut tab, snapshot));
         assert!(tab.changes.is_empty(), "外部提交后工作区变更应清空");
         assert_ne!(tab.head_oid.as_deref(), Some(old_head.as_str()));
@@ -1201,7 +1279,8 @@ mod tests {
         assert_eq!(tab.description, "unsaved commit body");
         assert!(tab.sidebar_collapsed.contains("user-fold"));
 
-        let unchanged = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("second snapshot");
+        let unchanged = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::Changes)
+            .expect("second snapshot");
         assert!(!apply_refresh_snapshot(&mut tab, unchanged));
     }
 
@@ -1212,7 +1291,8 @@ mod tests {
         tab.selected_change = Some(0);
         std::fs::write(repo.path.join("a.txt"), "two\n").expect("write");
 
-        let first = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("first snapshot");
+        let first = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::Changes)
+            .expect("first snapshot");
         assert!(apply_refresh_snapshot(&mut tab, first));
         assert!(tab.change_diff.raw.contains("two"));
         let status = tab.status.clone();
@@ -1220,7 +1300,8 @@ mod tests {
         let old_patch = tab.change_diff.raw.clone();
 
         std::fs::write(repo.path.join("a.txt"), "three\n").expect("rewrite");
-        let second = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("second snapshot");
+        let second = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::Changes)
+            .expect("second snapshot");
         assert!(apply_refresh_snapshot(&mut tab, second));
         assert_eq!(tab.status, status);
         assert_eq!(tab.changes, changes);
@@ -1242,7 +1323,8 @@ mod tests {
         run_test_git(&repo.path, &["commit", "-q", "-m", "side advancement"]);
         run_test_git(&repo.path, &["checkout", "-q", "main"]);
 
-        let snapshot = read_refresh_snapshot(&tab, crate::Mode::History).expect("refresh snapshot");
+        let snapshot = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::History)
+            .expect("refresh snapshot");
         assert_eq!(snapshot.refs, original_refs);
         assert_eq!(snapshot.head_oid, original_head);
         assert!(
@@ -1278,7 +1360,8 @@ mod tests {
             .expect("merge");
         assert!(!merge.status.success(), "merge should stop at the conflict");
 
-        let snapshot = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("merge snapshot");
+        let snapshot = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::Changes)
+            .expect("merge snapshot");
         assert_eq!(snapshot.operation, git::Operation::Merge);
         assert_eq!(snapshot.conflicts, vec!["a.txt".to_string()]);
         assert!(apply_refresh_snapshot(&mut tab, snapshot));
@@ -1286,7 +1369,8 @@ mod tests {
         assert_eq!(tab.conflicts, vec!["a.txt".to_string()]);
 
         run_test_git(&repo.path, &["merge", "--abort"]);
-        let snapshot = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("abort snapshot");
+        let snapshot = read_refresh_snapshot(&RefreshInput::from_tab(&tab), crate::Mode::Changes)
+            .expect("abort snapshot");
         assert!(apply_refresh_snapshot(&mut tab, snapshot));
         assert_eq!(tab.operation, git::Operation::None);
         assert!(tab.conflicts.is_empty());
@@ -1310,9 +1394,9 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_tab_is_loading_and_has_no_data() {
+    fn placeholder_tab_waits_for_a_load_task_and_has_no_data() {
         let tab = placeholder_tab("/tmp/whatever", &LogFilter::default());
-        assert!(tab.loading, "占位标签页应标记为加载中");
+        assert!(!tab.loading, "任务启动前占位标签页不应伪装成加载中");
         assert!(!tab.loaded, "占位标签页尚未装载仓库数据");
         assert_eq!(tab.name, "whatever");
         assert!(tab.commits.is_empty());

@@ -89,6 +89,8 @@ pub(crate) fn repository_tabs(
     language: Signal<SharedString>,
 ) -> impl IntoElement {
     let widths = signal(Vec::<(u64, f32)>::new());
+    let drop_boundary = signal(None::<usize>);
+    let tab_count = computed(move || tabs.with(|list| list.len()));
     return scroll()
         .horizontal()
         .scrollbar(false)
@@ -107,10 +109,36 @@ pub(crate) fn repository_tabs(
                     |tab: &RepositoryTab| tab.id,
                     move |tab, index| {
                         let id = tab.get_untracked().id;
+                        let tab_ref = element_ref();
+                        // 选中态先立即更新；等本帧完成布局，再把对应页签滚入视口。
+                        // 按 ID 复核可避免快速连续切换时，过期的滚动任务移动到旧页签。
+                        effect(move || {
+                            if active.get() != index.get() {
+                                return;
+                            }
+                            let tab_ref = tab_ref;
+                            let active = active;
+                            let tabs = tabs;
+                            spawn(async move {
+                                next_frame().await;
+                                let still_active = tabs.with_untracked(|list| {
+                                    list.get(active.get_untracked())
+                                        .is_some_and(|tab| tab.id == id)
+                                });
+                                if still_active {
+                                    tab_ref.reveal(
+                                        nsh_core::RevealOptions::default()
+                                            .horizontal(nsh_core::ScrollAlignment::Nearest)
+                                            .animated(false),
+                                    );
+                                }
+                            });
+                        });
                         let activate = session.clone();
                         let close = session.clone();
                         let move_tabs = session.clone();
                         let width_state = widths;
+                        let drop_boundary_for_item = drop_boundary;
                         let start_x = signal(0.0_f32);
                         // 页签自身的悬停：× 的显隐跟着它走。设计稿的要求是「活动页签
                         // 平时不显示 ×、悬停才出现」，而 `on_mouse_enter` 在「指针进入
@@ -124,6 +152,8 @@ pub(crate) fn repository_tabs(
                             &[("name", tab.get_untracked().label())],
                         );
                         view()
+                            .relative()
+                            .element_ref(&tab_ref)
                             .h(px(27.0))
                             .max_w(px(178.0))
                             .min_w(px(72.0))
@@ -168,6 +198,34 @@ pub(crate) fn repository_tabs(
                             )))
                             .on_responder_grant(move |event: &ResponderEvent| {
                                 start_x.set(event.location.x.0);
+                                drop_boundary.set(None);
+                            })
+                            .on_responder_move({
+                                let tabs = tabs;
+                                let width_state = width_state;
+                                let drop_boundary = drop_boundary;
+                                move |event: &ResponderEvent| {
+                                    let order: Vec<u64> =
+                                        tabs.get_untracked().iter().map(|tab| tab.id).collect();
+                                    let Some(source) =
+                                        order.iter().position(|candidate| *candidate == id)
+                                    else {
+                                        drop_boundary.set(None);
+                                        return;
+                                    };
+                                    let measured = width_state.get_untracked();
+                                    let destination = tab_drop_destination(
+                                        source,
+                                        start_x.get_untracked(),
+                                        event.gesture.delta.x.0,
+                                        &order,
+                                        &measured,
+                                    );
+                                    let boundary = tab_drop_boundary(source, destination);
+                                    if drop_boundary.get_untracked() != boundary {
+                                        drop_boundary.set(boundary);
+                                    }
+                                }
                             })
                             .on_responder_release(move |event: &ResponderEvent| {
                                 let order: Vec<u64> =
@@ -175,39 +233,22 @@ pub(crate) fn repository_tabs(
                                 let Some(source) =
                                     order.iter().position(|candidate| *candidate == id)
                                 else {
+                                    drop_boundary.set(None);
                                     return;
                                 };
                                 let measured = width_state.get_untracked();
-                                let width = |position: usize| {
-                                    measured
-                                        .iter()
-                                        .find(|(key, _)| order.get(position) == Some(key))
-                                        .map(|(_, width)| *width)
-                                        .unwrap_or(120.0)
-                                };
-                                let delta = event.gesture.delta.x.0;
-                                let origin = start_x.get_untracked();
-                                let mut destination = source;
-                                if delta > 0.0 {
-                                    for target in source + 1..order.len() {
-                                        let threshold = width(source) - origin
-                                            + (source + 1..target).map(width).sum::<f32>()
-                                            + width(target) / 2.0;
-                                        if delta > threshold {
-                                            destination = target;
-                                        }
-                                    }
-                                } else if delta < 0.0 {
-                                    for target in (0..source).rev() {
-                                        let threshold = -(origin
-                                            + (target + 1..source).map(width).sum::<f32>()
-                                            + width(target) / 2.0);
-                                        if delta < threshold {
-                                            destination = target;
-                                        }
-                                    }
-                                }
+                                let destination = tab_drop_destination(
+                                    source,
+                                    start_x.get_untracked(),
+                                    event.gesture.delta.x.0,
+                                    &order,
+                                    &measured,
+                                );
+                                drop_boundary.set(None);
                                 move_tabs.move_tab(id, destination);
+                            })
+                            .on_responder_terminate(move |_: &ResponderEvent| {
+                                drop_boundary.set(None);
                             })
                             .on_press(move || activate.activate_tab_id(id))
                             // 活动页签的状态点：绿色 `ok` token。未选中的页签不画点
@@ -284,7 +325,100 @@ pub(crate) fn repository_tabs(
                                             .text_color(move || design::text3()),
                                     ),
                             )
+                            .child(dynamic(move || -> AnyElement {
+                                let boundary = drop_boundary_for_item.get();
+                                let position = index.get();
+                                let count = tab_count.get();
+                                let at_start = boundary == Some(position);
+                                let at_end = position + 1 == count && boundary == Some(count);
+                                if !at_start && !at_end {
+                                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                                }
+                                let marker = view()
+                                    .absolute()
+                                    .top(px(4.0))
+                                    .w(px(2.0))
+                                    .h(px(19.0))
+                                    .rounded(px(1.0))
+                                    .z_index(2)
+                                    .bg(move || design::token("primary-bg"));
+                                return if at_start {
+                                    marker.left(px(0.0)).into_element()
+                                } else {
+                                    marker.right(px(0.0)).into_element()
+                                };
+                            }))
                     },
                 )),
         );
+}
+
+fn tab_drop_destination(
+    source: usize,
+    origin: f32,
+    delta: f32,
+    order: &[u64],
+    measured: &[(u64, f32)],
+) -> usize {
+    let width = |position: usize| {
+        measured
+            .iter()
+            .find(|(key, _)| order.get(position) == Some(key))
+            .map(|(_, width)| *width)
+            .unwrap_or(120.0)
+    };
+    let mut destination = source;
+    if delta > 0.0 {
+        for target in source + 1..order.len() {
+            let threshold = width(source) - origin
+                + (source + 1..target).map(width).sum::<f32>()
+                + width(target) / 2.0;
+            if delta > threshold {
+                destination = target;
+            }
+        }
+    } else if delta < 0.0 {
+        for target in (0..source).rev() {
+            let threshold =
+                -(origin + (target + 1..source).map(width).sum::<f32>() + width(target) / 2.0);
+            if delta < threshold {
+                destination = target;
+            }
+        }
+    }
+    return destination;
+}
+
+fn tab_drop_boundary(source: usize, destination: usize) -> Option<usize> {
+    if destination == source {
+        return None;
+    }
+    return Some(if destination < source {
+        destination
+    } else {
+        destination + 1
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{tab_drop_boundary, tab_drop_destination};
+
+    #[test]
+    fn tab_drop_destination_tracks_crossed_tab_midpoints() {
+        let order = [10, 20, 30, 40];
+        let widths = [(10, 100.0), (20, 100.0), (30, 100.0), (40, 100.0)];
+        assert_eq!(tab_drop_destination(1, 20.0, 129.0, &order, &widths), 1);
+        assert_eq!(tab_drop_destination(1, 20.0, 131.0, &order, &widths), 2);
+        assert_eq!(tab_drop_destination(2, 50.0, -101.0, &order, &widths), 1);
+        assert_eq!(tab_drop_destination(2, 50.0, -199.0, &order, &widths), 1);
+        assert_eq!(tab_drop_destination(2, 50.0, -201.0, &order, &widths), 0);
+    }
+
+    #[test]
+    fn tab_drop_boundary_marks_the_insertion_side_of_the_target() {
+        assert_eq!(tab_drop_boundary(1, 2), Some(3));
+        assert_eq!(tab_drop_boundary(2, 1), Some(1));
+        assert_eq!(tab_drop_boundary(1, 1), None);
+    }
 }

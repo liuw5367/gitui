@@ -355,6 +355,7 @@ fn changes_commit_panel(
                 .w_full()
                 .flex_shrink_0()
                 .p(px(12.0))
+                .pb(px(6.0))
                 .flex_col()
                 .gap(px(6.0))
                 .border_t_1()
