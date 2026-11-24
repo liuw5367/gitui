@@ -78,7 +78,9 @@ impl SessionHandle {
     /// 首次进入工作区时优先装载当前标签；其余恢复标签留待用户首次选择。
     pub(crate) fn ensure_active_tab_loaded(&self) {
         let current = self.active.get_untracked();
-        let tab_id = self.tabs.get_untracked().get(current).map(|tab| tab.id);
+        let tab_id = self
+            .tabs
+            .with_untracked(|tabs| tabs.get(current).map(|tab| tab.id));
         if let Some(tab_id) = tab_id {
             self.ensure_tab_loaded(tab_id);
         }
@@ -87,7 +89,9 @@ impl SessionHandle {
     /// 刷新当前活动仓库。只对已加载的主会话标签启动后台 Git 查询。
     pub(crate) fn refresh_active_tab(&self) {
         let current = self.active.get_untracked();
-        let tab_id = self.tabs.get_untracked().get(current).map(|tab| tab.id);
+        let tab_id = self
+            .tabs
+            .with_untracked(|tabs| tabs.get(current).map(|tab| tab.id));
         if let Some(tab_id) = tab_id {
             self.refresh_tab(tab_id);
         }
@@ -98,7 +102,8 @@ impl SessionHandle {
             return;
         }
         let current = self.active.get_untracked();
-        let Some(tab) = self.tabs.get_untracked().get(current).cloned() else {
+        let tab = self.tabs.with_untracked(|tabs| tabs.get(current).cloned());
+        let Some(tab) = tab else {
             return;
         };
         if tab.id != tab_id || !tab.loaded || tab.error.is_some() {
@@ -129,9 +134,10 @@ impl SessionHandle {
             spawn(async move {
                 loop {
                     let current = session.active.get_untracked();
-                    let list = session.tabs.get_untracked();
-                    let Some(tab) = list.get(current).filter(|tab| tab.id == tab_id).cloned()
-                    else {
+                    let tab = session.tabs.with_untracked(|list| {
+                        list.get(current).filter(|tab| tab.id == tab_id).cloned()
+                    });
+                    let Some(tab) = tab else {
                         session.finish_refresh_request(tab_id);
                         return;
                     };
@@ -139,8 +145,16 @@ impl SessionHandle {
                     let load_id_at_start = tab.load_id;
                     let path_at_start = tab.path.clone();
                     let mode = session.mode.get_untracked();
-                    match crate::app::session::read_refresh_snapshot(&tab, mode) {
+                    let refresh_started = std::time::Instant::now();
+                    let refresh_result = crate::app::session::read_refresh_snapshot(&tab, mode);
+                    match refresh_result {
                         Ok(snapshot) => {
+                            log::debug!(
+                                target: "gitui::history",
+                                "event=repo_refresh.complete tab_id={} elapsed_ms={}",
+                                tab_id,
+                                refresh_started.elapsed().as_millis(),
+                            );
                             if session.mode.get_untracked() != mode {
                                 session.request_refresh_again(tab_id);
                                 if !session.repeat_or_finish_refresh(tab_id) {
@@ -171,8 +185,10 @@ impl SessionHandle {
                         Err(detail) => {
                             log::warn!(
                                 target: "gitui::history",
-                                "event=repo_refresh.failed reason={}",
-                                detail
+                                "event=repo_refresh.failed tab_id={} elapsed_ms={} reason={}",
+                                tab_id,
+                                refresh_started.elapsed().as_millis(),
+                                detail,
                             );
                             crate::interactions::notify(session.notice, detail);
                         }
@@ -243,6 +259,12 @@ impl SessionHandle {
         let recent = self.recent;
         let store_dir = self.store_dir.clone();
         let persist_session = self.persist_session;
+        let load_started = std::time::Instant::now();
+        log::debug!(
+            target: "gitui::history",
+            "event=repo_load.requested tab_id={}",
+            tab_id,
+        );
         self.task_owner.run(|| {
             spawn(async move {
                 let mut loaded = crate::app::session::load_tab_with_executable(
@@ -267,6 +289,12 @@ impl SessionHandle {
                 loaded.load_id = load_id;
                 list[index] = loaded;
                 tabs.set(list);
+                log::debug!(
+                    target: "gitui::history",
+                    "event=repo_load.available tab_id={} elapsed_ms={}",
+                    tab_id,
+                    load_started.elapsed().as_millis(),
+                );
                 if persist_session && let Some(branch) = branch {
                     store::set_recent_branch(&store_dir, &loaded_path, &branch);
                     recent.set(store::load_recent(&store_dir));
@@ -494,11 +522,13 @@ impl SessionHandle {
     /// 打开当前仓库路径的上一级（原 `Actions::open_parent`，不是仓库时的补救入口）。
     pub(crate) fn open_parent(&self) {
         let current = self.active.get_untracked();
-        let list = self.tabs.get_untracked();
-        let Some(tab) = list.get(current) else {
+        let parent = self.tabs.with_untracked(|list| {
+            list.get(current)
+                .map(|tab| crate::app::session::parent_path(tab.path.as_str()))
+        });
+        let Some(parent) = parent else {
             return;
         };
-        let parent = crate::app::session::parent_path(tab.path.as_str());
         if !parent.is_empty() {
             self.open_path(parent);
         }
@@ -525,10 +555,13 @@ impl SessionHandle {
 
     /// 关闭指定标签页；未提交改动保留在磁盘上，不弹确认。
     pub(crate) fn close_tab(&self, index: usize) {
-        let Some(tab) = self.tabs.get_untracked().get(index).cloned() else {
+        let tab_id = self
+            .tabs
+            .with_untracked(|tabs| tabs.get(index).map(|tab| tab.id));
+        let Some(tab_id) = tab_id else {
             return;
         };
-        self.close_tab_id(tab.id);
+        self.close_tab_id(tab_id);
     }
 
     /// 按运行期身份关闭标签，避免顺序变化时关闭错误的仓库。
@@ -585,37 +618,46 @@ impl SessionHandle {
         let active_id = list.get(self.active.get_untracked()).map(|tab| tab.id);
         let tab = list.remove(source);
         list.insert(destination, tab);
-        self.tabs.set(list.clone());
-        if let Some(active_id) = active_id {
-            if let Some(index) = list.iter().position(|tab| tab.id == active_id) {
-                self.active.set(index);
-            }
+        let next_active =
+            active_id.and_then(|active_id| list.iter().position(|tab| tab.id == active_id));
+        self.tabs.set(list);
+        if let Some(index) = next_active {
+            self.active.set(index);
         }
         self.persist();
     }
 
     /// 切到第 `index` 个标签页并写回会话（原 `Actions::activate_tab`）。
     pub(crate) fn activate_tab(&self, index: usize) {
+        let started = std::time::Instant::now();
         let active = self.active;
         let tabs = self.tabs;
         let session = self.clone();
-        let list = tabs.get_untracked();
-        let Some(tab_id) = list.get(index).map(|tab| tab.id) else {
+        let tab = tabs.with_untracked(|list| list.get(index).map(|tab| (tab.id, tab.loaded)));
+        let Some((tab_id, content_cached)) = tab else {
             return;
         };
         active.set(index);
         session.ensure_tab_loaded(tab_id);
         session.refresh_tab(tab_id);
         session.persist();
+        let tab_count = tabs.with_untracked(|list| list.len());
+        log::debug!(
+            target: "gitui::history",
+            "event=tab_activate.handler tab_id={} index={} tabs={} content_cached={} elapsed_ms={}",
+            tab_id,
+            index,
+            tab_count,
+            content_cached,
+            started.elapsed().as_millis(),
+        );
     }
 
     pub(crate) fn activate_tab_id(&self, tab_id: u64) {
-        let Some(index) = self
+        let index = self
             .tabs
-            .get_untracked()
-            .iter()
-            .position(|tab| tab.id == tab_id)
-        else {
+            .with_untracked(|tabs| tabs.iter().position(|tab| tab.id == tab_id));
+        let Some(index) = index else {
             return;
         };
         self.activate_tab(index);
@@ -623,38 +665,32 @@ impl SessionHandle {
 
     /// 前/后切标签页，到头回绕（符合 macOS 习惯）；不足两个标签时不动。
     pub(crate) fn cycle_tab(&self, forward: bool) {
-        let tabs = self.tabs;
-        let active = self.active;
-        let list = tabs.get_untracked();
-        let count = list.len();
-        if count < 2 {
+        let current = self.active.get_untracked();
+        let next = self.tabs.with_untracked(|tabs| {
+            let count = tabs.len();
+            if count < 2 {
+                return None;
+            }
+            let index = if forward {
+                (current + 1) % count
+            } else {
+                (current + count - 1) % count
+            };
+            return Some(index);
+        });
+        let Some(next) = next else {
             return;
-        }
-        let current = active.get_untracked();
-        let next = if forward {
-            (current + 1) % count
-        } else {
-            (current + count - 1) % count
         };
-        let tab_id = list[next].id;
-        active.set(next);
-        self.ensure_tab_loaded(tab_id);
-        self.refresh_tab(tab_id);
-        self.persist();
+        self.activate_tab(next);
     }
 
     /// 切到第 `slot` 个标签页；越界不动（不把用户送到空标签）。
     pub(crate) fn activate_slot(&self, slot: usize) {
-        let tabs = self.tabs;
-        let active = self.active;
-        let list = tabs.get_untracked();
-        let Some(tab_id) = list.get(slot).map(|tab| tab.id) else {
+        let exists = self.tabs.with_untracked(|tabs| tabs.get(slot).is_some());
+        if !exists {
             return;
-        };
-        active.set(slot);
-        self.ensure_tab_loaded(tab_id);
-        self.refresh_tab(tab_id);
-        self.persist();
+        }
+        self.activate_tab(slot);
     }
 
     fn persist(&self) {

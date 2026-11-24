@@ -780,7 +780,7 @@ pub(crate) fn app() -> impl IntoElement {
 
     // 欢迎与设置是两个独立窗口，由 `app::windows` 以声明式元素挂在这里：
     // 它们的开与关只跟 `welcome_open` / `settings_open` 走。
-    let current_tab = computed(move || tabs.get().get(active.get()).cloned());
+    let current_tab = computed(move || tabs.with(|tabs| tabs.get(active.get()).cloned()));
     let language_value = language;
     let handles_for_screen = handles.clone();
     let search_for_overlay = handles.search.clone();
@@ -834,8 +834,8 @@ pub(crate) fn app() -> impl IntoElement {
                 if !search.state.palette_open.get() {
                     return view().w(px(0.0)).h(px(0.0)).into_element();
                 }
-                let open_paths: Vec<String> =
-                    tabs.get().iter().map(|tab| tab.path.clone()).collect();
+                let open_paths =
+                    tabs.with(|tabs| tabs.iter().map(|tab| tab.path.clone()).collect::<Vec<_>>());
                 let recent_paths: Vec<String> = recent
                     .get()
                     .iter()

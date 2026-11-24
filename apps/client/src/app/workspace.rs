@@ -42,7 +42,7 @@ pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement + use<> {
     let search = handles.search.clone();
     // 主区模式由搜索功能持有（工具栏分段与命令面板的命令都改它）。
     let mode = search.state.mode;
-    let current = computed(move || tabs.get().get(active.get()).cloned());
+    let current = computed(move || tabs.with(|list| list.get(active.get()).cloned()));
     let change_count = move || {
         return current
             .get()
@@ -232,7 +232,7 @@ fn center_content(
     // 因此选中 commit 时保留现有 History 表和 graph 布局。
     let history_tab = computed({
         let current = current;
-        move || current.get().map(history_list_snapshot)
+        move || current.with(|tab| tab.as_ref().map(history_list_snapshot))
     });
     let current_selection = computed({
         let current = current;
@@ -479,26 +479,37 @@ fn center_content(
         }));
 }
 
-fn history_list_snapshot(mut tab: Tab) -> Tab {
-    tab.selected = None;
-    tab.show_commit_diff = false;
-    tab.patch = domain::diff::Patch::default();
-    tab.files.clear();
-    tab.selected_file = None;
-    tab.file_patch = None;
-    tab.details = None;
-    tab.error = None;
-    tab.blame.clear();
-    tab.blame_path.clear();
-    tab.blame_revision.clear();
-    tab.blame_return_mode = None;
-    tab.blame_focus_sha = None;
-    tab.blame_selected_line = None;
-    tab.blame_show_diff = false;
-    tab.blame_patch = domain::diff::Patch::default();
-    tab.blame_error = None;
-    tab.file_history.clear();
-    return tab;
+fn history_list_snapshot(tab: &Tab) -> Tab {
+    let started = std::time::Instant::now();
+    let snapshot = Tab {
+        id: tab.id,
+        branch: tab.branch.clone(),
+        commits: tab.commits.clone(),
+        graph_commits: tab.graph_commits.clone(),
+        refs: tab.refs.clone(),
+        authors: tab.authors.clone(),
+        filter: tab.filter.clone(),
+        compare: tab.compare.clone(),
+        compare_base: tab.compare_base.clone(),
+        compare_target: tab.compare_target.clone(),
+        compare_three_dot: tab.compare_three_dot,
+        compare_worktree: tab.compare_worktree,
+        head: tab.head.clone(),
+        loading: tab.loading,
+        ..Tab::default()
+    };
+    log::debug!(
+        target: "gitui::history",
+        "event=workspace.history_snapshot commits={} graph_commits={} refs={} elapsed_ms={}",
+        snapshot.commits.len(),
+        snapshot.graph_commits.len(),
+        snapshot.refs.branches.len()
+            + snapshot.refs.remote_branches.len()
+            + snapshot.refs.tags.len()
+            + snapshot.refs.stashes.len(),
+        started.elapsed().as_millis(),
+    );
+    return snapshot;
 }
 
 fn repository_loading(language: Signal<SharedString>) -> AnyElement {

@@ -64,7 +64,9 @@ pub(crate) fn sync_dialog(
                     return view().w(px(0.0)).h(px(0.0)).into_element();
                 };
                 let current_tab = match dialog_state.target_tab_id {
-                    Some(id) => tabs.get().into_iter().find(|candidate| candidate.id == id),
+                    Some(id) => {
+                        tabs.with(|tabs| tabs.iter().find(|candidate| candidate.id == id).cloned())
+                    }
                     None => tab.get(),
                 };
                 let is_running = dialog_state.running;

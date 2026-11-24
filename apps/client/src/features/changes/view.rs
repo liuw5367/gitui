@@ -1101,10 +1101,12 @@ fn rename_changelist_dialog(
             return false;
         }
         let current = active.get();
-        tabs.get().get(current).is_some_and(|tab| {
-            !tab.changelists
-                .iter()
-                .any(|list| list.name == new_name && list.name != old_name)
+        tabs.with(|tabs| {
+            tabs.get(current).is_some_and(|tab| {
+                !tab.changelists
+                    .iter()
+                    .any(|list| list.name == new_name && list.name != old_name)
+            })
         })
     });
     let dismiss_cmd = cmd.clone();

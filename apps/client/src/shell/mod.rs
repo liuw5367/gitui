@@ -110,9 +110,8 @@ pub(crate) fn titlebar(
                 )
                 .child(
                     text(move || {
-                        let list = tabs.get();
                         let index = active.get();
-                        match list.get(index) {
+                        tabs.with(|list| match list.get(index) {
                             Some(tab) => {
                                 let mut text = tab.branch.clone();
                                 if tab.ahead > 0 {
@@ -124,7 +123,7 @@ pub(crate) fn titlebar(
                                 return text;
                             }
                             None => String::new(),
-                        }
+                        })
                     })
                     .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text3()),

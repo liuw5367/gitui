@@ -92,7 +92,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             on_key("mod+w", move |_| window.close());
             // 当前仓库只在开窗时取一次快照：窗口内容不订阅标签页——每次标签页变化
             // 重建整页会把旧复选控件留在已释放的 owner 上（nsh 的 prop 写入会 panic）。
-            let tab = tabs.get_untracked().get(active.get_untracked()).cloned();
+            let tab = tabs.with_untracked(|tabs| tabs.get(active.get_untracked()).cloned());
             return view()
                 .w_full()
                 .h_full()
@@ -263,7 +263,7 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
 fn worktree_window_content(handles: AppHandles) -> impl IntoElement + use<> {
     let tabs = handles.session.tabs;
     let active = handles.session.active;
-    let current_tab = computed(move || tabs.get().get(active.get()).cloned());
+    let current_tab = computed(move || tabs.with(|list| list.get(active.get()).cloned()));
     let language = handles.language;
     let search = handles.search.clone();
     let settings_open = handles.session.settings_open;
@@ -314,7 +314,8 @@ fn worktree_window_content(handles: AppHandles) -> impl IntoElement + use<> {
                 if !search.state.palette_open.get() {
                     return view().w(px(0.0)).h(px(0.0)).into_element();
                 }
-                let paths: Vec<String> = tabs.get().iter().map(|tab| tab.path.clone()).collect();
+                let paths =
+                    tabs.with(|tabs| tabs.iter().map(|tab| tab.path.clone()).collect::<Vec<_>>());
                 let recent_paths = recent
                     .get()
                     .iter()
@@ -364,13 +365,24 @@ fn attributes_with_min_size(width: f32, height: f32) -> WindowAttributes {
 
 /// 把打开的标签页写回会话，供下次启动恢复。
 pub(crate) fn persist(dir: &std::path::Path, active: Signal<usize>, tabs: Signal<Vec<Tab>>) {
-    let list = tabs.get_untracked();
-    let paths: Vec<String> = list.iter().map(|tab| tab.path.clone()).collect();
+    let started = std::time::Instant::now();
+    let (tab_count, paths) = tabs.with_untracked(|list| {
+        (
+            list.len(),
+            list.iter().map(|tab| tab.path.clone()).collect::<Vec<_>>(),
+        )
+    });
     let session = store::Session {
         active: active.get_untracked().min(paths.len().saturating_sub(1)),
         paths,
     };
     store::save_session(dir, &session);
+    log::debug!(
+        target: "gitui::history",
+        "event=session.persist tabs={} elapsed_ms={}",
+        tab_count,
+        started.elapsed().as_millis(),
+    );
 }
 
 /// 窗口标题栏留白（系统窗口按钮占用的左右宽度）。
