@@ -75,6 +75,8 @@ pub(crate) struct SyncTaskState {
     pub result: Option<Result<String, String>>,
     pub summary: Option<SyncSummary>,
     pub cancelled: bool,
+    /// 是否由同步面板启动；提交后自动推送走提交反馈块，不弹同步面板。
+    pub show_dialog: bool,
     pub follow_up_push: Option<SyncOptions>,
     pub retry_push: bool,
     pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -91,6 +93,7 @@ impl PartialEq for SyncTaskState {
             && self.result == other.result
             && self.summary == other.summary
             && self.cancelled == other.cancelled
+            && self.show_dialog == other.show_dialog
             && self.follow_up_push == other.follow_up_push
             && self.retry_push == other.retry_push;
     }

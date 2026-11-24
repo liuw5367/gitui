@@ -34,6 +34,14 @@ pub(crate) enum ConflictDraft {
 }
 
 /// 一个仓库标签页的全部界面状态。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum CommitFeedbackKind {
+    #[default]
+    Hooks,
+    Commit,
+    Push,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Tab {
     /// 运行期标签身份。重排和关闭确认使用它，不依赖可变位置或路径。
@@ -134,10 +142,12 @@ pub(crate) struct Tab {
     /// 提交说明的两段文本。
     pub(crate) summary: String,
     pub(crate) description: String,
-    /// 最近一次提交尝试的钩子输出；`None` 表示还没提交过。
+    /// 最近一次提交或提交后推送的反馈；`None` 表示还没有结果。
     pub(crate) hook_log: Option<String>,
-    /// 最近一次提交是否成功。
+    /// 最近一次提交或提交后推送是否成功。
     pub(crate) hook_ok: bool,
+    /// 反馈属于钩子、提交还是提交后推送。
+    pub(crate) commit_feedback_kind: CommitFeedbackKind,
     /// 提交面板的三个开关（设计板 10）。成功后归位。
     pub(crate) amend: bool,
     pub(crate) signoff: bool,

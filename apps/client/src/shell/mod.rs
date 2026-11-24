@@ -597,60 +597,6 @@ pub(crate) fn state_banner(
         }));
 }
 
-pub(crate) fn sync_banner(tab: Memo<Option<Tab>>) -> impl IntoElement {
-    let has_message = move || {
-        return tab.get().and_then(|tab| tab.sync_message).is_some();
-    };
-    return view()
-        .w_full()
-        .h(move || match tab.get().and_then(|tab| tab.sync_message) {
-            Some(_) => px(24.0),
-            None => px(0.0),
-        })
-        .px(px(12.0))
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .bg(move || match tab.get() {
-            Some(tab) if tab.sync_failed => design::del_bg(),
-            _ => design::panel(),
-        })
-        .border_b(move || if has_message() { px(1.0) } else { px(0.0) })
-        .border_color(move || design::line())
-        .overflow_hidden()
-        .child(dynamic(move || -> AnyElement {
-            if !has_message() {
-                return view().w_full().h(px(0.0)).into_element();
-            }
-            return view()
-                .w_full()
-                .h(px(24.0))
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    text(move || {
-                        tab.get()
-                            .and_then(|tab| tab.sync_message)
-                            .unwrap_or_default()
-                    })
-                    .text_size(px(crate::ui::CODE))
-                    .line_height(px(crate::ui::CODE_LINE))
-                    .text_color(move || match tab.get() {
-                        Some(tab) if tab.sync_failed => design::danger(),
-                        _ => design::text2(),
-                    }),
-                )
-                .child(view().flex_1())
-                .child(
-                    text(move || tab.get().map(|tab| tab.branch.clone()).unwrap_or_default())
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3()),
-                )
-                .into_element();
-        }));
-}
-
 /// 操作条（设计板 14 / 16 的 `.op-banner`）：合并/变基/拣选/回滚进行中时的提示
 /// 与放弃入口。没有进行中的操作时高度为 0。
 pub(crate) fn op_banner(

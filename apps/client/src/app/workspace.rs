@@ -87,7 +87,6 @@ pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement + use<> {
             &search,
         ))
         .child(shell::op_banner(language, current, &merge))
-        .child(shell::sync_banner(current))
         .child(
             view()
                 .w_full()

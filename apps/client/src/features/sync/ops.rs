@@ -4,7 +4,7 @@ use crate::app::session::{Sync, SyncOptions, Tab};
 use crate::features::changes::ops::refresh_changes;
 use domain::GitError;
 
-/// 清掉同步失败的状态（重试或用户主动关闭横幅）。
+/// 清掉同步失败的状态（重试前使用）。
 pub(crate) fn clear_sync_fault(tab: &mut Tab) {
     tab.sync_fault = None;
 }

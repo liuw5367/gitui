@@ -1,12 +1,11 @@
-//! 提交面板（设计板 10 右侧 `insp`）：Summary / Description、暂存清单、钩子输出与
+//! 提交面板（设计板 10 右侧 `insp`）：Summary / Description、暂存清单、操作反馈与
 //! 提交按钮。
 //!
-//! 钩子失败时显示 `hook-box`：状态、耗时占位（0.6.0 没有钩子级的计时）、命令输出，
-//! 以及重试提示。提交按钮在说明为空或没有暂存内容时禁用。
+//! 提交、钩子或提交后推送的结果显示在可关闭状态块中。提交按钮在说明为空或没有暂存内容时禁用。
 
 use super::commands::CommitCommands;
 use super::state::CommitState;
-use crate::app::session::Tab;
+use crate::app::session::{CommitFeedbackKind, Tab};
 use crate::design::{self, metrics};
 use crate::features::changes::commands::ChangesCommands;
 use crate::i18n;
@@ -65,6 +64,7 @@ fn refs_commit_panel(
     let unstaged_count = tab.changes.len() - staged_count;
     let hook_log = tab.hook_log.clone();
     let hook_ok = tab.hook_ok;
+    let hook_kind = tab.commit_feedback_kind;
     let commit = {
         let cmd = cmd.clone();
         move || cmd.commit()
@@ -200,8 +200,14 @@ fn refs_commit_panel(
                                 let Some(log) = hook_log.clone() else {
                                     return view().w_full().h(px(0.0)).into_element();
                                 };
-                                return hook_box(language, log, hook_ok, hook_cmd.clone())
-                                    .into_element();
+                                return hook_box(
+                                    language,
+                                    log,
+                                    hook_ok,
+                                    hook_kind,
+                                    hook_cmd.clone(),
+                                )
+                                .into_element();
                             })),
                     ),
                 ),
@@ -280,17 +286,15 @@ fn refs_commit_panel(
                         }
                     },
                 ))
-                .child(
-                    text(move || {
-                        if can_commit {
-                            i18n::t(language.get().as_str(), "commit.hooksHint")
-                        } else {
-                            i18n::t(language.get().as_str(), "commit.nothingStaged")
-                        }
-                    })
-                    .text_size(px(crate::ui::META))
-                    .text_color(move || design::text3()),
-                ),
+                .child(dynamic(move || -> AnyElement {
+                    if !can_commit {
+                        return view().w_full().h(px(0.0)).into_element();
+                    }
+                    return text(i18n::t(language.get().as_str(), "commit.hooksHint"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3())
+                        .into_element();
+                })),
         );
 }
 
@@ -313,6 +317,7 @@ fn changes_commit_panel(
     let can_commit = staged_count > 0 || amend;
     let hook_log = tab.hook_log.clone();
     let hook_ok = tab.hook_ok;
+    let hook_kind = tab.commit_feedback_kind;
     let hook_cmd = cmd.clone();
     let force_cmd = cmd.clone();
 
@@ -336,7 +341,13 @@ fn changes_commit_panel(
                 .py(px(8.0))
                 .border_t_1()
                 .border_color(move || design::line_soft())
-                .child(hook_box(language, log, hook_ok, hook_cmd.clone()))
+                .child(hook_box(
+                    language,
+                    log,
+                    hook_ok,
+                    hook_kind,
+                    hook_cmd.clone(),
+                ))
                 .into_element();
         }))
         .child(
@@ -421,17 +432,15 @@ fn changes_commit_panel(
                             },
                         )),
                 )
-                .child(
-                    text(move || {
-                        if can_commit {
-                            i18n::t(language.get().as_str(), "commit.hooksHint")
-                        } else {
-                            i18n::t(language.get().as_str(), "commit.nothingStaged")
-                        }
-                    })
-                    .text_size(px(crate::ui::META))
-                    .text_color(move || design::text3()),
-                ),
+                .child(dynamic(move || -> AnyElement {
+                    if !can_commit {
+                        return view().w_full().h(px(0.0)).into_element();
+                    }
+                    return text(i18n::t(language.get().as_str(), "commit.hooksHint"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(move || design::text3())
+                        .into_element();
+                })),
         );
 }
 
@@ -478,14 +487,14 @@ fn checkbox_row(
     );
 }
 
-/// 钩子输出块：成功绿点、失败红点，命令输出等宽显示。
+/// 提交操作反馈块：成功绿点、失败红点，命令输出等宽显示。
 ///
-/// 失败时常驻三个动作：重新提交（等价重跑钩子）、跳过钩子提交（强确认）、
-/// 查看完整日志（弹层，避免长输出把面板挤爆）。
+/// 钩子失败时提供重试、跳过钩子提交；完整日志在弹层查看。
 fn hook_box(
     language: Signal<SharedString>,
     log: String,
     ok: bool,
+    kind: CommitFeedbackKind,
     cmd: CommitCommands,
 ) -> impl IntoElement {
     let has_log = !log.trim().is_empty();
@@ -507,6 +516,7 @@ fn hook_box(
         let cmd = cmd.clone();
         move |open: bool| cmd.toggle_hook_log(open)
     };
+    let dismiss = cmd.clone();
     return view()
         .w_full()
         .flex_col()
@@ -531,18 +541,26 @@ fn hook_box(
                 )
                 .child(
                     text(move || {
-                        i18n::t(
-                            language.get().as_str(),
-                            if ok {
-                                "commit.hooksPassed"
-                            } else {
-                                "commit.hooksFailed"
-                            },
-                        )
+                        let key = match kind {
+                            CommitFeedbackKind::Hooks if ok => "commit.hooksPassed",
+                            CommitFeedbackKind::Hooks => "commit.hooksFailed",
+                            CommitFeedbackKind::Commit => "commit.commitFailed",
+                            CommitFeedbackKind::Push if ok => "commit.pushPassed",
+                            CommitFeedbackKind::Push => "commit.pushFailed",
+                        };
+                        i18n::t(language.get().as_str(), key)
                     })
                     .text_size(px(crate::ui::SECONDARY))
                     .text_color(move || design::text2()),
-                ),
+                )
+                .child(view().flex_1())
+                .child(crate::ui::button::icon_button(
+                    "x",
+                    move || i18n::t(language.get().as_str(), "common.close"),
+                    crate::ui::button::ButtonSize::Small,
+                    false,
+                    move || dismiss.dismiss_hook_status(),
+                )),
         )
         .child(view().w_full().when(has_log, |this| {
             this.child(
@@ -559,7 +577,7 @@ fn hook_box(
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
-                .when(!ok, |this| {
+                .when(!ok && kind == CommitFeedbackKind::Hooks, |this| {
                     this.child(crate::ui::button::button(
                         {
                             let language = language;

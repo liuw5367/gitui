@@ -15,7 +15,7 @@
 - 保留底部拖动提示与清单管理入口，提示缩短为 `Drag files to another list`（中文 `拖动文件到其他清单`），去掉前置省略号图标；Manage 保持贴右，按钮文案不再带省略号。移除改变 Changelists 高度的拖拽手柄。
 - 清单管理弹窗在标题栏右侧提供关闭按钮，贴近底部的 Manage 入口显示；移除底部 “Filters only” 提示。默认清单也显示禁用的删除按钮，以保持操作列对齐；非默认清单可显式删除，删除后其变更回到默认清单。拖动清空的自定义清单会保留，且空清单可跨应用重启恢复。
 - 清单文件树复用提交信息面板的共享层级树控件，文件夹可折叠；平铺模式显示完整文件路径并在悬停时提示。文件行仍使用 Changes 的暂存、选择、拖放和右键菜单操作，状态标记排在增删行数之后，已暂存复选框不显示边框。拖放目标以整个清单区域的背景色标记。
-- Summary 和 Description 固定在提交区底部，没有单独标签，通过 placeholder 说明用途；Description 从一行随内容增高，最多三行。amend、sign-off、push、force 与 commit 按钮位于一行；Force 始终显示，Push 未开启时禁用，启用后使用 `--force-with-lease`。钩子状态显示在输入区上方。无暂存改动提示使用较小字号以减少高度。
+- Summary 和 Description 固定在提交区底部，没有单独标签，通过 placeholder 说明用途；Description 从一行随内容增高，最多三行。amend、sign-off、push、force 与 commit 按钮位于一行；Force 始终显示，Push 未开启时禁用，启用后使用 `--force-with-lease`。无暂存改动时不显示额外提示。提交与钩子结果显示在输入区上方，状态块可关闭；勾选提交区的 push 后，推送结果也显示在此状态块。工具栏 Push 的结果仍只显示在同步弹窗。
 - 开启 amend 时，自动载入 `HEAD` 的提交摘要和正文作为新的提交草稿。
 - 该运行布局是按用户反馈批准的设计差异，见 [DEVIATIONS #59](../design/DEVIATIONS.md#59-changes-面板与提交区布局)。
 

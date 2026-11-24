@@ -5,6 +5,7 @@
 
 use super::ops;
 use super::state::{CommitState, RewriteKind, RewriteState};
+use crate::app::session::CommitFeedbackKind;
 use crate::features::SessionHandle;
 use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
@@ -118,6 +119,20 @@ impl CommitCommands {
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             tab.hook_open = open;
+            tabs.set(list);
+        }
+    }
+
+    /// 关闭提交结果块，并同步关闭其完整日志弹层。
+    pub(crate) fn dismiss_hook_status(&self) {
+        let tabs = self.session.tabs;
+        let active = self.session.active;
+        let current = active.get_untracked();
+        let mut list = tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            tab.hook_log = None;
+            tab.hook_open = false;
+            tab.commit_feedback_kind = CommitFeedbackKind::Hooks;
             tabs.set(list);
         }
     }

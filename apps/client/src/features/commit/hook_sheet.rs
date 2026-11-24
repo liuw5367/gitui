@@ -1,6 +1,6 @@
-//! 钩子完整日志弹层（设计板 10 的 `View full log`）。
+//! 提交操作完整日志弹层（设计板 10 的 `View full log`）。
 //!
-//! 面板里只放末尾几行做提示，长输出（尤其是失败时的编译日志）放在这里看，
+//! 面板里只放末尾几行做提示，长输出放在这里看，
 //! 并提供复制与关闭。
 
 use super::commands::CommitCommands;
@@ -12,7 +12,7 @@ use nsh_core::prelude::*;
 
 /// 日志弹层：居中、可滚动、Esc 或点背景关闭。
 ///
-/// 入口 `hook_sheet` 收本功能的状态与用例；弹层读取的钩子输出挂在 `Tab` 上，
+/// 入口 `hook_sheet` 收本功能的状态与用例；弹层读取的操作输出挂在 `Tab` 上，
 /// 复制到剪贴板走 `shared::os` 的共用函数。
 pub(crate) fn hook_sheet(
     _state: &CommitState,

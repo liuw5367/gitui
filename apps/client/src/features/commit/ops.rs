@@ -1,6 +1,6 @@
 //! 提交的操作：提交暂存区、创建首个提交、改写说明与合并提交。
 
-use crate::app::session::{Tab, reload_after_history_change};
+use crate::app::session::{CommitFeedbackKind, Tab, reload_after_history_change};
 use crate::features::changes::ops::refresh_changes;
 
 /// 空仓库里创建第一个提交（`--allow-empty`，只为了让分支有起点）。
@@ -74,6 +74,7 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
     if summary.is_empty() {
         tab.hook_log = Some("提交说明不能为空".to_string());
         tab.hook_ok = false;
+        tab.commit_feedback_kind = CommitFeedbackKind::Commit;
         return;
     }
     let options = git::CommitOptions {
@@ -86,12 +87,16 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
         Ok(repo) => repo,
         Err(error) => {
             tab.error = Some(error.detail());
+            tab.hook_ok = false;
+            tab.hook_log = Some(error.detail());
+            tab.commit_feedback_kind = CommitFeedbackKind::Commit;
             return;
         }
     };
     match repo.commit_with(summary.as_str(), tab.description.as_str(), &options) {
         Ok(outcome) => {
             tab.hook_ok = true;
+            tab.commit_feedback_kind = CommitFeedbackKind::Hooks;
             tab.hook_log = Some(if outcome.log.is_empty() {
                 format!("已提交 {}", &outcome.sha[..7.min(outcome.sha.len())])
             } else {
@@ -118,6 +123,11 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
         }
         Err(error) => {
             tab.hook_ok = false;
+            tab.commit_feedback_kind = if matches!(&error, domain::GitError::HookFailed { .. }) {
+                CommitFeedbackKind::Hooks
+            } else {
+                CommitFeedbackKind::Commit
+            };
             tab.hook_log = Some(error.detail());
         }
     }

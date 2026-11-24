@@ -22,6 +22,12 @@ enum SyncWorkerEvent {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SyncPresentation {
+    Dialog,
+    CommitFeedback,
+}
+
 enum SyncBefore {
     Fetch(Option<std::collections::BTreeMap<String, String>>),
     Pull {
@@ -579,7 +585,9 @@ impl SyncCommands {
         let active_tab_id = self.active_tab_id();
         if let Some(task) = self.state.task.get_untracked()
             && (task.result.is_none()
-                || (Some(task.target_tab_id) == active_tab_id && task.kind == kind))
+                || (task.show_dialog
+                    && Some(task.target_tab_id) == active_tab_id
+                    && task.kind == kind))
         {
             let running = task.result.is_none();
             sync_state.set(Some(SyncDialogState {
@@ -618,7 +626,8 @@ impl SyncCommands {
         let sync_state = self.state.dialog;
         if let Some(task) = self.state.task.get_untracked()
             && (task.result.is_none()
-                || (task.target_tab_id == tab_id
+                || (task.show_dialog
+                    && task.target_tab_id == tab_id
                     && task.kind == kind
                     && task.remote.as_deref() == Some(remote.as_str())))
         {
@@ -697,6 +706,7 @@ impl SyncCommands {
             state.options,
             None,
             false,
+            SyncPresentation::Dialog,
         );
     }
 
@@ -711,7 +721,15 @@ impl SyncCommands {
             .map(|state| (state.remote, state.options))
             .unwrap_or_default();
         options.push.force_with_lease = force_with_lease;
-        self.start_sync_with(Sync::Push, tab_id, remote, options, None, false);
+        self.start_sync_with(
+            Sync::Push,
+            tab_id,
+            remote,
+            options,
+            None,
+            false,
+            SyncPresentation::CommitFeedback,
+        );
     }
 
     fn start_sync_with(
@@ -722,6 +740,7 @@ impl SyncCommands {
         options: SyncOptions,
         follow_up_push: Option<SyncOptions>,
         retry_push: bool,
+        presentation: SyncPresentation,
     ) {
         if self
             .state
@@ -738,7 +757,9 @@ impl SyncCommands {
             .into_iter()
             .find(|tab| tab.id == target_tab_id)
         else {
-            if let Some(mut dialog) = self.state.dialog.get_untracked() {
+            if presentation == SyncPresentation::Dialog
+                && let Some(mut dialog) = self.state.dialog.get_untracked()
+            {
                 dialog.result = Some(Err(crate::i18n::t(
                     self.language.get_untracked().as_str(),
                     "form.targetClosed",
@@ -752,16 +773,18 @@ impl SyncCommands {
 
         let path = target.path.clone();
         let cancel = Arc::new(AtomicBool::new(false));
-        self.state.dialog.set(Some(SyncDialogState {
-            kind,
-            target_tab_id: Some(target_tab_id),
-            target_path: Some(path.clone()),
-            remote: remote.clone(),
-            options: options.clone(),
-            result: None,
-            summary: None,
-            running: true,
-        }));
+        if presentation == SyncPresentation::Dialog {
+            self.state.dialog.set(Some(SyncDialogState {
+                kind,
+                target_tab_id: Some(target_tab_id),
+                target_path: Some(path.clone()),
+                remote: remote.clone(),
+                options: options.clone(),
+                result: None,
+                summary: None,
+                running: true,
+            }));
+        }
         self.state.task.set(Some(SyncTaskState {
             kind,
             target_tab_id,
@@ -772,6 +795,7 @@ impl SyncCommands {
             result: None,
             summary: None,
             cancelled: false,
+            show_dialog: presentation == SyncPresentation::Dialog,
             follow_up_push: follow_up_push.clone(),
             retry_push,
             cancel: cancel.clone(),
@@ -943,12 +967,38 @@ impl SyncCommands {
                                 rejected = kind == Sync::Push
                                     && target.sync_failed
                                     && target.sync_fault == Some(domain::NetworkFault::Rejected);
-                                match (&target.sync_message, target.sync_failed, cancelled) {
-                                    (_, _, true) => Err(cancelled_text.clone()),
-                                    (Some(message), true, false) => Err(message.clone()),
-                                    (Some(message), false, false) => Ok(message.clone()),
-                                    (None, _, false) => Ok(String::new()),
+                                let outcome =
+                                    match (&target.sync_message, target.sync_failed, cancelled) {
+                                        (_, _, true) => Err(cancelled_text.clone()),
+                                        (Some(message), true, false) => Err(message.clone()),
+                                        (Some(message), false, false) => Ok(message.clone()),
+                                        (None, _, false) => Ok(String::new()),
+                                    };
+                                if presentation == SyncPresentation::CommitFeedback
+                                    && kind == Sync::Push
+                                {
+                                    let detail = summary
+                                        .as_ref()
+                                        .map(|summary| {
+                                            super::view::sync_summary_text(
+                                                language_now.as_str(),
+                                                summary,
+                                                outcome.is_err(),
+                                            )
+                                        })
+                                        .unwrap_or_else(|| match &outcome {
+                                            Ok(message) | Err(message) => message.clone(),
+                                        });
+                                    target.commit_feedback_kind =
+                                        crate::app::session::CommitFeedbackKind::Push;
+                                    target.hook_ok = outcome.is_ok();
+                                    target.hook_log = Some(if output.trim().is_empty() {
+                                        detail
+                                    } else {
+                                        format!("{detail}\n\n{}", output.trim())
+                                    });
                                 }
+                                outcome
                             } else if cancelled {
                                 Err(cancelled_text.clone())
                             } else if let Some(message) = localized_failure {
@@ -977,6 +1027,8 @@ impl SyncCommands {
                             }
                             if let Some(mut dialog) = dialog_signal.get_untracked()
                                 && dialog.target_tab_id == Some(target_tab_id)
+                                && dialog.kind == kind
+                                && (presentation == SyncPresentation::Dialog || dialog.running)
                             {
                                 dialog.running = false;
                                 dialog.result = Some(outcome.clone());
@@ -993,6 +1045,7 @@ impl SyncCommands {
                                         push_options,
                                         None,
                                         true,
+                                        SyncPresentation::Dialog,
                                     );
                                 } else if let Err(message) = outcome {
                                     crate::interactions::notify(notice, message);
@@ -1063,6 +1116,7 @@ impl SyncCommands {
                                 pull_options,
                                 Some(options),
                                 false,
+                                SyncPresentation::Dialog,
                             );
                             return;
                         }
@@ -1089,7 +1143,7 @@ impl SyncCommands {
         sync_state.set(None);
     }
 
-    /// 清掉同步失败状态（原 `clear_sync_fault`，重试或用户主动关闭横幅）。
+    /// 清掉同步失败状态（原 `clear_sync_fault`，重试前使用）。
     pub(crate) fn clear_sync_fault(&self) {
         let tabs = self.session.tabs;
         let active = self.session.active;

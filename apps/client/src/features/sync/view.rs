@@ -719,7 +719,7 @@ fn sync_log_output(progress: &str, result: Option<&Result<String, String>>) -> O
     });
 }
 
-fn sync_summary_text(language: &str, summary: &SyncSummary, failed: bool) -> String {
+pub(crate) fn sync_summary_text(language: &str, summary: &SyncSummary, failed: bool) -> String {
     let count = |value: usize| value.to_string();
     match summary {
         SyncSummary::Fetch {
@@ -960,6 +960,7 @@ mod log_panel_tests {
             result: None,
             summary: None,
             cancelled: false,
+            show_dialog: true,
             follow_up_push: None,
             retry_push: false,
             cancel: Arc::new(AtomicBool::new(false)),
