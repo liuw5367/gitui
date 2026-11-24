@@ -1,15 +1,18 @@
 //! 变更页的操作：装载/刷新变更、单文件 diff、按 hunk 暂存与清单管理。
 
 use crate::app::session::{ChangeEntry, Tab};
+use domain::{GitError, StatusEntry};
 use git::Repo;
 
-/// 读取工作区与暂存区的变更，并附上逐文件行数统计。
-pub(crate) fn load_changes(repo: &Repo) -> Vec<ChangeEntry> {
-    let status = repo.status().unwrap_or_default();
-    let staged_stats = repo.numstat_section(true).unwrap_or_default();
-    let worktree_stats = repo.numstat_section(false).unwrap_or_default();
+/// 读取状态与行数统计；刷新路径用 `Result` 保留上次快照，避免查询失败伪装成干净仓库。
+pub(crate) fn load_changes_checked(
+    repo: &Repo,
+) -> Result<(Vec<StatusEntry>, Vec<ChangeEntry>), GitError> {
+    let status = repo.status()?;
+    let staged_stats = repo.numstat_section(true)?;
+    let worktree_stats = repo.numstat_section(false)?;
     let mut entries: Vec<ChangeEntry> = Vec::new();
-    for entry in status {
+    for entry in &status {
         let staged = entry.is_staged();
         let untracked = entry.index == '?' && entry.worktree == '?';
         let stats = if staged {
@@ -35,7 +38,7 @@ pub(crate) fn load_changes(repo: &Repo) -> Vec<ChangeEntry> {
             .cmp(&left.staged)
             .then_with(|| left.path.cmp(&right.path))
     });
-    return entries;
+    return Ok((status, entries));
 }
 
 /// 刷新变更列表（暂存、取消暂存、丢弃之后调用），保留选中项。
@@ -51,9 +54,12 @@ pub(crate) fn refresh_changes(tab: &mut Tab) {
         .selected_change
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.path.clone());
-    tab.changes = load_changes(&repo);
+    let Ok((status, changes)) = load_changes_checked(&repo) else {
+        return;
+    };
+    tab.changes = changes;
     apply_changelist_assignments(tab);
-    tab.status = repo.status().unwrap_or_default();
+    tab.status = status;
     tab.operation = repo.operation();
     tab.conflicts = repo.conflicts().unwrap_or_default();
     tab.remote_urls = repo.remote_urls().unwrap_or_default();

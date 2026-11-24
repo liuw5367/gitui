@@ -60,12 +60,14 @@ impl AppHandles {
                     .unwrap_or_default();
             })
         };
+        let mode = signal(crate::Mode::History);
         let session = crate::features::SessionHandle {
             tabs,
             active,
             task_owner: self.session.task_owner,
             welcome_open: self.session.welcome_open,
             settings_open: self.session.settings_open,
+            mode,
             recent: self.session.recent,
             store_dir: self.session.store_dir.clone(),
             filter: filter.clone(),
@@ -77,6 +79,9 @@ impl AppHandles {
             window: signal(None),
             welcome_window: signal(None),
             settings_window: signal(None),
+            refresh_requests: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
         };
 
         let mut handles = self.clone();
@@ -104,7 +109,7 @@ impl AppHandles {
         handles.history.diff = handles.diff.clone();
         handles.history.commit = handles.commit.clone();
         handles.history.recovery = handles.recovery.clone();
-        handles.history.mode = signal(crate::Mode::History);
+        handles.history.mode = mode;
         let query = signal(handles.history.state.query.get_untracked());
         let draft = signal(handles.history.state.draft.get_untracked());
         handles.history.state = crate::features::history::state::HistoryState {

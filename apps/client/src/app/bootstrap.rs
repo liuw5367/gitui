@@ -373,6 +373,7 @@ pub(crate) fn app() -> impl IntoElement {
         task_owner: Owner::current(),
         welcome_open,
         settings_open,
+        mode,
         recent,
         store_dir: store_dir.clone(),
         filter: current_filter.clone(),
@@ -384,6 +385,9 @@ pub(crate) fn app() -> impl IntoElement {
         window: signal(None),
         welcome_window: signal(None),
         settings_window: signal(None),
+        refresh_requests: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
     session.ensure_active_tab_loaded();
     let close_session = session.clone();
@@ -396,7 +400,11 @@ pub(crate) fn app() -> impl IntoElement {
     });
     let reopen_session = session.clone();
     main_window().on_focus_change(move |focused| {
-        if !focused || suppress_welcome || !reopen_session.tabs.get_untracked().is_empty() {
+        if !focused || suppress_welcome {
+            return;
+        }
+        if !reopen_session.tabs.get_untracked().is_empty() {
+            reopen_session.refresh_active_tab();
             return;
         }
         main_window().hide();

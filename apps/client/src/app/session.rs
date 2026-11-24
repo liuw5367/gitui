@@ -1,7 +1,11 @@
 //! 会话层：仓库标签页（`Tab`）的结构、状态与装载/刷新/初始化这类会话级动作。
 
-use crate::features::changes::ops::{apply_changelist_assignments, load_changes, refresh_changes};
-use crate::features::history::ops::select_commit;
+use crate::features::changes::ops::{
+    apply_changelist_assignments, load_changes_checked, refresh_changes,
+};
+use crate::features::history::ops::{
+    CommitSelectionData, load_commit_selection_from_repo, select_commit,
+};
 use domain::{Commit, DiffStat, StatusEntry};
 use git::{GitExecutable, LogFilter, Refs, Repo};
 use std::collections::{BTreeMap, BTreeSet};
@@ -57,6 +61,10 @@ pub(crate) struct Tab {
     pub(crate) branch: String,
     pub(crate) ahead: u32,
     pub(crate) behind: u32,
+    /// 读取 HEAD 的真实提交 OID；分支名相同也能识别外部提交或 reset。
+    pub(crate) head_oid: Option<String>,
+    /// 所有非符号引用及其 OID；检测非当前分支推进后再决定是否读取 History。
+    pub(crate) ref_oids: BTreeMap<String, String>,
     pub(crate) commits: Vec<Commit>,
     /// Ancestors retained to reconnect graph lanes after non-branch filters hide commits.
     pub(crate) graph_commits: Vec<Commit>,
@@ -386,15 +394,15 @@ pub(crate) fn load_tab_with_executable(
             .unwrap_or_else(|_| commits.clone())
     };
     let refs = repo.refs().unwrap_or_default();
+    let ref_oids = repo.ref_oid_snapshot().unwrap_or_default();
     let branch_graph_commits = if filter.reference.is_some() || !filter.references.is_empty() {
         repo.log_all().unwrap_or_else(|_| graph_commits.clone())
     } else {
         graph_commits.clone()
     };
     git::decorate_commit_branch_history(&mut commits, &branch_graph_commits, &refs);
-    let status = repo.status().unwrap_or_default();
+    let (status, changes) = load_changes_checked(&repo).unwrap_or_default();
     let authors = repo.authors_with_email().unwrap_or_default();
-    let changes = load_changes(&repo);
     let operation = repo.operation();
     let reflog = repo.reflog(100).unwrap_or_default();
     let conflicts = repo.conflicts().unwrap_or_default();
@@ -416,6 +424,8 @@ pub(crate) fn load_tab_with_executable(
         branch: summary.branch,
         ahead: summary.ahead,
         behind: summary.behind,
+        head_oid: repo.head_oid(),
+        ref_oids,
         commits,
         graph_commits,
         refs,
@@ -531,6 +541,431 @@ pub(crate) fn reload(tab: &mut Tab) {
     tab.id = id;
     tab.load_id = load_id;
     tab.sidebar_collapsed = sidebar_collapsed;
+}
+
+/// 后台仓库校验的结果；只含 Git 数据，不包含提交草稿、筛选与布局状态。
+pub(crate) struct RefreshSnapshot {
+    summary: domain::RepoSummary,
+    status: Vec<StatusEntry>,
+    changes: Vec<ChangeEntry>,
+    selected_change: Option<(Option<usize>, domain::diff::Patch)>,
+    operation: git::Operation,
+    conflicts: Vec<String>,
+    conflict_editor: Option<ConflictEditorRefresh>,
+    refs: Refs,
+    ref_oids: BTreeMap<String, String>,
+    head: git::HeadState,
+    head_oid: Option<String>,
+    remote_urls: Vec<(String, String)>,
+    reflog: Vec<git::ReflogEntry>,
+    history: Option<HistoryRefresh>,
+    blame: Option<BlameRefresh>,
+}
+
+struct HistoryRefresh {
+    commits: Vec<Commit>,
+    graph_commits: Vec<Commit>,
+    authors: Vec<git::Author>,
+    selected: Option<usize>,
+    selection: Option<CommitSelectionData>,
+    compare: Vec<usize>,
+    show_commit_patch: Option<domain::diff::Patch>,
+}
+
+struct BlameRefresh {
+    blame: Vec<git::BlameLine>,
+    blame_path: String,
+    blame_revision: String,
+    blame_return_mode: Option<crate::Mode>,
+    blame_focus_sha: Option<String>,
+    blame_selected_line: Option<u32>,
+    blame_patch: domain::diff::Patch,
+    blame_error: Option<String>,
+    file_history: Vec<git::FileHistoryEntry>,
+}
+
+struct ConflictEditorRefresh {
+    path: String,
+    text: String,
+    sides: Option<domain::conflict::ConflictSides>,
+    binary: bool,
+}
+
+/// 在后台读取当前仓库状态。任一必要查询失败时保留整个上次成功快照。
+pub(crate) fn read_refresh_snapshot(
+    tab: &Tab,
+    mode: crate::Mode,
+) -> Result<RefreshSnapshot, String> {
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
+    let summary = repo.summary().map_err(|error| error.detail())?;
+    let refs = repo.refs().map_err(|error| error.detail())?;
+    let ref_oids = repo.ref_oid_snapshot().map_err(|error| error.detail())?;
+    let (status, mut changes) = load_changes_checked(&repo).map_err(|error| error.detail())?;
+    for change in &mut changes {
+        change.changelist = tab
+            .changelists
+            .iter()
+            .find(|list| list.paths.iter().any(|path| path == &change.path))
+            .map(|list| list.name.clone());
+    }
+    let selected_change = (mode == crate::Mode::Changes)
+        .then_some(tab.selected_change)
+        .flatten()
+        .map(|old_index| -> Result<_, String> {
+            let old_path = tab
+                .changes
+                .get(old_index)
+                .map(|change| change.path.as_str());
+            let index = old_path
+                .and_then(|path| changes.iter().position(|change| change.path == path))
+                .or_else(|| {
+                    (!changes.is_empty()).then_some(old_index.min(changes.len().saturating_sub(1)))
+                });
+            let patch = match index.and_then(|index| changes.get(index)) {
+                Some(change) if !change.untracked => repo
+                    .file_diff(change.path.as_str(), change.staged)
+                    .map_err(|error| error.detail())?,
+                _ => domain::diff::Patch::default(),
+            };
+            return Ok((index, patch));
+        });
+    let selected_change = match selected_change {
+        Some(result) => Some(result?),
+        None => None,
+    };
+    let operation = repo.operation();
+    let conflicts = repo.conflicts().map_err(|error| error.detail())?;
+    let conflict_editor = refreshed_conflict_path(tab, operation, &conflicts)
+        .map(|path| -> Result<_, String> {
+            let worktree = repo
+                .conflict_worktree_content(path.as_str())
+                .map_err(|error| error.detail())?;
+            let sides = repo
+                .conflict_sides(path.as_str())
+                .map_err(|error| error.detail())?;
+            let binary = worktree
+                .as_deref()
+                .is_some_and(|bytes| bytes.contains(&0) || std::str::from_utf8(bytes).is_err());
+            let text = worktree
+                .as_deref()
+                .and_then(|bytes| std::str::from_utf8(bytes).ok())
+                .unwrap_or_default()
+                .to_string();
+            return Ok(ConflictEditorRefresh {
+                path: path.to_string(),
+                text,
+                sides: Some(sides),
+                binary,
+            });
+        })
+        .transpose()?;
+    let head = repo.head_state();
+    let head_oid = repo.head_oid();
+    let remote_urls = repo.remote_urls().map_err(|error| error.detail())?;
+    let reflog = repo.reflog(100).map_err(|error| error.detail())?;
+    let history = if head != tab.head
+        || head_oid != tab.head_oid
+        || refs != tab.refs
+        || ref_oids != tab.ref_oids
+    {
+        Some(read_history_refresh(tab, &repo, &refs)?)
+    } else {
+        None
+    };
+    let blame =
+        if mode == crate::Mode::Blame && tab.blame_revision == "HEAD" && !tab.blame_path.is_empty()
+        {
+            let mut refreshed = tab.clone();
+            crate::features::history::ops::open_blame(
+                &mut refreshed,
+                tab.blame_path.as_str(),
+                "HEAD",
+                tab.blame_return_mode.unwrap_or(crate::Mode::Changes),
+            );
+            if let Some(focused) = tab.blame_focus_sha.as_ref().filter(|sha| {
+                refreshed
+                    .file_history
+                    .iter()
+                    .any(|entry| &entry.commit.sha == *sha)
+            }) {
+                refreshed.blame_focus_sha = Some(focused.clone());
+            }
+            if let Some(line) = tab
+                .blame_selected_line
+                .filter(|line| *line > 0 && *line as usize <= refreshed.blame.len())
+            {
+                refreshed.blame_selected_line = Some(line);
+            }
+            Some(BlameRefresh {
+                blame: refreshed.blame,
+                blame_path: refreshed.blame_path,
+                blame_revision: refreshed.blame_revision,
+                blame_return_mode: refreshed.blame_return_mode,
+                blame_focus_sha: refreshed.blame_focus_sha,
+                blame_selected_line: refreshed.blame_selected_line,
+                blame_patch: refreshed.blame_patch,
+                blame_error: refreshed.blame_error,
+                file_history: refreshed.file_history,
+            })
+        } else {
+            None
+        };
+    return Ok(RefreshSnapshot {
+        summary,
+        status,
+        changes,
+        selected_change,
+        operation,
+        conflicts,
+        conflict_editor,
+        refs,
+        ref_oids,
+        head,
+        head_oid,
+        remote_urls,
+        reflog,
+        history,
+        blame,
+    });
+}
+
+fn refreshed_conflict_path(
+    tab: &Tab,
+    operation: git::Operation,
+    conflicts: &[String],
+) -> Option<String> {
+    if !tab.conflict_open || operation == git::Operation::None {
+        return None;
+    }
+    if operation != tab.operation {
+        return conflicts.first().cloned();
+    }
+    let selected = tab
+        .conflict_paths
+        .get(tab.conflict_index)
+        .filter(|path| tab.conflicts.contains(path) || tab.resolved_conflicts.contains_key(*path))
+        .cloned();
+    return selected.or_else(|| conflicts.first().cloned());
+}
+
+fn read_history_refresh(tab: &Tab, repo: &Repo, refs: &Refs) -> Result<HistoryRefresh, String> {
+    let mut commits = repo
+        .log_history(&tab.filter)
+        .map_err(|error| error.detail())?;
+    let graph_commits = if tab.filter.query.is_empty()
+        && tab.filter.author.is_none()
+        && tab.filter.authors.is_empty()
+        && tab.filter.since.is_none()
+        && tab.filter.until.is_none()
+        && tab.filter.path.is_none()
+        && tab.filter.message.is_empty()
+    {
+        commits.clone()
+    } else {
+        repo.log_history_graph(&tab.filter)
+            .map_err(|error| error.detail())?
+    };
+    let branch_graph_commits =
+        if tab.filter.reference.is_some() || !tab.filter.references.is_empty() {
+            repo.log_all().map_err(|error| error.detail())?
+        } else {
+            graph_commits.clone()
+        };
+    git::decorate_commit_branch_history(&mut commits, &branch_graph_commits, refs);
+
+    let previous_selected_sha = tab.selected_commit().map(|commit| commit.sha.clone());
+    let selected = previous_selected_sha
+        .as_ref()
+        .and_then(|sha| commits.iter().position(|commit| &commit.sha == sha))
+        .or_else(|| {
+            (!commits.is_empty()).then(|| {
+                tab.selected
+                    .unwrap_or_default()
+                    .min(commits.len().saturating_sub(1))
+            })
+        });
+    let next_selected_sha =
+        selected.and_then(|index| commits.get(index).map(|commit| commit.sha.clone()));
+    let selection = selected
+        .and_then(|index| commits.get(index))
+        .map(|commit| load_commit_selection_from_repo(repo, &commit.sha, &commit.short))
+        .transpose()?;
+    let compare_shas = tab
+        .compare
+        .iter()
+        .filter_map(|index| tab.commits.get(*index).map(|commit| commit.sha.as_str()))
+        .collect::<Vec<_>>();
+    let compare = compare_shas
+        .iter()
+        .filter_map(|sha| commits.iter().position(|commit| commit.sha == *sha))
+        .collect();
+    let show_commit_patch = if tab.show_commit_diff && previous_selected_sha != next_selected_sha {
+        Some(match next_selected_sha.as_deref() {
+            Some(sha) => repo.patch(sha).map_err(|error| error.detail())?,
+            None => domain::diff::Patch::default(),
+        })
+    } else {
+        None
+    };
+    let authors = repo.authors_with_email().map_err(|error| error.detail())?;
+    return Ok(HistoryRefresh {
+        commits,
+        graph_commits,
+        authors,
+        selected,
+        selection,
+        compare,
+        show_commit_patch,
+    });
+}
+
+/// 只替换变化的仓库字段，保留草稿、筛选、折叠和其余交互状态。
+pub(crate) fn apply_refresh_snapshot(tab: &mut Tab, snapshot: RefreshSnapshot) -> bool {
+    let mut changed = false;
+    changed |= replace_if_changed(&mut tab.name, snapshot.summary.name);
+    changed |= replace_if_changed(&mut tab.branch, snapshot.summary.branch);
+    changed |= replace_if_changed(&mut tab.ahead, snapshot.summary.ahead);
+    changed |= replace_if_changed(&mut tab.behind, snapshot.summary.behind);
+    changed |= replace_if_changed(&mut tab.status, snapshot.status);
+    changed |= replace_if_changed(&mut tab.changes, snapshot.changes);
+    changed |= replace_if_changed(&mut tab.refs, snapshot.refs);
+    changed |= replace_if_changed(&mut tab.ref_oids, snapshot.ref_oids);
+    changed |= replace_if_changed(&mut tab.head, snapshot.head);
+    changed |= replace_if_changed(&mut tab.head_oid, snapshot.head_oid);
+    changed |= replace_if_changed(&mut tab.remote_urls, snapshot.remote_urls);
+    changed |= replace_if_changed(&mut tab.reflog, snapshot.reflog);
+    if let Some((selected, patch)) = snapshot.selected_change {
+        changed |= replace_if_changed(&mut tab.selected_change, selected);
+        changed |= replace_if_changed(&mut tab.change_diff, patch);
+    }
+    changed |= apply_operation_refresh(tab, snapshot.operation, snapshot.conflicts);
+    if let Some(editor) = snapshot.conflict_editor
+        && tab.conflict_open
+        && tab.operation != git::Operation::None
+        && tab.conflict_paths.get(tab.conflict_index) == Some(&editor.path)
+        && !tab.conflict_drafts.contains_key(&editor.path)
+        && !tab.resolved_conflicts.contains_key(&editor.path)
+    {
+        changed |= replace_if_changed(&mut tab.conflict_text, editor.text);
+        changed |= replace_if_changed(&mut tab.conflict_sides, editor.sides);
+        changed |= replace_if_changed(&mut tab.conflict_binary, editor.binary);
+    }
+    if let Some(history) = snapshot.history {
+        changed |= apply_history_refresh(tab, history);
+    }
+    if let Some(blame) = snapshot.blame {
+        changed |= apply_blame_refresh(tab, blame);
+    }
+    return changed;
+}
+
+fn apply_history_refresh(tab: &mut Tab, history: HistoryRefresh) -> bool {
+    let old_selected_sha = tab.selected_commit().map(|commit| commit.sha.clone());
+    let next_selected_sha = history
+        .selected
+        .and_then(|index| history.commits.get(index).map(|commit| commit.sha.clone()));
+    let selection_changed = old_selected_sha != next_selected_sha;
+    let old_file_path = tab
+        .selected_file
+        .and_then(|index| tab.files.get(index).map(|file| file.path.clone()));
+    let mut changed = false;
+    changed |= replace_if_changed(&mut tab.commits, history.commits);
+    changed |= replace_if_changed(&mut tab.graph_commits, history.graph_commits);
+    changed |= replace_if_changed(&mut tab.authors, history.authors);
+    changed |= replace_if_changed(&mut tab.selected, history.selected);
+    changed |= replace_if_changed(&mut tab.compare, history.compare);
+    if let Some(selection) = history.selection {
+        changed |= replace_if_changed(&mut tab.files, selection.files);
+        changed |= replace_if_changed(&mut tab.details, selection.details);
+    }
+    if selection_changed {
+        changed |= replace_if_changed(&mut tab.selected_file, None);
+        changed |= replace_if_changed(&mut tab.file_patch, None);
+    } else if let Some(path) = old_file_path {
+        let selected_file = tab.files.iter().position(|file| file.path == path);
+        changed |= replace_if_changed(&mut tab.selected_file, selected_file);
+        if selected_file.is_none() {
+            changed |= replace_if_changed(&mut tab.file_patch, None);
+        }
+    }
+    if let Some(patch) = history.show_commit_patch {
+        changed |= replace_if_changed(&mut tab.patch, patch);
+    }
+    if tab.selected.is_none() && tab.show_commit_diff {
+        tab.show_commit_diff = false;
+        changed = true;
+    }
+    return changed;
+}
+
+fn apply_operation_refresh(
+    tab: &mut Tab,
+    operation: git::Operation,
+    conflicts: Vec<String>,
+) -> bool {
+    let operation_changed = tab.operation != operation;
+    let conflicts_changed = tab.conflicts != conflicts;
+    if !operation_changed && !conflicts_changed {
+        return false;
+    }
+    let selected_path = tab.conflict_paths.get(tab.conflict_index).cloned();
+    tab.operation = operation;
+    tab.conflicts = conflicts;
+    if operation == git::Operation::None || operation_changed {
+        tab.conflict_paths = tab.conflicts.clone();
+        tab.resolved_conflicts.clear();
+        tab.conflict_drafts.clear();
+        tab.conflict_index = 0;
+        if operation == git::Operation::None {
+            tab.conflict_open = false;
+            tab.conflict_text.clear();
+            tab.conflict_sides = None;
+            tab.conflict_binary = false;
+        }
+        return true;
+    }
+    for path in &tab.conflicts {
+        tab.resolved_conflicts.remove(path);
+        if !tab.conflict_paths.contains(path) {
+            tab.conflict_paths.push(path.clone());
+        }
+    }
+    tab.resolved_conflicts
+        .retain(|path, _| !tab.conflicts.contains(path));
+    tab.conflict_drafts
+        .retain(|path, _| tab.conflicts.contains(path));
+    tab.conflict_index = selected_path
+        .as_ref()
+        .and_then(|selected| tab.conflict_paths.iter().position(|path| path == selected))
+        .or_else(|| {
+            tab.conflict_paths
+                .iter()
+                .position(|path| tab.conflicts.contains(path))
+        })
+        .unwrap_or(0);
+    return true;
+}
+
+fn apply_blame_refresh(tab: &mut Tab, blame: BlameRefresh) -> bool {
+    let mut changed = false;
+    changed |= replace_if_changed(&mut tab.blame, blame.blame);
+    changed |= replace_if_changed(&mut tab.blame_path, blame.blame_path);
+    changed |= replace_if_changed(&mut tab.blame_revision, blame.blame_revision);
+    changed |= replace_if_changed(&mut tab.blame_return_mode, blame.blame_return_mode);
+    changed |= replace_if_changed(&mut tab.blame_focus_sha, blame.blame_focus_sha);
+    changed |= replace_if_changed(&mut tab.blame_selected_line, blame.blame_selected_line);
+    changed |= replace_if_changed(&mut tab.blame_patch, blame.blame_patch);
+    changed |= replace_if_changed(&mut tab.blame_error, blame.blame_error);
+    changed |= replace_if_changed(&mut tab.file_history, blame.file_history);
+    return changed;
+}
+
+fn replace_if_changed<T: PartialEq>(target: &mut T, next: T) -> bool {
+    if *target == next {
+        return false;
+    }
+    *target = next;
+    return true;
 }
 
 /// 在标签页指向的目录里初始化仓库（设计板 16 的「不是仓库」动作）。
@@ -742,6 +1177,136 @@ mod tests {
         );
         assert!(filtered.commits.is_empty());
         assert_eq!(filtered.selected, None);
+    }
+
+    #[test]
+    fn refresh_observes_external_commit_and_keeps_user_state() {
+        let repo = TempRepo::new("external-commit-refresh");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let old_head = tab.head_oid.clone().expect("initial HEAD");
+        tab.summary = "unsaved commit title".to_string();
+        tab.description = "unsaved commit body".to_string();
+        tab.sidebar_collapsed.insert("user-fold".to_string());
+
+        std::fs::write(repo.path.join("a.txt"), "two\n").expect("write");
+        run_test_git(&repo.path, &["add", "-A"]);
+        run_test_git(&repo.path, &["commit", "-q", "-m", "outside commit"]);
+
+        let snapshot = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("refresh snapshot");
+        assert!(apply_refresh_snapshot(&mut tab, snapshot));
+        assert!(tab.changes.is_empty(), "外部提交后工作区变更应清空");
+        assert_ne!(tab.head_oid.as_deref(), Some(old_head.as_str()));
+        assert_eq!(tab.commits[0].summary, "outside commit");
+        assert_eq!(tab.summary, "unsaved commit title");
+        assert_eq!(tab.description, "unsaved commit body");
+        assert!(tab.sidebar_collapsed.contains("user-fold"));
+
+        let unchanged = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("second snapshot");
+        assert!(!apply_refresh_snapshot(&mut tab, unchanged));
+    }
+
+    #[test]
+    fn refresh_updates_selected_change_patch_when_status_is_unchanged() {
+        let repo = TempRepo::new("external-diff-refresh");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        tab.selected_change = Some(0);
+        std::fs::write(repo.path.join("a.txt"), "two\n").expect("write");
+
+        let first = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("first snapshot");
+        assert!(apply_refresh_snapshot(&mut tab, first));
+        assert!(tab.change_diff.raw.contains("two"));
+        let status = tab.status.clone();
+        let changes = tab.changes.clone();
+        let old_patch = tab.change_diff.raw.clone();
+
+        std::fs::write(repo.path.join("a.txt"), "three\n").expect("rewrite");
+        let second = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("second snapshot");
+        assert!(apply_refresh_snapshot(&mut tab, second));
+        assert_eq!(tab.status, status);
+        assert_eq!(tab.changes, changes);
+        assert_ne!(tab.change_diff.raw, old_patch);
+        assert!(tab.change_diff.raw.contains("three"));
+    }
+
+    #[test]
+    fn refresh_reads_history_when_a_non_current_ref_moves() {
+        let repo = TempRepo::new("non-current-ref-refresh");
+        run_test_git(&repo.path, &["branch", "side"]);
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let original_refs = tab.refs.clone();
+        let original_head = tab.head_oid.clone();
+
+        run_test_git(&repo.path, &["checkout", "-q", "side"]);
+        std::fs::write(repo.path.join("a.txt"), "side\n").expect("write");
+        run_test_git(&repo.path, &["add", "-A"]);
+        run_test_git(&repo.path, &["commit", "-q", "-m", "side advancement"]);
+        run_test_git(&repo.path, &["checkout", "-q", "main"]);
+
+        let snapshot = read_refresh_snapshot(&tab, crate::Mode::History).expect("refresh snapshot");
+        assert_eq!(snapshot.refs, original_refs);
+        assert_eq!(snapshot.head_oid, original_head);
+        assert!(
+            snapshot.history.is_some(),
+            "引用 OID 变化应触发 History 重读"
+        );
+        assert!(apply_refresh_snapshot(&mut tab, snapshot));
+        assert!(
+            tab.commits
+                .iter()
+                .any(|commit| commit.summary == "side advancement")
+        );
+    }
+
+    #[test]
+    fn refresh_tracks_external_merge_conflicts_and_abort() {
+        let repo = TempRepo::new("external-merge-refresh");
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        run_test_git(&repo.path, &["branch", "side"]);
+        run_test_git(&repo.path, &["checkout", "-q", "side"]);
+        std::fs::write(repo.path.join("a.txt"), "side\n").expect("write side");
+        run_test_git(&repo.path, &["add", "-A"]);
+        run_test_git(&repo.path, &["commit", "-q", "-m", "side change"]);
+        run_test_git(&repo.path, &["checkout", "-q", "main"]);
+        std::fs::write(repo.path.join("a.txt"), "main\n").expect("write main");
+        run_test_git(&repo.path, &["add", "-A"]);
+        run_test_git(&repo.path, &["commit", "-q", "-m", "main change"]);
+        let merge = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo.path)
+            .args(["merge", "--no-edit", "side"])
+            .output()
+            .expect("merge");
+        assert!(!merge.status.success(), "merge should stop at the conflict");
+
+        let snapshot = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("merge snapshot");
+        assert_eq!(snapshot.operation, git::Operation::Merge);
+        assert_eq!(snapshot.conflicts, vec!["a.txt".to_string()]);
+        assert!(apply_refresh_snapshot(&mut tab, snapshot));
+        assert_eq!(tab.operation, git::Operation::Merge);
+        assert_eq!(tab.conflicts, vec!["a.txt".to_string()]);
+
+        run_test_git(&repo.path, &["merge", "--abort"]);
+        let snapshot = read_refresh_snapshot(&tab, crate::Mode::Changes).expect("abort snapshot");
+        assert!(apply_refresh_snapshot(&mut tab, snapshot));
+        assert_eq!(tab.operation, git::Operation::None);
+        assert!(tab.conflicts.is_empty());
+        assert!(tab.conflict_paths.is_empty());
+        assert!(tab.conflict_drafts.is_empty());
+    }
+
+    fn run_test_git(path: &std::path::Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .expect("git");
+        assert!(
+            output.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]

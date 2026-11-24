@@ -1,6 +1,7 @@
 //! 本模块负责仓库句柄与只读查询：打开、根路径、摘要、HEAD 形态、配置与引用集合。
 
 use domain::{GitError, RepoSummary};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::exec::{
@@ -384,6 +385,30 @@ impl Repo {
             submodules,
             worktrees,
         });
+    }
+
+    /// OID snapshot for all non-symbolic refs, used to detect history changes without loading commits.
+    pub fn ref_oid_snapshot(&self) -> Result<BTreeMap<String, String>, GitError> {
+        let output = self.run_git(&[
+            "for-each-ref",
+            "--format=%(refname)%1f%(objectname)%1f%(symref)",
+        ])?;
+        let mut refs = BTreeMap::new();
+        for line in String::from_utf8_lossy(&output).lines() {
+            let Some((name, details)) = line.split_once('\u{1f}') else {
+                continue;
+            };
+            let Some((oid, symbolic_target)) = details.split_once('\u{1f}') else {
+                continue;
+            };
+            if !symbolic_target.is_empty() {
+                continue;
+            }
+            if !name.is_empty() && !oid.is_empty() {
+                refs.insert(name.to_string(), oid.to_string());
+            }
+        }
+        return Ok(refs);
     }
 
     fn branches(&self) -> Result<Vec<Branch>, GitError> {
@@ -810,6 +835,22 @@ mod tests {
                 .to_string()
         );
         assert_eq!((summary.ahead, summary.behind), (0, 0));
+    }
+
+    #[test]
+    fn ref_oid_snapshot_detects_non_head_ref_updates() {
+        let (_guard, path) = fixture("ref-oid-snapshot", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let before = repo.ref_oid_snapshot().expect("initial refs");
+        let old_main = before.get("refs/heads/main").expect("main ref");
+
+        std::fs::write(repo.root().join("a.txt"), "two\n").expect("write");
+        run_git(repo.root(), &["add", "-A"]).expect("add");
+        run_git(repo.root(), &["commit", "-q", "-m", "advance main"]).expect("commit");
+        let after = repo.ref_oid_snapshot().expect("updated refs");
+
+        assert_ne!(after.get("refs/heads/main"), Some(old_main));
+        assert_eq!(after.get("refs/heads/main"), repo.head_oid().as_ref());
     }
 
     #[test]

@@ -153,12 +153,6 @@ pub(crate) fn load_commit_selection(
     sha: &str,
     short: &str,
 ) -> Result<CommitSelectionData, String> {
-    let started = std::time::Instant::now();
-    log::debug!(
-        target: "gitui::history",
-        "event=commit_select.start commit={}",
-        short
-    );
     let repo = match Repo::open_with_executable(path, executable) {
         Ok(repo) => repo,
         Err(error) => {
@@ -171,8 +165,23 @@ pub(crate) fn load_commit_selection(
             return Err(error.detail());
         }
     };
+    return load_commit_selection_from_repo(&repo, sha, short);
+}
+
+/// 在线程中复用已打开的仓库句柄读取提交文件统计与完整信息。
+pub(crate) fn load_commit_selection_from_repo(
+    repo: &Repo,
+    sha: &str,
+    short: &str,
+) -> Result<CommitSelectionData, String> {
+    let started = std::time::Instant::now();
+    log::debug!(
+        target: "gitui::history",
+        "event=commit_select.start commit={}",
+        short
+    );
     let files = repo
-        .numstat(&sha)
+        .numstat(sha)
         .inspect(|files| {
             log::debug!(
                 target: "gitui::history",
@@ -191,7 +200,7 @@ pub(crate) fn load_commit_selection(
         })
         .unwrap_or_default();
     let details = repo
-        .commit_details(&sha)
+        .commit_details(sha)
         .inspect_err(|error| {
             log::warn!(
                 target: "gitui::history",

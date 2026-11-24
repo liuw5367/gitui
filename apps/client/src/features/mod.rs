@@ -6,8 +6,9 @@
 
 use crate::app::session::Tab;
 use nsh_core::prelude::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub(crate) mod agent;
 pub(crate) mod changes;
@@ -38,6 +39,8 @@ pub(crate) struct SessionHandle {
     pub(crate) welcome_open: Signal<bool>,
     /// 设置窗口是否打开（独立窗口；菜单、工具栏与 Done 都只改这个信号）。
     pub(crate) settings_open: Signal<bool>,
+    /// 当前主区模式；刷新时只重读当前页面的文件级补丁。
+    pub(crate) mode: Signal<crate::Mode>,
     /// 最近仓库列表：仓库成功打开后写入，扫描发现不修改此列表。
     pub(crate) recent: Signal<Vec<store::RecentRepo>>,
     /// 应用数据目录：会话、最近仓库与设置都落在这里。
@@ -58,6 +61,8 @@ pub(crate) struct SessionHandle {
     pub(crate) welcome_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
     /// Settings 窗口的原生引用；关闭时清空，重复入口用它置前。
     pub(crate) settings_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+    /// 每个标签最多运行一个刷新任务；运行期间的重复事件合并为一次后续读取。
+    pub(crate) refresh_requests: Arc<Mutex<HashMap<u64, bool>>>,
 }
 
 impl SessionHandle {
@@ -77,6 +82,143 @@ impl SessionHandle {
         if let Some(tab_id) = tab_id {
             self.ensure_tab_loaded(tab_id);
         }
+    }
+
+    /// 刷新当前活动仓库。只对已加载的主会话标签启动后台 Git 查询。
+    pub(crate) fn refresh_active_tab(&self) {
+        let current = self.active.get_untracked();
+        let tab_id = self.tabs.get_untracked().get(current).map(|tab| tab.id);
+        if let Some(tab_id) = tab_id {
+            self.refresh_tab(tab_id);
+        }
+    }
+
+    fn refresh_tab(&self, tab_id: u64) {
+        if self.auxiliary {
+            return;
+        }
+        let current = self.active.get_untracked();
+        let Some(tab) = self.tabs.get_untracked().get(current).cloned() else {
+            return;
+        };
+        if tab.id != tab_id || !tab.loaded || tab.error.is_some() {
+            return;
+        }
+        let should_start = {
+            let mut requests = self
+                .refresh_requests
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            match requests.get_mut(&tab_id) {
+                Some(pending) => {
+                    *pending = true;
+                    false
+                }
+                None => {
+                    requests.insert(tab_id, false);
+                    true
+                }
+            }
+        };
+        if !should_start {
+            return;
+        }
+
+        let session = self.clone();
+        self.task_owner.run(|| {
+            spawn(async move {
+                loop {
+                    let current = session.active.get_untracked();
+                    let list = session.tabs.get_untracked();
+                    let Some(tab) = list.get(current).filter(|tab| tab.id == tab_id).cloned()
+                    else {
+                        session.finish_refresh_request(tab_id);
+                        return;
+                    };
+                    let tab_id_at_start = tab.id;
+                    let load_id_at_start = tab.load_id;
+                    let path_at_start = tab.path.clone();
+                    let mode = session.mode.get_untracked();
+                    match crate::app::session::read_refresh_snapshot(&tab, mode) {
+                        Ok(snapshot) => {
+                            if session.mode.get_untracked() != mode {
+                                session.request_refresh_again(tab_id);
+                                if !session.repeat_or_finish_refresh(tab_id) {
+                                    return;
+                                }
+                                continue;
+                            }
+                            let mut list = session.tabs.get_untracked();
+                            let current = session.active.get_untracked();
+                            let is_still_active = list.get(current).is_some_and(|active| {
+                                active.id == tab_id_at_start
+                                    && active.load_id == load_id_at_start
+                                    && active.path == path_at_start
+                            });
+                            if !is_still_active {
+                                session.finish_refresh_request(tab_id);
+                                return;
+                            }
+                            if let Some(tab) = list.iter_mut().find(|tab| {
+                                tab.id == tab_id_at_start
+                                    && tab.load_id == load_id_at_start
+                                    && tab.path == path_at_start
+                            }) && crate::app::session::apply_refresh_snapshot(tab, snapshot)
+                            {
+                                session.tabs.set(list);
+                            }
+                        }
+                        Err(detail) => {
+                            log::warn!(
+                                target: "gitui::history",
+                                "event=repo_refresh.failed reason={}",
+                                detail
+                            );
+                            crate::interactions::notify(session.notice, detail);
+                        }
+                    }
+                    if !session.repeat_or_finish_refresh(tab_id) {
+                        return;
+                    }
+                }
+            });
+        });
+    }
+
+    fn repeat_or_finish_refresh(&self, tab_id: u64) -> bool {
+        let mut requests = self
+            .refresh_requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match requests.get_mut(&tab_id) {
+            Some(pending) if *pending => {
+                *pending = false;
+                return true;
+            }
+            Some(_) => {
+                requests.remove(&tab_id);
+            }
+            None => {}
+        }
+        return false;
+    }
+
+    fn request_refresh_again(&self, tab_id: u64) {
+        if let Some(pending) = self
+            .refresh_requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_mut(&tab_id)
+        {
+            *pending = true;
+        }
+    }
+
+    fn finish_refresh_request(&self, tab_id: u64) {
+        self.refresh_requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&tab_id);
     }
 
     /// 按标签身份启动一次延迟装载；重复激活和在途任务不会启动重复 Git 读取。
@@ -189,6 +331,7 @@ impl SessionHandle {
             active.set(index);
             tabs.set(list);
             self.ensure_tab_loaded(tab_id);
+            self.refresh_tab(tab_id);
             if !auxiliary {
                 welcome_open.set(false);
                 nsh_core::element::desktop::main_window().show();
@@ -412,6 +555,7 @@ impl SessionHandle {
         self.active.set(next_active);
         if let Some(tab_id) = next_tab_id {
             self.ensure_tab_loaded(tab_id);
+            self.refresh_tab(tab_id);
         }
         self.persist();
         if self.tabs.get_untracked().is_empty() {
@@ -461,6 +605,7 @@ impl SessionHandle {
         };
         active.set(index);
         session.ensure_tab_loaded(tab_id);
+        session.refresh_tab(tab_id);
         session.persist();
     }
 
@@ -494,6 +639,7 @@ impl SessionHandle {
         let tab_id = list[next].id;
         active.set(next);
         self.ensure_tab_loaded(tab_id);
+        self.refresh_tab(tab_id);
         self.persist();
     }
 
@@ -507,6 +653,7 @@ impl SessionHandle {
         };
         active.set(slot);
         self.ensure_tab_loaded(tab_id);
+        self.refresh_tab(tab_id);
         self.persist();
     }
 
@@ -547,6 +694,7 @@ mod session_tab_tests {
             active: signal(active_index),
             welcome_open: signal(false),
             settings_open: signal(false),
+            mode: signal(crate::Mode::History),
             recent: signal(Vec::new()),
             store_dir: std::path::PathBuf::new(),
             filter: Arc::new(git::LogFilter::default),
@@ -559,6 +707,7 @@ mod session_tab_tests {
             window: signal(None),
             welcome_window: signal(None),
             settings_window: signal(None),
+            refresh_requests: Arc::new(Mutex::new(HashMap::new())),
         };
     }
 
