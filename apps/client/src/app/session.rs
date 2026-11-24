@@ -156,6 +156,8 @@ pub(crate) struct Tab {
     pub(crate) force_push_after_commit: bool,
     /// 钩子完整日志弹层是否打开。
     pub(crate) hook_open: bool,
+    /// 仓库数据是否已完成首次装载；会话恢复时可先创建延迟装载的标签。
+    pub(crate) loaded: bool,
     /// 正在后台读取（设计板 16 的 loading 状态）。
     pub(crate) loading: bool,
     /// HEAD 形态：分支 / 游离 / 尚未提交（设计板 16）。
@@ -327,6 +329,7 @@ pub(crate) fn load_tab_with_executable(
                 git_executable: executable.clone(),
                 error: Some(error.detail()),
                 problem,
+                loaded: true,
                 ..Tab::default()
             };
         }
@@ -427,6 +430,7 @@ pub(crate) fn load_tab_with_executable(
         reflog,
         changelists,
         filter: filter.clone(),
+        loaded: true,
         ..Tab::default()
     };
     apply_changelist_assignments(&mut tab);
@@ -506,6 +510,13 @@ pub(crate) fn placeholder_tab(path: &str, filter: &LogFilter) -> Tab {
         branch: "…".to_string(),
         ..Tab::default()
     };
+}
+
+/// 会话恢复时先保留标签身份与路径，首次激活后再在后台读取仓库。
+pub(crate) fn deferred_tab(path: &str, filter: &LogFilter) -> Tab {
+    let mut tab = placeholder_tab(path, filter);
+    tab.loading = false;
+    return tab;
 }
 
 /// 重新读一遍同一个仓库（初始化后、从别处改过仓库后用）。
@@ -737,6 +748,7 @@ mod tests {
     fn placeholder_tab_is_loading_and_has_no_data() {
         let tab = placeholder_tab("/tmp/whatever", &LogFilter::default());
         assert!(tab.loading, "占位标签页应标记为加载中");
+        assert!(!tab.loaded, "占位标签页尚未装载仓库数据");
         assert_eq!(tab.name, "whatever");
         assert!(tab.commits.is_empty());
         assert!(tab.changes.is_empty());
@@ -746,6 +758,16 @@ mod tests {
         let repo = TempRepo::new("loading-flag");
         let loaded = load_tab(&repo.path.display().to_string(), &LogFilter::default());
         assert!(!loaded.loading, "装载完成后应清掉 loading");
+        assert!(loaded.loaded, "装载完成后应标记仓库数据可用");
+    }
+
+    #[test]
+    fn deferred_tab_is_not_loading_until_activated() {
+        let tab = deferred_tab("/tmp/whatever", &LogFilter::default());
+        assert!(!tab.loading);
+        assert!(!tab.loaded);
+        assert_eq!(tab.path, "/tmp/whatever");
+        assert!(tab.error.is_none());
     }
 
     #[test]

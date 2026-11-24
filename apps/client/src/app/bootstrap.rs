@@ -214,16 +214,33 @@ pub(crate) fn app() -> impl IntoElement {
     let session = store::load_session(&store_dir);
     let initial_settings = settings_state.get_untracked();
     let initial_filter = LogFilter::default();
-    let mut initial_tabs: Vec<Tab> = if initial_settings.restore_session {
+    let repo_override = acceptance::value("GITUI_REPO");
+    // 验收模式需要在首帧前读取提交、文件或冲突数据；正常启动则恢复成延迟装载的标签。
+    let eager_acceptance = acceptance::value("GITUI_MODE").is_some()
+        || acceptance::flag("GITUI_CONFLICT")
+        || acceptance::flag("GITUI_CONFLICT_FILES");
+    let mut initial_tabs: Vec<Tab> = if let Some(path) = repo_override {
+        vec![crate::app::session::load_tab_with_executable(
+            &path,
+            &initial_filter,
+            &initial_git_executable,
+        )]
+    } else if initial_settings.restore_session {
         session
             .paths
             .iter()
             .map(|path| {
-                crate::app::session::load_tab_with_executable(
-                    path,
-                    &initial_filter,
-                    &initial_git_executable,
-                )
+                if eager_acceptance {
+                    crate::app::session::load_tab_with_executable(
+                        path,
+                        &initial_filter,
+                        &initial_git_executable,
+                    )
+                } else {
+                    let mut tab = crate::app::session::deferred_tab(path, &initial_filter);
+                    tab.git_executable = initial_git_executable.clone();
+                    tab
+                }
             })
             .collect()
     } else {
@@ -232,13 +249,6 @@ pub(crate) fn app() -> impl IntoElement {
     // 验收与命令行入口：`GITUI_REPO=/path/to/repo` 直接打开指定仓库，
     // 优先于会话恢复。截图验收需要它——没有打开的仓库，历史表与变更页
     // 根本不会渲染，截图只能看到欢迎页。
-    if let Some(path) = acceptance::value("GITUI_REPO") {
-        initial_tabs = vec![crate::app::session::load_tab_with_executable(
-            &path,
-            &initial_filter,
-            &initial_git_executable,
-        )];
-    }
     if mode.get_untracked() == Mode::Blame
         && let Some(tab) = initial_tabs.first_mut()
         && tab.error.is_none()
@@ -375,6 +385,7 @@ pub(crate) fn app() -> impl IntoElement {
         welcome_window: signal(None),
         settings_window: signal(None),
     };
+    session.ensure_active_tab_loaded();
     let close_session = session.clone();
     main_window().on_close_press(move |reason| {
         if reason == CloseReason::System {

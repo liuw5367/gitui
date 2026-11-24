@@ -137,7 +137,10 @@ fn match_body(
         )
         .min(180.0)
         .visible(move || {
-            sidebar_open.get() && left_current.get().is_some_and(|tab| tab.error.is_none())
+            sidebar_open.get()
+                && left_current
+                    .get()
+                    .is_some_and(|tab| tab.loaded && tab.error.is_none())
         }),
         crate::ui::split::Pane::flex(center_content(
             language,
@@ -168,7 +171,10 @@ fn match_body(
         )
         .min(280.0)
         .visible(move || {
-            right_panel_open.get() && right_current.get().is_some_and(|tab| tab.error.is_none())
+            right_panel_open.get()
+                && right_current
+                    .get()
+                    .is_some_and(|tab| tab.loaded && tab.error.is_none())
         }),
     ]);
 }
@@ -241,6 +247,10 @@ fn center_content(
         let current = current;
         move || current.get().and_then(|tab| tab.error.clone())
     });
+    let current_unloaded = computed({
+        let current = current;
+        move || current.get().is_some_and(|tab| !tab.loaded)
+    });
     let current_has_history_diff = computed({
         let current = current;
         move || {
@@ -269,6 +279,9 @@ fn center_content(
                 let retry: std::sync::Arc<dyn Fn()> =
                     std::sync::Arc::new(move || refresh.refresh());
                 return error_panel(language, detail, retry, session).into_element();
+            }
+            if current_unloaded.get() {
+                return repository_loading(language).into_element();
             }
             return match mode.get() {
                 crate::Mode::History => {
@@ -486,6 +499,27 @@ fn history_list_snapshot(mut tab: Tab) -> Tab {
     tab.blame_error = None;
     tab.file_history.clear();
     return tab;
+}
+
+fn repository_loading(language: Signal<SharedString>) -> AnyElement {
+    let mut skeleton = Vec::<AnyElement>::new();
+    for _ in 0..8 {
+        skeleton.push(crate::ui::section::skeleton_row(&[64.0, 240.0, 80.0]).into_element());
+    }
+    return view()
+        .w_full()
+        .h_full()
+        .min_h_0()
+        .flex_col()
+        .gap(px(crate::ui::GAP))
+        .p(px(12.0))
+        .child(
+            text(move || i18n::t(language.get().as_str(), "common.loading"))
+                .text_size(px(crate::ui::BODY))
+                .text_color(move || design::text3()),
+        )
+        .child(skeleton)
+        .into_element();
 }
 
 fn comparison_endpoint_label(tab: &Tab, language: &str, endpoint: &str) -> String {

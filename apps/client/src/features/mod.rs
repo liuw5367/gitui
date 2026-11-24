@@ -70,6 +70,69 @@ impl SessionHandle {
         return git::Repo::open_with_executable(path, &executable);
     }
 
+    /// 首次进入工作区时优先装载当前标签；其余恢复标签留待用户首次选择。
+    pub(crate) fn ensure_active_tab_loaded(&self) {
+        let current = self.active.get_untracked();
+        let tab_id = self.tabs.get_untracked().get(current).map(|tab| tab.id);
+        if let Some(tab_id) = tab_id {
+            self.ensure_tab_loaded(tab_id);
+        }
+    }
+
+    /// 按标签身份启动一次延迟装载；重复激活和在途任务不会启动重复 Git 读取。
+    fn ensure_tab_loaded(&self, tab_id: u64) {
+        let tabs = self.tabs;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        if tab.loaded || tab.loading || tab.path.is_empty() || self.auxiliary {
+            return;
+        }
+
+        let load_id = crate::app::session::next_tab_id();
+        tab.load_id = load_id;
+        tab.loading = true;
+        let path = tab.path.clone();
+        let filter = tab.filter.clone();
+        let executable = tab.git_executable.clone();
+        tabs.set(list);
+
+        let recent = self.recent;
+        let store_dir = self.store_dir.clone();
+        let persist_session = self.persist_session;
+        self.task_owner.run(|| {
+            spawn(async move {
+                let mut loaded = crate::app::session::load_tab_with_executable(
+                    path.as_str(),
+                    &filter,
+                    &executable,
+                );
+                let branch = match &loaded.head {
+                    git::HeadState::Branch(name) => Some(name.clone()),
+                    git::HeadState::Unborn { branch } => Some(branch.clone()),
+                    git::HeadState::Detached { .. } => None,
+                };
+                let loaded_path = loaded.path.clone();
+                let mut list = tabs.get_untracked();
+                let Some(index) = list
+                    .iter()
+                    .position(|tab| tab.id == tab_id && tab.load_id == load_id)
+                else {
+                    return;
+                };
+                loaded.id = tab_id;
+                loaded.load_id = load_id;
+                list[index] = loaded;
+                tabs.set(list);
+                if persist_session && let Some(branch) = branch {
+                    store::set_recent_branch(&store_dir, &loaded_path, &branch);
+                    recent.set(store::load_recent(&store_dir));
+                }
+            });
+        });
+    }
+
     /// 设置页变更 Git 路径后，更新已打开标签；已经克隆出的 Repo 仍保留旧快照。
     pub(crate) fn refresh_git_executable(&self) {
         let executable = self.current_git_executable();
@@ -122,8 +185,10 @@ impl SessionHandle {
             .iter()
             .position(|candidate| candidate.path == path.as_str())
         {
+            let tab_id = list[index].id;
             active.set(index);
             tabs.set(list);
+            self.ensure_tab_loaded(tab_id);
             if !auxiliary {
                 welcome_open.set(false);
                 nsh_core::element::desktop::main_window().show();
@@ -342,8 +407,12 @@ impl SessionHandle {
         } else {
             old_active
         };
+        let next_tab_id = list.get(next_active).map(|tab| tab.id);
         self.tabs.set(list);
         self.active.set(next_active);
+        if let Some(tab_id) = next_tab_id {
+            self.ensure_tab_loaded(tab_id);
+        }
         self.persist();
         if self.tabs.get_untracked().is_empty() {
             self.finish_empty_session();
@@ -386,10 +455,13 @@ impl SessionHandle {
         let active = self.active;
         let tabs = self.tabs;
         let session = self.clone();
-        if index < tabs.get_untracked().len() {
-            active.set(index);
-            session.persist();
-        }
+        let list = tabs.get_untracked();
+        let Some(tab_id) = list.get(index).map(|tab| tab.id) else {
+            return;
+        };
+        active.set(index);
+        session.ensure_tab_loaded(tab_id);
+        session.persist();
     }
 
     pub(crate) fn activate_tab_id(&self, tab_id: u64) {
@@ -408,7 +480,8 @@ impl SessionHandle {
     pub(crate) fn cycle_tab(&self, forward: bool) {
         let tabs = self.tabs;
         let active = self.active;
-        let count = tabs.get_untracked().len();
+        let list = tabs.get_untracked();
+        let count = list.len();
         if count < 2 {
             return;
         }
@@ -418,7 +491,9 @@ impl SessionHandle {
         } else {
             (current + count - 1) % count
         };
+        let tab_id = list[next].id;
         active.set(next);
+        self.ensure_tab_loaded(tab_id);
         self.persist();
     }
 
@@ -426,10 +501,13 @@ impl SessionHandle {
     pub(crate) fn activate_slot(&self, slot: usize) {
         let tabs = self.tabs;
         let active = self.active;
-        if slot < tabs.get_untracked().len() {
-            active.set(slot);
-            self.persist();
-        }
+        let list = tabs.get_untracked();
+        let Some(tab_id) = list.get(slot).map(|tab| tab.id) else {
+            return;
+        };
+        active.set(slot);
+        self.ensure_tab_loaded(tab_id);
+        self.persist();
     }
 
     fn persist(&self) {
