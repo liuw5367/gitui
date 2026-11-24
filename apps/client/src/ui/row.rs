@@ -132,6 +132,39 @@ pub(crate) fn row_sized(
     height: f32,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    return row_sized_with_radius(
+        caption, subtitle, leading, trailing, selected, disabled, height, 6.0, on_press,
+    );
+}
+
+/// 行高由调用方给、背景保持平直的单行按钮。
+pub(crate) fn row_sized_flat(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    trailing: Vec<AnyElement>,
+    selected: bool,
+    disabled: bool,
+    height: f32,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return row_sized_with_radius(
+        caption, subtitle, leading, trailing, selected, disabled, height, 0.0, on_press,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn row_sized_with_radius(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    trailing: Vec<AnyElement>,
+    selected: bool,
+    disabled: bool,
+    height: f32,
+    radius: f32,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
     let mut element = nsh_base::button()
         .disabled(disabled)
         .opacity(if disabled { 0.45 } else { 1.0 })
@@ -141,7 +174,7 @@ pub(crate) fn row_sized(
         .items_center()
         .gap(px(ui::GAP_SM))
         .px(px(ui::GAP))
-        .rounded(px(6.0))
+        .rounded(px(radius))
         .bg(move || {
             if selected {
                 design::selected()

@@ -71,6 +71,10 @@ pub(crate) fn app() -> impl IntoElement {
     let commit_summary = signal(String::new());
     let commit_description = signal(String::new());
     let changelist_open = signal(false);
+    let rename_changelist = signal(None);
+    let rename_changelist_value = signal(String::new());
+    let collapsed_changelists = signal(std::collections::BTreeMap::new());
+    let changelist_tree_expanded = signal(std::collections::BTreeMap::new());
     // 验收开关：`GITUI_PALETTE=1` 启动即打开命令面板（⌘K 的等价物），
     // 用于截图核对面板与列表项。
     let palette_open = signal(acceptance::flag("GITUI_PALETTE"));
@@ -506,7 +510,13 @@ pub(crate) fn app() -> impl IntoElement {
 
     // 变更/暂存（P2 竖切的第二片）：清单浮层开关收进 ChangesState，用例收进
     // ChangesCommands；变更列表、选中项与选中补丁仍挂在 `Tab` 上。
-    let changes_state = features::changes::state::ChangesState { changelist_open };
+    let changes_state = features::changes::state::ChangesState {
+        changelist_open,
+        rename_changelist,
+        rename_changelist_value,
+        collapsed_changelists,
+        changelist_tree_expanded,
+    };
     let changes_commands = features::changes::commands::ChangesCommands {
         state: changes_state,
         session: session.clone(),

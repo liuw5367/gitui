@@ -6,7 +6,18 @@
 
 板内 `.window` 没有内联尺寸，取样式表的 `height:calc(100vh - 48px)`：预览 1440×900、桌面留白 24，窗口 **1392×852**；`.desktop` 另带内联 `position:absolute;left:0;top:-1px`，只把画布上移 1px，不改尺寸。本页是**主窗口内换主体**（工具条 `Changes 12` 为当前项），五段竖排外多一条合并横幅：标题栏 40 / 工具条 44 / 横幅 30 / 三栏主体 / 状态栏 24。主体 **712** = 852 − 2 − 40 − 44 − 30 − 24，中列 798 = 1390 − 232 − 360。
 
-运行时初始入口按当前工作流显示：工具条保持 Changes 选中，右栏 Commit 面板顶部放变更清单树，中栏显示 History 提交列表。点击右栏文件后，中栏整栏切换为本页画板所示的 Diff；返回条 `< Commits` 回到提交列表。中栏不同时堆叠 Changes 文件列表和 Diff。
+运行时初始入口按当前工作流显示：工具条保持 Changes 选中，右栏显示变更清单树与底部提交区，中栏显示 History 提交列表。点击右栏文件后，中栏整栏切换为本页画板所示的 Diff；返回条 `< Commits` 回到提交列表。中栏不同时堆叠 Changes 文件列表和 Diff。
+
+## 当前 Changes 入口实现
+
+- Changes 右栏不显示独立的 `Commit` / `Agent` 标题行，也不显示 `Ask Agent to draft`；全局工具栏的 Agent 入口仍保留。Refs 使用的提交检查器保持原样。
+- Changelists 是无外围圆角与边框的弹性区域，列表在内部滚动。标题行显示文件总数及 staged / unstaged 数，并提供全部折叠／展开切换；筛选框为 24 高、有上下留白，输入有内容时可在框内清空。每个清单名称行保持方角，整行点击折叠或展开，右键菜单提供设为默认、修改名称、删除、暂存全部和取消暂存全部；折叠状态按仓库标签保留。
+- 保留底部拖动提示与清单管理入口，提示缩短为 `Drag files to another list`（中文 `拖动文件到其他清单`），去掉前置省略号图标；Manage 保持贴右，按钮文案不再带省略号。移除改变 Changelists 高度的拖拽手柄。
+- 清单管理弹窗在标题栏右侧提供关闭按钮，贴近底部的 Manage 入口显示；移除底部 “Filters only” 提示。默认清单也显示禁用的删除按钮，以保持操作列对齐；非默认清单可显式删除，删除后其变更回到默认清单。拖动清空的自定义清单会保留，且空清单可跨应用重启恢复。
+- 清单文件树复用提交信息面板的共享层级树控件，文件夹可折叠；平铺模式显示完整文件路径并在悬停时提示。文件行仍使用 Changes 的暂存、选择、拖放和右键菜单操作，状态标记排在增删行数之后，已暂存复选框不显示边框。拖放目标以整个清单区域的背景色标记。
+- Summary 和 Description 固定在提交区底部，没有单独标签，通过 placeholder 说明用途；Description 从一行随内容增高，最多三行。amend、sign-off、push、force 与 commit 按钮位于一行；Force 始终显示，Push 未开启时禁用，启用后使用 `--force-with-lease`。钩子状态显示在输入区上方。无暂存改动提示使用较小字号以减少高度。
+- 开启 amend 时，自动载入 `HEAD` 的提交摘要和正文作为新的提交草稿。
+- 该运行布局是按用户反馈批准的设计差异，见 [DEVIATIONS #59](../design/DEVIATIONS.md#59-changes-面板与提交区布局)。
 
 ## 1. 骨架
 
@@ -140,8 +151,8 @@
 
 ## 8. 文案要点
 
-- 三处计数口径不同：`12 files · +149 −90`（整个工作区）、`3 staged · 9 unstaged`（暂存/未暂存）、`3 staged files across all changelists`（跨变更集合计），主按钮只数已暂存。禁用与原因成对：按钮 `disabled` + 下方 `Hooks must pass before committing`，`Commit without hooks` 把「绕过」写在 `title` 里。
-- `Unstage Hunk` / `Unstage line` / `Unstage File` 分别对应 hunk、行、文件三级，三个词不要互换；`Changelists are filters; staging commits.` 与 11 的 `Filters only — staging commits` 是同一句的两种缩写。
+- 三处计数口径不同：`12 files · +149 −90`（整个工作区）、`3 staged · 9 unstaged`（暂存/未暂存）、`3 staged files across all changelists`（跨变更集合计），主按钮只数已暂存。清单负责分组和筛选，真正进入提交的是已暂存文件。
+- `Unstage Hunk` / `Unstage line` / `Unstage File` 分别对应 hunk、行、文件三级，三个词不要互换。
 
 ## 9. 与其它画板的关系
 

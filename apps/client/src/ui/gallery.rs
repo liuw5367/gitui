@@ -336,6 +336,19 @@ fn body(
                             "Focus the editor to inspect the theme ring.".to_string()
                         })),
                         None,
+                    ))
+                    .child(ui::field::field(
+                        move || "Auto-growing multiline".to_string(),
+                        ui::text_input::text_area_auto_grow(
+                            area_value,
+                            move || "Description grows up to three lines".to_string(),
+                            64.0,
+                            move |text| area_value.set(text.to_string()),
+                        ),
+                        Some(Box::new(move || {
+                            "Starts at one line and scrolls after three.".to_string()
+                        })),
+                        None,
                     )),
             ))
             .child(section(
@@ -420,6 +433,23 @@ fn body(
                         false,
                         false,
                         47.0,
+                        || {},
+                    ))
+                    .child(ui::row::row_sized_flat(
+                        move || "Default Changelist".to_string(),
+                        None,
+                        Some(
+                            ui::icon::icon_view(
+                                "chev-down",
+                                ui::icon::IconSize::Inline,
+                                design::text3,
+                            )
+                            .into_element(),
+                        ),
+                        vec![ui::meta(move || "5".to_string()).into_element()],
+                        false,
+                        false,
+                        23.0,
                         || {},
                     ))
                     .child(ui::row::row_stacked(

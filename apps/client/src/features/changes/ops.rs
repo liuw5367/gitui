@@ -52,6 +52,7 @@ pub(crate) fn refresh_changes(tab: &mut Tab) {
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.path.clone());
     tab.changes = load_changes(&repo);
+    apply_changelist_assignments(tab);
     tab.status = repo.status().unwrap_or_default();
     tab.operation = repo.operation();
     tab.conflicts = repo.conflicts().unwrap_or_default();
@@ -69,6 +70,17 @@ pub(crate) fn refresh_changes(tab: &mut Tab) {
         tab.change_diff = domain::diff::Patch::default();
     }
     tab.error = None;
+}
+
+/// 把持久化清单中的路径归属恢复到当前工作区变更行。
+pub(crate) fn apply_changelist_assignments(tab: &mut Tab) {
+    for entry in &mut tab.changes {
+        entry.changelist = tab
+            .changelists
+            .iter()
+            .find(|list| list.paths.iter().any(|path| path == &entry.path))
+            .map(|list| list.name.clone());
+    }
 }
 
 /// 选中一条变更并读取它的 diff。
@@ -111,7 +123,6 @@ pub(crate) fn move_to_changelist(tab: &mut Tab, path: &str, list: Option<&str>) 
             }),
         }
     }
-    lists.retain(|existing| !existing.paths.is_empty());
     store::save_changelists(&store_dir, repo.as_str(), &lists);
     tab.changelists = lists;
     // 变更行上的清单归属跟着更新。
@@ -120,6 +131,57 @@ pub(crate) fn move_to_changelist(tab: &mut Tab, path: &str, list: Option<&str>) 
             entry.changelist = list.map(|name| name.to_string());
         }
     }
+}
+
+pub(crate) fn delete_changelist(tab: &mut Tab, name: &str) {
+    let store_dir = store::default_dir(crate::brand::STORAGE_DIR);
+    let repo = tab.path.clone();
+    let mut lists = store::load_changelists(&store_dir, repo.as_str());
+    lists.retain(|list| list.name != name);
+    for entry in tab.changes.iter_mut() {
+        if entry.changelist.as_deref() == Some(name) {
+            entry.changelist = None;
+        }
+    }
+    if tab.active_changelist.as_deref() == Some(name) {
+        tab.active_changelist = None;
+    }
+    store::save_changelists(&store_dir, repo.as_str(), &lists);
+    tab.changelists = lists;
+}
+
+/// 重命名清单并同步更新路径归属与当前默认清单。
+pub(crate) fn rename_changelist(tab: &mut Tab, old_name: &str, new_name: &str) -> bool {
+    let new_name = new_name.trim();
+    if new_name.is_empty()
+        || (old_name != new_name && tab.changelists.iter().any(|list| list.name == new_name))
+    {
+        return false;
+    }
+    if old_name == new_name {
+        return true;
+    }
+
+    let Some(list) = tab
+        .changelists
+        .iter_mut()
+        .find(|list| list.name == old_name)
+    else {
+        return false;
+    };
+    list.name = new_name.to_string();
+    for entry in &mut tab.changes {
+        if entry.changelist.as_deref() == Some(old_name) {
+            entry.changelist = Some(new_name.to_string());
+        }
+    }
+    if tab.active_changelist.as_deref() == Some(old_name) {
+        tab.active_changelist = Some(new_name.to_string());
+    }
+
+    let store_dir = store::default_dir(crate::brand::STORAGE_DIR);
+    store::save_changelists(&store_dir, tab.path.as_str(), &tab.changelists);
+    return true;
 }
 
 /// 新建清单（空清单也保留，便于先建后移）。
@@ -141,6 +203,42 @@ pub(crate) fn create_changelist(tab: &mut Tab, name: &str) {
 /// 切换当前清单。
 pub(crate) fn set_active_changelist(tab: &mut Tab, name: Option<String>) {
     tab.active_changelist = name;
+}
+
+/// 暂存或取消暂存某个清单里的全部文件。
+pub(crate) fn stage_changelist(tab: &mut Tab, name: Option<&str>, stage: bool) {
+    let paths = tab
+        .changes
+        .iter()
+        .filter(|entry| entry.changelist.as_deref() == name)
+        .filter(|entry| {
+            if stage {
+                entry.worktree != ' ' || entry.untracked
+            } else {
+                entry.index != ' ' && entry.index != '?'
+            }
+        })
+        .map(|entry| entry.path.clone())
+        .collect::<Vec<_>>();
+    if paths.is_empty() {
+        return;
+    }
+    let repo = match tab.open_repo() {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    let result = if stage {
+        repo.stage(&paths)
+    } else {
+        repo.unstage(&paths)
+    };
+    match result {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
 }
 
 /// 按 hunk 或单行暂存/取消暂存当前选中的变更。
@@ -441,13 +539,96 @@ mod tests {
                 .any(|list| list.name == "Commit composer"
                     && list.paths == vec!["a.txt".to_string()])
         );
+        assert_eq!(
+            reloaded
+                .changes
+                .iter()
+                .find(|entry| entry.path == "a.txt")
+                .and_then(|entry| entry.changelist.as_deref()),
+            Some("Commit composer")
+        );
 
-        // 移回默认清单：清单条目被清空。
+        stage_changelist(&mut tab, Some("Commit composer"), true);
+        let staged = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a.txt after staging");
+        assert!(staged.staged);
+        assert_eq!(staged.changelist.as_deref(), Some("Commit composer"));
+        stage_changelist(&mut tab, Some("Commit composer"), false);
+        let unstaged = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("a.txt after unstaging");
+        assert!(!unstaged.staged);
+        assert_eq!(unstaged.changelist.as_deref(), Some("Commit composer"));
+
+        // 移回默认清单：清单保留为空，等待用户显式删除。
         move_to_changelist(&mut tab, "a.txt", None);
-        assert!(tab.changelists.iter().all(|list| list.paths.is_empty()));
+        assert!(
+            tab.changelists
+                .iter()
+                .any(|list| list.name == "Commit composer")
+        );
+        assert!(tab.changelists[0].paths.is_empty());
+        let reloaded_empty = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert!(
+            reloaded_empty
+                .changelists
+                .iter()
+                .any(|list| { list.name == "Commit composer" && list.paths.is_empty() })
+        );
 
+        move_to_changelist(&mut tab, "a.txt", Some("Commit composer"));
+        create_changelist(&mut tab, "Other");
         set_active_changelist(&mut tab, Some("Commit composer".to_string()));
         assert_eq!(tab.active_changelist.as_deref(), Some("Commit composer"));
+
+        assert!(rename_changelist(
+            &mut tab,
+            "Commit composer",
+            "Reviewed files"
+        ));
+        assert_eq!(tab.active_changelist.as_deref(), Some("Reviewed files"));
+        assert!(tab.changelists.iter().any(|list| {
+            list.name == "Reviewed files" && list.paths == vec!["a.txt".to_string()]
+        }));
+        assert_eq!(
+            tab.changes
+                .iter()
+                .find(|entry| entry.path == "a.txt")
+                .and_then(|entry| entry.changelist.as_deref()),
+            Some("Reviewed files")
+        );
+        let reloaded_renamed = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        assert!(reloaded_renamed.changelists.iter().any(|list| {
+            list.name == "Reviewed files" && list.paths == vec!["a.txt".to_string()]
+        }));
+        assert_eq!(
+            reloaded_renamed
+                .changes
+                .iter()
+                .find(|entry| entry.path == "a.txt")
+                .and_then(|entry| entry.changelist.as_deref()),
+            Some("Reviewed files")
+        );
+        assert!(!rename_changelist(&mut tab, "Reviewed files", ""));
+        assert!(!rename_changelist(&mut tab, "Reviewed files", "Other"));
+
+        // 显式删除清单时，未暂存变更回到默认清单，当前选择也回到默认清单。
+        move_to_changelist(&mut tab, "a.txt", Some("Reviewed files"));
+        delete_changelist(&mut tab, "Reviewed files");
+        delete_changelist(&mut tab, "Other");
+        assert!(tab.changelists.is_empty());
+        assert!(tab.active_changelist.is_none());
+        assert!(
+            tab.changes
+                .iter()
+                .find(|entry| entry.path == "a.txt")
+                .is_some_and(|entry| entry.changelist.is_none())
+        );
 
         unsafe { std::env::remove_var("APP_HOME") };
         let _ = std::fs::remove_dir_all(&home);

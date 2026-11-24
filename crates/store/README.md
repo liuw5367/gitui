@@ -18,7 +18,7 @@
 | `settings.toml` | 带 `schema_version = 1` 的 TOML | 通用、Git、快捷键和 Agent 偏好 |
 | `recent.txt` | 每行 `<打开时间>\t<路径>\t<分支>`，最新的在前 | 最近仓库，上限 12 条；兼容旧格式 |
 | `session.txt` | 第一行是当前 tab 下标，其后每行一个路径 | 打开的仓库与活动 tab |
-| `changelists.txt` | 每行 `<仓库>\t<清单名>\t<路径>` | 按仓库分组的变更清单 |
+| `changelists.txt` | 每行 `<仓库>\t<清单名>\t<路径>`；空路径记录表示空清单 | 按仓库分组的变更清单，空清单也会保留 |
 | `agent-audit.txt` | 每行 `<时间>\t<动作>\t<结果>\t<详情>` | Agent 审计，最新的在前 |
 
 `settings.toml` 的分区：

@@ -20,6 +20,7 @@ use crate::design;
 use crate::ui;
 use nsh_base::SelectValue;
 use nsh_core::prelude::*;
+use std::collections::BTreeMap;
 
 pub(crate) use nsh_base::{TreeEntry, TreeItem};
 
@@ -35,6 +36,88 @@ pub(crate) fn node(
     item.label = label.into();
     item.children = children;
     return item;
+}
+
+#[derive(Default)]
+struct FileDirectory {
+    directories: BTreeMap<String, FileDirectory>,
+    files: Vec<String>,
+}
+
+pub(crate) fn file_tree(
+    paths: impl IntoIterator<Item = String>,
+    merge_empty_dirs: bool,
+    compact_single_child: bool,
+) -> (Vec<TreeItem>, Vec<SharedString>) {
+    let mut root = FileDirectory::default();
+    for path in paths {
+        let mut segments = path.split('/').collect::<Vec<_>>();
+        if segments.is_empty() {
+            continue;
+        }
+        segments.pop();
+        let mut directory = &mut root;
+        for segment in segments {
+            directory = directory
+                .directories
+                .entry(segment.to_string())
+                .or_default();
+        }
+        directory.files.push(path);
+    }
+    let items = directory_items(&root, "", merge_empty_dirs, compact_single_child);
+    let expanded = items
+        .iter()
+        .filter(|item| !item.children.is_empty())
+        .map(|item| item.id.clone())
+        .collect();
+    return (items, expanded);
+}
+
+fn directory_items(
+    directory: &FileDirectory,
+    parent: &str,
+    merge_empty_dirs: bool,
+    compact_single_child: bool,
+) -> Vec<TreeItem> {
+    let mut items = Vec::new();
+    for (name, child) in &directory.directories {
+        let mut path = if parent.is_empty() {
+            name.clone()
+        } else {
+            format!("{parent}/{name}")
+        };
+        let mut label = name.clone();
+        let mut child = child;
+        while compact_single_child && child.files.is_empty() && child.directories.len() == 1 {
+            let (name, next) = child.directories.iter().next().unwrap();
+            path = format!("{path}/{name}");
+            label = format!("{label}/{name}");
+            child = next;
+        }
+        let children = directory_items(child, &path, merge_empty_dirs, compact_single_child);
+        if !merge_empty_dirs || !child.files.is_empty() {
+            items.push(node(format!("directory:{path}"), label, children));
+        } else {
+            items.extend(children);
+        }
+    }
+    for path in &directory.files {
+        let name = path.rsplit('/').next().unwrap_or(path.as_str());
+        items.push(node(format!("file:{path}"), name.to_string(), Vec::new()));
+    }
+    return items;
+}
+
+pub(crate) fn folder_ids(items: &[TreeItem]) -> Vec<SharedString> {
+    let mut ids = Vec::new();
+    for item in items {
+        if !item.children.is_empty() {
+            ids.push(item.id.clone());
+            ids.extend(folder_ids(&item.children));
+        }
+    }
+    return ids;
 }
 
 /// 一棵树。`selected` 是当前选中节点的 id；`on_select` 收到被选中的 id，
@@ -129,5 +212,23 @@ mod tests {
     fn a_node_with_children_is_a_folder() {
         let folder = node("git", "Git", vec![node("git.tools", "Tools", vec![])]);
         assert_eq!(folder.children.len(), 1);
+    }
+
+    #[test]
+    fn file_tree_obeys_directory_preferences() {
+        let paths = vec!["src/git/deep/file.rs".to_string()];
+        let (plain, _) = file_tree(paths.clone(), false, false);
+        assert_eq!(plain[0].label.as_ref(), "src");
+
+        let (compact, expanded) = file_tree(paths.clone(), false, true);
+        assert_eq!(compact[0].label.as_ref(), "src/git/deep");
+        assert_eq!(expanded[0].as_ref(), "directory:src/git/deep");
+
+        let (merged, _) = file_tree(paths, true, false);
+        assert_eq!(merged[0].id.as_ref(), "directory:src/git/deep");
+        assert_eq!(
+            merged[0].children[0].id.as_ref(),
+            "file:src/git/deep/file.rs"
+        );
     }
 }

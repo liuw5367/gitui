@@ -26,7 +26,13 @@ pub(crate) fn indicator_action(
         .justify_center()
         .rounded(px(3.0))
         .border_1()
-        .border_color(move || design::line_strong())
+        .border_color(move || {
+            if checked {
+                AdaptiveColor::TRANSPARENT
+            } else {
+                design::line_strong()
+            }
+        })
         .bg(move || {
             if checked {
                 design::accent()

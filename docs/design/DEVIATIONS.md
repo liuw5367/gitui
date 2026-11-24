@@ -81,6 +81,7 @@
 | 56 | 同步面板完成状态 | 成功状态显示通用 `Done`，具体输出只在日志区 | Fetch / Pull / Push 的完成行显示已是最新、确认到的引用与提交数量；Push 部分拒绝列出已更新与被拒绝数量，无法确认的提交数标记为未确认；原始 Git 输出保留在日志区（`features/sync/commands.rs`、`features/sync/state.rs`、`features/sync/view.rs`） | 让操作完成状态直接回答远端目标和结果，不要求用户从 Git 日志里推断 | 是（恢复通用 `Done` 完成行） |
 | 57 | Credentials provider 行 | Credentials 画板提供 GitHub / GitLab 账号连接与连接状态 | 只显示 Git credential helper、SSH 偏好与本机 SSH 密钥；Git 按需调用 AskPass，不建立 provider 账号连接（`apps/client/src/features/settings/credentials.rs`、`apps/client/src/askpass.rs`） | 按用户确定的产品范围只依赖 Git CLI，避免呈现没有 provider API 的账号连接入口 | 否（恢复该入口需另行实现 GitHub / GitLab OAuth 与账号管理） |
 | 58 | 应用自绘弹窗统一 | 22 对话框页脚 42、body 内距 11×14，各画板分别定义表单与同步面板 | 通用表单、Edit Commit Message、Squash、Hook 日志、凭据和设置确认共用 `ui/dialog.rs::dialog_panel`；标题 44、底栏 48、正文内距 16，操作按钮 Regular 28；同步对齐同一标题栏／底栏；Compare 的操作按钮使用 Regular（`features/search/form_dialog.rs`、`features/commit`、`features/sync/view.rs`） | 按用户要求统一应用弹窗的结构与控件比例，去除不可见字段的额外间距，并为全部输入提供本地化 placeholder | 是（恢复各页面自绘面板与原尺寸） |
+| 59 | Changes 面板与提交区布局 | Board 10 显示 Commit / Agent 标题行、带圆角边框的 Changelists、固定高度列表和拖拽手柄；Summary / Description 有单独标签，选项竖排且带 Agent 起草按钮 | Changes 入口移除面板标题行与起草按钮；Changelists 无外围圆角 / 边框，填充剩余高度并内部滚动，清单可独立折叠；标题行显示文件与 staged / unstaged 数，筛选框 24 高并留出上下间距；Summary / Description 固定在底部且无单独标签，Description 一至三行；amend、sign-off、push 和 commit 同行；移除高度拖拽手柄（`features/commit/view.rs`、`features/changes/view.rs`、`features/changes/state.rs`） | 按用户确认优化主窗口默认 Changes 面板，同时保留 Refs 检查器布局和全局 Agent 入口 | 是（恢复 Changes 入口的原始标题、卡片、拖拽高度及纵向表单布局） |
 
 ## 3. 已澄清：不算偏离
 

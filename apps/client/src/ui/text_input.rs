@@ -25,6 +25,7 @@ pub(crate) fn text_input(
             .on_change(move |text: &str| on_change(text)),
         invalid,
         Some(ui::CONTROL),
+        None,
         ui::BODY,
         None,
     );
@@ -44,6 +45,7 @@ pub(crate) fn text_input_sized(
             .on_change(move |text: &str| on_change(text)),
         invalid,
         Some(height),
+        None,
         ui::BODY,
         None,
     );
@@ -91,6 +93,28 @@ pub(crate) fn text_area(
             .on_change(move |text: &str| on_change(text)),
         invalid,
         height,
+        None,
+        ui::BODY,
+        None,
+    );
+}
+
+/// 多行字段从一行自然增高，并在指定高度后滚动内容。
+pub(crate) fn text_area_auto_grow(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    max_height: f32,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    return style_input(
+        nsh_base::input()
+            .multiline(true)
+            .value(value)
+            .placeholder(placeholder)
+            .on_change(move |text: &str| on_change(text)),
+        false,
+        None,
+        Some(max_height),
         ui::BODY,
         None,
     );
@@ -147,6 +171,7 @@ pub(crate) fn text_input_bound(
             .on_change(move |text: &str| set(text.to_string())),
         invalid,
         Some(ui::CONTROL),
+        None,
         ui::BODY,
         None,
     );
@@ -167,6 +192,7 @@ pub(crate) fn text_area_bound(
             .on_change(move |text: &str| set(text.to_string())),
         false,
         Some(height),
+        None,
         ui::BODY,
         None,
     )
@@ -197,6 +223,7 @@ pub(crate) fn text_input_bound_commit(
             .on_submit(move |_: &str| submit()),
         invalid,
         Some(ui::CONTROL),
+        None,
         ui::BODY,
         None,
     );
@@ -221,6 +248,7 @@ pub(crate) fn masked_input(
             .on_change(move |text: &str| on_change(text.to_string())),
         false,
         Some(ui::CONTROL),
+        None,
         ui::BODY,
         None,
     );
@@ -242,6 +270,7 @@ pub(crate) fn askpass_input(
             .on_change(move |text: &str| on_change(text.to_string())),
         false,
         Some(ui::CONTROL),
+        None,
         ui::BODY,
         None,
     );
@@ -388,6 +417,7 @@ fn search_field_inner(
         ui::icon::icon_view("search", ui::icon::IconSize::Inline, design::text3).into_element(),
         input.into_element(),
     ];
+    let clearable = clear_label.is_some();
     if let Some(combo) = shortcut {
         children.push(ui::badge::kbd(combo).into_element());
     }
@@ -411,7 +441,8 @@ fn search_field_inner(
             .into_element(),
         );
     }
-    return field_frame(children);
+    let right_padding = if clearable { ui::GAP_XS } else { ui::GAP };
+    return field_frame_with_right_padding(children, right_padding);
 }
 
 /// 输入框外框：所有"容器 + 内部输入框"的字段共用同一套高度、内距、圆角与描边。
@@ -419,13 +450,21 @@ fn search_field_inner(
 /// 焦点落在内部输入框上，所以外框用 `focus_within` 变强调色并显示主题 outline；
 /// 写在容器上的 `focus_visible` 不会触发。
 fn field_frame(children: Vec<AnyElement>) -> nsh_core::element::View {
+    return field_frame_with_right_padding(children, ui::GAP);
+}
+
+fn field_frame_with_right_padding(
+    children: Vec<AnyElement>,
+    right_padding: f32,
+) -> nsh_core::element::View {
     let mut frame = view()
         .w_full()
         .h(px(ui::CONTROL))
         .flex_row()
         .items_center()
         .gap(px(ui::GAP_SM))
-        .px(px(ui::GAP))
+        .pl(px(ui::GAP))
+        .pr(px(right_padding))
         .rounded(px(metrics::RADIUS_CONTROL))
         .border_1()
         .border_color(move || design::field_border())
@@ -447,12 +486,18 @@ fn style_input(
     input: nsh_core::element::Input,
     invalid: bool,
     height: Option<f32>,
+    max_height: Option<f32>,
     text_size: f32,
     line_height: Option<f32>,
 ) -> impl IntoElement {
     let mut input = input.w_full();
     if let Some(height) = height {
         input = input.h(px(height)).min_h(px(height));
+    } else if let Some(max_height) = max_height {
+        input = input
+            .flex_shrink_0()
+            .min_h(px(ui::CONTROL))
+            .max_h(px(max_height));
     } else {
         input = input.flex_1().min_h(px(0.0));
     }

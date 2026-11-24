@@ -144,6 +144,16 @@ impl ChangesCommands {
         }
     }
 
+    /// 暂存或取消暂存指定清单中的全部文件。
+    pub(crate) fn stage_changelist(&self, name: Option<String>, stage: bool) {
+        let current = self.session.active.get_untracked();
+        let mut tabs = self.session.tabs.get_untracked();
+        if let Some(tab) = tabs.get_mut(current) {
+            ops::stage_changelist(tab, name.as_deref(), stage);
+            self.session.tabs.set(tabs);
+        }
+    }
+
     /// 按 hunk / 单行暂存或取消暂存（原 `apply_piece`）。
     pub(crate) fn apply_piece(&self, hunk: usize, line: Option<usize>, reverse: bool) {
         let tabs = self.session.tabs;
@@ -185,6 +195,65 @@ impl ChangesCommands {
             ops::move_to_changelist(tab, path.as_str(), list_name.as_deref());
             self.session.tabs.set(list);
         }
+    }
+
+    pub(crate) fn delete_changelist(&self, name: String) {
+        let current = self.session.active.get_untracked();
+        let mut tabs = self.session.tabs.get_untracked();
+        if let Some(tab) = tabs.get_mut(current) {
+            ops::delete_changelist(tab, name.as_str());
+            self.state.collapsed_changelists.update(|by_repo| {
+                if let Some(groups) = by_repo.get_mut(&tab.id) {
+                    groups.remove(&Some(name.clone()));
+                }
+            });
+            self.state.changelist_tree_expanded.update(|by_group| {
+                by_group.remove(&(tab.id, Some(name.clone())));
+            });
+            self.session.tabs.set(tabs);
+        }
+    }
+
+    pub(crate) fn open_rename_changelist(&self, name: String) {
+        self.state.rename_changelist_value.set(name.clone());
+        self.state.rename_changelist.set(Some(name));
+    }
+
+    pub(crate) fn close_rename_changelist(&self) {
+        self.state.rename_changelist.set(None);
+        self.state.rename_changelist_value.set(String::new());
+    }
+
+    /// 提交清单重命名；名称重复或为空时保持对话框打开。
+    pub(crate) fn rename_changelist(&self) -> bool {
+        let Some(old_name) = self.state.rename_changelist.get_untracked() else {
+            return false;
+        };
+        let new_name = self.state.rename_changelist_value.get_untracked();
+        let current = self.session.active.get_untracked();
+        let mut tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs.get_mut(current) else {
+            return false;
+        };
+        if !ops::rename_changelist(tab, old_name.as_str(), new_name.as_str()) {
+            return false;
+        }
+
+        let repo_id = tab.id;
+        self.state.collapsed_changelists.update(|by_repo| {
+            if let Some(groups) = by_repo.get_mut(&repo_id)
+                && groups.remove(&Some(old_name.clone()))
+            {
+                groups.insert(Some(new_name.trim().to_string()));
+            }
+        });
+        self.state.changelist_tree_expanded.update(|by_group| {
+            if let Some(expanded) = by_group.remove(&(repo_id, Some(old_name.clone()))) {
+                by_group.insert((repo_id, Some(new_name.trim().to_string())), expanded);
+            }
+        });
+        self.session.tabs.set(tabs);
+        return true;
     }
 
     /// 新建变更清单 `name`（原 `create_changelist`）。

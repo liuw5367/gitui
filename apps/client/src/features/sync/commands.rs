@@ -700,6 +700,20 @@ impl SyncCommands {
         );
     }
 
+    /// 提交成功后直接推送当前仓库；Force 复选框覆盖本次推送的同步面板选项。
+    pub(crate) fn run_push_after_commit(&self, tab_id: u64, force_with_lease: bool) {
+        let state = self
+            .state
+            .dialog
+            .get_untracked()
+            .filter(|state| state.target_tab_id == Some(tab_id));
+        let (remote, mut options) = state
+            .map(|state| (state.remote, state.options))
+            .unwrap_or_default();
+        options.push.force_with_lease = force_with_lease;
+        self.start_sync_with(Sync::Push, tab_id, remote, options, None, false);
+    }
+
     fn start_sync_with(
         &self,
         kind: Sync,

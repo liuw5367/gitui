@@ -5,7 +5,6 @@
 
 use super::ops;
 use super::state::{CommitState, RewriteKind, RewriteState};
-use crate::app::session::Sync;
 use crate::features::SessionHandle;
 use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
@@ -35,22 +34,26 @@ impl CommitCommands {
         let commit_description = self.state.description;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            tab.summary = commit_summary.get_untracked();
-            tab.description = commit_description.get_untracked();
-            ops::commit_staged_with(tab, no_verify);
-            if tab.hook_ok {
-                commit_summary.set(String::new());
-                commit_description.set(String::new());
-            }
-            let push_after = tab.push_after_commit && tab.hook_ok;
-            if push_after {
-                tab.push_after_commit = false;
-            }
-            tabs.set(list.clone());
-            if push_after {
-                self.sync.run_sync(Sync::Push);
-            }
+        let Some(tab) = list.get_mut(current) else {
+            return;
+        };
+        let tab_id = tab.id;
+        tab.summary = commit_summary.get_untracked();
+        tab.description = commit_description.get_untracked();
+        ops::commit_staged_with(tab, no_verify);
+        if tab.hook_ok {
+            commit_summary.set(String::new());
+            commit_description.set(String::new());
+        }
+        let push_after = tab.push_after_commit && tab.hook_ok;
+        let force_push_after = tab.force_push_after_commit;
+        if push_after {
+            tab.push_after_commit = false;
+            tab.force_push_after_commit = false;
+        }
+        tabs.set(list);
+        if push_after {
+            self.sync.run_push_after_commit(tab_id, force_push_after);
         }
     }
 
@@ -80,11 +83,27 @@ impl CommitCommands {
         let active = self.session.active;
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
+        if kind == "amend" && value {
+            if let Some(tab) = list.get(current)
+                && let Ok(repo) = tab.open_repo()
+                && let Ok(sha) = repo.resolve_commit("HEAD")
+                && let Ok(details) = repo.commit_details(sha.as_str())
+            {
+                self.state.summary.set(details.subject);
+                self.state.description.set(details.body);
+            }
+        }
         if let Some(tab) = list.get_mut(current) {
             match kind {
                 "amend" => tab.amend = value,
                 "signoff" => tab.signoff = value,
-                "pushAfter" => tab.push_after_commit = value,
+                "pushAfter" => {
+                    tab.push_after_commit = value;
+                    if !value {
+                        tab.force_push_after_commit = false;
+                    }
+                }
+                "forcePush" => tab.force_push_after_commit = value && tab.push_after_commit,
                 _ => return,
             }
             tabs.set(list);

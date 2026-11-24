@@ -86,6 +86,10 @@ impl AppHandles {
         handles.merge.session = session.clone();
         handles.changes.session = session.clone();
         handles.changes.state.changelist_open = signal(false);
+        handles.changes.state.rename_changelist = signal(None);
+        handles.changes.state.rename_changelist_value = signal(String::new());
+        handles.changes.state.collapsed_changelists = signal(std::collections::BTreeMap::new());
+        handles.changes.state.changelist_tree_expanded = signal(std::collections::BTreeMap::new());
         handles.commit.session = session.clone();
         handles.commit.sync = handles.sync.clone();
         handles.commit.state = crate::features::commit::state::CommitState {

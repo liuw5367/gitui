@@ -18,7 +18,6 @@ pub(crate) fn titlebar(
     session: crate::features::SessionHandle,
     settings: crate::features::settings::commands::SettingsCommands,
 ) -> impl IntoElement {
-    let (left, right) = crate::window_insets();
     let auxiliary = session.auxiliary;
     let open = session;
     let repository_area = dynamic(move || -> AnyElement {
@@ -89,8 +88,8 @@ pub(crate) fn titlebar(
         .flex_row()
         .items_center()
         .gap(px(4.0))
-        .pl(px(left + 10.0))
-        .pr(px(right + 10.0))
+        .pl(move || px(crate::window_insets().0 + 10.0))
+        .pr(move || px(crate::window_insets().1 + 10.0))
         .bg(move || design::titlebar())
         .border_b_1()
         .border_color(move || design::line())
@@ -268,9 +267,14 @@ pub(crate) fn toolbar(
                     Some(Arc::new(move || change_count())),
                 )),
         )
-        .child(tool_button(language, "sparkle", "shell.agent", move || {
-            do_agent()
-        }))
+        .child(crate::ui::button::icon_button_tip(
+            "sparkle",
+            move || i18n::t(language.get().as_str(), "shell.agent"),
+            crate::ui::button::ButtonSize::Toolbar,
+            false,
+            move || i18n::t(language.get().as_str(), "shell.agent"),
+            move || do_agent(),
+        ))
         // 设计稿：Agent 右侧的 tb-icon 是右侧面板的显隐开关。
         .child(dynamic(move || -> AnyElement {
             let is_open = right_panel_open.get();

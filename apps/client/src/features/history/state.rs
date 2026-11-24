@@ -9,7 +9,7 @@ use git::{GitExecutable, LogFilter};
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
-pub(crate) const DEFAULT_AUTHOR_COLUMN_WIDTH: f32 = 152.0;
+pub(crate) const DEFAULT_AUTHOR_COLUMN_WIDTH: f32 = 80.0;
 pub(crate) const DEFAULT_DATE_COLUMN_WIDTH: f32 = 112.0;
 
 pub(crate) fn resized_column_width(start: f32, offset: f32, min: f32, max: f32) -> f32 {

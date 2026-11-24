@@ -15,9 +15,35 @@ use nsh_core::prelude::*;
 /// 提交面板的初始宽度（可由工作区分栏拖拽调整）。
 pub(crate) const WIDTH: f32 = 360.0;
 
-/// 入口 `commit_panel` 收本功能的状态与用例；跨功能的「请 Agent 起草」由宿主
-/// 组装成一个回调传进来（切到 Agent 主视图并提议计划）。
+/// Changes 使用独立的紧凑提交区；Refs 保留原提交检查器布局。
 pub(crate) fn commit_panel(
+    state: &CommitState,
+    cmd: &CommitCommands,
+    changes: Option<ChangesCommands>,
+    language: Signal<SharedString>,
+    tab: Tab,
+    show_tree: bool,
+    tree: crate::app::session::TreeOptions,
+    ask_agent: Option<std::sync::Arc<dyn Fn()>>,
+) -> AnyElement {
+    if let Some(changes) = changes {
+        return changes_commit_panel(state, cmd, changes, language, tab, show_tree, tree)
+            .into_element();
+    }
+    return refs_commit_panel(
+        state,
+        cmd,
+        None,
+        language,
+        tab,
+        show_tree,
+        tree,
+        ask_agent.unwrap_or_else(|| std::sync::Arc::new(|| {})),
+    )
+    .into_element();
+}
+
+fn refs_commit_panel(
     state: &CommitState,
     cmd: &CommitCommands,
     changes: Option<ChangesCommands>,
@@ -46,7 +72,9 @@ pub(crate) fn commit_panel(
     let amend = tab.amend;
     let signoff = tab.signoff;
     let push_after = tab.push_after_commit;
+    let force_push_after = tab.force_push_after_commit;
     let hook_cmd = cmd.clone();
+    let force_cmd = cmd.clone();
     let ask_agent_header = ask_agent.clone();
     // 「改写上一条」时不需要暂存内容：只改提交说明也是合法操作。
     let can_commit = staged_count > 0 || amend;
@@ -191,18 +219,43 @@ pub(crate) fn commit_panel(
                         .w_full()
                         .flex_col()
                         .gap(px(3.0))
-                        .child(checkbox_row(language, "commit.amend", amend, {
+                        .child(checkbox_row(language, "commit.amend", amend, false, {
                             let cmd = cmd.clone();
                             move || cmd.set_commit_option("amend", !amend)
                         }))
-                        .child(checkbox_row(language, "commit.signoff", signoff, {
+                        .child(checkbox_row(language, "commit.signoff", signoff, false, {
                             let cmd = cmd.clone();
                             move || cmd.set_commit_option("signoff", !signoff)
                         }))
-                        .child(checkbox_row(language, "commit.pushAfter", push_after, {
-                            let cmd = cmd.clone();
-                            move || cmd.set_commit_option("pushAfter", !push_after)
-                        })),
+                        .child(
+                            view()
+                                .w_full()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(8.0))
+                                .child(checkbox_row(
+                                    language,
+                                    "commit.pushAfter",
+                                    push_after,
+                                    false,
+                                    {
+                                        let cmd = cmd.clone();
+                                        move || cmd.set_commit_option("pushAfter", !push_after)
+                                    },
+                                ))
+                                .child(checkbox_row(
+                                    language,
+                                    "commit.forcePushShort",
+                                    force_push_after,
+                                    !push_after,
+                                    {
+                                        let cmd = force_cmd.clone();
+                                        move || {
+                                            cmd.set_commit_option("forcePush", !force_push_after)
+                                        }
+                                    },
+                                )),
+                        ),
                 )
                 .child(crate::ui::button::button(
                     move || {
@@ -235,7 +288,148 @@ pub(crate) fn commit_panel(
                             i18n::t(language.get().as_str(), "commit.nothingStaged")
                         }
                     })
-                    .text_size(px(crate::ui::SECONDARY))
+                    .text_size(px(crate::ui::META))
+                    .text_color(move || design::text3()),
+                ),
+        );
+}
+
+fn changes_commit_panel(
+    state: &CommitState,
+    cmd: &CommitCommands,
+    changes: ChangesCommands,
+    language: Signal<SharedString>,
+    tab: Tab,
+    show_tree: bool,
+    tree: crate::app::session::TreeOptions,
+) -> impl IntoElement {
+    let summary = state.summary;
+    let description = state.description;
+    let staged_count = tab.changes.iter().filter(|entry| entry.staged).count();
+    let amend = tab.amend;
+    let signoff = tab.signoff;
+    let push_after = tab.push_after_commit;
+    let force_push_after = tab.force_push_after_commit;
+    let can_commit = staged_count > 0 || amend;
+    let hook_log = tab.hook_log.clone();
+    let hook_ok = tab.hook_ok;
+    let hook_cmd = cmd.clone();
+    let force_cmd = cmd.clone();
+
+    return view()
+        .w_full()
+        .min_w_0()
+        .h_full()
+        .flex_col()
+        .bg(move || design::panel())
+        .child(crate::features::changes::view::changelists_panel(
+            &changes, tab, show_tree, tree,
+        ))
+        .child(dynamic(move || -> AnyElement {
+            let Some(log) = hook_log.clone() else {
+                return view().w_full().h(px(0.0)).into_element();
+            };
+            return view()
+                .w_full()
+                .flex_shrink_0()
+                .px(px(12.0))
+                .py(px(8.0))
+                .border_t_1()
+                .border_color(move || design::line_soft())
+                .child(hook_box(language, log, hook_ok, hook_cmd.clone()))
+                .into_element();
+        }))
+        .child(
+            view()
+                .w_full()
+                .flex_shrink_0()
+                .p(px(12.0))
+                .flex_col()
+                .gap(px(6.0))
+                .border_t_1()
+                .border_color(move || design::line())
+                .child(crate::ui::text_input::text_input(
+                    summary,
+                    move || i18n::t(language.get().as_str(), "commit.summaryCompactPlaceholder"),
+                    false,
+                    move |text| summary.set(text.to_string()),
+                ))
+                .child(crate::ui::text_input::text_area_auto_grow(
+                    description,
+                    move || {
+                        i18n::t(
+                            language.get().as_str(),
+                            "commit.descriptionCompactPlaceholder",
+                        )
+                    },
+                    crate::ui::CONTROL + crate::ui::BODY_LINE * 2.0,
+                    move |text| description.set(text.to_string()),
+                ))
+                .child(
+                    view()
+                        .w_full()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(checkbox_row(language, "commit.amendShort", amend, false, {
+                            let cmd = cmd.clone();
+                            move || cmd.set_commit_option("amend", !amend)
+                        }))
+                        .child(checkbox_row(
+                            language,
+                            "commit.signoffShort",
+                            signoff,
+                            false,
+                            {
+                                let cmd = cmd.clone();
+                                move || cmd.set_commit_option("signoff", !signoff)
+                            },
+                        ))
+                        .child(checkbox_row(
+                            language,
+                            "commit.pushAfterShort",
+                            push_after,
+                            false,
+                            {
+                                let cmd = cmd.clone();
+                                move || cmd.set_commit_option("pushAfter", !push_after)
+                            },
+                        ))
+                        .child(checkbox_row(
+                            language,
+                            "commit.forcePushShort",
+                            force_push_after,
+                            !push_after,
+                            {
+                                let cmd = force_cmd.clone();
+                                move || cmd.set_commit_option("forcePush", !force_push_after)
+                            },
+                        ))
+                        .child(view().flex_1())
+                        .child(crate::ui::button::button(
+                            move || i18n::t(language.get().as_str(), "commit.actionShort"),
+                            crate::ui::button::ButtonVariant::Primary,
+                            crate::ui::button::ButtonSize::Regular,
+                            !can_commit,
+                            {
+                                let cmd = cmd.clone();
+                                move || {
+                                    if can_commit {
+                                        cmd.commit();
+                                    }
+                                }
+                            },
+                        )),
+                )
+                .child(
+                    text(move || {
+                        if can_commit {
+                            i18n::t(language.get().as_str(), "commit.hooksHint")
+                        } else {
+                            i18n::t(language.get().as_str(), "commit.nothingStaged")
+                        }
+                    })
+                    .text_size(px(crate::ui::META))
                     .text_color(move || design::text3()),
                 ),
         );
@@ -269,6 +463,7 @@ fn checkbox_row(
     language: Signal<SharedString>,
     key: &'static str,
     checked: bool,
+    disabled: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     // 原生 Checkbox：按压、键盘激活与无障碍状态由组件负责，外观取自 ui 层。
@@ -278,7 +473,7 @@ fn checkbox_row(
         checked,
         22.0,
         12.0,
-        false,
+        disabled,
         toggle,
     );
 }

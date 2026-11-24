@@ -1,6 +1,6 @@
 //! 会话层：仓库标签页（`Tab`）的结构、状态与装载/刷新/初始化这类会话级动作。
 
-use crate::features::changes::ops::{load_changes, refresh_changes};
+use crate::features::changes::ops::{apply_changelist_assignments, load_changes, refresh_changes};
 use crate::features::history::ops::select_commit;
 use domain::{Commit, DiffStat, StatusEntry};
 use git::{GitExecutable, LogFilter, Refs, Repo};
@@ -142,6 +142,8 @@ pub(crate) struct Tab {
     pub(crate) amend: bool,
     pub(crate) signoff: bool,
     pub(crate) push_after_commit: bool,
+    /// 提交后推送时是否允许使用 `--force-with-lease`。
+    pub(crate) force_push_after_commit: bool,
     /// 钩子完整日志弹层是否打开。
     pub(crate) hook_open: bool,
     /// 正在后台读取（设计板 16 的 loading 状态）。
@@ -206,14 +208,6 @@ impl ChangeEntry {
         }
         return normalise_status(self.worktree);
     }
-
-    /// 目录部分（`src/ui/CommitPanel.tsx` → `src/ui`），没有目录时为空串。
-    pub(crate) fn directory(&self) -> &str {
-        return match self.path.rsplit_once('/') {
-            Some((directory, _)) => directory,
-            None => "",
-        };
-    }
 }
 
 /// 文件树的两项显示偏好（设计板 23）。
@@ -231,51 +225,6 @@ impl TreeOptions {
             merge_empty_dirs: settings.merge_empty_dirs,
             compact_single_child: settings.compact_single_child,
         };
-    }
-
-    /// 目录行是否要显示。
-    ///
-    /// `merge_empty_dirs` 打开时，只有子目录、自己没有直接文件的层级不占行——
-    /// 这正是「merge empty directories」要的效果：不把 `src` 这种纯容器画成一行。
-    pub(crate) fn shows_directory(self, direct_files: usize) -> bool {
-        if !self.merge_empty_dirs {
-            return true;
-        }
-        return direct_files > 0;
-    }
-
-    /// 把文件名所属目录链压缩成一行显示用的标签。
-    ///
-    /// `dirs` 是所有出现过的目录（完整路径）。`compact_single_child` 打开时，
-    /// 如果 `a` 下只有 `b`、`b` 下只有 `c`，标签就是 `a/b/c`。
-    pub(crate) fn compact_label(self, dirs: &[String], path: &str) -> String {
-        if path.is_empty() || !self.compact_single_child {
-            return path.to_string();
-        }
-        let mut label = String::new();
-        let mut prefix: String;
-        for part in path.split('/') {
-            if label.is_empty() {
-                label.push_str(part);
-            } else {
-                label.push('/');
-                label.push_str(part);
-            }
-            prefix = label.clone();
-            // 该前缀下的直接子目录个数。
-            let child_prefix = format!("{prefix}/");
-            let mut children: Vec<&String> = dirs
-                .iter()
-                .filter(|candidate| candidate.starts_with(child_prefix.as_str()))
-                .filter(|candidate| !candidate[child_prefix.len()..].contains('/'))
-                .collect();
-            children.sort();
-            children.dedup();
-            if children.len() != 1 {
-                break;
-            }
-        }
-        return label;
     }
 }
 
@@ -470,6 +419,7 @@ pub(crate) fn load_tab_with_executable(
         filter: filter.clone(),
         ..Tab::default()
     };
+    apply_changelist_assignments(&mut tab);
     if tab.operation != git::Operation::None {
         tab.conflict_paths = tab.conflicts.clone();
     }
@@ -786,61 +736,6 @@ mod tests {
         let repo = TempRepo::new("loading-flag");
         let loaded = load_tab(&repo.path.display().to_string(), &LogFilter::default());
         assert!(!loaded.loading, "装载完成后应清掉 loading");
-    }
-
-    #[test]
-    fn tree_options_compact_single_child_chains() {
-        let all = TreeOptions {
-            merge_empty_dirs: true,
-            compact_single_child: true,
-        };
-        // src 下只有 git，git 下只有 legacy → 整条链压成一行。
-        let dirs = vec![
-            "src".to_string(),
-            "src/git".to_string(),
-            "src/git/legacy".to_string(),
-        ];
-        assert_eq!(all.compact_label(&dirs, "src/git/legacy"), "src/git/legacy");
-        // 一旦某层有多个子目录，就在那层断开。
-        let dirs = vec![
-            "src".to_string(),
-            "src/git".to_string(),
-            "src/ui".to_string(),
-            "src/git/legacy".to_string(),
-        ];
-        assert_eq!(
-            all.compact_label(&dirs, "src/git/legacy"),
-            "src",
-            "src 有两个子目录，压缩应停在 src"
-        );
-
-        // 关掉压缩时原样返回。
-        let plain = TreeOptions {
-            merge_empty_dirs: true,
-            compact_single_child: false,
-        };
-        assert_eq!(
-            plain.compact_label(&dirs, "src/git/legacy"),
-            "src/git/legacy"
-        );
-        // 根目录没有标签。
-        assert_eq!(all.compact_label(&dirs, ""), "");
-    }
-
-    #[test]
-    fn tree_options_decide_whether_a_directory_row_shows() {
-        let merged = TreeOptions {
-            merge_empty_dirs: true,
-            compact_single_child: false,
-        };
-        assert!(merged.shows_directory(2), "有直接文件就显示");
-        assert!(!merged.shows_directory(0), "纯容器目录不占行");
-
-        let unmerged = TreeOptions {
-            merge_empty_dirs: false,
-            compact_single_child: false,
-        };
-        assert!(unmerged.shows_directory(0), "关闭合并时空目录也显示");
     }
 
     #[test]

@@ -92,14 +92,22 @@ pub fn load_changelists(dir: &Path, repo: &str) -> Vec<Changelist> {
         else {
             continue;
         };
-        if entry_repo != repo || name.is_empty() || path.is_empty() {
+        if entry_repo != repo || name.is_empty() {
             continue;
         }
         match lists.iter_mut().find(|list| list.name == name) {
-            Some(list) => list.paths.push(path.to_string()),
+            Some(list) => {
+                if !path.is_empty() {
+                    list.paths.push(path.to_string());
+                }
+            }
             None => lists.push(Changelist {
                 name: name.to_string(),
-                paths: vec![path.to_string()],
+                paths: if path.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![path.to_string()]
+                },
             }),
         }
     }
@@ -120,11 +128,18 @@ pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
         }
     }
     for list in lists {
-        for path in &list.paths {
-            if list.name.is_empty() || path.contains('\t') {
-                continue;
+        if list.name.is_empty() || list.name.contains('\t') {
+            continue;
+        }
+        if list.paths.is_empty() {
+            lines.push(format!("{}\t{}\t", repo, list.name));
+        } else {
+            for path in &list.paths {
+                if path.contains('\t') {
+                    continue;
+                }
+                lines.push(format!("{}\t{}\t{}", repo, list.name, path));
             }
-            lines.push(format!("{}\t{}\t{}", repo, list.name, path));
         }
     }
     let _ = write_lines(&changelists_file(dir), &lines);
@@ -1221,6 +1236,10 @@ mod tests {
             Changelist {
                 name: "Agent cleanup".to_string(),
                 paths: vec!["src/agent.ts".to_string()],
+            },
+            Changelist {
+                name: "Empty list".to_string(),
+                paths: Vec::new(),
             },
         ];
         save_changelists(dir.path(), "/repo-one", &lists);

@@ -559,28 +559,17 @@ fn right_content(
                     settings_state,
                 )
                 .into_element(),
-                crate::Mode::Changes => {
-                    // 「请 Agent 起草」= 切到 Agent 主视图并提议一份计划。
-                    let ask_agent: std::sync::Arc<dyn Fn()> = {
-                        let agent = agent.clone();
-                        let mode = mode;
-                        std::sync::Arc::new(move || {
-                            mode.set(crate::Mode::Agent);
-                            agent.propose_plan();
-                        })
-                    };
-                    crate::features::commit::view::commit_panel(
-                        &commit.state,
-                        &commit,
-                        Some(changes.clone()),
-                        language,
-                        tab,
-                        show_tree,
-                        tree,
-                        ask_agent,
-                    )
-                    .into_element()
-                }
+                crate::Mode::Changes => crate::features::commit::view::commit_panel(
+                    &commit.state,
+                    &commit,
+                    Some(changes.clone()),
+                    language,
+                    tab,
+                    show_tree,
+                    tree,
+                    None,
+                )
+                .into_element(),
                 crate::Mode::Blame => crate::features::history::blame::blame_history_panel(
                     language,
                     tab,
@@ -673,7 +662,7 @@ fn right_content(
                         tab,
                         show_tree,
                         tree,
-                        ask_agent,
+                        Some(ask_agent),
                     )
                     .into_element()
                 }

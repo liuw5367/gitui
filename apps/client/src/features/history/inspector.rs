@@ -260,11 +260,15 @@ fn files_body(
     let selected_id = selected_path
         .as_ref()
         .map(|path| SharedString::from(format!("file:{path}")));
-    let (items, expanded) = file_tree(&files, tree);
+    let (items, expanded) = crate::ui::tree::file_tree(
+        files.iter().map(|file| file.path.clone()),
+        tree.merge_empty_dirs,
+        tree.compact_single_child,
+    );
     let additions = files.iter().map(|file| file.additions).sum::<u32>();
     let deletions = files.iter().map(|file| file.deletions).sum::<u32>();
     let count = files.len();
-    let all_directories = folder_ids(&items);
+    let all_directories = crate::ui::tree::folder_ids(&items);
     let initial_expanded = expanded.clone();
     let files_for_list = files.clone();
     return view()
@@ -468,94 +472,6 @@ fn files_body(
                 })),
         )
         .into_element();
-}
-
-fn folder_ids(items: &[crate::ui::tree::TreeItem]) -> Vec<SharedString> {
-    let mut ids = Vec::new();
-    for item in items {
-        if !item.children.is_empty() {
-            ids.push(item.id.clone());
-            ids.extend(folder_ids(&item.children));
-        }
-    }
-    ids
-}
-
-#[derive(Default)]
-struct FileDirectory {
-    directories: std::collections::BTreeMap<String, FileDirectory>,
-    files: Vec<domain::DiffStat>,
-}
-
-fn file_tree(
-    files: &[domain::DiffStat],
-    tree: crate::app::session::TreeOptions,
-) -> (Vec<crate::ui::tree::TreeItem>, Vec<SharedString>) {
-    let mut root = FileDirectory::default();
-    for file in files {
-        let mut segments = file.path.split('/').collect::<Vec<_>>();
-        if segments.is_empty() {
-            continue;
-        }
-        segments.pop();
-        let mut directory = &mut root;
-        for segment in segments {
-            directory = directory
-                .directories
-                .entry(segment.to_string())
-                .or_default();
-        }
-        directory.files.push(file.clone());
-    }
-    let items = directory_items(&root, "", tree);
-    let expanded = items
-        .iter()
-        .filter(|item| !item.children.is_empty())
-        .map(|item| item.id.clone())
-        .collect();
-    return (items, expanded);
-}
-
-fn directory_items(
-    directory: &FileDirectory,
-    parent: &str,
-    tree: crate::app::session::TreeOptions,
-) -> Vec<crate::ui::tree::TreeItem> {
-    let mut items = Vec::new();
-    for (name, child) in &directory.directories {
-        let mut path = if parent.is_empty() {
-            name.clone()
-        } else {
-            format!("{parent}/{name}")
-        };
-        let mut label = name.clone();
-        let mut child = child;
-        while tree.compact_single_child && child.files.is_empty() && child.directories.len() == 1 {
-            let (name, next) = child.directories.iter().next().unwrap();
-            path = format!("{path}/{name}");
-            label = format!("{label}/{name}");
-            child = next;
-        }
-        let children = directory_items(child, &path, tree);
-        if tree.shows_directory(child.files.len()) {
-            items.push(crate::ui::tree::node(
-                format!("directory:{path}"),
-                label,
-                children,
-            ));
-        } else {
-            items.extend(children);
-        }
-    }
-    for file in &directory.files {
-        let name = file.path.rsplit('/').next().unwrap_or(file.path.as_str());
-        items.push(crate::ui::tree::node(
-            format!("file:{}", file.path),
-            name.to_string(),
-            Vec::new(),
-        ));
-    }
-    return items;
 }
 
 fn tree_file_row(
@@ -1394,24 +1310,19 @@ mod tests {
             status: 'M',
             ..Default::default()
         }];
-        let (plain, _) = file_tree(&files, crate::app::session::TreeOptions::default());
-        assert_eq!(plain[0].label.as_ref(), "src");
-        let (compact, expanded) = file_tree(
-            &files,
-            crate::app::session::TreeOptions {
-                compact_single_child: true,
-                merge_empty_dirs: false,
-            },
+        let default = crate::app::session::TreeOptions::default();
+        let (plain, _) = crate::ui::tree::file_tree(
+            files.iter().map(|file| file.path.clone()),
+            default.merge_empty_dirs,
+            default.compact_single_child,
         );
+        assert_eq!(plain[0].label.as_ref(), "src");
+        let (compact, expanded) =
+            crate::ui::tree::file_tree(files.iter().map(|file| file.path.clone()), false, true);
         assert_eq!(compact[0].label.as_ref(), "src/git/deep");
         assert_eq!(expanded[0].as_ref(), "directory:src/git/deep");
-        let (merged, _) = file_tree(
-            &files,
-            crate::app::session::TreeOptions {
-                compact_single_child: false,
-                merge_empty_dirs: true,
-            },
-        );
+        let (merged, _) =
+            crate::ui::tree::file_tree(files.iter().map(|file| file.path.clone()), true, false);
         assert_eq!(merged[0].id.as_ref(), "directory:src/git/deep");
         assert_eq!(
             merged[0].children[0].id.as_ref(),
