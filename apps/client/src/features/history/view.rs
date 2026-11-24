@@ -124,12 +124,20 @@ pub(crate) fn history(
     let compare_refs_empty =
         tab.compare_base.is_some() && tab.compare_target.is_some() && tab.commits.is_empty();
     let graph_rows = graph::layout_filtered(&commits, &tab.graph_commits);
-    let graph_width = graph_rows
+    let graph_lane_width = graph_rows
         .iter()
         .map(|row| row.lane_count)
         .max()
         .unwrap_or(1) as f32
         * GRAPH_LANE_W;
+    let table_width = signal(0.0_f32);
+    let graph_width = computed(move || {
+        let max_width = table_width.get() * 0.30;
+        if max_width <= 0.0 {
+            return GRAPH_LANE_W;
+        }
+        return graph_lane_width.min(max_width);
+    });
     let compare = tab.compare.clone();
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let select: std::sync::Arc<dyn Fn(usize)> = {
@@ -262,6 +270,12 @@ pub(crate) fn history(
     let scroll_request = state.scroll_request;
 
     return view()
+        .on_layout(move |bounds: &Bounds<Points>| {
+            let width = bounds.size.width.0;
+            if (table_width.get_untracked() - width).abs() > 0.5 {
+                table_width.set(width);
+            }
+        })
         .w_full()
         .flex_1()
         .min_h_0()
@@ -286,7 +300,7 @@ pub(crate) fn history(
                 .px(px(8.0))
                 .border_b_1()
                 .border_color(move || design::line_soft())
-                .child(view().w(px(graph_width)))
+                .child(view().w(move || px(graph_width.get())))
                 .child(column_header(language, "history.description").flex_1())
                 .child(resizable_column_header(
                     language,
@@ -1100,7 +1114,7 @@ fn resizable_column_header(
 
 fn graph_cell(
     graph: GraphRow,
-    width: f32,
+    width: Memo<f32>,
     highlight: impl Fn() -> bool + 'static,
 ) -> impl IntoElement {
     let row_height = metrics::COMMIT_ROW_H;
@@ -1108,8 +1122,9 @@ fn graph_cell(
     let node_radius = GRAPH_NODE_D / 2.0;
     let mut cell = view()
         .relative()
-        .w(px(width.max(GRAPH_LANE_W)))
-        .h(px(row_height));
+        .w(move || px(width.get().max(GRAPH_LANE_W)))
+        .h(px(row_height))
+        .overflow_hidden();
     for lane in graph.top_lanes {
         let x = lane as f32 * GRAPH_LANE_W + GRAPH_LANE_W / 2.0 - 0.5;
         let bottom = if lane == graph.node_lane {

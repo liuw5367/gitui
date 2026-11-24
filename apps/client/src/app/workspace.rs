@@ -137,10 +137,7 @@ fn match_body(
         )
         .min(180.0)
         .visible(move || {
-            sidebar_open.get()
-                && left_current
-                    .get()
-                    .is_some_and(|tab| tab.loaded && tab.error.is_none())
+            sidebar_open.get() && left_current.get().is_some_and(|tab| tab.error.is_none())
         }),
         crate::ui::split::Pane::flex(center_content(
             language,
@@ -171,10 +168,7 @@ fn match_body(
         )
         .min(280.0)
         .visible(move || {
-            right_panel_open.get()
-                && right_current
-                    .get()
-                    .is_some_and(|tab| tab.loaded && tab.error.is_none())
+            right_panel_open.get() && right_current.get().is_some_and(|tab| tab.error.is_none())
         }),
     ]);
 }
@@ -199,6 +193,7 @@ fn refs_sidebar_content(
                 changes: tab.changes.clone(),
                 remote_urls: tab.remote_urls.clone(),
                 error: tab.error.clone(),
+                loaded: tab.loaded,
                 ..Default::default()
             })
         })
@@ -211,6 +206,9 @@ fn refs_sidebar_content(
             let Some(tab) = sidebar.get().filter(|tab| tab.error.is_none()) else {
                 return view().w_full().h_full().into_element();
             };
+            if !tab.loaded {
+                return repository_sidebar_loading().into_element();
+            }
             return refs::view::refs_sidebar(&refs.state, &refs, language, tab).into_element();
         }));
 }
@@ -281,7 +279,7 @@ fn center_content(
                 return error_panel(language, detail, retry, session).into_element();
             }
             if current_unloaded.get() {
-                return repository_loading(language).into_element();
+                return repository_loading().into_element();
             }
             return match mode.get() {
                 crate::Mode::History => {
@@ -512,24 +510,165 @@ fn history_list_snapshot(tab: &Tab) -> Tab {
     return snapshot;
 }
 
-fn repository_loading(language: Signal<SharedString>) -> AnyElement {
-    let mut skeleton = Vec::<AnyElement>::new();
-    for _ in 0..8 {
-        skeleton.push(crate::ui::section::skeleton_row(&[64.0, 240.0, 80.0]).into_element());
-    }
+fn skeleton_block(width: f32, height: f32) -> AnyElement {
+    return view()
+        .w(px(width))
+        .h(px(height))
+        .rounded(px(height / 2.0))
+        .bg(move || design::line_soft())
+        .into_element();
+}
+
+fn repository_sidebar_loading() -> AnyElement {
+    let widths = [118.0, 78.0, 104.0, 64.0, 92.0, 74.0, 112.0, 68.0, 96.0];
+    let rows = widths
+        .into_iter()
+        .enumerate()
+        .map(|(index, width)| {
+            view()
+                .w_full()
+                .h(px(crate::ui::ROW))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .px(px(if index % 3 == 0 { 8.0 } else { 20.0 }))
+                .child(skeleton_block(10.0, 10.0))
+                .child(skeleton_block(width, 8.0))
+                .into_element()
+        })
+        .collect::<Vec<_>>();
     return view()
         .w_full()
         .h_full()
         .min_h_0()
         .flex_col()
+        .gap(px(2.0))
+        .pt(px(8.0))
+        .bg(move || design::sidebar())
+        .border_r_1()
+        .border_color(move || design::line())
+        .child(rows)
+        .into_element();
+}
+
+fn repository_loading() -> AnyElement {
+    let toolbar = view()
+        .w_full()
+        .h(px(crate::ui::ROW))
+        .flex_row()
+        .items_center()
         .gap(px(crate::ui::GAP))
+        .px(px(10.0))
+        .child(skeleton_block(56.0, 10.0))
+        .child(skeleton_block(72.0, 10.0))
+        .child(skeleton_block(48.0, 10.0))
+        .child(view().flex_1())
+        .child(skeleton_block(80.0, 10.0));
+    let header = view()
+        .w_full()
+        .h(px(crate::design::metrics::COMMIT_COLS_H))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(8.0))
+        .border_b_1()
+        .border_color(move || design::line_soft())
+        .child(skeleton_block(28.0, 8.0))
+        .child(view().flex_1().child(skeleton_block(76.0, 8.0)))
+        .child(skeleton_block(64.0, 8.0))
+        .child(skeleton_block(48.0, 8.0));
+    let rows = (0..12)
+        .map(|index| {
+            let summary_width = [84.0, 128.0, 112.0, 72.0, 136.0, 96.0][index % 6];
+            view()
+                .w_full()
+                .h(px(crate::design::metrics::COMMIT_ROW_H))
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .px(px(8.0))
+                .child(skeleton_block(20.0, 8.0))
+                .child(skeleton_block(summary_width, 10.0))
+                .child(view().flex_1())
+                .child(skeleton_block(60.0, 8.0))
+                .child(skeleton_block(48.0, 8.0))
+                .into_element()
+        })
+        .collect::<Vec<_>>();
+    return view()
+        .w_full()
+        .h_full()
+        .min_h_0()
+        .flex_col()
+        .bg(move || design::content())
+        .child(toolbar)
+        .child(header)
+        .child(view().w_full().flex_1().min_h_0().flex_col().child(rows))
+        .into_element();
+}
+
+fn repository_inspector_loading() -> AnyElement {
+    let mut file_rows = Vec::new();
+    for index in 0..8 {
+        let indent = if index % 3 == 0 { 8.0 } else { 24.0 };
+        let width = [108.0, 76.0, 132.0, 92.0][index % 4];
+        file_rows.push(
+            view()
+                .w_full()
+                .h(px(crate::ui::ROW))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .px(px(indent))
+                .child(skeleton_block(10.0, 10.0))
+                .child(skeleton_block(width, 8.0))
+                .into_element(),
+        );
+    }
+    let file_header = view()
+        .w_full()
+        .h(px(crate::ui::ROW))
+        .flex_row()
+        .items_center()
+        .gap(px(crate::ui::GAP_SM))
+        .px(px(10.0))
+        .border_b_1()
+        .border_color(move || design::line_soft())
+        .child(skeleton_block(112.0, 8.0))
+        .child(view().flex_1())
+        .child(skeleton_block(24.0, 8.0))
+        .child(skeleton_block(24.0, 8.0));
+    let info_rows = view()
+        .w_full()
+        .h(px(inspector::INFO_PANEL_H))
+        .flex_shrink_0()
+        .flex_col()
+        .gap(px(12.0))
         .p(px(12.0))
+        .border_t_1()
+        .border_color(move || design::line())
+        .child(skeleton_block(136.0, 10.0))
+        .child(skeleton_block(196.0, 8.0))
+        .child(skeleton_block(112.0, 8.0))
+        .child(skeleton_block(164.0, 8.0));
+    return view()
+        .w_full()
+        .h_full()
+        .min_h_0()
+        .flex_col()
+        .bg(move || design::panel())
+        .child(file_header)
         .child(
-            text(move || i18n::t(language.get().as_str(), "common.loading"))
-                .text_size(px(crate::ui::BODY))
-                .text_color(move || design::text3()),
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .flex_col()
+                .gap(px(2.0))
+                .pt(px(8.0))
+                .child(file_rows),
         )
-        .child(skeleton)
+        .child(info_rows)
         .into_element();
 }
 
@@ -586,6 +725,9 @@ fn right_content(
             let Some(tab) = current.get().filter(|tab| tab.error.is_none()) else {
                 return view().w_full().h_full().into_element();
             };
+            if !tab.loaded {
+                return repository_inspector_loading();
+            }
             match mode.get() {
                 crate::Mode::History => inspector::inspector(
                     &history.state,

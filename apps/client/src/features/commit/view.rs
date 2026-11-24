@@ -285,16 +285,7 @@ fn refs_commit_panel(
                             }
                         }
                     },
-                ))
-                .child(dynamic(move || -> AnyElement {
-                    if !can_commit {
-                        return view().w_full().h(px(0.0)).into_element();
-                    }
-                    return text(i18n::t(language.get().as_str(), "commit.hooksHint"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3())
-                        .into_element();
-                })),
+                )),
         );
 }
 
@@ -432,16 +423,7 @@ fn changes_commit_panel(
                                 }
                             },
                         )),
-                )
-                .child(dynamic(move || -> AnyElement {
-                    if !can_commit {
-                        return view().w_full().h(px(0.0)).into_element();
-                    }
-                    return text(i18n::t(language.get().as_str(), "commit.hooksHint"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(move || design::text3())
-                        .into_element();
-                })),
+                ),
         );
 }
 

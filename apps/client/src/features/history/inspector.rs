@@ -15,7 +15,7 @@ use crate::i18n;
 use nsh_core::prelude::*;
 
 /// Info 固定在检查器底部，文件列表使用剩余高度。
-const INFO_PANEL_H: f32 = 232.0;
+pub(crate) const INFO_PANEL_H: f32 = 232.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FileListMode {
@@ -260,7 +260,7 @@ fn files_body(
     let selected_id = selected_path
         .as_ref()
         .map(|path| SharedString::from(format!("file:{path}")));
-    let (items, expanded) = crate::ui::tree::file_tree(
+    let (items, _) = crate::ui::tree::file_tree(
         files.iter().map(|file| file.path.clone()),
         tree.merge_empty_dirs,
         tree.compact_single_child,
@@ -269,6 +269,8 @@ fn files_body(
     let deletions = files.iter().map(|file| file.deletions).sum::<u32>();
     let count = files.len();
     let all_directories = crate::ui::tree::folder_ids(&items);
+    // History 检查器默认完整展开；公共 file_tree 的默认值只打开根目录。
+    let expanded = all_directories.clone();
     let initial_expanded = expanded.clone();
     let files_for_list = files.clone();
     return view()

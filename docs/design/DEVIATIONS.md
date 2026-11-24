@@ -82,6 +82,9 @@
 | 57 | Credentials provider 行 | Credentials 画板提供 GitHub / GitLab 账号连接与连接状态 | 只显示 Git credential helper、SSH 偏好与本机 SSH 密钥；Git 按需调用 AskPass，不建立 provider 账号连接（`apps/client/src/features/settings/credentials.rs`、`apps/client/src/askpass.rs`） | 按用户确定的产品范围只依赖 Git CLI，避免呈现没有 provider API 的账号连接入口 | 否（恢复该入口需另行实现 GitHub / GitLab OAuth 与账号管理） |
 | 58 | 应用自绘弹窗统一 | 22 对话框页脚 42、body 内距 11×14，各画板分别定义表单与同步面板 | 通用表单、Edit Commit Message、Squash、Hook 日志、凭据和设置确认共用 `ui/dialog.rs::dialog_panel`；标题 44、底栏 48、正文内距 16，操作按钮 Regular 28；同步对齐同一标题栏／底栏；Compare 的操作按钮使用 Regular（`features/search/form_dialog.rs`、`features/commit`、`features/sync/view.rs`） | 按用户要求统一应用弹窗的结构与控件比例，去除不可见字段的额外间距，并为全部输入提供本地化 placeholder | 是（恢复各页面自绘面板与原尺寸） |
 | 59 | Changes 面板与提交区布局 | Board 10 显示 Commit / Agent 标题行、带圆角边框的 Changelists、固定高度列表和拖拽手柄；Summary / Description 有单独标签，选项竖排且带 Agent 起草按钮 | Changes 入口移除面板标题行与起草按钮；Changelists 无外围圆角 / 边框，填充剩余高度并内部滚动，清单可独立折叠；标题行显示文件与 staged / unstaged 数，筛选框 24 高并留出上下间距；Summary / Description 固定在底部且无单独标签，Description 一至三行；amend、sign-off、push 和 commit 同行；移除高度拖拽手柄（`features/commit/view.rs`、`features/changes/view.rs`、`features/changes/state.rs`） | 按用户确认优化主窗口默认 Changes 面板，同时保留 Refs 检查器布局和全局 Agent 入口 | 是（恢复 Changes 入口的原始标题、卡片、拖拽高度及纵向表单布局） |
+| 60 | History graph 最大宽度 | Board 04 为 graph 预留 64 宽 | graph 按泳道数取宽，最多占提交表格的 30%；超出部分在 graph 列内裁切（`features/history/view.rs`） | 分支较多时保留提交说明、作者与日期列的空间 | 是（恢复固定 64 宽） |
+| 61 | 仓库加载中的工作区 | 画板没有仓库加载状态 | 仓库未装载时保留左侧 Refs、中间 History 与右侧检查器三栏，各栏显示对应内容的骨架；仓库状态横幅等待装载完成后再显示（`app/workspace.rs`、`shell/mod.rs`） | 保持工作区版式稳定，并避免把占位 HEAD 误报为空仓库 | 是（恢复单一中栏加载页与占位横幅） |
+| 62 | History 提交文件树展开 | 画板未定义提交文件树的默认折叠层级 | 默认递归展开所有目录；选择另一个提交时重置为全部展开，用户可在当前选择下手动折叠（`features/history/commands.rs`、`features/history/inspector.rs`） | 不同提交的文件路径可能不同，切换后显示完整变更目录更直接 | 是（恢复只展开顶层且跨提交保留折叠路径） |
 
 ## 3. 已澄清：不算偏离
 

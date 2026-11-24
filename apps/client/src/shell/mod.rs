@@ -321,6 +321,9 @@ pub(crate) fn state_banner(
 ) -> impl IntoElement {
     let visible = move || {
         return tab.get().is_some_and(|tab| {
+            if !tab.loaded {
+                return false;
+            }
             // 打不开的仓库优先级最高：其它状态在它上面都没有意义。
             tab.problem != RepoProblem::None
                 || matches!(tab.head, git::HeadState::Detached { .. })

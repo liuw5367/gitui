@@ -42,6 +42,8 @@ impl HistoryCommands {
         if !valid {
             return;
         }
+        // 每次选择提交都从完整展开的文件树开始，避免把上个提交的折叠路径带过来。
+        self.state.file_tree_expanded.set(None);
         self.state.fast_selection.set(Some((tab_id, sha.clone())));
         let command = self.clone();
         Owner::detached().run(|| {
@@ -64,6 +66,7 @@ impl HistoryCommands {
             return;
         }
 
+        self.state.file_tree_expanded.set(None);
         self.state.fast_selection.set(None);
         let current_selection = self.state.multi_commit_selection.get_untracked();
         let has_multi_selection = current_selection
