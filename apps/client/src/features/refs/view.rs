@@ -2524,6 +2524,7 @@ fn reflog_list(
                         .text_size(px(crate::ui::BODY))
                         .line_height(px(14.0))
                         .text_color(move || design::text())
+                        .number_of_lines(1)
                         .text_overflow(nsh_core::EllipsizeMode::Tail),
                 )
                 .child(

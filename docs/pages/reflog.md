@@ -8,7 +8,7 @@
 
 ## 当前实现
 
-工具栏的 Reflog 与 Fetch／Pull／Push 使用同一按钮样式，左侧的 Stash 直接打开 Stash Changes 表单。Refs／Reflog 页面仍可互切；Reflog 页不显示新建分支、标签、远程和贮藏操作。选择日志记录后，右栏与 History 共用提交检查器：文件支持 Tree／Flat 切换、展开或折叠全部目录，底部显示相同的提交 message、description 与信息；文件右键的 History 以该 Reflog 提交为基准。
+工具栏的 Reflog 与 Fetch／Pull／Push 使用同一按钮样式，左侧的 Stash 直接打开 Stash Changes 表单。Refs／Reflog 页面仍可互切；Reflog 页不显示新建分支、标签、远程和贮藏操作。选择日志记录后，右栏与 History 共用提交检查器：文件支持 Tree／Flat 切换、展开或折叠全部目录，底部显示相同的提交 message、description 与信息；文件右键的 History 以该 Reflog 提交为基准。列表在仓库载入或刷新时读取最近 100 条记录，过滤只作用于这批已加载记录；当前没有分页或滚到底加载更多。summary 单行显示，超出可用宽度时尾部省略。
 
 在右栏 Reflog 文件树中点选文件后，中栏显示该 Reflog 提交对应的单文件 Diff，右栏检查器保留。标题显示返回 Reflog、提交摘要、当前文件、前后文件切换和提交文件数；工具栏与 History、Changes、Stash、Blame 共用同一 NSH DiffView 面板。差异直接按该记录的 SHA 读取，不依赖 History 提交列表，因此 Reflog 独有或不可达提交也可以查看。返回 Reflog 后保留原记录选中态。
 
