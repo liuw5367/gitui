@@ -2498,6 +2498,7 @@ fn reflog_list(
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
+                .hover(|style| style.bg(move || design::hover()))
                 .child(
                     text(short)
                         .w(px(64.0))
