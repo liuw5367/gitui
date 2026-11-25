@@ -186,28 +186,10 @@ pub(crate) fn history(
         let commit = cmd.commit.clone();
         std::sync::Arc::new(move || commit.create_initial_commit())
     };
-    // 合并提交的范围：取对比选区（至少两个），从旧到新列出来。
-    let squash_range: Option<(String, String, Vec<(String, String)>)> =
-        tab.compare_range().map(|(newest, oldest)| {
-            let mut commits: Vec<(String, String)> = Vec::new();
-            for index in oldest..=newest {
-                if let Some(commit) = tab.commits.get(index) {
-                    commits.push((commit.short.clone(), commit.summary.clone()));
-                }
-            }
-            // `compare_range` 返回 (新, 旧)；squash 需要 (旧, 新)。
-            let from = tab
-                .commits
-                .get(oldest)
-                .map(|commit| commit.sha.clone())
-                .unwrap_or_default();
-            let to = tab
-                .commits
-                .get(newest)
-                .map(|commit| commit.sha.clone())
-                .unwrap_or_default();
-            return (from, to, commits);
-        });
+    // 合并提交的范围：取对比选区（至少两个）；提交列表按新到旧排列。
+    let squash_range = tab.compare_range().and_then(|(newest, oldest)| {
+        squash_range_for_indices(&commits, (newest..=oldest).collect())
+    });
     let can_squash = squash_range
         .as_ref()
         .map(|(_, _, commits)| commits.len() >= 2)
@@ -436,7 +418,10 @@ pub(crate) fn history(
                             let select_for_context = select.clone();
                             let menu_search = row_search.clone();
                             let menu_commit = commit_for_rows.clone();
-                            let menu_squash = squash_range.clone();
+                            let compare_squash_for_menu = squash_range.clone();
+                            let compare_selection_for_menu = tab.compare.clone();
+                            let multi_selection_for_menu = multi_commit_selection;
+                            let all_commits_for_menu = commits.clone();
                             let menu_refs = refs_for_menu.clone();
                             let menu_recovery = recovery_for_menu.clone();
                             let commits_for_press = rows_snapshot.clone();
@@ -610,7 +595,33 @@ pub(crate) fn history(
                                         else {
                                             return;
                                         };
-                                        select_for_context(index);
+                                        let multi_selection = multi_selection_for_menu
+                                            .get_untracked()
+                                            .filter(|selection| selection.tab_id == tab_id);
+                                        let selected_by_multi = multi_selection
+                                            .as_ref()
+                                            .is_some_and(|selection| {
+                                                selection.shas.contains(&commit.sha)
+                                            });
+                                        let selected_by_compare =
+                                            compare_selection_for_menu.contains(&index);
+                                        let keep_selection =
+                                            selected_by_multi || selected_by_compare;
+                                        let context_squash_range = if selected_by_multi {
+                                            multi_selection.as_ref().and_then(|selection| {
+                                                squash_range_for_shas(
+                                                    &all_commits_for_menu,
+                                                    &selection.shas,
+                                                )
+                                            })
+                                        } else if selected_by_compare {
+                                            compare_squash_for_menu.clone()
+                                        } else {
+                                            None
+                                        };
+                                        if !keep_selection {
+                                            select_for_context(index);
+                                        }
                                         let items = commit_menu(
                                             language_value,
                                             &commit,
@@ -620,7 +631,7 @@ pub(crate) fn history(
                                             },
                                             &menu_search,
                                             &menu_recovery,
-                                            menu_squash.clone(),
+                                            context_squash_range,
                                             &menu_refs,
                                             &menu_commit,
                                         );
@@ -1246,6 +1257,48 @@ fn skeleton_row(index: usize) -> AnyElement {
                 .bg(move || design::panel2()),
         )
         .into_element();
+}
+
+/// 按连续提交 SHA 生成可 Squash 的端点范围；不连续选择会被拒绝。
+fn squash_range_for_shas(
+    commits: &[domain::Commit],
+    shas: &[String],
+) -> Option<(String, String, Vec<(String, String)>)> {
+    if shas.len() < 2 {
+        return None;
+    }
+    let indices = shas
+        .iter()
+        .map(|sha| commits.iter().position(|commit| &commit.sha == sha))
+        .collect::<Option<Vec<_>>>()?;
+    return squash_range_for_indices(commits, indices);
+}
+
+fn squash_range_for_indices(
+    commits: &[domain::Commit],
+    mut indices: Vec<usize>,
+) -> Option<(String, String, Vec<(String, String)>)> {
+    indices.sort_unstable();
+    indices.dedup();
+    if indices.len() < 2 {
+        return None;
+    }
+    let newest = indices[0];
+    let oldest = *indices.last()?;
+    // Squash 会应用整个端点区间；不连续的 ⌘ 多选不能隐式包含未选中的提交。
+    if oldest - newest + 1 != indices.len() {
+        return None;
+    }
+    let from = commits.get(oldest)?.sha.clone();
+    let to = commits.get(newest)?.sha.clone();
+    let selected = (newest..=oldest)
+        .map(|index| {
+            commits
+                .get(index)
+                .map(|commit| (commit.short.clone(), commit.summary.clone()))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    return Some((from, to, selected));
 }
 
 /// 提交行的右键菜单（设计板 21）。
