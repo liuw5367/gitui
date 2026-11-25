@@ -1421,8 +1421,8 @@ fn quick_filter_pop(
                     if b.remote {
                         format!(
                             "{} · {}",
-                            b.label,
-                            i18n::t(language.get_untracked().as_str(), "filter.remote")
+                            i18n::t(language.get_untracked().as_str(), "filter.remote"),
+                            b.label
                         )
                     } else {
                         b.label
@@ -1518,24 +1518,40 @@ fn quick_filter_pop(
                             dynamic(move || {
                                 let (id, label) = choice.get();
                                 let toggle = toggle.clone();
-                                crate::ui::row::row(
-                                    move || label.clone(),
-                                    None,
-                                    Some(
-                                        crate::ui::check::indicator(selected.get()).into_element(),
-                                    ),
-                                    vec![],
-                                    selected.get(),
-                                    false,
-                                    move || match kind {
-                                        super::state::FilterMenu::Branches => {
-                                            toggle.toggle_branch_filter(id.clone())
-                                        }
-                                        super::state::FilterMenu::Authors => {
-                                            toggle.toggle_author_filter(id.clone())
-                                        }
-                                    },
-                                )
+                                let is_selected = selected.get();
+                                let leading =
+                                    Some(crate::ui::check::indicator(is_selected).into_element());
+                                let on_press = move || match kind {
+                                    super::state::FilterMenu::Branches => {
+                                        toggle.toggle_branch_filter(id.clone())
+                                    }
+                                    super::state::FilterMenu::Authors => {
+                                        toggle.toggle_author_filter(id.clone())
+                                    }
+                                };
+                                if kind == super::state::FilterMenu::Branches {
+                                    crate::ui::row::row_head_ellipsized(
+                                        move || label.clone(),
+                                        None,
+                                        leading,
+                                        vec![],
+                                        is_selected,
+                                        false,
+                                        on_press,
+                                    )
+                                    .into_element()
+                                } else {
+                                    crate::ui::row::row(
+                                        move || label.clone(),
+                                        None,
+                                        leading,
+                                        vec![],
+                                        is_selected,
+                                        false,
+                                        on_press,
+                                    )
+                                    .into_element()
+                                }
                             })
                         },
                     )),

@@ -22,9 +22,54 @@ pub(crate) fn row(
     disabled: bool,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    return row_with_overflow(
+        caption,
+        subtitle,
+        leading,
+        trailing,
+        selected,
+        disabled,
+        nsh_core::EllipsizeMode::Tail,
+        on_press,
+    );
+}
+
+/// 单行文本从左侧省略，保留分支名等内容的末尾。
+pub(crate) fn row_head_ellipsized(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    trailing: Vec<AnyElement>,
+    selected: bool,
+    disabled: bool,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    return row_with_overflow(
+        caption,
+        subtitle,
+        leading,
+        trailing,
+        selected,
+        disabled,
+        nsh_core::EllipsizeMode::Head,
+        on_press,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn row_with_overflow(
+    caption: impl Fn() -> String + 'static,
+    subtitle: Option<(Box<dyn Fn() -> String>, bool)>,
+    leading: Option<AnyElement>,
+    trailing: Vec<AnyElement>,
+    selected: bool,
+    disabled: bool,
+    overflow: nsh_core::EllipsizeMode,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
     let height = if subtitle.is_some() { 44.0 } else { ui::ROW };
-    return row_sized(
-        caption, subtitle, leading, trailing, selected, disabled, height, on_press,
+    return row_sized_with_radius(
+        caption, subtitle, leading, trailing, selected, disabled, height, 6.0, overflow, on_press,
     );
 }
 
@@ -133,7 +178,16 @@ pub(crate) fn row_sized(
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     return row_sized_with_radius(
-        caption, subtitle, leading, trailing, selected, disabled, height, 6.0, on_press,
+        caption,
+        subtitle,
+        leading,
+        trailing,
+        selected,
+        disabled,
+        height,
+        6.0,
+        nsh_core::EllipsizeMode::Tail,
+        on_press,
     );
 }
 
@@ -149,7 +203,16 @@ pub(crate) fn row_sized_flat(
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     return row_sized_with_radius(
-        caption, subtitle, leading, trailing, selected, disabled, height, 0.0, on_press,
+        caption,
+        subtitle,
+        leading,
+        trailing,
+        selected,
+        disabled,
+        height,
+        0.0,
+        nsh_core::EllipsizeMode::Tail,
+        on_press,
     );
 }
 
@@ -163,6 +226,7 @@ fn row_sized_with_radius(
     disabled: bool,
     height: f32,
     radius: f32,
+    overflow: nsh_core::EllipsizeMode,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     let mut element = nsh_base::button()
@@ -206,7 +270,7 @@ fn row_sized_with_radius(
             .line_height(px(ui::BODY_LINE))
             .text_color(move || foreground)
             .number_of_lines(1)
-            .text_overflow(nsh_core::EllipsizeMode::Tail),
+            .text_overflow(overflow),
     );
     if let Some((hint, mono)) = subtitle {
         // 副标题只占一行，并且从左侧省略：路径的尾部（仓库目录名）比开头更有用。
