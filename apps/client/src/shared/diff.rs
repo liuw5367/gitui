@@ -104,7 +104,6 @@ pub(crate) fn diff_title_bar(
     back: std::sync::Arc<dyn Fn()>,
     title: String,
     file_name: Option<String>,
-    file_count: usize,
     file_navigation: Option<FileNavigation>,
 ) -> AnyElement {
     let title_bar = view()
@@ -190,19 +189,7 @@ pub(crate) fn diff_title_bar(
     } else {
         title_bar
     };
-    return title_bar
-        .child(
-            text(move || {
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "files.changedCount",
-                    &[("count", file_count.to_string())],
-                )
-            })
-            .text_size(px(crate::ui::SECONDARY))
-            .text_color(move || design::text3()),
-        )
-        .into_element();
+    return title_bar.into_element();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -214,7 +201,6 @@ pub(crate) fn diff(
     raw_patch: Patch,
     empty_feedback: Option<&'static str>,
     return_title: String,
-    file_count: usize,
     return_to_history: std::sync::Arc<dyn Fn()>,
     open_blame: Option<std::sync::Arc<dyn Fn()>>,
     file_name: Option<String>,
@@ -226,7 +212,6 @@ pub(crate) fn diff(
         return_to_history,
         return_title,
         file_name,
-        file_count,
         file_navigation,
     );
 

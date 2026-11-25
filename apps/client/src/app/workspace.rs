@@ -391,11 +391,6 @@ fn center_content(
                             .map(|commit| commit.summary.clone())
                             .unwrap_or_else(|| label.clone())
                     };
-                    let file_count = if compare_active {
-                        raw_patch.files.len()
-                    } else {
-                        tab.files.len()
-                    };
                     let return_to_history: std::sync::Arc<dyn Fn()> = {
                         let history = history.clone();
                         std::sync::Arc::new(move || history.return_to_history())
@@ -435,7 +430,6 @@ fn center_content(
                         raw_patch,
                         compare_feedback,
                         return_title,
-                        file_count,
                         return_to_history,
                         open_blame,
                         file_name,
@@ -586,7 +580,6 @@ fn reflog_file_diff_view(
         back,
         title,
         Some(file_diff.path.clone()),
-        file_count,
         Some(file_navigation),
     );
     let reload_refs = refs.clone();

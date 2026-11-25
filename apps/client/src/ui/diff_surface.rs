@@ -10,6 +10,9 @@ use nsh_base::{
 };
 use nsh_core::prelude::*;
 
+/// NSH 0.6.0 uses DiffView's line height for file headers as well as code rows.
+const MULTI_FILE_ROW_HEIGHT: f32 = 22.0;
+
 /// 当前 DiffView 的导航入口。历史差异只读，不显示变更暂存按钮。
 #[derive(Clone)]
 pub(crate) struct DiffHandle {
@@ -162,11 +165,20 @@ pub(crate) fn configured_surface(
         Layout::Unified => "unified",
     };
     let patch_text = patch.as_str();
+    let file_count = patch_text
+        .lines()
+        .filter(|line| line.starts_with("diff --git "))
+        .count();
+    let line_height = if file_count > 1 {
+        MULTI_FILE_ROW_HEIGHT
+    } else {
+        ui::CODE_LINE
+    };
     log::debug!(
         target: "gitui::diff",
         "event=diff_surface.mount bytes={} files={} hunks={} layout={} wrap={} full_file={}",
         patch_text.len(),
-        patch_text.lines().filter(|line| line.starts_with("diff --git ")).count(),
+        file_count,
         patch_text.lines().filter(|line| line.starts_with("@@")).count(),
         layout_name,
         wrap,
@@ -200,7 +212,7 @@ pub(crate) fn configured_surface(
         .background(true)
         .font_family(ui::MONO)
         .font_size(Points(ui::CODE))
-        .line_height(Points(ui::CODE_LINE))
+        .line_height(Points(line_height))
         .indicators(DiffIndicators::None)
         .render_hunk_actions(move |hunk: &DiffHunk| -> AnyElement {
             let handler = on_hunk_copy.clone();
