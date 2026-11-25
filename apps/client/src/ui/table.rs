@@ -84,11 +84,13 @@ pub(crate) fn table_with_load_more(
     spec: TableSpec,
     has_more: bool,
     loading: bool,
+    table_ref: ComponentRef<nsh_base::DataTable>,
+    scroll_request: Signal<Option<usize>>,
     on_load_more: impl Fn() + 'static,
 ) -> impl IntoElement {
     return table_inner(
         spec,
-        None,
+        Some((table_ref, scroll_request)),
         Some((has_more, loading, Box::new(on_load_more))),
     );
 }
@@ -131,6 +133,7 @@ fn table_inner(
     let row_press = spec.on_row_press.map(std::rc::Rc::new);
     let context_menu = spec.on_context_menu.map(std::rc::Rc::new);
     let on_select = std::rc::Rc::new(spec.on_select);
+    let loading_more = load_more.as_ref().is_some_and(|(_, loading, _)| *loading);
     let mut table = nsh_base::data_table()
         .w_full()
         .h_full()
@@ -189,11 +192,19 @@ fn table_inner(
             }
         });
     if let Some((has_more, loading, on_load_more)) = load_more {
+        let scroll_anchor = scroll.clone();
         table = table
             .has_more(has_more)
             .loading(loading)
             .load_more_threshold(20)
-            .on_load_more(move || on_load_more());
+            .on_load_more(move || {
+                if let Some((table_ref, scroll_request)) = scroll_anchor
+                    && let Some(api) = table_ref.api::<nsh_base::DataTableApi>()
+                {
+                    scroll_request.set(Some(api.visible_rows().start as usize));
+                }
+                on_load_more();
+            });
     }
     let mut mounted_scroll = None;
     if let Some((table_ref, scroll_request)) = scroll {
@@ -214,7 +225,9 @@ fn table_inner(
                 };
                 if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
                     api.scroll_to_row(row as u32, Some(false));
-                    scroll_request.set(None);
+                    if !loading_more {
+                        scroll_request.set(None);
+                    }
                 }
             }
         });

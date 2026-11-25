@@ -2422,6 +2422,8 @@ fn reflog_list(
     let tab_id = tab.id;
     let path = tab.path.clone();
     let commands = cmd.clone();
+    let table_ref = component_ref();
+    let scroll_request = signal(None);
     let mut body = view()
         .w_full()
         .h_full()
@@ -2707,6 +2709,8 @@ fn reflog_list(
             },
             page_state.has_more,
             page_state.loading,
+            table_ref,
+            scroll_request,
             {
                 let load_more = commands.clone();
                 move || load_more.load_more_reflog()
