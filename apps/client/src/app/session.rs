@@ -123,8 +123,6 @@ pub(crate) struct Tab {
     pub(crate) sync_message: Option<String>,
     /// 最近一次同步是否失败。
     pub(crate) sync_failed: bool,
-    /// reflog（最近的在前）。
-    pub(crate) reflog: Vec<git::ReflogEntry>,
     /// 选中提交的完整元信息（Info 页）。
     pub(crate) details: Option<git::CommitDetails>,
     /// 选中文件的 blame 行。
@@ -411,7 +409,6 @@ pub(crate) fn load_tab_with_executable(
     let (status, changes) = load_changes_checked(&repo).unwrap_or_default();
     let authors = repo.authors_with_email().unwrap_or_default();
     let operation = repo.operation();
-    let reflog = repo.reflog(100).unwrap_or_default();
     let conflicts = repo.conflicts().unwrap_or_default();
     let remote_urls = repo.remote_urls().unwrap_or_default();
     let head = repo.head_state();
@@ -444,7 +441,6 @@ pub(crate) fn load_tab_with_executable(
         conflicts,
         head,
         remote_urls,
-        reflog,
         changelists,
         filter: filter.clone(),
         loaded: true,
@@ -565,7 +561,6 @@ pub(crate) struct RefreshSnapshot {
     head: git::HeadState,
     head_oid: Option<String>,
     remote_urls: Vec<(String, String)>,
-    reflog: Vec<git::ReflogEntry>,
     history: Option<HistoryRefresh>,
     blame: Option<BlameRefresh>,
 }
@@ -741,7 +736,6 @@ pub(crate) fn read_refresh_snapshot(
     let head = repo.head_state();
     let head_oid = repo.head_oid();
     let remote_urls = repo.remote_urls().map_err(|error| error.detail())?;
-    let reflog = repo.reflog(100).map_err(|error| error.detail())?;
     let history = if head != input.head
         || head_oid != input.head_oid
         || refs != input.refs
@@ -807,7 +801,6 @@ pub(crate) fn read_refresh_snapshot(
         head,
         head_oid,
         remote_urls,
-        reflog,
         history,
         blame,
     });
@@ -917,7 +910,6 @@ pub(crate) fn apply_refresh_snapshot(tab: &mut Tab, snapshot: RefreshSnapshot) -
     changed |= replace_if_changed(&mut tab.head, snapshot.head);
     changed |= replace_if_changed(&mut tab.head_oid, snapshot.head_oid);
     changed |= replace_if_changed(&mut tab.remote_urls, snapshot.remote_urls);
-    changed |= replace_if_changed(&mut tab.reflog, snapshot.reflog);
     if let Some((selected, patch)) = snapshot.selected_change {
         changed |= replace_if_changed(&mut tab.selected_change, selected);
         changed |= replace_if_changed(&mut tab.change_diff, patch);
@@ -1080,6 +1072,8 @@ pub(crate) fn reload_after_history_change(tab: &mut Tab) -> Result<String, Strin
     tab.commits = refreshed.commits;
     tab.refs = refreshed.refs;
     tab.branch = refreshed.branch.clone();
+    tab.head = refreshed.head.clone();
+    tab.head_oid = refreshed.head_oid.clone();
     tab.operation = refreshed.operation;
     tab.conflicts = refreshed.conflicts;
     tab.conflict_paths = if refreshed.operation == git::Operation::None {

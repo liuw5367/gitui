@@ -1,9 +1,10 @@
 //! 引用管理功能的 Signal 集合：页签、reflog 过滤与当前选中记录。
 //!
-//! 只放属于本功能、且不跨功能的信号；分支、远程、标签、贮藏、工作树与 reflog
-//! 条目都是每个仓库各自的数据，挂在 `Tab` 上，仍留在 `Tab` 里。
+//! 只放属于本功能、且不跨功能的信号；Reflog 行与检查器数据只在 Reflog 页面打开期间
+//! 保留，仓库标签切换时由命令清理。
 //!
 use nsh_core::prelude::*;
+use std::sync::Arc;
 
 /// Refs 主区的两个页签。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +60,26 @@ impl ReflogEntryKey {
     }
 }
 
+/// 当前 Reflog 列表所属的仓库状态；HEAD 或分支变化后要从第一页重读。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ReflogPageIdentity {
+    pub(crate) tab_id: u64,
+    pub(crate) path: String,
+    pub(crate) branch: String,
+    pub(crate) head_oid: Option<String>,
+}
+
+/// 当前页面的 Reflog 分页状态。记录只保存在此状态中，离开页面时清空。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ReflogPageState {
+    pub(crate) identity: Option<ReflogPageIdentity>,
+    pub(crate) loading: bool,
+    pub(crate) has_more: bool,
+    pub(crate) loaded_count: usize,
+    pub(crate) request_id: u64,
+    pub(crate) error: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ReflogDetailState {
     Loading(ReflogEntryKey),
@@ -96,6 +117,10 @@ pub(crate) struct RefsState {
     pub(crate) selected_tab: Signal<RefsTab>,
     /// Reflog 的过滤关键字；同时匹配动作、说明与短 sha，空串不过滤。
     pub(crate) reflog_query: Signal<String>,
+    /// 只保留当前打开的 Reflog 页已加载的行，离开时清空。
+    pub(crate) reflog_entries: Signal<Arc<Vec<git::ReflogEntry>>>,
+    /// 当前仓库 Reflog 分页状态。
+    pub(crate) reflog_page: Signal<ReflogPageState>,
     /// 当前选择按原始 Reflog 快照行区分，而非只按 SHA。
     pub(crate) reflog_selection: Signal<Option<ReflogEntryKey>>,
     /// 右栏提交详情只读加载状态。

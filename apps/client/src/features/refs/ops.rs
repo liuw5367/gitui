@@ -58,7 +58,6 @@ pub(crate) fn checkout_branch(tab: &mut Tab, branch: &str) {
     tab.changes = refreshed.changes;
     tab.conflicts = refreshed.conflicts;
     tab.operation = refreshed.operation;
-    tab.reflog = refreshed.reflog;
     tab.selected = refreshed.selected;
     tab.patch = refreshed.patch;
     tab.files = refreshed.files;
@@ -470,7 +469,6 @@ pub(crate) fn pull_remote_branch(
     tab.conflicts = refreshed.conflicts;
     tab.operation = refreshed.operation;
     tab.head = refreshed.head;
-    tab.reflog = refreshed.reflog;
     tab.error = None;
     return result;
 }

@@ -5,8 +5,8 @@
 
 use super::ops;
 use super::state::{
-    ReflogDetailState, ReflogEntryKey, ReflogFileDiffState, ReflogFileDiffStatus, RefsState,
-    RefsTab,
+    ReflogDetailState, ReflogEntryKey, ReflogFileDiffState, ReflogFileDiffStatus,
+    ReflogPageIdentity, ReflogPageState, RefsState, RefsTab,
 };
 use crate::app::ops::identity;
 use crate::app::session::Tab;
@@ -16,17 +16,30 @@ use crate::features::recovery::commands::RecoveryCommands;
 use crate::features::search::commands::SearchCommands;
 use crate::features::search::form_dialog::FormKind;
 use crate::features::sync::commands::SyncCommands;
+use crate::i18n;
 use nsh_core::prelude::*;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-fn reflog_selection_exists(tabs: &[Tab], selection: &ReflogEntryKey) -> bool {
-    return tabs.iter().any(|tab| {
-        tab.id == selection.tab_id
-            && tab.path == selection.path
-            && tab.reflog.get(selection.index).is_some_and(|entry| {
-                selection.matches_entry(tab.id, tab.path.as_str(), selection.index, entry)
-            })
+const REFLOG_PAGE_SIZE: usize = 100;
+
+fn reflog_page_identity(tab: &Tab) -> ReflogPageIdentity {
+    return ReflogPageIdentity {
+        tab_id: tab.id,
+        path: tab.path.clone(),
+        branch: tab.branch.clone(),
+        head_oid: tab.head_oid.clone(),
+    };
+}
+
+fn reflog_selection_exists(entries: &[git::ReflogEntry], selection: &ReflogEntryKey) -> bool {
+    return entries.get(selection.index).is_some_and(|entry| {
+        selection.matches_entry(
+            selection.tab_id,
+            selection.path.as_str(),
+            selection.index,
+            entry,
+        )
     });
 }
 
@@ -123,7 +136,6 @@ impl RemoteOperation {
                 target.conflicts = updated.conflicts.clone();
                 target.operation = updated.operation;
                 target.head = updated.head.clone();
-                target.reflog = updated.reflog.clone();
                 target.error = updated.error.clone();
             }
         }
@@ -257,21 +269,221 @@ impl RefsCommands {
         self.state.selected_tab.set(RefsTab::Reflog);
         self.search.state.mode.set(crate::Mode::Refs);
         self.search.right_panel_open.set(true);
+        self.ensure_reflog_loaded();
+    }
+
+    pub(crate) fn select_refs_tab(&self, selected: RefsTab) {
+        self.state.selected_tab.set(selected);
+        if selected == RefsTab::Reflog {
+            self.ensure_reflog_loaded();
+        } else {
+            self.clear_reflog_cache();
+        }
+    }
+
+    /// 首次显示 Reflog 时读取第一页；表格滚近底部后由 `load_more_reflog` 读取后续页。
+    pub(crate) fn ensure_reflog_loaded(&self) {
+        if self.state.selected_tab.get_untracked() != RefsTab::Reflog {
+            return;
+        }
+        let tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs.get(self.session.active.get_untracked()) else {
+            return;
+        };
+        let identity = reflog_page_identity(tab);
+        let mut loaded_count = self.state.reflog_entries.get_untracked().len();
+        let page = self.state.reflog_page.get_untracked();
+        if page.identity.as_ref() != Some(&identity) || page.loaded_count != loaded_count {
+            self.reset_reflog_cache(Some(identity));
+            loaded_count = 0;
+        }
+        let page = self.state.reflog_page.get_untracked();
+        if loaded_count == 0 && page.has_more && !page.loading && page.error.is_none() {
+            self.load_more_reflog();
+        }
+    }
+
+    /// 清掉当前 Reflog 页持有的记录和检查器数据，并使未完成的读取结果过期。
+    pub(crate) fn clear_reflog_cache(&self) {
+        let page = self.state.reflog_page.get_untracked();
+        let has_state = !self.state.reflog_entries.get_untracked().is_empty()
+            || page.identity.is_some()
+            || page.loading
+            || page.has_more
+            || page.error.is_some()
+            || self.state.reflog_selection.get_untracked().is_some()
+            || self.state.reflog_detail.get_untracked().is_some()
+            || self.state.reflog_file_diff.get_untracked().is_some();
+        if !has_state {
+            return;
+        }
+        self.reset_reflog_cache(None);
+    }
+
+    fn reset_reflog_cache(&self, identity: Option<ReflogPageIdentity>) {
+        let request_id = self
+            .state
+            .reflog_page
+            .get_untracked()
+            .request_id
+            .wrapping_add(1);
+        let has_more = identity.is_some();
+        self.state
+            .reflog_entries
+            .set(std::sync::Arc::new(Vec::new()));
+        self.state.reflog_selection.set(None);
+        self.state.reflog_detail.set(None);
+        self.state.reflog_file_diff.set(None);
+        self.state.reflog_page.set(ReflogPageState {
+            identity,
+            loading: false,
+            has_more,
+            loaded_count: 0,
+            request_id,
+            error: None,
+        });
+    }
+
+    pub(crate) fn retry_reflog_load(&self) {
+        let mut page = self.state.reflog_page.get_untracked();
+        page.error = None;
+        page.has_more = true;
+        self.state.reflog_page.set(page);
+        self.load_more_reflog();
+    }
+
+    pub(crate) fn load_more_reflog(&self) {
+        if self.state.selected_tab.get_untracked() != RefsTab::Reflog {
+            return;
+        }
+        let tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs.get(self.session.active.get_untracked()).cloned() else {
+            return;
+        };
+        let identity = reflog_page_identity(&tab);
+        let entries = self.state.reflog_entries.get_untracked();
+        let current_page = self.state.reflog_page.get_untracked();
+        if current_page.identity.as_ref() != Some(&identity)
+            || current_page.loaded_count != entries.len()
+        {
+            self.reset_reflog_cache(Some(identity.clone()));
+        }
+        let mut page = self.state.reflog_page.get_untracked();
+        if page.loading || !page.has_more || page.error.is_some() {
+            return;
+        }
+        let offset = self.state.reflog_entries.get_untracked().len();
+        let request_id = page.request_id.wrapping_add(1);
+        page.request_id = request_id;
+        page.loading = true;
+        page.error = None;
+        self.state.reflog_page.set(page);
+
+        let path = tab.path.clone();
+        let executable = tab.git_executable.clone();
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = git::Repo::open_with_executable(path.as_str(), &executable)
+                .and_then(|repo| repo.reflog_page(REFLOG_PAGE_SIZE, offset))
+                .map_err(|_| ());
+            let _ = sender.send(result);
+        });
+
+        let command = self.clone();
+        Owner::detached().run(|| {
+            spawn(async move {
+                loop {
+                    match receiver.try_recv() {
+                        Ok(result) => {
+                            command.finish_reflog_page(identity, request_id, offset, result);
+                            return;
+                        }
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            command.finish_reflog_page(identity, request_id, offset, Err(()));
+                            return;
+                        }
+                        Err(mpsc::TryRecvError::Empty) => timer(Duration::from_millis(16)).await,
+                    }
+                }
+            });
+        });
+    }
+
+    fn finish_reflog_page(
+        &self,
+        identity: ReflogPageIdentity,
+        request_id: u64,
+        offset: usize,
+        result: Result<Vec<git::ReflogEntry>, ()>,
+    ) {
+        if self.state.selected_tab.get_untracked() != RefsTab::Reflog {
+            return;
+        }
+        let tabs = self.session.tabs.get_untracked();
+        let active = self.session.active.get_untracked();
+        if !tabs
+            .get(active)
+            .is_some_and(|tab| reflog_page_identity(tab) == identity)
+        {
+            return;
+        }
+        let mut page = self.state.reflog_page.get_untracked();
+        if page.identity.as_ref() != Some(&identity)
+            || page.request_id != request_id
+            || !page.loading
+        {
+            return;
+        }
+        let mut entries = self.state.reflog_entries.get_untracked();
+        if entries.len() != offset {
+            return;
+        }
+        let mut select_first = None;
+        match result {
+            Ok(mut next) => {
+                page.loaded_count = entries.len() + next.len();
+                page.has_more = next.len() == REFLOG_PAGE_SIZE;
+                page.loading = false;
+                page.error = None;
+                if offset == 0 && self.state.reflog_selection.get_untracked().is_none() {
+                    select_first = next.first().map(|entry| {
+                        ReflogEntryKey::new(identity.tab_id, identity.path.clone(), 0, entry)
+                    });
+                }
+                std::sync::Arc::make_mut(&mut entries).append(&mut next);
+            }
+            Err(()) => {
+                page.loading = false;
+                page.has_more = false;
+                page.error = Some(i18n::t(
+                    self.language.get_untracked().as_str(),
+                    "reflog.loadFailed",
+                ));
+            }
+        }
+        self.state.reflog_entries.set(entries);
+        self.state.reflog_page.set(page);
+        if let Some(selection) = select_first {
+            self.select_reflog_entry(selection);
+        }
     }
 
     /// 选择一条 reflog 记录并只读加载其提交元信息与文件统计。
     pub(crate) fn select_reflog_entry(&self, selection: ReflogEntryKey) {
         let tabs = self.session.tabs.get_untracked();
         let active = self.session.active.get_untracked();
-        let Some(tab) = tabs.get(active).filter(|tab| {
-            tab.id == selection.tab_id
-                && tab.path == selection.path
-                && tab.reflog.get(selection.index).is_some_and(|entry| {
-                    selection.matches_entry(tab.id, tab.path.as_str(), selection.index, entry)
-                })
-        }) else {
+        let Some(tab) = tabs
+            .get(active)
+            .filter(|tab| tab.id == selection.tab_id && tab.path == selection.path)
+        else {
             return;
         };
+        if !reflog_selection_exists(
+            self.state.reflog_entries.get_untracked().as_slice(),
+            &selection,
+        ) {
+            return;
+        }
 
         let current = self.state.reflog_detail.get_untracked();
         let previous_selection = self.state.reflog_selection.get_untracked();
@@ -319,24 +531,16 @@ impl RefsCommands {
 
         let detail_state = self.state.reflog_detail;
         let current_selection = self.state.reflog_selection;
-        let tabs = self.session.tabs;
+        let entries = self.state.reflog_entries;
         Owner::detached().run(|| {
             spawn(async move {
                 loop {
                     match receiver.try_recv() {
                         Ok(result) => {
-                            let still_exists = tabs.get_untracked().iter().any(|tab| {
-                                tab.id == selection.tab_id
-                                    && tab.path == selection.path
-                                    && tab.reflog.get(selection.index).is_some_and(|entry| {
-                                        selection.matches_entry(
-                                            tab.id,
-                                            tab.path.as_str(),
-                                            selection.index,
-                                            entry,
-                                        )
-                                    })
-                            });
+                            let still_exists = reflog_selection_exists(
+                                entries.get_untracked().as_slice(),
+                                &selection,
+                            );
                             let still_selected = current_selection
                                 .get_untracked()
                                 .as_ref()
@@ -354,18 +558,10 @@ impl RefsCommands {
                             return;
                         }
                         Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                            let still_exists = tabs.get_untracked().iter().any(|tab| {
-                                tab.id == selection.tab_id
-                                    && tab.path == selection.path
-                                    && tab.reflog.get(selection.index).is_some_and(|entry| {
-                                        selection.matches_entry(
-                                            tab.id,
-                                            tab.path.as_str(),
-                                            selection.index,
-                                            entry,
-                                        )
-                                    })
-                            });
+                            let still_exists = reflog_selection_exists(
+                                entries.get_untracked().as_slice(),
+                                &selection,
+                            );
                             if still_exists
                                 && current_selection
                                     .get_untracked()
@@ -430,10 +626,13 @@ impl RefsCommands {
         let Some(tab) = tabs
             .iter()
             .find(|tab| tab.id == selection.tab_id && tab.path == selection.path)
-            .filter(|_| reflog_selection_exists(tabs.as_slice(), &selection))
         else {
             return;
         };
+        let entries = self.state.reflog_entries.get_untracked();
+        if !reflog_selection_exists(entries.as_slice(), &selection) {
+            return;
+        }
         self.state.reflog_file_diff.set(Some(ReflogFileDiffState {
             selection: selection.clone(),
             path: path.clone(),
@@ -471,14 +670,14 @@ impl RefsCommands {
         let diff_state = self.state.reflog_file_diff;
         let current_selection = self.state.reflog_selection;
         let detail_state = self.state.reflog_detail;
-        let tabs = self.session.tabs;
+        let entries_state = self.state.reflog_entries;
         Owner::detached().run(|| {
             spawn(async move {
                 loop {
                     match receiver.try_recv() {
                         Ok(result) => {
                             let still_exists = reflog_selection_exists(
-                                tabs.get_untracked().as_slice(),
+                                entries_state.get_untracked().as_slice(),
                                 &selection,
                             );
                             let still_selected = current_selection
@@ -513,7 +712,7 @@ impl RefsCommands {
                         }
                         Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                             let still_exists = reflog_selection_exists(
-                                tabs.get_untracked().as_slice(),
+                                entries_state.get_untracked().as_slice(),
                                 &selection,
                             );
                             let still_selected = current_selection

@@ -271,6 +271,14 @@ fn center_content(
         .min_w_0()
         .min_h_0()
         .child(dynamic(move || -> AnyElement {
+            let current_mode = mode.get();
+            let reflog_visible = current_mode == crate::Mode::Refs
+                && refs.state.selected_tab.get() == refs::state::RefsTab::Reflog
+                && current_error.get().is_none()
+                && !current_unloaded.get();
+            if !reflog_visible {
+                refs.clear_reflog_cache();
+            }
             if let Some(detail) = current_error.get() {
                 let session = session.clone();
                 let refresh = refresh.clone();
@@ -281,7 +289,7 @@ fn center_content(
             if current_unloaded.get() {
                 return repository_loading().into_element();
             }
-            return match mode.get() {
+            return match current_mode {
                 crate::Mode::History => {
                     if !current_has_history_diff.get() {
                         let Some(tab) = history_tab.get() else {
@@ -910,7 +918,9 @@ fn right_content(
                         if selected.is_none() {
                             return inspector::reflog_commit_placeholder(
                                 language,
-                                if tab.reflog.is_empty() {
+                                if refs.state.reflog_page.get().loading {
+                                    "reflog.detailsLoading"
+                                } else if refs.state.reflog_entries.get().is_empty() {
                                     "reflog.empty"
                                 } else {
                                     "reflog.selectEntry"

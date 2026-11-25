@@ -76,7 +76,21 @@ pub(crate) struct TableSpec {
 
 /// 一张虚拟化表格。
 pub(crate) fn table(spec: TableSpec) -> impl IntoElement {
-    return table_inner(spec, None);
+    return table_inner(spec, None, None);
+}
+
+/// 带虚拟滚动近底部加载回调的表格。
+pub(crate) fn table_with_load_more(
+    spec: TableSpec,
+    has_more: bool,
+    loading: bool,
+    on_load_more: impl Fn() + 'static,
+) -> impl IntoElement {
+    return table_inner(
+        spec,
+        None,
+        Some((has_more, loading, Box::new(on_load_more))),
+    );
 }
 
 /// 带行滚动句柄的虚拟化表格，用于定位历史里的深层提交。
@@ -85,7 +99,7 @@ pub(crate) fn table_with_scroll(
     table_ref: ComponentRef<nsh_base::DataTable>,
     scroll_request: Signal<Option<usize>>,
 ) -> impl IntoElement {
-    return table_inner(spec, Some((table_ref, scroll_request)));
+    return table_inner(spec, Some((table_ref, scroll_request)), None);
 }
 
 /// 只在活动行不同时更新虚拟表格；`DataTableApi::select` 会尝试把行滚动到可见位置。
@@ -106,6 +120,7 @@ pub(crate) fn select_row(table_ref: ComponentRef<nsh_base::DataTable>, row: u32)
 fn table_inner(
     spec: TableSpec,
     scroll: Option<(ComponentRef<nsh_base::DataTable>, Signal<Option<usize>>)>,
+    load_more: Option<(bool, bool, Box<dyn Fn()>)>,
 ) -> impl IntoElement {
     let columns = columns_of(&spec.columns);
     let full_width_column = spec.columns.len() == 1 && spec.columns[0].width.is_none();
@@ -173,6 +188,13 @@ fn table_inner(
                 on_select(row as usize);
             }
         });
+    if let Some((has_more, loading, on_load_more)) = load_more {
+        table = table
+            .has_more(has_more)
+            .loading(loading)
+            .load_more_threshold(20)
+            .on_load_more(move || on_load_more());
+    }
     let mut mounted_scroll = None;
     if let Some((table_ref, scroll_request)) = scroll {
         table = table.component_ref(&table_ref);

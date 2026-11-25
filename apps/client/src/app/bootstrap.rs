@@ -136,6 +136,8 @@ pub(crate) fn app() -> impl IntoElement {
     });
     // reflog 的过滤关键字（动作或说明）。
     let reflog_query = signal(String::new());
+    let reflog_entries = signal(std::sync::Arc::new(Vec::new()));
+    let reflog_page = signal(features::refs::state::ReflogPageState::default());
     let reflog_selection = signal(None);
     let reflog_detail = signal(None);
     let reflog_file_diff = signal(None);
@@ -677,20 +679,11 @@ pub(crate) fn app() -> impl IntoElement {
 
     // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。
     // 「切到某个提交」的确认流程归恢复功能，这里只是持有它的用例。
-    let initial_reflog_selection = if initial_reflog {
-        let current_tabs = tabs.get_untracked();
-        current_tabs.get(active.get_untracked()).and_then(|tab| {
-            tab.reflog.first().map(|entry| {
-                features::refs::state::ReflogEntryKey::new(tab.id, tab.path.clone(), 0, entry)
-            })
-        })
-    } else {
-        None
-    };
-    reflog_selection.set(initial_reflog_selection.clone());
     let refs_state = features::refs::state::RefsState {
         selected_tab: refs_selected_tab,
         reflog_query,
+        reflog_entries,
+        reflog_page,
         reflog_selection,
         reflog_detail,
         reflog_file_diff,
@@ -709,10 +702,6 @@ pub(crate) fn app() -> impl IntoElement {
         worktree_windows: signal(Vec::new()),
         open_worktree_window: None,
     };
-    if let Some(selection) = initial_reflog_selection {
-        refs_commands.select_reflog_entry(selection);
-    }
-
     // 各功能的句柄收成一个结构：主窗口版式（`app::workspace`）只取这一个参数。
     let mut handles = AppHandles {
         askpass: askpass_ui.clone(),

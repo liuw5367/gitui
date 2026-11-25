@@ -24,7 +24,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 分组 | 方法 |
 |---|---|
 | 打开与状态 | `Repo::open`、`Repo::open_with_executable`、`GitExecutable`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs`、`ref_oid_snapshot`、`sync_ref_snapshot`、`upstream_ref`、`head_oid`、`resolve_commit_oid`、`commit_oids_between`、`is_ancestor` |
-| 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`merge_base`、`diff_between`、`diff_between_with_whitespace`、`diff_trees_with_whitespace`、`diff_worktree_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog` |
+| 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`merge_base`、`diff_between`、`diff_between_with_whitespace`、`diff_trees_with_whitespace`、`diff_worktree_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog`、`reflog_page` |
 | 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff`、`file_diff_with_whitespace` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_show_with_whitespace`、`stash_show_patch_with_whitespace`、`stash_pop`、`stash_apply`、`stash_drop` |
@@ -46,6 +46,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 `conflict_sides(path)` 从 `git ls-files -u` 读取 index stage 1/2/3，再用对象 ID 读取各侧原始 blob；缺失 stage 返回 `None`，不把删除侧伪装成空文件。`conflict_worktree_content` 读取当前工作区字节。解决文本或二进制内容时，`resolve_conflict_bytes` 只写回并暂存给定路径；`resolve_conflict_delete` 以 `git rm` 暂存删除。`operation()` 通过 `git rev-parse --git-dir` 查找操作标记，因此也适用于 `.git` 是文件的关联工作树。
 
 `log_all` 返回所有引用可达的完整历史，并把 `git stash list` 中的每个 stash OID 加入范围。`log_history` 默认从全部引用与 stash 读取；`LogFilter.references` 可用多个本地或远端 ref 做 OR 范围，旧的单引用 `reference` 仍可用。它支持多作者 email、日期端点、literal 文件/目录 pathspec 与提交消息子串；条件维度之间按 AND 组合。`log_history_graph` 只应用引用范围，给筛选后的提交图重连祖先使用。完整历史读取不会套用普通 `run_git` 的 8 MiB stdout 截断。`authors_with_email` 返回按 email 去重的作者身份，`authors` 保留只取显示名的接口。日志解析包含 author email 和完整提交消息；`resolve_commit` 对完整引用追加 `^{commit}` 后调用 `rev-parse`，可把 annotated tag 解析到其 commit。
+
+`reflog(limit)` 返回最近的 reflog 记录；`reflog_page(limit, skip)` 从最近记录开始按偏移分页，`skip` 表示跳过的记录数。
 
 `Repo::blame(path, revision)` 按给定 revision 读取行归属，并用 `--follow` 回溯重命名。`Repo::file_history(path, revision, limit)` 同样限定 revision 并跟随重命名，返回 `FileHistoryEntry`：`path` 是该提交中实际存在的路径，`deleted` 标记该提交是否删除了文件。界面查看删除提交时，内容 blame 使用该提交的第一父版本；其他历史项使用提交本身。工作区入口明确传 `HEAD`，不会把历史提交文件误读成当前版本。
 

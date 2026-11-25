@@ -144,6 +144,9 @@ impl AppHandles {
         handles.refs.sync = handles.sync.clone();
         handles.refs.state.selected_tab = signal(crate::features::refs::state::RefsTab::Refs);
         handles.refs.state.reflog_query = signal(String::new());
+        handles.refs.state.reflog_entries = signal(std::sync::Arc::new(Vec::new()));
+        handles.refs.state.reflog_page =
+            signal(crate::features::refs::state::ReflogPageState::default());
         handles.refs.state.reflog_selection = signal(None);
         handles.refs.state.reflog_detail = signal(None);
         handles.refs.open_worktree_window = None;

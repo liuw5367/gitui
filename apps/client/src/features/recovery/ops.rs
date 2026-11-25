@@ -46,16 +46,15 @@ pub(crate) fn reset_to(tab: &mut Tab, sha: &str, mode: git::ResetMode) -> Result
     );
     tab.commits = refreshed.commits;
     tab.branch = refreshed.branch;
+    tab.head = refreshed.head;
+    tab.head_oid = refreshed.head_oid;
     tab.ahead = refreshed.ahead;
     tab.behind = refreshed.behind;
     return Ok(());
 }
 
 /// 把当前分支重置到某条 reflog 记录（不可撤销，调用方需确认）。
-pub(crate) fn undo_to_reflog(tab: &mut Tab, index: usize) {
-    let Some(entry) = tab.reflog.get(index).cloned() else {
-        return;
-    };
+pub(crate) fn undo_to_reflog(tab: &mut Tab, sha: &str) {
     let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
@@ -63,7 +62,7 @@ pub(crate) fn undo_to_reflog(tab: &mut Tab, index: usize) {
             return;
         }
     };
-    match repo.reset_hard(entry.sha.as_str()) {
+    match repo.reset_hard(sha) {
         Ok(()) => {
             refresh_changes(tab);
             let filter = tab.filter.clone();
@@ -74,9 +73,10 @@ pub(crate) fn undo_to_reflog(tab: &mut Tab, index: usize) {
             );
             tab.commits = refreshed.commits;
             tab.branch = refreshed.branch;
+            tab.head = refreshed.head;
+            tab.head_oid = refreshed.head_oid;
             tab.ahead = refreshed.ahead;
             tab.behind = refreshed.behind;
-            tab.reflog = refreshed.reflog;
         }
         Err(error) => tab.error = Some(error.detail()),
     }
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn reflog_is_loaded_and_undo_resets_the_branch() {
+    fn reflog_can_be_loaded_on_demand_and_undo_resets_the_branch() {
         let repo = TempRepo::new("reflog");
         let path = repo.path.display().to_string();
         std::fs::write(repo.path.join("a.txt"), "two\n").expect("write");
@@ -129,22 +129,30 @@ mod tests {
 
         // 提交后 reflog 顶部应是这次 commit。
         let mut tab = load_tab(&path, &LogFilter::default());
-        assert!(!tab.reflog.is_empty());
-        assert_eq!(tab.reflog[0].action, "commit");
+        let reflog = git::Repo::open(path.as_str())
+            .expect("repo")
+            .reflog(100)
+            .expect("reflog");
+        assert!(!reflog.is_empty());
+        assert_eq!(reflog[0].action, "commit");
         let newest = tab.commits[0].sha.clone();
 
         // 撤销到 reflog 里第一条之外的记录（即上一个提交）。
-        let target = tab
-            .reflog
+        let target_sha = reflog
             .iter()
-            .position(|entry| entry.sha != newest)
-            .expect("older entry");
-        let target_sha = tab.reflog[target].sha.clone();
-        undo_to_reflog(&mut tab, target);
+            .find(|entry| entry.sha != newest)
+            .expect("older entry")
+            .sha
+            .clone();
+        undo_to_reflog(&mut tab, target_sha.as_str());
 
         assert_eq!(tab.commits[0].sha, target_sha, "分支应回到目标提交");
+        let reflog_after = git::Repo::open(path.as_str())
+            .expect("repo")
+            .reflog(3)
+            .expect("reflog after undo");
         assert!(
-            !tab.reflog.is_empty() && tab.reflog[0].action == "reset",
+            !reflog_after.is_empty() && reflog_after[0].action == "reset",
             "撤销本身也应留下 reflog 记录"
         );
     }

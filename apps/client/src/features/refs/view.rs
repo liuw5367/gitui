@@ -1780,6 +1780,8 @@ pub(crate) fn refs_view(
 ) -> impl IntoElement + use<> {
     let now = store::now_unix();
     let reflog_query = state.reflog_query;
+    let reflog_entries = state.reflog_entries;
+    let reflog_page = state.reflog_page;
     let selected_tab = state.selected_tab;
     let reflog_selection = state.reflog_selection;
     // 表格在 `dynamic` 里重建，先克隆一份用例，闭包才拿得到 `'static` 数据。
@@ -1839,8 +1841,18 @@ pub(crate) fn refs_view(
                             }))
                     },
                 ))
-                .child(tab_button(language, RefsTab::Refs, selected_tab))
-                .child(tab_button(language, RefsTab::Reflog, selected_tab)),
+                .child(tab_button(
+                    language,
+                    RefsTab::Refs,
+                    selected_tab,
+                    &table_cmd,
+                ))
+                .child(tab_button(
+                    language,
+                    RefsTab::Reflog,
+                    selected_tab,
+                    &table_cmd,
+                )),
         )
         .child(dynamic(move || -> AnyElement {
             match selected_tab.get() {
@@ -1848,6 +1860,7 @@ pub(crate) fn refs_view(
                     refs_table(language, tab.clone(), &table_search, &table_cmd).into_element()
                 }
                 RefsTab::Reflog => {
+                    table_cmd.ensure_reflog_loaded();
                     // 「撤销」归恢复功能（`cmd.recovery`），「在历史中显示」归提交
                     // 历史（`cmd.history`）：refs 只是这两个入口的宿主。
                     reflog_list(
@@ -1855,6 +1868,8 @@ pub(crate) fn refs_view(
                         tab.clone(),
                         now,
                         reflog_query,
+                        reflog_entries,
+                        reflog_page,
                         reflog_selection,
                         &table_cmd,
                         &table_search,
@@ -1869,7 +1884,9 @@ fn tab_button(
     language: Signal<SharedString>,
     which: RefsTab,
     selected: Signal<RefsTab>,
+    cmd: &RefsCommands,
 ) -> impl IntoElement {
+    let commands = cmd.clone();
     return dynamic(move || -> AnyElement {
         // 每个按钮单独订阅页签状态，切换时更新选中外观。
         let variant = if selected.get() == which {
@@ -1877,12 +1894,13 @@ fn tab_button(
         } else {
             crate::ui::button::ButtonVariant::Ghost
         };
+        let command = commands.clone();
         crate::ui::button::button(
             move || i18n::t(language.get().as_str(), which.key()),
             variant,
             crate::ui::button::ButtonSize::Small,
             false,
-            move || selected.set(which),
+            move || command.select_refs_tab(which),
         )
         .into_element()
     });
@@ -2377,6 +2395,8 @@ fn reflog_list(
     tab: Tab,
     now: i64,
     query: Signal<String>,
+    entries: Signal<std::sync::Arc<Vec<git::ReflogEntry>>>,
+    page: Signal<super::state::ReflogPageState>,
     selected: Signal<Option<super::state::ReflogEntryKey>>,
     cmd: &RefsCommands,
     search: &SearchCommands,
@@ -2399,7 +2419,6 @@ fn reflog_list(
             crate::shared::os::copy_text(notice, language, text)
         })
     };
-    let entries = tab.reflog.clone();
     let tab_id = tab.id;
     let path = tab.path.clone();
     let commands = cmd.clone();
@@ -2436,25 +2455,47 @@ fn reflog_list(
         .child(view().w_full().h(px(1.0)).bg(move || design::line()));
     body = body.child(dynamic(move || -> AnyElement {
         let needle = query.get().to_lowercase();
+        let all_entries = entries.get();
+        let page_state = page.get();
         let current_selection = selected.get();
-        let visible = entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| {
-                needle.is_empty()
-                    || entry.action.to_lowercase().contains(&needle)
-                    || entry.summary.to_lowercase().contains(&needle)
-                    || entry.short.to_lowercase().contains(&needle)
-            })
-            .map(|(index, entry)| (index, entry.clone()))
-            .collect::<Vec<_>>();
+        let visible = std::sync::Arc::new(
+            all_entries
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| {
+                    needle.is_empty()
+                        || entry.action.to_lowercase().contains(&needle)
+                        || entry.summary.to_lowercase().contains(&needle)
+                        || entry.short.to_lowercase().contains(&needle)
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>(),
+        );
         if visible.is_empty() {
-            let key = if entries.is_empty() {
+            if page_state.loading && all_entries.is_empty() {
+                return view()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "reflog.loading"))
+                            .text_size(px(crate::ui::SECONDARY))
+                            .text_color(move || design::text3()),
+                    )
+                    .into_element();
+            }
+            if let Some(error) = page_state.error.clone() {
+                let retry = commands.clone();
+                return reflog_load_error(language, error, move || retry.retry_reflog_load());
+            }
+            let key = if all_entries.is_empty() {
                 "reflog.empty"
             } else {
                 "reflog.noMatches"
             };
-            return view()
+            let mut empty = view()
                 .w_full()
                 .flex_1()
                 .min_h_0()
@@ -2464,31 +2505,49 @@ fn reflog_list(
                     text(move || i18n::t(language.get().as_str(), key))
                         .text_size(px(crate::ui::SECONDARY))
                         .text_color(move || design::text3()),
-                )
-                .into_element();
+                );
+            if page_state.has_more && !needle.is_empty() {
+                let load_more = commands.clone();
+                empty = empty.child(crate::ui::button::button(
+                    move || i18n::t(language.get().as_str(), "reflog.loadMore"),
+                    crate::ui::button::ButtonVariant::Ghost,
+                    crate::ui::button::ButtonSize::Small,
+                    page_state.loading,
+                    move || load_more.load_more_reflog(),
+                ));
+            }
+            return empty.into_element();
         }
 
-        let selected_index = visible.iter().position(|(index, entry)| {
-            current_selection
-                .as_ref()
-                .is_some_and(|key| key.matches_entry(tab_id, path.as_str(), *index, entry))
+        let selected_index = visible.iter().position(|index| {
+            current_selection.as_ref().is_some_and(|key| {
+                all_entries
+                    .get(*index)
+                    .is_some_and(|entry| key.matches_entry(tab_id, path.as_str(), *index, entry))
+            })
         });
         let rows = visible
             .iter()
-            .map(|(_, entry)| vec![entry.sha.clone()])
+            .filter_map(|index| all_entries.get(*index).map(|entry| vec![entry.sha.clone()]))
             .collect::<Vec<_>>();
         let render_entries = visible.clone();
+        let render_all_entries = all_entries.clone();
+        let render_path = path.clone();
         let render_language = language;
         let render_recovery = recovery.clone();
         let render: Box<dyn Fn(u32, &str, String) -> AnyElement> = Box::new(move |row, _, _| {
-            let Some((index, entry)) = render_entries.get(row as usize) else {
+            let Some(index) = render_entries.get(row as usize).copied() else {
                 return view().into_element();
             };
-            let index = *index;
+            let Some(entry) = render_all_entries.get(index) else {
+                return view().into_element();
+            };
             let short = entry.short.clone();
             let action = entry.action.clone();
             let summary = entry.summary.clone();
             let timestamp = entry.timestamp;
+            let undo_entry = entry.clone();
+            let undo_path = render_path.clone();
             let undo = render_recovery.clone();
             let action_tooltip = ui::button::text_tooltip(action.clone());
             view()
@@ -2544,56 +2603,68 @@ fn reflog_list(
                     crate::ui::button::ButtonVariant::Ghost,
                     crate::ui::button::ButtonSize::Small,
                     false,
-                    move || undo.undo_reflog(index),
+                    move || undo.undo_reflog(tab_id, undo_path.clone(), undo_entry.clone()),
                 ))
                 .into_element()
         });
         let select_entries = visible.clone();
+        let select_all_entries = all_entries.clone();
         let select_commands = commands.clone();
         let select_path = path.clone();
         let on_select: Box<dyn Fn(usize)> = Box::new(move |row| {
-            if let Some((index, entry)) = select_entries.get(row) {
+            if let Some(index) = select_entries.get(row).copied()
+                && let Some(entry) = select_all_entries.get(index)
+            {
                 select_commands.select_reflog_entry(super::state::ReflogEntryKey::new(
                     tab_id,
                     select_path.clone(),
-                    *index,
+                    index,
                     entry,
                 ));
             }
         });
         // RowPress also fires for an already selected row, so a failed detail read can be retried.
         let press_entries = visible.clone();
+        let press_all_entries = all_entries.clone();
         let press_commands = commands.clone();
         let press_path = path.clone();
         let on_row_press: Box<dyn Fn(u32, bool)> = Box::new(move |row, _| {
-            if let Some((index, entry)) = press_entries.get(row as usize) {
+            if let Some(index) = press_entries.get(row as usize).copied()
+                && let Some(entry) = press_all_entries.get(index)
+            {
                 press_commands.select_reflog_entry(super::state::ReflogEntryKey::new(
                     tab_id,
                     press_path.clone(),
-                    *index,
+                    index,
                     entry,
                 ));
             }
         });
         let menu_entries = visible.clone();
+        let menu_all_entries = all_entries.clone();
         let menu_undo = recovery.clone();
+        let menu_path = path.clone();
         let menu_open_form = open_form_from.clone();
         let menu_show_history = show_in_history.clone();
         let menu_copy = copy_text_fn.clone();
         let menu_language = language;
         let on_context_menu: Box<dyn Fn(u32, f32, f32)> = Box::new(move |row, x, y| {
-            let Some((index, entry)) = menu_entries.get(row as usize) else {
+            let Some(index) = menu_entries.get(row as usize).copied() else {
                 return;
             };
-            let index = *index;
+            let Some(entry) = menu_all_entries.get(index) else {
+                return;
+            };
             let lang = menu_language.get_untracked();
             let lang = lang.as_str();
             let sha = entry.sha.clone();
             let short = entry.short.clone();
+            let undo_entry = entry.clone();
+            let undo_path = menu_path.clone();
             let items = vec![
                 ui::menu::action(i18n::t(lang, "reflog.undo"), true, {
                     let undo = menu_undo.clone();
-                    move || undo.undo_reflog(index)
+                    move || undo.undo_reflog(tab_id, undo_path.clone(), undo_entry.clone())
                 }),
                 ui::menu::action(i18n::t(lang, "menu.newBranchFromHere"), true, {
                     let open_form = menu_open_form.clone();
@@ -2618,24 +2689,73 @@ fn reflog_list(
             ];
             crate::ui::menu::popup_at(items, nsh_core::geometry::Point::new(Points(x), Points(y)));
         });
-        crate::ui::table::table(crate::ui::table::TableSpec {
-            columns: vec![crate::ui::table::Column {
-                key: "entry",
-                title: None,
-                width: None,
-                fixed: true,
-            }],
-            rows,
-            selected: selected_index,
-            row_height: Some(28.0),
-            on_select,
-            render: Some(render),
-            on_row_press: Some(on_row_press),
-            on_context_menu: Some(on_context_menu),
-        })
-        .into_element()
+        let table = crate::ui::table::table_with_load_more(
+            crate::ui::table::TableSpec {
+                columns: vec![crate::ui::table::Column {
+                    key: "entry",
+                    title: None,
+                    width: None,
+                    fixed: true,
+                }],
+                rows,
+                selected: selected_index,
+                row_height: Some(36.0),
+                on_select,
+                render: Some(render),
+                on_row_press: Some(on_row_press),
+                on_context_menu: Some(on_context_menu),
+            },
+            page_state.has_more,
+            page_state.loading,
+            {
+                let load_more = commands.clone();
+                move || load_more.load_more_reflog()
+            },
+        );
+        if let Some(error) = page_state.error {
+            let retry = commands.clone();
+            return view()
+                .w_full()
+                .h_full()
+                .flex_col()
+                .child(reflog_load_error(language, error, move || {
+                    retry.retry_reflog_load()
+                }))
+                .child(table)
+                .into_element();
+        }
+        return table.into_element();
     }));
     return body;
+}
+
+fn reflog_load_error(
+    language: Signal<SharedString>,
+    detail: String,
+    retry: impl Fn() + 'static,
+) -> AnyElement {
+    return view()
+        .w_full()
+        .h(px(32.0))
+        .px(px(12.0))
+        .flex_row()
+        .items_center()
+        .gap(px(8.0))
+        .child(
+            text(detail)
+                .flex_1()
+                .min_w_0()
+                .text_size(px(crate::ui::SECONDARY))
+                .text_color(move || design::warn()),
+        )
+        .child(crate::ui::button::button(
+            move || i18n::t(language.get().as_str(), "error.retry"),
+            crate::ui::button::ButtonVariant::Ghost,
+            crate::ui::button::ButtonSize::Small,
+            false,
+            retry,
+        ))
+        .into_element();
 }
 /// 创建入口按钮（工具条右侧）。
 fn create_button(

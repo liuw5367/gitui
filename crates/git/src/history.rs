@@ -389,10 +389,17 @@ impl Repo {
 
     /// 读取当前分支的 reflog（最近的在前）。
     pub fn reflog(&self, limit: usize) -> Result<Vec<ReflogEntry>, GitError> {
+        return self.reflog_page(limit, 0);
+    }
+
+    /// 从 `skip` 起读取一页 reflog；最近的记录排在前面。
+    pub fn reflog_page(&self, limit: usize, skip: usize) -> Result<Vec<ReflogEntry>, GitError> {
         let limit_arg = format!("-{}", limit.max(1));
+        let skip_arg = format!("--skip={skip}");
         let output = self.run_git(&[
             "reflog",
             limit_arg.as_str(),
+            skip_arg.as_str(),
             "--date=unix",
             "--format=%H%x1f%h%x1f%gs%x1f%ct",
         ])?;

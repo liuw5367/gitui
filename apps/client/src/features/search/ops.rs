@@ -74,7 +74,6 @@ pub(crate) fn checkout_tracking_branch(
     tab.conflicts = refreshed.conflicts;
     tab.operation = refreshed.operation;
     tab.head = refreshed.head;
-    tab.reflog = refreshed.reflog;
     tab.error = None;
     return Ok(());
 }

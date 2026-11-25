@@ -84,19 +84,14 @@ impl RecoveryCommands {
         self.history_action("checkout", sha);
     }
 
-    /// 撤销 reflog 里的第 `index` 条（原 `undo_reflog`）：不可撤销，先确认。
-    pub(crate) fn undo_reflog(&self, index: usize) {
+    /// 撤销当前列表中的 reflog 快照：不可撤销，先确认。
+    pub(crate) fn undo_reflog(&self, tab_id: u64, path: String, entry: git::ReflogEntry) {
         let tabs = self.session.tabs;
-        let active = self.session.active;
         let language = self.language;
         let list = tabs.get_untracked();
-        let current = active.get_untracked();
-        let Some(tab) = list.get(current).cloned() else {
+        if !list.iter().any(|tab| tab.id == tab_id && tab.path == path) {
             return;
-        };
-        let Some(entry) = tab.reflog.get(index).cloned() else {
-            return;
-        };
+        }
         let language_now = language.get_untracked();
         let pending = crate::ui::dialog::confirm_destructive(
             i18n::t(language_now.as_str(), "reflog.undoTitle"),
@@ -113,10 +108,12 @@ impl RecoveryCommands {
                 if result.action.as_deref() != Some("undo") {
                     return;
                 }
-                let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    ops::undo_to_reflog(tab, index);
+                if let Some(tab) = list
+                    .iter_mut()
+                    .find(|tab| tab.id == tab_id && tab.path == path)
+                {
+                    ops::undo_to_reflog(tab, entry.sha.as_str());
                     tabs.set(list);
                 }
             }
