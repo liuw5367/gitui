@@ -2455,7 +2455,8 @@ fn reflog_list(
                 ),
         )
         .child(view().w_full().h(px(1.0)).bg(move || design::line()));
-    body = body.child(dynamic(move || -> AnyElement {
+    // 由外层 flex 容器约束视口高度，再把该高度传给动态内容。
+    let reflog_content = dynamic(move || -> AnyElement {
         let needle = query.get().to_lowercase();
         let all_entries = entries.get();
         let page_state = page.get();
@@ -2739,7 +2740,14 @@ fn reflog_list(
                 .into_element();
         }
         return table.into_element();
-    }));
+    });
+    body = body.child(
+        view()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(view().w_full().h_full().child(reflog_content)),
+    );
     return body;
 }
 
