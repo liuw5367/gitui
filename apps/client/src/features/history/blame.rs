@@ -29,7 +29,7 @@ pub(crate) fn blame_view(
         .count();
     log::debug!(
         target: "gitui::history",
-        "event=blame_view.render revision={} extension={} mode={} lines={} history_entries={} patch_bytes={} patch_files={} patch_hunks={} blame_rows_highlight=not_applied",
+        "event=blame_view.render revision={} extension={} mode={} lines={} history_entries={} patch_bytes={} patch_files={} patch_hunks={} blame_source=diffview",
         tab.blame_revision.chars().take(7).collect::<String>(),
         extension,
         selected_mode,
@@ -181,31 +181,93 @@ fn revision_label(revision: &str) -> String {
 }
 
 fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
-    let rows = tab
+    let source = tab
         .blame
         .iter()
-        .map(|line| {
-            let sha = line.sha.clone();
-            ui::row::blame_line(
-                line.short.clone(),
-                line.author.clone(),
-                line.line,
-                line.text.clone(),
-                tab.blame_selected_line == Some(line.line),
-                {
-                    let cmd = cmd.clone();
-                    let line = line.line;
-                    move || cmd.focus_blame_commit(sha.clone(), line)
-                },
-            )
-            .into_element()
-        })
-        .collect::<Vec<_>>();
-    return scroll()
-        .w_full()
-        .h_full()
-        .child(view().w_full().flex_col().children(rows))
-        .into_element();
+        .map(|line| line.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut groups = Vec::<BlameGroup>::new();
+    for line in &tab.blame {
+        if let Some(previous) = groups.last_mut().filter(|group| group.sha == line.sha) {
+            previous.last_line = line.line;
+        } else {
+            groups.push(BlameGroup {
+                sha: line.sha.clone(),
+                short: line.short.clone(),
+                author: line.author.clone(),
+                first_line: line.line,
+                last_line: line.line,
+            });
+        }
+    }
+    let annotation_lines = groups
+        .iter()
+        .map(|group| group.first_line.saturating_sub(1))
+        .collect();
+    let groups = std::sync::Arc::new(groups);
+    let attributions = std::sync::Arc::new(
+        tab.blame
+            .iter()
+            .map(|line| (line.sha.clone(), line.line))
+            .collect::<Vec<_>>(),
+    );
+    let selected_line = tab.blame_selected_line;
+    return crate::ui::diff_surface::source_file(
+        SharedString::from(source),
+        SharedString::from(tab.blame_path.clone()),
+        annotation_lines,
+        selected_line.map(|line| line.saturating_sub(1)),
+        {
+            let cmd = cmd.clone();
+            move |index| {
+                if let Some((sha, line)) = attributions.get(index as usize) {
+                    cmd.focus_blame_commit(sha.clone(), *line);
+                }
+            }
+        },
+        {
+            let cmd = cmd.clone();
+            move |index| {
+                let Some(group) = groups.get(index) else {
+                    return view().into_element();
+                };
+                let sha = group.sha.clone();
+                let line = group.first_line;
+                let label = format!("{} · {}", group.short, group.author);
+                let selected = selected_line.is_some_and(|selected| {
+                    (group.first_line..=group.last_line).contains(&selected)
+                });
+                return view()
+                    .w_full()
+                    .px(px(ui::GAP))
+                    .child(ui::button::button(
+                        move || label.clone(),
+                        if selected {
+                            ui::button::ButtonVariant::Secondary
+                        } else {
+                            ui::button::ButtonVariant::Ghost
+                        },
+                        ui::button::ButtonSize::Small,
+                        false,
+                        {
+                            let cmd = cmd.clone();
+                            move || cmd.focus_blame_commit(sha.clone(), line)
+                        },
+                    ))
+                    .into_element();
+            }
+        },
+    )
+    .into_element();
+}
+
+struct BlameGroup {
+    sha: String,
+    short: String,
+    author: String,
+    first_line: u32,
+    last_line: u32,
 }
 
 fn blame_diff(language: Signal<SharedString>, cmd: &HistoryCommands, tab: &Tab) -> AnyElement {

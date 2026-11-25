@@ -5,8 +5,8 @@
 
 use crate::ui;
 use nsh_base::{
-    DiffExpand, DiffHunk, DiffIndicators, DiffLayout, DiffLineRange, DiffSeparator, DiffSide,
-    DiffViewApi, diff_view,
+    DiffAnnotation, DiffExpand, DiffHunk, DiffIndicators, DiffLayout, DiffLine, DiffLineRange,
+    DiffSeparator, DiffSide, DiffViewApi, diff_view,
 };
 use nsh_core::prelude::*;
 
@@ -75,6 +75,70 @@ pub(crate) fn diff_surface(
         on_hunk_copy,
         None,
     );
+}
+
+/// 用 DiffView 显示单个完整源码文件，并把行级注释交给调用方渲染。
+/// 行索引与选中行都使用 DiffView 的零起始索引。
+pub(crate) fn source_file(
+    source: SharedString,
+    path: SharedString,
+    annotation_lines: Vec<u32>,
+    selected_line: Option<u32>,
+    on_line_press: impl Fn(u32) + 'static,
+    render_annotation: impl Fn(usize) -> AnyElement + 'static,
+) -> impl IntoElement {
+    let annotations: Vec<DiffAnnotation> = annotation_lines
+        .iter()
+        .enumerate()
+        .map(|(index, line)| {
+            let mut annotation = DiffAnnotation::default();
+            annotation.id = SharedString::from(index.to_string());
+            annotation.side = DiffSide::New;
+            annotation.line = *line;
+            annotation
+        })
+        .collect();
+    let reference = component_ref();
+    let reference_for_layout = reference.clone();
+    let selected_once = std::rc::Rc::new(std::cell::Cell::new(false));
+    let selected_once_for_layout = selected_once.clone();
+    return diff_view()
+        .w_full()
+        .h_full()
+        .component_ref(&reference)
+        .new_value(Some(source))
+        .language(Some(path))
+        .layout(DiffLayout::Unified)
+        .expand_all(true)
+        .line_numbers(true)
+        .indicators(DiffIndicators::None)
+        .background(false)
+        .font_family(ui::MONO)
+        .font_size(Points(ui::CODE))
+        .line_height(Points(ui::CODE_LINE))
+        .soft_wrap(false)
+        .annotations(annotations)
+        .on_line_number_press(move |line: &DiffLine| on_line_press(line.line))
+        .render_annotation(move |annotation: &DiffAnnotation| {
+            let index = annotation.id.parse::<usize>().unwrap_or_default();
+            render_annotation(index)
+        })
+        .on_layout(move |_: &Bounds<Points>| {
+            let Some(line) = selected_line else {
+                return;
+            };
+            if selected_once_for_layout.get() {
+                return;
+            }
+            if let Some(api) = reference_for_layout.api::<DiffViewApi>() {
+                let mut range = DiffLineRange::default();
+                range.side = DiffSide::New;
+                range.start = line;
+                range.end = line;
+                api.set_selected_lines(Some(range));
+                selected_once_for_layout.set(true);
+            }
+        });
 }
 
 #[derive(Clone)]
