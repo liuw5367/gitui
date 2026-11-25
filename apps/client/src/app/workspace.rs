@@ -853,6 +853,7 @@ fn right_content(
     let mode = search.state.mode;
     let inspector_file_list_mode = signal(inspector::FileListMode::Tree);
     let reflog_file_tree_expanded: Signal<Option<Vec<SharedString>>> = signal(None);
+    let reflog_tree_selection: Signal<Option<refs::state::ReflogEntryKey>> = signal(None);
     return view()
         .w_full()
         .h_full()
@@ -864,7 +865,12 @@ fn right_content(
             if !tab.loaded {
                 return repository_inspector_loading();
             }
-            match mode.get() {
+            let current_mode = mode.get();
+            if current_mode != crate::Mode::Refs && reflog_tree_selection.get().is_some() {
+                reflog_tree_selection.set(None);
+                reflog_file_tree_expanded.set(None);
+            }
+            match current_mode {
                 crate::Mode::History => inspector::inspector(
                     &history.state,
                     &history,
@@ -904,6 +910,10 @@ fn right_content(
                         let selected = refs.state.reflog_selection.get().filter(|selection| {
                             selection.tab_id == tab.id && selection.path == tab.path
                         });
+                        if reflog_tree_selection.get() != selected {
+                            reflog_tree_selection.set(selected.clone());
+                            reflog_file_tree_expanded.set(None);
+                        }
                         if selected.is_none() {
                             return inspector::reflog_commit_placeholder(
                                 language,
@@ -941,7 +951,13 @@ fn right_content(
                                 let select_file: std::sync::Arc<dyn Fn(String)> = {
                                     let refs = refs.clone();
                                     std::sync::Arc::new(move |path| {
-                                        refs.select_reflog_file(file_selection.clone(), path)
+                                        let Some(path) = path.strip_prefix("file:") else {
+                                            return;
+                                        };
+                                        refs.select_reflog_file(
+                                            file_selection.clone(),
+                                            path.to_string(),
+                                        )
                                     })
                                 };
                                 inspector::reflog_commit_inspector(
@@ -975,6 +991,10 @@ fn right_content(
                             )
                             .into_element(),
                         };
+                    }
+                    if reflog_tree_selection.get().is_some() {
+                        reflog_tree_selection.set(None);
+                        reflog_file_tree_expanded.set(None);
                     }
                     let ask_agent: std::sync::Arc<dyn Fn()> = {
                         let agent = agent.clone();
