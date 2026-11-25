@@ -2460,7 +2460,6 @@ fn reflog_list(
         let needle = query.get().to_lowercase();
         let all_entries = entries.get();
         let page_state = page.get();
-        let current_selection = selected.get();
         let visible = std::sync::Arc::new(
             all_entries
                 .iter()
@@ -2531,13 +2530,6 @@ fn reflog_list(
             return empty.into_element();
         }
 
-        let selected_index = visible.iter().position(|index| {
-            current_selection.as_ref().is_some_and(|key| {
-                all_entries
-                    .get(*index)
-                    .is_some_and(|entry| key.matches_entry(tab_id, path.as_str(), *index, entry))
-            })
-        });
         let rows = visible
             .iter()
             .filter_map(|index| all_entries.get(*index).map(|entry| vec![entry.sha.clone()]))
@@ -2547,6 +2539,7 @@ fn reflog_list(
         let render_path = path.clone();
         let render_language = language;
         let render_recovery = recovery.clone();
+        let render_selected = selected;
         let render: Box<dyn Fn(u32, &str, String) -> AnyElement> = Box::new(move |row, _, _| {
             let Some(index) = render_entries.get(row as usize).copied() else {
                 return view().into_element();
@@ -2561,6 +2554,17 @@ fn reflog_list(
             let undo_entry = entry.clone();
             let undo_path = render_path.clone();
             let undo = render_recovery.clone();
+            let selection_entry = entry.clone();
+            let selection_path = render_path.clone();
+            let selected_key = computed(move || {
+                render_selected.get().as_ref().is_some_and(|key| {
+                    key.matches_entry(tab_id, selection_path.as_str(), index, &selection_entry)
+                })
+            });
+            let selected_now: std::sync::Arc<dyn Fn() -> bool> =
+                std::sync::Arc::new(move || selected_key.get());
+            let selected_for_bg = selected_now.clone();
+            let selected_for_hover = selected_now;
             let action_tooltip = ui::button::text_tooltip(action.clone());
             view()
                 .w_full()
@@ -2569,7 +2573,20 @@ fn reflog_list(
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
-                .hover(|style| style.bg(move || design::hover()))
+                .bg(move || {
+                    if selected_for_bg() {
+                        design::selected()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .hover(move |style| {
+                    if selected_for_hover() {
+                        style
+                    } else {
+                        style.bg(move || design::hover())
+                    }
+                })
                 .child(
                     text(short)
                         .w(px(64.0))
@@ -2710,7 +2727,7 @@ fn reflog_list(
                     fixed: true,
                 }],
                 rows,
-                selected: selected_index,
+                selected: None,
                 row_height: Some(36.0),
                 on_select,
                 render: Some(render),
