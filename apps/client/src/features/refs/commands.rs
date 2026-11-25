@@ -487,7 +487,10 @@ impl RefsCommands {
 
         let current = self.state.reflog_detail.get_untracked();
         let previous_selection = self.state.reflog_selection.get_untracked();
-        if previous_selection.as_ref() != Some(&selection) {
+        // 列表选中变化时通常没有打开差异；避免对 None 重复写入并触发中栏更新。
+        if previous_selection.as_ref() != Some(&selection)
+            && self.state.reflog_file_diff.get_untracked().is_some()
+        {
             self.state.reflog_file_diff.set(None);
         }
         let already_loading_or_loaded = self

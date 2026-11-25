@@ -466,16 +466,17 @@ fn center_content(
                     let Some(tab) = current.get() else {
                         return empty_workspace(language).into_element();
                     };
+                    // 差异状态自身带 Reflog 行身份；这里不订阅行选中信号，避免重建整个中栏。
                     if refs.state.selected_tab.get() == refs::state::RefsTab::Reflog
-                        && let Some(selection) = refs.state.reflog_selection.get().filter(|key| {
-                            key.tab_id == tab.id && key.path == tab.path
-                        })
                         && let Some(file_diff) = refs
                             .state
                             .reflog_file_diff
                             .get()
-                            .filter(|diff| diff.selection == selection)
+                            .filter(|diff| {
+                                diff.selection.tab_id == tab.id && diff.selection.path == tab.path
+                            })
                     {
+                        let selection = file_diff.selection.clone();
                         match file_diff.status.clone() {
                             refs::state::ReflogFileDiffStatus::Loading => {
                                 return inspector::reflog_commit_placeholder(

@@ -1854,31 +1854,44 @@ pub(crate) fn refs_view(
                     &table_cmd,
                 )),
         )
-        .child(dynamic(move || -> AnyElement {
-            match selected_tab.get() {
-                RefsTab::Refs => {
-                    refs_table(language, tab.clone(), &table_search, &table_cmd).into_element()
-                }
-                RefsTab::Reflog => {
-                    table_cmd.ensure_reflog_loaded();
-                    // 「撤销」归恢复功能（`cmd.recovery`），「在历史中显示」归提交
-                    // 历史（`cmd.history`）：refs 只是这两个入口的宿主。
-                    reflog_list(
-                        language,
-                        tab.clone(),
-                        now,
-                        reflog_query,
-                        reflog_entries,
-                        reflog_page,
-                        reflog_selection,
-                        &table_cmd,
-                        &table_search,
-                        settings_state,
-                    )
-                    .into_element()
-                }
-            }
-        }));
+        .child(
+            // 页签内容只占工具栏后的剩余视口，避免内部虚拟表格被面板底部裁切。
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .child(
+                    view()
+                        .w_full()
+                        .h_full()
+                        .child(dynamic(move || -> AnyElement {
+                            match selected_tab.get() {
+                                RefsTab::Refs => {
+                                    refs_table(language, tab.clone(), &table_search, &table_cmd)
+                                        .into_element()
+                                }
+                                RefsTab::Reflog => {
+                                    table_cmd.ensure_reflog_loaded();
+                                    // 「撤销」归恢复功能（`cmd.recovery`），「在历史中显示」归提交
+                                    // 历史（`cmd.history`）：refs 只是这两个入口的宿主。
+                                    reflog_list(
+                                        language,
+                                        tab.clone(),
+                                        now,
+                                        reflog_query,
+                                        reflog_entries,
+                                        reflog_page,
+                                        reflog_selection,
+                                        &table_cmd,
+                                        &table_search,
+                                        settings_state,
+                                    )
+                                    .into_element()
+                                }
+                            }
+                        })),
+                ),
+        );
 }
 fn tab_button(
     language: Signal<SharedString>,
