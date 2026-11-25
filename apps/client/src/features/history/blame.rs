@@ -47,18 +47,6 @@ pub(crate) fn blame_view(
         "history.backToList"
     };
     let line_count = tab.blame.len();
-    let additions = tab
-        .blame_patch
-        .files
-        .iter()
-        .map(|file| file.additions)
-        .sum::<u32>();
-    let deletions = tab
-        .blame_patch
-        .files
-        .iter()
-        .map(|file| file.deletions)
-        .sum::<u32>();
     let segment_cmd = cmd.clone();
     let header = view()
         .w_full()
@@ -114,40 +102,19 @@ pub(crate) fn blame_view(
                     move || crate::shared::os::copy_text(copy_notice, language, revision.clone()),
                 ))
         })
-        .child(dynamic(move || -> AnyElement {
-            let language_now = language.get();
-            let mut summary = view()
-                .flex_row()
-                .flex_shrink_0()
-                .items_center()
-                .gap(px(ui::GAP_SM));
-            if selected_mode == "diff" {
-                summary = summary
-                    .child(
-                        text(format!("+{additions}"))
-                            .font_family(ui::MONO)
-                            .text_size(px(ui::META))
-                            .text_color(move || design::add_fg()),
-                    )
-                    .child(
-                        text(format!("−{deletions}"))
-                            .font_family(ui::MONO)
-                            .text_size(px(ui::META))
-                            .text_color(move || design::del_fg()),
-                    );
-            }
-            return summary
-                .child(
-                    text(i18n::with_arguments(
-                        language_now.as_str(),
-                        "blame.lines",
-                        &[("count", line_count.to_string())],
-                    ))
-                    .text_size(px(ui::META))
-                    .text_color(move || design::text3()),
+        .child(
+            text(move || {
+                let language_now = language.get();
+                i18n::with_arguments(
+                    language_now.as_str(),
+                    "blame.lines",
+                    &[("count", line_count.to_string())],
                 )
-                .into_element();
-        }))
+            })
+            .flex_shrink_0()
+            .text_size(px(ui::META))
+            .text_color(move || design::text3()),
+        )
         .child(dynamic(move || -> AnyElement {
             let cmd = segment_cmd.clone();
             ui::segmented::segmented(
