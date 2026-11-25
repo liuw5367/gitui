@@ -2490,9 +2490,10 @@ fn reflog_list(
             let summary = entry.summary.clone();
             let timestamp = entry.timestamp;
             let undo = render_recovery.clone();
+            let action_tooltip = ui::button::text_tooltip(action.clone());
             view()
                 .w_full()
-                .h(px(28.0))
+                .h(px(36.0))
                 .px(px(8.0))
                 .flex_row()
                 .items_center()
@@ -2505,11 +2506,15 @@ fn reflog_list(
                         .text_color(move || design::text3()),
                 )
                 .child(
-                    text(action)
-                        .w(px(80.0))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .line_height(px(crate::ui::SECONDARY_LINE))
-                        .text_color(move || design::accent()),
+                    view().w(px(128.0)).min_w_0().tooltip(action_tooltip).child(
+                        text(action)
+                            .w_full()
+                            .text_size(px(crate::ui::SECONDARY))
+                            .line_height(px(crate::ui::SECONDARY_LINE))
+                            .text_color(move || design::accent())
+                            .number_of_lines(2)
+                            .text_overflow(nsh_core::EllipsizeMode::Tail),
+                    ),
                 )
                 .child(
                     text(summary)
