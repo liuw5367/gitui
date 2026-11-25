@@ -88,11 +88,11 @@ pub(crate) fn table_with_load_more(
     scroll_request: Signal<Option<usize>>,
     on_load_more: impl Fn() + 'static,
 ) -> impl IntoElement {
-    return table_inner(
+    return view().w_full().flex_1().min_h_0().child(table_inner(
         spec,
         Some((table_ref, scroll_request)),
         Some((has_more, loading, Box::new(on_load_more))),
-    );
+    ));
 }
 
 /// 带行滚动句柄的虚拟化表格，用于定位历史里的深层提交。

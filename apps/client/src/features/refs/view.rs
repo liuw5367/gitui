@@ -2490,7 +2490,16 @@ fn reflog_list(
             }
             if let Some(error) = page_state.error.clone() {
                 let retry = commands.clone();
-                return reflog_load_error(language, error, move || retry.retry_reflog_load());
+                return view()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .items_center()
+                    .justify_center()
+                    .child(reflog_load_error(language, error, move || {
+                        retry.retry_reflog_load()
+                    }))
+                    .into_element();
             }
             let key = if all_entries.is_empty() {
                 "reflog.empty"
@@ -2720,7 +2729,8 @@ fn reflog_list(
             let retry = commands.clone();
             return view()
                 .w_full()
-                .h_full()
+                .flex_1()
+                .min_h_0()
                 .flex_col()
                 .child(reflog_load_error(language, error, move || {
                     retry.retry_reflog_load()
