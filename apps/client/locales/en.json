@@ -341,7 +341,6 @@
     "backToChanges": "Changes",
     "changesCount": "Changes %{count}",
     "lines": "%{count} lines",
-    "lastChange": "%{count} lines · last change %{date}",
     "commits": "%{count} commits",
     "empty": "No blame lines at this revision",
     "error": "Could not load blame for this revision",

@@ -341,7 +341,6 @@
     "backToChanges": "变更",
     "changesCount": "改动 %{count}",
     "lines": "%{count} 行",
-    "lastChange": "%{count} 行 · 最近更改 %{date}",
     "commits": "%{count} 次提交",
     "empty": "该版本没有可追溯的代码行",
     "error": "无法读取该版本的代码归属",

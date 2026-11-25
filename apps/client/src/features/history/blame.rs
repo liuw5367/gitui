@@ -10,11 +10,13 @@ use crate::i18n;
 use crate::ui;
 use nsh_core::prelude::*;
 
+const BLAME_META_W: f32 = 220.0;
+const BLAME_SHA_W: f32 = 56.0;
+
 pub(crate) fn blame_view(
     language: Signal<SharedString>,
     tab: Tab,
     cmd: HistoryCommands,
-    settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let selected_mode = if tab.blame_show_diff { "diff" } else { "blame" };
     let extension = std::path::Path::new(tab.blame_path.as_str())
@@ -45,10 +47,18 @@ pub(crate) fn blame_view(
         "history.backToList"
     };
     let line_count = tab.blame.len();
-    let last_change = tab
-        .file_history
-        .first()
-        .and_then(|entry| entry.commit.date.parse::<i64>().ok());
+    let additions = tab
+        .blame_patch
+        .files
+        .iter()
+        .map(|file| file.additions)
+        .sum::<u32>();
+    let deletions = tab
+        .blame_patch
+        .files
+        .iter()
+        .map(|file| file.deletions)
+        .sum::<u32>();
     let segment_cmd = cmd.clone();
     let header = view()
         .w_full()
@@ -79,15 +89,65 @@ pub(crate) fn blame_view(
                 .font_family(ui::MONO)
                 .text_size(px(ui::CODE))
                 .text_color(move || design::text())
+                .number_of_lines(1)
                 .text_overflow(nsh_core::EllipsizeMode::Head),
         )
-        .child(ui::badge::badge(
-            {
-                let revision = revision_label(tab.blame_revision.as_str());
-                move || revision.clone()
-            },
-            ui::badge::Tone::Neutral,
-        ))
+        .child({
+            let revision = if tab.blame_revision == "HEAD" {
+                tab.head_oid
+                    .clone()
+                    .unwrap_or_else(|| tab.blame_revision.clone())
+            } else {
+                tab.blame_revision.clone()
+            };
+            let label = revision_label(revision.as_str());
+            let copy_notice = cmd.session.notice;
+            let tooltip = i18n::t(language.get().as_str(), "history.copySha");
+            view()
+                .flex_shrink_0()
+                .tooltip(ui::button::text_tooltip(tooltip))
+                .child(ui::button::button(
+                    move || label.clone(),
+                    ui::button::ButtonVariant::Ghost,
+                    ui::button::ButtonSize::Small,
+                    false,
+                    move || crate::shared::os::copy_text(copy_notice, language, revision.clone()),
+                ))
+        })
+        .child(dynamic(move || -> AnyElement {
+            let language_now = language.get();
+            let mut summary = view()
+                .flex_row()
+                .flex_shrink_0()
+                .items_center()
+                .gap(px(ui::GAP_SM));
+            if selected_mode == "diff" {
+                summary = summary
+                    .child(
+                        text(format!("+{additions}"))
+                            .font_family(ui::MONO)
+                            .text_size(px(ui::META))
+                            .text_color(move || design::add_fg()),
+                    )
+                    .child(
+                        text(format!("−{deletions}"))
+                            .font_family(ui::MONO)
+                            .text_size(px(ui::META))
+                            .text_color(move || design::del_fg()),
+                    );
+            }
+            return summary
+                .child(
+                    text(i18n::with_arguments(
+                        language_now.as_str(),
+                        "blame.lines",
+                        &[("count", line_count.to_string())],
+                    ))
+                    .text_size(px(ui::META))
+                    .text_color(move || design::text3()),
+                )
+                .into_element();
+        }))
         .child(dynamic(move || -> AnyElement {
             let cmd = segment_cmd.clone();
             ui::segmented::segmented(
@@ -114,38 +174,7 @@ pub(crate) fn blame_view(
                 },
             )
             .into_element()
-        }))
-        .child(
-            text(move || {
-                let language_now = language.get();
-                if let Some(timestamp) = last_change {
-                    i18n::with_arguments(
-                        language_now.as_str(),
-                        "blame.lastChange",
-                        &[
-                            ("count", line_count.to_string()),
-                            (
-                                "date",
-                                crate::dates::format_reactive(
-                                    settings_state,
-                                    language_now.as_str(),
-                                    timestamp,
-                                    store::now_unix(),
-                                ),
-                            ),
-                        ],
-                    )
-                } else {
-                    i18n::with_arguments(
-                        language_now.as_str(),
-                        "blame.lines",
-                        &[("count", line_count.to_string())],
-                    )
-                }
-            })
-            .text_size(px(ui::META))
-            .text_color(move || design::text3()),
-        );
+        }));
 
     let body_cmd = cmd.clone();
     let body_tab = tab.clone();
@@ -187,25 +216,12 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
         .map(|line| line.text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let mut groups = Vec::<BlameGroup>::new();
-    for line in &tab.blame {
-        if let Some(previous) = groups.last_mut().filter(|group| group.sha == line.sha) {
-            previous.last_line = line.line;
-        } else {
-            groups.push(BlameGroup {
-                sha: line.sha.clone(),
-                short: line.short.clone(),
-                author: line.author.clone(),
-                first_line: line.line,
-                last_line: line.line,
-            });
-        }
-    }
-    let annotation_lines = groups
-        .iter()
-        .map(|group| group.first_line.saturating_sub(1))
-        .collect();
-    let groups = std::sync::Arc::new(groups);
+    let blame_rows = std::sync::Arc::new(
+        tab.blame
+            .iter()
+            .map(|line| (line.short.clone(), line.author.clone()))
+            .collect::<Vec<_>>(),
+    );
     let attributions = std::sync::Arc::new(
         tab.blame
             .iter()
@@ -213,11 +229,71 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
             .collect::<Vec<_>>(),
     );
     let selected_line = tab.blame_selected_line;
-    return crate::ui::diff_surface::source_file(
+    let handle = crate::ui::diff_surface::DiffHandle::new();
+    let metadata_ref = element_ref();
+    let last_synced_scroll = std::rc::Rc::new(std::cell::Cell::new(0.0_f32));
+    let sidebar_rows = blame_rows.clone();
+    let sidebar_scroll = last_synced_scroll.clone();
+    let sidebar_handle = handle.clone();
+    let sidebar = virtual_list(blame_rows.len(), move |at| {
+        let (sha, author) = &sidebar_rows[at.index()];
+        let selected = selected_line == Some(at.index() as u32 + 1);
+        return view()
+            .w_full()
+            .h(px(ui::CODE_LINE))
+            .flex_shrink_0()
+            .px(px(ui::GAP_SM))
+            .flex_row()
+            .items_center()
+            .gap(px(ui::GAP_SM))
+            .bg(move || {
+                if selected {
+                    design::line_soft()
+                } else {
+                    design::panel()
+                }
+            })
+            .child(
+                text(sha.clone())
+                    .w(px(BLAME_SHA_W))
+                    .font_family(ui::MONO)
+                    .text_size(px(ui::META))
+                    .text_color(move || design::text3()),
+            )
+            .child(
+                text(author.clone())
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(ui::META))
+                    .text_color(move || design::text2())
+                    .number_of_lines(1)
+                    .text_overflow(nsh_core::EllipsizeMode::Tail),
+            );
+    })
+    .estimated_item_size(Points(ui::CODE_LINE))
+    .scrollbar(false)
+    .element_ref(&metadata_ref)
+    .on_scroll(move |event: &ScrollEvent| {
+        let offset = event.offset.y;
+        if (offset.0 - sidebar_scroll.get()).abs() <= 0.5 {
+            return;
+        }
+        sidebar_scroll.set(offset.0);
+        sidebar_handle.set_scroll_offset(offset);
+    })
+    .w(px(BLAME_META_W))
+    .h_full()
+    .flex_shrink_0()
+    .border_r_1()
+    .border_color(move || design::line())
+    .bg(move || design::panel());
+    let code_scroll = last_synced_scroll.clone();
+    let code_metadata_ref = metadata_ref;
+    let code = crate::ui::diff_surface::source_file(
         SharedString::from(source),
         SharedString::from(tab.blame_path.clone()),
-        annotation_lines,
         selected_line.map(|line| line.saturating_sub(1)),
+        &handle,
         {
             let cmd = cmd.clone();
             move |index| {
@@ -226,48 +302,25 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
                 }
             }
         },
-        {
-            let cmd = cmd.clone();
-            move |index| {
-                let Some(group) = groups.get(index) else {
-                    return view().into_element();
-                };
-                let sha = group.sha.clone();
-                let line = group.first_line;
-                let label = format!("{} · {}", group.short, group.author);
-                let selected = selected_line.is_some_and(|selected| {
-                    (group.first_line..=group.last_line).contains(&selected)
-                });
-                return view()
-                    .w_full()
-                    .px(px(ui::GAP))
-                    .child(ui::button::button(
-                        move || label.clone(),
-                        if selected {
-                            ui::button::ButtonVariant::Secondary
-                        } else {
-                            ui::button::ButtonVariant::Ghost
-                        },
-                        ui::button::ButtonSize::Small,
-                        false,
-                        {
-                            let cmd = cmd.clone();
-                            move || cmd.focus_blame_commit(sha.clone(), line)
-                        },
-                    ))
-                    .into_element();
+        move |offset| {
+            if (offset.0 - code_scroll.get()).abs() <= 0.5 {
+                return;
             }
+            code_scroll.set(offset.0);
+            let mut point = Point::default();
+            point.y = offset;
+            code_metadata_ref.scroll_to(point, false);
         },
-    )
-    .into_element();
-}
-
-struct BlameGroup {
-    sha: String,
-    short: String,
-    author: String,
-    first_line: u32,
-    last_line: u32,
+    );
+    return view()
+        .w_full()
+        .h_full()
+        .min_w_0()
+        .min_h_0()
+        .flex_row()
+        .child(sidebar)
+        .child(view().flex_1().min_w_0().h_full().child(code))
+        .into_element();
 }
 
 fn blame_diff(language: Signal<SharedString>, cmd: &HistoryCommands, tab: &Tab) -> AnyElement {

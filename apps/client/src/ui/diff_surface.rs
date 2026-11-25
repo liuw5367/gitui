@@ -5,8 +5,8 @@
 
 use crate::ui;
 use nsh_base::{
-    DiffAnnotation, DiffExpand, DiffHunk, DiffIndicators, DiffLayout, DiffLine, DiffLineRange,
-    DiffSeparator, DiffSide, DiffViewApi, diff_view,
+    DiffExpand, DiffHunk, DiffIndicators, DiffLayout, DiffLine, DiffLineRange, DiffSeparator,
+    DiffSide, DiffViewApi, DiffViewEvent, diff_view,
 };
 use nsh_core::prelude::*;
 
@@ -35,6 +35,14 @@ impl DiffHandle {
             .reference
             .api::<DiffViewApi>()
             .and_then(|api| api.previous_hunk());
+    }
+
+    pub(crate) fn set_scroll_offset(&self, offset: Points) {
+        if let Some(api) = self.reference.api::<DiffViewApi>() {
+            let mut point = Point::default();
+            point.y = offset;
+            api.set_scroll_offset(point);
+        }
     }
 
     pub(crate) fn expand(&self, gap: u32) {
@@ -77,35 +85,23 @@ pub(crate) fn diff_surface(
     );
 }
 
-/// 用 DiffView 显示单个完整源码文件，并把行级注释交给调用方渲染。
+/// 用 DiffView 显示单个完整源码文件，并将选中行与纵向滚动交给调用方同步。
 /// 行索引与选中行都使用 DiffView 的零起始索引。
 pub(crate) fn source_file(
     source: SharedString,
     path: SharedString,
-    annotation_lines: Vec<u32>,
     selected_line: Option<u32>,
+    handle: &DiffHandle,
     on_line_press: impl Fn(u32) + 'static,
-    render_annotation: impl Fn(usize) -> AnyElement + 'static,
+    on_scroll: impl Fn(Points) + 'static,
 ) -> impl IntoElement {
-    let annotations: Vec<DiffAnnotation> = annotation_lines
-        .iter()
-        .enumerate()
-        .map(|(index, line)| {
-            let mut annotation = DiffAnnotation::default();
-            annotation.id = SharedString::from(index.to_string());
-            annotation.side = DiffSide::New;
-            annotation.line = *line;
-            annotation
-        })
-        .collect();
-    let reference = component_ref();
-    let reference_for_layout = reference.clone();
+    let reference_for_layout = handle.reference.clone();
     let selected_once = std::rc::Rc::new(std::cell::Cell::new(false));
     let selected_once_for_layout = selected_once.clone();
     return diff_view()
         .w_full()
         .h_full()
-        .component_ref(&reference)
+        .component_ref(&handle.reference)
         .new_value(Some(source))
         .language(Some(path))
         .layout(DiffLayout::Unified)
@@ -117,11 +113,11 @@ pub(crate) fn source_file(
         .font_size(Points(ui::CODE))
         .line_height(Points(ui::CODE_LINE))
         .soft_wrap(false)
-        .annotations(annotations)
         .on_line_number_press(move |line: &DiffLine| on_line_press(line.line))
-        .render_annotation(move |annotation: &DiffAnnotation| {
-            let index = annotation.id.parse::<usize>().unwrap_or_default();
-            render_annotation(index)
+        .on_scroll(move |event: &DiffViewEvent| {
+            if let DiffViewEvent::Scroll(offset, _, _) = event {
+                on_scroll(offset.y);
+            }
         })
         .on_layout(move |_: &Bounds<Points>| {
             let Some(line) = selected_line else {

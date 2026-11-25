@@ -457,7 +457,6 @@ fn center_content(
                         language,
                         tab,
                         history.clone(),
-                        settings_state,
                     )
                     .into_element()
                 }
