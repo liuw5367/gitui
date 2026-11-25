@@ -144,7 +144,7 @@ pub(crate) fn diff_title_bar(
                 .number_of_lines(1)
                 .text_size(px(crate::ui::CODE))
                 .text_color(move || design::text())
-                .text_overflow(nsh_core::EllipsizeMode::Tail),
+                .text_overflow(nsh_core::EllipsizeMode::Head),
         )
     } else {
         title_bar

@@ -23,15 +23,6 @@ const THEME_JSON: &str = include_str!("../../theme.json");
 pub(crate) fn app() -> impl IntoElement {
     let tokens = theme_overrides(THEME_JSON).expect("theme.json 可以解析");
     set_tokens(tokens);
-    // DiffView 的长行横向滚动使用独立滚动容器；自绘常驻滚动条不受 macOS
-    // 自动隐藏设置影响。仓库标签滚动条显式关闭，竖向列表继续使用平台滚动条。
-    let mut horizontal_scrollbar = nsh_base::ScrollbarLook::default();
-    horizontal_scrollbar.class = Some(SharedString::from("absolute inset-x-0 bottom-0 h-1.5 px-1"));
-    horizontal_scrollbar.thumb_class = Some(SharedString::from("rounded-full bg-line-strong/70"));
-    let mut scrollbar_theme = nsh_base::ScrollbarTheme::default();
-    scrollbar_theme.mode = nsh_base::ScrollbarMode::Always;
-    scrollbar_theme.horizontal = Some(horizontal_scrollbar);
-    nsh_base::set_scrollbar_theme(Some(scrollbar_theme));
 
     let mut title_bar = TitleBarOptions::default();
     title_bar.style = TitleBarStyle::Hidden;
