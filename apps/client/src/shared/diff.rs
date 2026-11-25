@@ -16,7 +16,7 @@ use nsh_core::prelude::*;
 /// diff 的显示开关：布局、上下文折叠/展开、换行与空白处理。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct DiffOptions {
-    /// 折叠未改动的大段上下文。
+    /// 仅显示变更片段；关闭时显示完整文件。
     pub fold: bool,
     /// 长行换行而不是横向截断。
     pub wrap: bool,
@@ -129,6 +129,8 @@ pub(crate) fn diff_title_bar(
             text(title)
                 .flex_1()
                 .min_w_0()
+                .flex_shrink(1.0)
+                .number_of_lines(1)
                 .text_size(px(crate::ui::SECONDARY))
                 .text_color(move || design::text3())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -137,6 +139,9 @@ pub(crate) fn diff_title_bar(
         title_bar.child(
             text(file_name)
                 .max_w(px(320.0))
+                .min_w_0()
+                .flex_shrink(1.0)
+                .number_of_lines(1)
                 .text_size(px(crate::ui::CODE))
                 .text_color(move || design::text())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
@@ -149,7 +154,7 @@ pub(crate) fn diff_title_bar(
         let previous = navigation.previous;
         let next = navigation.next;
         title_bar
-            .child(crate::ui::button::icon_button(
+            .child(crate::ui::button::icon_button_tip(
                 "chev-left",
                 {
                     let language = language;
@@ -157,9 +162,13 @@ pub(crate) fn diff_title_bar(
                 },
                 crate::ui::button::ButtonSize::Small,
                 navigation.current == 0,
+                {
+                    let language = language;
+                    move || i18n::t(language.get().as_str(), "diff.previousFile")
+                },
                 move || previous(),
             ))
-            .child(crate::ui::button::icon_button(
+            .child(crate::ui::button::icon_button_tip(
                 "chev-right",
                 {
                     let language = language;
@@ -167,6 +176,10 @@ pub(crate) fn diff_title_bar(
                 },
                 crate::ui::button::ButtonSize::Small,
                 navigation.current + 1 >= navigation.total,
+                {
+                    let language = language;
+                    move || i18n::t(language.get().as_str(), "diff.nextFile")
+                },
                 move || next(),
             ))
             .child(
@@ -250,19 +263,26 @@ pub(crate) fn diff_panel(
 ) -> AnyElement {
     let options = state.options.get();
     let ignore_whitespace = state.ignore_whitespace.get();
-    let patch_for_view = if options.whitespace {
-        show_whitespace(&patch.raw)
-    } else {
+    let patch_for_view = if options.fold {
         patch.raw.clone()
+    } else {
+        patch
+            .full_context
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or(patch.raw.as_str())
+            .to_string()
+    };
+    let copy_hunk = copy_hunk_handler(&patch_for_view, cmd.session.notice, language);
+    let display_patch = if options.whitespace {
+        show_whitespace(&patch_for_view)
+    } else {
+        patch_for_view.clone()
     };
     let additions: u32 = raw_patch.files.iter().map(|file| file.additions).sum();
     let deletions: u32 = raw_patch.files.iter().map(|file| file.deletions).sum();
-    let hunk_count = patch
-        .lines
-        .iter()
-        .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
-        .count() as u32;
-    let hunk_position = signal(if hunk_count > 0 { Some(1_u32) } else { None });
+    let change_count = change_group_count(&patch);
+    let hunk_position = signal(if change_count > 0 { Some(1_u32) } else { None });
     let handle = crate::ui::diff_surface::DiffHandle::new();
     let split = state.split.get();
     let toggle: std::sync::Arc<dyn Fn(&'static str)> = {
@@ -306,7 +326,6 @@ pub(crate) fn diff_panel(
         let text = copy_patch_text.clone();
         move || crate::shared::os::copy_text(notice, language, text.clone())
     };
-    let copy_hunk = copy_hunk_handler(&patch.raw, cmd.session.notice, language);
     let mut toolbar = view()
         .w_full()
         .h(px(metrics::DIFFBAR_H))
@@ -333,6 +352,7 @@ pub(crate) fn diff_panel(
                 .text_size(px(crate::ui::CODE))
                 .text_color(move || design::del_fg()),
         )
+        .child(view().flex_1().min_w_0())
         .child(mode_toggle(language, split, set_split))
         .child(toolbar_separator())
         .child(fold_toggle(language, options, toggle.clone()))
@@ -351,31 +371,39 @@ pub(crate) fn diff_panel(
                     "diff.changePosition",
                     &[
                         ("current", hunk_position.get().unwrap_or(0).to_string()),
-                        ("total", hunk_count.to_string()),
+                        ("total", change_count.to_string()),
                     ],
                 )
             })
             .text_size(px(crate::ui::CODE))
             .text_color(move || design::text3()),
         )
-        .child(crate::ui::button::icon_button(
+        .child(crate::ui::button::icon_button_tip(
             "chev-left",
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), "diff.previousChange")
             },
             crate::ui::button::ButtonSize::Small,
-            hunk_count == 0,
+            change_count == 0,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.previousChange")
+            },
             move || previous(),
         ))
-        .child(crate::ui::button::icon_button(
+        .child(crate::ui::button::icon_button_tip(
             "chev-right",
             {
                 let language = language;
                 move || i18n::t(language.get().as_str(), "diff.nextChange")
             },
             crate::ui::button::ButtonSize::Small,
-            hunk_count == 0,
+            change_count == 0,
+            {
+                let language = language;
+                move || i18n::t(language.get().as_str(), "diff.nextChange")
+            },
             move || next(),
         ));
     if let Some(open_blame) = open_blame {
@@ -387,7 +415,7 @@ pub(crate) fn diff_panel(
             move || open_blame(),
         ));
     }
-    toolbar = toolbar.child(crate::ui::button::icon_button(
+    toolbar = toolbar.child(crate::ui::button::icon_button_tip(
         "copy",
         {
             let language = language;
@@ -395,9 +423,12 @@ pub(crate) fn diff_panel(
         },
         crate::ui::button::ButtonSize::Small,
         copy_patch_disabled,
+        {
+            let language = language;
+            move || i18n::t(language.get().as_str(), "diff.copy")
+        },
         move || copy_patch(),
     ));
-    let display_patch = patch_for_view.clone();
     let raw_empty = raw_patch.raw.trim().is_empty();
     let view_empty = patch.raw.trim().is_empty();
     return view()
@@ -418,7 +449,7 @@ pub(crate) fn diff_panel(
                         }
                         return empty_state(language).into_element();
                     }
-                    if view_empty || hunk_count == 0 {
+                    if view_empty || change_count == 0 {
                         return no_text_changes(language).into_element();
                     }
                     let layout = if split {
@@ -440,6 +471,30 @@ pub(crate) fn diff_panel(
                 })),
         )
         .into_element();
+}
+
+/// 与 DiffView 的变更导航一致，统计连续的新增／删除行段。
+///
+/// 全文 patch 只有一个 Git hunk，但可能包含多处被上下文行隔开的实际改动；
+/// `\ No newline at end of file` 属于当前改动段，不能把它拆成两个位置。
+fn change_group_count(patch: &Patch) -> u32 {
+    let mut count = 0_u32;
+    let mut in_change = false;
+    for line in &patch.lines {
+        match line.kind {
+            domain::diff::DiffLineKind::Add | domain::diff::DiffLineKind::Remove => {
+                if !in_change {
+                    count += 1;
+                    in_change = true;
+                }
+            }
+            domain::diff::DiffLineKind::Meta if line.text == "\\ No newline at end of file" => {}
+            domain::diff::DiffLineKind::Context
+            | domain::diff::DiffLineKind::Hunk
+            | domain::diff::DiffLineKind::Meta => in_change = false,
+        }
+    }
+    count
 }
 
 fn toolbar_separator() -> impl IntoElement {
@@ -471,22 +526,30 @@ fn diff_toggle(
             design::text3()
         }
     });
-    return crate::ui::button::icon_button_tuned(
-        name,
-        move || i18n::t(language.get().as_str(), label_key),
-        crate::ui::button::ButtonSize::Small,
-        Some(crate::ui::icon::IconSize::Compact),
-        Some(foreground),
-        false,
-        move || toggle(hint_key),
-    )
-    .bg(move || {
+    let background = std::rc::Rc::new(move || {
         if active {
             design::accent_soft()
         } else {
             AdaptiveColor::TRANSPARENT
         }
     });
+    let icon = if hint_key == "fold" {
+        if active { "expand-all" } else { "collapse-all" }
+    } else {
+        name
+    };
+    let label = move || i18n::t(language.get().as_str(), label_key);
+    return crate::ui::button::icon_button_tuned_tip(
+        icon,
+        label,
+        crate::ui::button::ButtonSize::Small,
+        Some(crate::ui::icon::IconSize::Compact),
+        Some(foreground),
+        Some(background),
+        false,
+        move || i18n::t(language.get().as_str(), label_key),
+        move || toggle(hint_key),
+    );
 }
 
 fn fold_toggle(
@@ -663,42 +726,18 @@ fn mode_toggle(
     split: bool,
     set_split: std::sync::Arc<dyn Fn(bool)>,
 ) -> impl IntoElement {
-    return view()
-        .h(px(20.0))
-        .flex_row()
-        .items_center()
-        .gap(px(2.0))
-        .p(px(2.0))
-        .rounded(px(5.0))
-        .border_1()
-        .border_color(move || design::line_soft())
-        .bg(move || design::panel2())
-        .child(mode_button(language, "history.unified", !split, {
-            let set_split = set_split.clone();
-            move || set_split(false)
-        }))
-        .child(mode_button(language, "history.split", split, move || {
-            set_split(true)
-        }));
-}
-
-fn mode_button(
-    language: Signal<SharedString>,
-    key: &'static str,
-    active: bool,
-    on_press: impl Fn() + 'static,
-) -> impl IntoElement {
-    // Unified / Split 二选一：选中的用 Secondary 表达，未选中用 Ghost。
-    let variant = if active {
-        crate::ui::button::ButtonVariant::Secondary
+    let target_key = if split {
+        "diff.switchToUnified"
     } else {
-        crate::ui::button::ButtonVariant::Ghost
+        "diff.switchToSplit"
     };
-    return crate::ui::button::button(
-        move || i18n::t(language.get().as_str(), key),
-        variant,
+    let icon = if split { "split" } else { "unified" };
+    return crate::ui::button::icon_button_tip(
+        icon,
+        move || i18n::t(language.get().as_str(), target_key),
         crate::ui::button::ButtonSize::Small,
         false,
-        on_press,
+        move || i18n::t(language.get().as_str(), target_key),
+        move || set_split(!split),
     );
 }

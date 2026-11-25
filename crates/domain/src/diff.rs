@@ -45,9 +45,12 @@ pub struct DiffFile {
 pub struct Patch {
     pub lines: Vec<DiffLine>,
     pub files: Vec<DiffFile>,
-    /// 解析时的原始文本。导出 patch、复制这类要求字节一致的场合直接用它，
-    /// 不要从 `lines` 反推（反推会丢掉无法识别的行的原文细节）。
+    /// 解析时的原始文本。复制这类要求字节一致的场合直接用它，不要从 `lines`
+    /// 反推（反推会丢掉无法识别的行的原文细节）。
     pub raw: String,
+    /// 同一差异的完整上下文版本，用于在 DiffView 中切换到整个文件。
+    /// `raw` 仍是暂存、统计和普通复制所用的 Git 默认上下文补丁。
+    pub full_context: Option<String>,
 }
 
 impl Patch {

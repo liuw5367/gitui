@@ -216,6 +216,24 @@ impl Repo {
         return self.run_git(&args);
     }
 
+    /// 读取贮藏的补丁，并保留供 DiffView 全文切换使用的版本。
+    pub fn stash_show_patch_with_whitespace(
+        &self,
+        oid: &str,
+        include_untracked: bool,
+        ignore_whitespace: bool,
+    ) -> Result<domain::diff::Patch, GitError> {
+        let mut args = vec!["stash", "show", "--patch"];
+        if include_untracked {
+            args.push("--include-untracked");
+        }
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push(oid);
+        return self.patch_with_full_context(&args);
+    }
+
     /// 取出最近一条贮藏（`git stash pop`）。
     pub fn stash_pop(&self) -> Result<(), GitError> {
         self.run_git(&["stash", "pop"])?;

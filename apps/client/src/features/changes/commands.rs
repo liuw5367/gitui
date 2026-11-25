@@ -101,11 +101,11 @@ impl ChangesCommands {
             return;
         }
         let patch = tabs[index].open_repo().and_then(|repo| {
-            repo.stash_show_with_whitespace(oid.as_str(), true, ignore_whitespace)
+            repo.stash_show_patch_with_whitespace(oid.as_str(), true, ignore_whitespace)
         });
-        if let Ok(bytes) = patch {
+        if let Ok(patch) = patch {
             if let Some(stash) = tabs[index].stash_diff.as_mut() {
-                stash.patch = domain::diff::Patch::parse(String::from_utf8_lossy(&bytes).as_ref());
+                stash.patch = patch;
             }
             self.session.tabs.set(tabs);
         }

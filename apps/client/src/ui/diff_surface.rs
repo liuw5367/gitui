@@ -1,7 +1,7 @@
 //! diff 视图：把 `nsh_base::DiffView` 收成应用统一的入口。
 //!
-//! 行为（分栏/统一、折叠展开、软换行、行号、指示条、hunk 导航）由 `DiffView`
-//! 提供；本层固定外观，并把只读历史 hunk 的复制动作接到应用剪贴板。
+//! `DiffView` 负责差异正文、布局、软换行、行号、指示条与 hunk 导航；共享差异面板
+//! 选择传入变更片段或完整文件 patch，本层固定外观并连接应用操作。
 
 use crate::ui;
 use nsh_base::{
@@ -55,12 +55,12 @@ pub(crate) enum Layout {
 
 /// 一块 diff。`patch` 是 unified diff 文本；`wrap` 为真时软换行。
 ///
-/// `expand_all` 控制未改动上下文是否全部展开；语言由 patch 的文件路径逐文件识别。
+/// `show_full_file` 表示传入的 patch 已包含完整文件上下文；语言由 patch 路径逐文件识别。
 pub(crate) fn diff_surface(
     patch: SharedString,
     layout: Layout,
     wrap: bool,
-    expand_all: bool,
+    show_full_file: bool,
     handle: &DiffHandle,
     language: Signal<SharedString>,
     on_hunk_copy: std::sync::Arc<dyn Fn(&DiffHunk)>,
@@ -69,7 +69,7 @@ pub(crate) fn diff_surface(
         patch,
         layout,
         wrap,
-        expand_all,
+        show_full_file,
         handle,
         language,
         on_hunk_copy,
@@ -80,14 +80,18 @@ pub(crate) fn diff_surface(
 #[derive(Clone)]
 pub(crate) struct StagingActions {
     pub(crate) staged: bool,
+    /// 原始 Git patch，保留真实 hunk 与行索引供暂存操作定位。
+    pub(crate) location_patch: SharedString,
     pub(crate) on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
+    /// 全文模式把所有改动并成一个可见 hunk，按该 hunk 操作时整文件暂存。
+    pub(crate) on_file: std::sync::Arc<dyn Fn()>,
 }
 
 pub(crate) fn configured_surface(
     patch: SharedString,
     layout: Layout,
     wrap: bool,
-    expand_all: bool,
+    show_full_file: bool,
     handle: &DiffHandle,
     language: Signal<SharedString>,
     on_hunk_copy: std::sync::Arc<dyn Fn(&DiffHunk)>,
@@ -100,28 +104,38 @@ pub(crate) fn configured_surface(
     let patch_text = patch.as_str();
     log::debug!(
         target: "gitui::diff",
-        "event=diff_surface.mount bytes={} files={} hunks={} layout={} wrap={} expand_all={}",
+        "event=diff_surface.mount bytes={} files={} hunks={} layout={} wrap={} full_file={}",
         patch_text.len(),
         patch_text.lines().filter(|line| line.starts_with("diff --git ")).count(),
         patch_text.lines().filter(|line| line.starts_with("@@")).count(),
         layout_name,
         wrap,
-        expand_all
+        show_full_file
     );
     let layout = match layout {
         Layout::Split => DiffLayout::Split,
         Layout::Unified => DiffLayout::Unified,
     };
-    let locations = staging.as_ref().map(|_| staging_locations(patch_text));
+    let mut classes = nsh_base::DiffViewClasses::default();
+    classes.line_added = Some(SharedString::from(
+        "bg-green-600/15 data-dark:bg-green-400/15",
+    ));
+    classes.line_deleted = Some(SharedString::from("bg-red-600/15 data-dark:bg-red-400/15"));
+    let locations = staging
+        .as_ref()
+        .map(|staging| staging_locations(staging.location_patch.as_str()));
     let on_hunk_copy = std::rc::Rc::new(on_hunk_copy);
     let mut surface = diff_view()
         .w_full()
         .h_full()
         .component_ref(&handle.reference)
         .patch(Some(patch))
+        .classes(classes)
         .layout(layout)
         .soft_wrap(wrap)
-        .expand_all(expand_all)
+        // Each supplied patch contains either Git's compact context or the full file.
+        // Keep all context lines that are present; the source patch controls availability.
+        .expand_all(true)
         .line_numbers(true)
         .background(true)
         .font_family(ui::MONO)
@@ -131,7 +145,7 @@ pub(crate) fn configured_surface(
         .render_hunk_actions(move |hunk: &DiffHunk| -> AnyElement {
             let handler = on_hunk_copy.clone();
             let hunk = hunk.clone();
-            return crate::ui::button::icon_button(
+            return crate::ui::button::icon_button_tip(
                 "copy",
                 {
                     let language = language;
@@ -139,6 +153,10 @@ pub(crate) fn configured_surface(
                 },
                 crate::ui::button::ButtonSize::Small,
                 false,
+                {
+                    let language = language;
+                    move || crate::i18n::t(language.get().as_str(), "diff.copyHunk")
+                },
                 move || handler(&hunk),
             )
             .into_element();
@@ -146,6 +164,7 @@ pub(crate) fn configured_surface(
     if let Some(staging) = staging {
         let locations = locations.unwrap_or_default();
         let on_piece = staging.on_piece.clone();
+        let on_file = staging.on_file.clone();
         let line_piece = on_piece.clone();
         let staged = staging.staged;
         let stage_handle = handle.clone();
@@ -180,6 +199,7 @@ pub(crate) fn configured_surface(
                             .text_color(move || crate::design::text3()),
                     );
                     let apply = on_piece.clone();
+                    let apply_file = on_file.clone();
                     let gap = separator.gap as usize;
                     row = row.child(crate::ui::button::button(
                         move || {
@@ -195,7 +215,13 @@ pub(crate) fn configured_surface(
                         crate::ui::button::ButtonVariant::Ghost,
                         crate::ui::button::ButtonSize::Small,
                         false,
-                        move || apply(gap, None, staged),
+                        move || {
+                            if show_full_file {
+                                apply_file();
+                            } else {
+                                apply(gap, None, staged);
+                            }
+                        },
                     ));
                 }
                 row.into_element()
@@ -233,7 +259,7 @@ pub(crate) fn configured_surface(
     return surface;
 }
 
-/// 可写变更仍由原始 Git hunk / 行定位，DiffView 只负责显示与高亮。
+/// 预览 Gallery 中可写变更的暂存外观。
 pub(crate) fn staging_surface(
     patch: SharedString,
     staged: bool,
@@ -241,6 +267,8 @@ pub(crate) fn staging_surface(
     on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
 ) -> impl IntoElement {
     let handle = DiffHandle::new();
+    let location_patch = patch.clone();
+    let on_file = on_piece.clone();
     return configured_surface(
         patch,
         Layout::Unified,
@@ -249,7 +277,12 @@ pub(crate) fn staging_surface(
         &handle,
         language,
         std::sync::Arc::new(|_| {}),
-        Some(StagingActions { staged, on_piece }),
+        Some(StagingActions {
+            staged,
+            location_patch,
+            on_piece,
+            on_file: std::sync::Arc::new(move || on_file(0, None, staged)),
+        }),
     );
 }
 

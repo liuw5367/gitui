@@ -36,6 +36,7 @@ pub(crate) fn change_diff(
         .and_then(|index| tab.changes.get(index))
         .map(|entry| entry.staged)
         .unwrap_or(false);
+    let selected_change = tab.selected_change;
     let ignore_whitespace = diff_state.ignore_whitespace.get();
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let apply_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)> = {
@@ -53,6 +54,14 @@ pub(crate) fn change_diff(
     let reload_cmd = cmd.clone();
     let on_ignore_whitespace: std::sync::Arc<dyn Fn(bool)> =
         std::sync::Arc::new(move |ignore| reload_cmd.reload_selected_diff(ignore));
+    let on_file: std::sync::Arc<dyn Fn()> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move || {
+            if let Some(index) = selected_change {
+                cmd.toggle_stage(index);
+            }
+        })
+    };
     let header = view()
         .w_full()
         .h(px(metrics::DIFF_RETURN_H))
@@ -84,6 +93,7 @@ pub(crate) fn change_diff(
                 .text_color(move || design::text())
                 .text_overflow(nsh_core::EllipsizeMode::Tail),
         );
+    let location_patch = SharedString::from(patch.raw.clone());
     let raw_patch = patch.clone();
     return view()
         .w_full()
@@ -102,7 +112,9 @@ pub(crate) fn change_diff(
             Some(on_ignore_whitespace),
             Some(crate::ui::diff_surface::StagingActions {
                 staged: staged_selection,
+                location_patch,
                 on_piece: apply_piece,
+                on_file,
             }),
         ))
         .into_element();

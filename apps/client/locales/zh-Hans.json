@@ -1230,6 +1230,8 @@
     "folded": "%{count} 行未改动",
     "fold": "折叠未改动行",
     "unfold": "展开未改动行",
+    "switchToSplit": "切换到分栏视图",
+    "switchToUnified": "切换到统一视图",
     "wrap": "切换自动换行",
     "showWhitespace": "显示空白字符",
     "ignoreWhitespace": "忽略空白差异",

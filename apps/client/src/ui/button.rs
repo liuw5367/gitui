@@ -361,6 +361,37 @@ pub(crate) fn icon_button_tip(
         .tooltip(tooltip_bubble(tip));
 }
 
+/// 同 [`icon_button_tip`]，并可调整图标颜色与按钮底色。
+pub(crate) fn icon_button_tuned_tip(
+    name: &'static str,
+    label: impl Fn() -> String + 'static,
+    size: ButtonSize,
+    icon_size_override: Option<IconSize>,
+    foreground: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
+    background: Option<std::rc::Rc<dyn Fn() -> AdaptiveColor>>,
+    disabled: bool,
+    tip: impl Fn() -> String + 'static,
+    on_press: impl Fn() + 'static,
+) -> impl IntoElement {
+    let button = icon_shell(
+        name,
+        label,
+        size,
+        icon_size_override,
+        foreground,
+        disabled,
+        on_press,
+    )
+    .bg(move || match &background {
+        Some(color) => color(),
+        None => AdaptiveColor::TRANSPARENT,
+    });
+    return view()
+        .flex_shrink_0()
+        .child(button)
+        .tooltip(tooltip_bubble(tip));
+}
+
 /// 图标按钮的外壳（无障碍名、尺寸、悬停底色与焦点环），内容由调用方补。
 fn icon_shell(
     name: &'static str,

@@ -265,9 +265,8 @@ pub(crate) fn show_stash_diff(
         return Ok(None);
     };
     let patch = repo
-        .stash_show_with_whitespace(oid, true, ignore_whitespace)
+        .stash_show_patch_with_whitespace(oid, true, ignore_whitespace)
         .map_err(|error| error.detail())?;
-    let patch = domain::diff::Patch::parse(String::from_utf8_lossy(&patch).as_ref());
     return Ok(Some(crate::app::session::StashDiff {
         oid: oid.to_string(),
         label: format!("{} · {}", stash.reference, stash.summary),

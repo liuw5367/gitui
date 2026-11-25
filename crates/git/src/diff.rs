@@ -36,9 +36,7 @@ impl Repo {
         }
         args.push(from);
         args.push(to);
-        let output = self.run_git(&args)?;
-        let text = String::from_utf8_lossy(&output).to_string();
-        return Ok(Patch::parse(text.as_str()));
+        return self.patch_with_full_context(&args);
     }
 
     /// Merge base for two commits. Unrelated histories return `Ok(None)`.
@@ -73,9 +71,7 @@ impl Repo {
             args.push("--ignore-all-space");
         }
         args.push(revision);
-        let output = self.run_git(&args)?;
-        let text = String::from_utf8_lossy(&output).to_string();
-        return Ok(Patch::parse(text.as_str()));
+        return self.patch_with_full_context(&args);
     }
 
     /// 某个提交里单个文件的补丁。
@@ -135,9 +131,7 @@ impl Repo {
             args.push("--");
             args.push(path);
         }
-        let output = self.run_git(&args)?;
-        let text = String::from_utf8_lossy(&output).to_string();
-        return Ok(Patch::parse(text.as_str()));
+        return self.patch_with_full_context(&args);
     }
 
     /// 某个文件的工作区 diff：`staged` 为真时读暂存区（`--cached`）。
@@ -163,9 +157,22 @@ impl Repo {
         }
         args.push("--");
         args.push(path);
-        let output = self.run_git(&args)?;
+        return self.patch_with_full_context(&args);
+    }
+
+    /// 保留 Git 默认上下文补丁，并额外读一份足够大上下文的补丁供全文显示。
+    pub(crate) fn patch_with_full_context(&self, args: &[&str]) -> Result<Patch, GitError> {
+        let output = self.run_git(args)?;
         let text = String::from_utf8_lossy(&output).to_string();
-        return Ok(Patch::parse(text.as_str()));
+        let mut patch = Patch::parse(text.as_str());
+
+        let mut full_args = args.to_vec();
+        let option_index = if args.first() == Some(&"stash") { 2 } else { 1 };
+        full_args.insert(option_index, "--unified=999999999");
+        if let Ok(output) = self.run_git_full(&full_args) {
+            patch.full_context = Some(String::from_utf8_lossy(&output).to_string());
+        }
+        return Ok(patch);
     }
 
     /// 一个提交改动的文件与行数统计。
