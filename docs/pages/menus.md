@@ -6,7 +6,7 @@
 
 本板是**独立规格页**，外壳与 16 同族：`gallery-page`（`min-height:100vh`、内距 30×34、gap 14、渐变底），预览 **1440×1400**。没有窗口骨架；页内是一行标题（只有标题与副标，**没有返回按钮**）加一个 12 张卡的栅格。样式表里 `gallery-grid` 默认 2 列，板内内联改成 3 列。
 
-macOS 原生菜单栏不在本画板内：最左侧应用菜单标题取 `brand::PRODUCT_NAME`，提供 Settings（`⌘,`）；该入口不在 Repository 菜单重复出现。Welcome、主窗口齿轮与应用菜单再次调用 Settings 时都会聚焦已有窗口。
+macOS 原生菜单栏不在本画板内：最左侧应用名称菜单取 `brand::PRODUCT_NAME`，包含 About、Settings（`⌘,`）、Hide App、Hide Others、Show All 和 Quit App；Services 不在当前菜单中。About 使用系统 About 面板，Welcome 保留在 Help 菜单。Settings 不在 Repository 菜单重复出现；Welcome、主窗口齿轮与应用菜单再次调用 Settings 时都会聚焦已有窗口。
 
 ## 当前实现
 

@@ -1183,7 +1183,11 @@
       "help": "帮助"
     },
     "openRepo": "打开仓库…",
+    "newTab": "新建标签页",
     "closeTab": "关闭标签",
+    "closeTabsRight": "关闭右侧标签页",
+    "closeTabsLeft": "关闭左侧标签页",
+    "closeAllTabs": "关闭全部标签页",
     "commandPalette": "命令面板",
     "showHistory": "显示历史",
     "showChanges": "显示变更",

@@ -1183,7 +1183,11 @@
       "help": "Help"
     },
     "openRepo": "Open Repository…",
+    "newTab": "New Tab",
     "closeTab": "Close Tab",
+    "closeTabsRight": "Close Tabs to the Right",
+    "closeTabsLeft": "Close Tabs to the Left",
+    "closeAllTabs": "Close All Tabs",
     "commandPalette": "Command Palette",
     "showHistory": "Show History",
     "showChanges": "Show Changes",

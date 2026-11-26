@@ -136,6 +136,7 @@ pub(crate) fn repository_tabs(
                         });
                         let activate = session.clone();
                         let close = session.clone();
+                        let context_session = session.clone();
                         let move_tabs = session.clone();
                         let width_state = widths;
                         let drop_boundary_for_item = drop_boundary;
@@ -157,7 +158,8 @@ pub(crate) fn repository_tabs(
                             .h(px(27.0))
                             .max_w(px(178.0))
                             .min_w(px(72.0))
-                            .px(px(9.0))
+                            .pl(px(9.0))
+                            .pr(px(4.0))
                             .flex_row()
                             .items_center()
                             .gap(px(7.0))
@@ -251,6 +253,81 @@ pub(crate) fn repository_tabs(
                                 drop_boundary.set(None);
                             })
                             .on_press(move || activate.activate_tab_id(id))
+                            .on_context_menu(move |event: &ContextMenuEvent| {
+                                let current_tabs = tabs.get_untracked();
+                                let Some(position) =
+                                    current_tabs.iter().position(|tab| tab.id == id)
+                                else {
+                                    return;
+                                };
+                                let count = current_tabs.len();
+                                let lang = language.get_untracked();
+                                let mut items = vec![
+                                    crate::ui::menu::action(
+                                        i18n::t(lang.as_str(), "menu.closeTab"),
+                                        true,
+                                        {
+                                            let session = context_session.clone();
+                                            move || session.close_tab_id(id)
+                                        },
+                                    ),
+                                    crate::ui::menu::divider(),
+                                    crate::ui::menu::action(
+                                        i18n::t(lang.as_str(), "menu.reveal"),
+                                        true,
+                                        {
+                                            let tabs = tabs;
+                                            let notice = context_session.notice;
+                                            let language = language;
+                                            move || {
+                                                let path = tabs.with_untracked(|list| {
+                                                    list.iter()
+                                                        .find(|tab| tab.id == id)
+                                                        .map(|tab| tab.path.clone())
+                                                });
+                                                if let Some(path) = path {
+                                                    crate::shared::os::reveal_path(
+                                                        notice, language, path,
+                                                    );
+                                                }
+                                            }
+                                        },
+                                    ),
+                                    crate::ui::menu::divider(),
+                                    crate::ui::menu::action(
+                                        i18n::t(lang.as_str(), "menu.closeTabsRight"),
+                                        position + 1 < count,
+                                        {
+                                            let session = context_session.clone();
+                                            move || session.close_tabs_right_of(id)
+                                        },
+                                    ),
+                                    crate::ui::menu::action(
+                                        i18n::t(lang.as_str(), "menu.closeTabsLeft"),
+                                        position > 0,
+                                        {
+                                            let session = context_session.clone();
+                                            move || session.close_tabs_left_of(id)
+                                        },
+                                    ),
+                                    crate::ui::menu::divider(),
+                                ];
+                                let tabs_for_all = tabs;
+                                let session = context_session.clone();
+                                items.push(crate::ui::menu::action(
+                                    i18n::t(lang.as_str(), "menu.closeAllTabs"),
+                                    true,
+                                    move || {
+                                        let anchor_exists = tabs_for_all.with_untracked(|list| {
+                                            list.iter().any(|tab| tab.id == id)
+                                        });
+                                        if anchor_exists {
+                                            session.close_all_tabs();
+                                        }
+                                    },
+                                ));
+                                crate::ui::menu::popup_at(items, event.page_position);
+                            })
                             // 活动页签的状态点：绿色 `ok` token。未选中的页签不画点
                             // （以前活动页签用的是 `accent`——那是极浅的选中底色，
                             // 白底上看起来就是灰点，等于没有状态指示）。

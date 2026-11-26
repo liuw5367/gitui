@@ -655,6 +655,62 @@ impl SessionHandle {
         }
     }
 
+    /// 关闭锚点左侧的标签；锚点保留，活动标签若被关闭则切到锚点。
+    pub(crate) fn close_tabs_left_of(&self, anchor_id: u64) {
+        self.close_tabs_on_side(anchor_id, true);
+    }
+
+    /// 关闭锚点右侧的标签；锚点保留，活动标签若被关闭则切到锚点。
+    pub(crate) fn close_tabs_right_of(&self, anchor_id: u64) {
+        self.close_tabs_on_side(anchor_id, false);
+    }
+
+    fn close_tabs_on_side(&self, anchor_id: u64, close_left: bool) {
+        let list = self.tabs.get_untracked();
+        let Some(anchor_index) = list.iter().position(|tab| tab.id == anchor_id) else {
+            return;
+        };
+        let old_len = list.len();
+        let active_index = self.active.get_untracked().min(old_len - 1);
+        let active_id = list.get(active_index).map(|tab| tab.id);
+        let mut next = Vec::with_capacity(old_len);
+        for (index, tab) in list.into_iter().enumerate() {
+            let remove = if close_left {
+                index < anchor_index
+            } else {
+                index > anchor_index
+            };
+            if !remove {
+                next.push(tab);
+            }
+        }
+        if next.len() == old_len {
+            return;
+        }
+        let next_active_id = active_id
+            .filter(|id| next.iter().any(|tab| tab.id == *id))
+            .unwrap_or(anchor_id);
+        let next_active = next
+            .iter()
+            .position(|tab| tab.id == next_active_id)
+            .unwrap_or(0);
+        self.tabs.set(next);
+        self.active.set(next_active);
+        self.persist();
+        self.schedule_active_tab_work(next_active_id);
+    }
+
+    /// 关闭全部仓库标签；标签为空时沿用空会话行为返回欢迎页或关闭辅助窗口。
+    pub(crate) fn close_all_tabs(&self) {
+        if self.tabs.get_untracked().is_empty() {
+            return;
+        }
+        self.tabs.set(Vec::new());
+        self.active.set(0);
+        self.persist();
+        self.finish_empty_session();
+    }
+
     /// 关闭主窗口时保存当前标签组，供下次启动恢复，然后关闭窗口。
     pub(crate) fn close_workspace(&self) {
         self.persist();

@@ -39,8 +39,16 @@ pub(crate) fn build_menu(
         MenuItem::submenu(
             crate::brand::PRODUCT_NAME,
             vec![
+                MenuItem::role(MenuRole::About),
+                MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.settings")), "settings")
                     .on_select(menu_run("settings")),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::Hide),
+                MenuItem::role(MenuRole::HideOthers),
+                MenuItem::role(MenuRole::ShowAll),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::Quit),
             ],
         ),
         MenuItem::submenu(
@@ -106,11 +114,7 @@ pub(crate) fn build_menu(
         ),
         MenuItem::submenu(
             menu("menu.app.help"),
-            vec![
-                MenuItem::new(menu("menu.welcome")).on_select(menu_run("welcome")),
-                MenuItem::separator(),
-                MenuItem::role(MenuRole::About),
-            ],
+            vec![MenuItem::new(menu("menu.welcome")).on_select(menu_run("welcome"))],
         ),
     ];
 }
