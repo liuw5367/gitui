@@ -13,40 +13,61 @@ use nsh_core::prelude::*;
 const BLAME_META_W: f32 = 220.0;
 const BLAME_SHA_W: f32 = 56.0;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BlameSnapshot {
+    tab_id: u64,
+    path: String,
+    revision: String,
+    head_oid: Option<String>,
+    return_mode: Option<crate::Mode>,
+    show_diff: bool,
+    has_error: bool,
+    lines: Vec<git::BlameLine>,
+    patch: Option<domain::diff::Patch>,
+}
+
+pub(crate) fn snapshot(tab: &Tab) -> BlameSnapshot {
+    BlameSnapshot {
+        tab_id: tab.id,
+        path: tab.blame_path.clone(),
+        revision: tab.blame_revision.clone(),
+        head_oid: (tab.blame_revision == "HEAD")
+            .then(|| tab.head_oid.clone())
+            .flatten(),
+        return_mode: tab.blame_return_mode,
+        show_diff: tab.blame_show_diff,
+        has_error: tab.blame_error.is_some(),
+        lines: tab.blame.clone(),
+        patch: tab.blame_show_diff.then(|| tab.blame_patch.clone()),
+    }
+}
+
 pub(crate) fn blame_view(
     language: Signal<SharedString>,
-    tab: Tab,
+    tab: BlameSnapshot,
+    selected_line: Memo<Option<u32>>,
     cmd: HistoryCommands,
 ) -> impl IntoElement {
-    let selected_mode = if tab.blame_show_diff { "diff" } else { "blame" };
-    let extension = std::path::Path::new(tab.blame_path.as_str())
+    let selected_mode = if tab.show_diff { "diff" } else { "blame" };
+    let extension = std::path::Path::new(tab.path.as_str())
         .extension()
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("");
-    let patch_hunks = tab
-        .blame_patch
-        .lines
-        .iter()
-        .filter(|line| line.kind == domain::diff::DiffLineKind::Hunk)
-        .count();
     log::debug!(
         target: "gitui::history",
-        "event=blame_view.render revision={} extension={} mode={} lines={} history_entries={} patch_bytes={} patch_files={} patch_hunks={} blame_source=diffview",
-        tab.blame_revision.chars().take(7).collect::<String>(),
+        "event=blame_view.render revision={} extension={} mode={} lines={} patch_bytes={} blame_source=diffview",
+        tab.revision.chars().take(7).collect::<String>(),
         extension,
         selected_mode,
-        tab.blame.len(),
-        tab.file_history.len(),
-        tab.blame_patch.raw.len(),
-        tab.blame_patch.files.len(),
-        patch_hunks,
+        tab.lines.len(),
+        tab.patch.as_ref().map_or(0, |patch| patch.raw.len()),
     );
-    let back_key = if tab.blame_return_mode == Some(crate::Mode::Changes) {
+    let back_key = if tab.return_mode == Some(crate::Mode::Changes) {
         "blame.backToChanges"
     } else {
         "history.backToList"
     };
-    let line_count = tab.blame.len();
+    let line_count = tab.lines.len();
     let segment_cmd = cmd.clone();
     let header = view()
         .w_full()
@@ -71,7 +92,7 @@ pub(crate) fn blame_view(
             },
         ))
         .child(
-            text(tab.blame_path.clone())
+            text(tab.path.clone())
                 .flex_1()
                 .min_w_0()
                 .font_family(ui::MONO)
@@ -81,12 +102,10 @@ pub(crate) fn blame_view(
                 .text_overflow(nsh_core::EllipsizeMode::Head),
         )
         .child({
-            let revision = if tab.blame_revision == "HEAD" {
-                tab.head_oid
-                    .clone()
-                    .unwrap_or_else(|| tab.blame_revision.clone())
+            let revision = if tab.revision == "HEAD" {
+                tab.head_oid.clone().unwrap_or_else(|| tab.revision.clone())
             } else {
-                tab.blame_revision.clone()
+                tab.revision.clone()
             };
             let label = revision_label(revision.as_str());
             let copy_notice = cmd.session.notice;
@@ -143,20 +162,17 @@ pub(crate) fn blame_view(
             .into_element()
         }));
 
-    let body_cmd = cmd.clone();
-    let body_tab = tab.clone();
-    let body = dynamic(move || -> AnyElement {
-        if body_tab.blame_error.is_some() {
-            return centered_message(i18n::t(language.get().as_str(), "blame.error"));
-        }
-        if body_tab.blame_show_diff {
-            return blame_diff(language, &body_cmd, &body_tab);
-        }
-        if body_tab.blame.is_empty() {
-            return centered_message(i18n::t(language.get().as_str(), "blame.empty"));
-        }
-        return blame_lines(&body_cmd, &body_tab);
-    });
+    let body = if tab.has_error {
+        dynamic(move || centered_message(i18n::t(language.get().as_str(), "blame.error")))
+            .into_element()
+    } else if let Some(patch) = tab.patch {
+        blame_diff(language, &cmd, patch)
+    } else if tab.lines.is_empty() {
+        dynamic(move || centered_message(i18n::t(language.get().as_str(), "blame.empty")))
+            .into_element()
+    } else {
+        blame_lines(&cmd, &tab, selected_line)
+    };
 
     return view()
         .w_full()
@@ -176,35 +192,66 @@ fn revision_label(revision: &str) -> String {
     return revision.chars().take(7).collect();
 }
 
-fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BlameScrollSide {
+    Metadata,
+    Source,
+}
+
+#[derive(Default)]
+struct BlameScroll {
+    source: std::cell::Cell<Option<BlameScrollSide>>,
+    offset: std::cell::Cell<Points>,
+}
+
+impl BlameScroll {
+    fn follow(&self, side: BlameScrollSide, offset: Points) -> bool {
+        let follows =
+            self.source.get() == Some(side) && (offset - self.offset.get()).abs() > px(0.5);
+        if follows {
+            self.offset.set(offset);
+        }
+        log::trace!(target: "gitui::history::scroll",
+            "blame side={side:?} source={:?} offset={offset:?} write={follows}", self.source.get());
+        follows
+    }
+}
+
+fn blame_lines(
+    cmd: &HistoryCommands,
+    tab: &BlameSnapshot,
+    selected_line: Memo<Option<u32>>,
+) -> AnyElement {
     let source = tab
-        .blame
+        .lines
         .iter()
         .map(|line| line.text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     let blame_rows = std::sync::Arc::new(
-        tab.blame
+        tab.lines
             .iter()
             .map(|line| (line.short.clone(), line.author.clone()))
             .collect::<Vec<_>>(),
     );
     let attributions = std::sync::Arc::new(
-        tab.blame
+        tab.lines
             .iter()
             .map(|line| (line.sha.clone(), line.line))
             .collect::<Vec<_>>(),
     );
-    let selected_line = tab.blame_selected_line;
     let handle = crate::ui::diff_surface::DiffHandle::new();
     let metadata_ref = element_ref();
-    let last_synced_scroll = std::rc::Rc::new(std::cell::Cell::new(0.0_f32));
+    let scroll = std::rc::Rc::new(BlameScroll::default());
     let sidebar_rows = blame_rows.clone();
-    let sidebar_scroll = last_synced_scroll.clone();
+    let sidebar_scroll = scroll.clone();
+    let sidebar_drag = scroll.clone();
+    let sidebar_wheel = scroll.clone();
+    let code_input = scroll.clone();
     let sidebar_handle = handle.clone();
     let sidebar = virtual_list(blame_rows.len(), move |at| {
         let (sha, author) = &sidebar_rows[at.index()];
-        let selected = selected_line == Some(at.index() as u32 + 1);
+        let line = at.index() as u32 + 1;
         return view()
             .w_full()
             .h(px(ui::CODE_LINE))
@@ -214,7 +261,7 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
             .items_center()
             .gap(px(ui::GAP_SM))
             .bg(move || {
-                if selected {
+                if selected_line.get() == Some(line) {
                     design::line_soft()
                 } else {
                     design::panel()
@@ -240,13 +287,21 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
     .estimated_item_size(Points(ui::CODE_LINE))
     .scrollbar(false)
     .element_ref(&metadata_ref)
-    .on_scroll(move |event: &ScrollEvent| {
-        let offset = event.offset.y;
-        if (offset.0 - sidebar_scroll.get()).abs() <= 0.5 {
-            return;
+    .on_scroll_drag_start(move |_: &Point<Points>| {
+        sidebar_drag.source.set(Some(BlameScrollSide::Metadata));
+    })
+    .on_wheel(move |event: &nsh_core::WheelEvent| {
+        let delta = event.delta.points(px(1.0));
+        if delta.y.abs() >= delta.x.abs() && delta.y != Points::ZERO {
+            sidebar_wheel.source.set(Some(BlameScrollSide::Metadata));
         }
-        sidebar_scroll.set(offset.0);
-        sidebar_handle.set_scroll_offset(offset);
+    })
+    .on_scroll(move |event: &ScrollEvent| {
+        let limit = (event.content_size.height - event.size.height).max(Points::ZERO);
+        let offset = event.offset.y.clamp(Points::ZERO, limit);
+        if sidebar_scroll.follow(BlameScrollSide::Metadata, offset) {
+            sidebar_handle.set_scroll_offset(offset);
+        }
     })
     .w(px(BLAME_META_W))
     .h_full()
@@ -254,12 +309,11 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
     .border_r_1()
     .border_color(move || design::line())
     .bg(move || design::panel());
-    let code_scroll = last_synced_scroll.clone();
     let code_metadata_ref = metadata_ref;
     let code = crate::ui::diff_surface::source_file(
         SharedString::from(source),
-        SharedString::from(tab.blame_path.clone()),
-        selected_line.map(|line| line.saturating_sub(1)),
+        SharedString::from(tab.path.clone()),
+        selected_line,
         &handle,
         {
             let cmd = cmd.clone();
@@ -269,14 +323,13 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
                 }
             }
         },
+        move || code_input.source.set(Some(BlameScrollSide::Source)),
         move |offset| {
-            if (offset.0 - code_scroll.get()).abs() <= 0.5 {
-                return;
+            if scroll.follow(BlameScrollSide::Source, offset) {
+                let mut point = Point::default();
+                point.y = offset;
+                code_metadata_ref.scroll_to(point, false);
             }
-            code_scroll.set(offset.0);
-            let mut point = Point::default();
-            point.y = offset;
-            code_metadata_ref.scroll_to(point, false);
         },
     );
     return view()
@@ -290,8 +343,11 @@ fn blame_lines(cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
         .into_element();
 }
 
-fn blame_diff(language: Signal<SharedString>, cmd: &HistoryCommands, tab: &Tab) -> AnyElement {
-    let patch = tab.blame_patch.clone();
+fn blame_diff(
+    language: Signal<SharedString>,
+    cmd: &HistoryCommands,
+    patch: domain::diff::Patch,
+) -> AnyElement {
     return crate::shared::diff::diff_panel(
         &cmd.diff.state,
         &cmd.diff,
@@ -325,3 +381,55 @@ fn centered_message(message: String) -> AnyElement {
 
 pub(crate) mod panel;
 pub(crate) use panel::blame_history_panel;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blame_scroll_ignores_clamped_and_delayed_follower_reports() {
+        use BlameScrollSide::{Metadata, Source};
+
+        let scroll = BlameScroll::default();
+        assert!(!scroll.follow(Source, px(100.0)));
+
+        scroll.source.set(Some(Source));
+        assert!(scroll.follow(Source, px(100.0)));
+        assert!(!scroll.follow(Metadata, px(95.0)));
+        assert!(!scroll.follow(Metadata, px(40.0)));
+
+        scroll.source.set(Some(Metadata));
+        assert!(scroll.follow(Metadata, px(30.0)));
+        assert!(!scroll.follow(Source, px(100.0)));
+        assert_eq!(scroll.offset.get(), px(30.0));
+    }
+
+    #[test]
+    fn only_blame_content_changes_invalidate_the_center_view() {
+        let mut tab = Tab {
+            blame_revision: "HEAD".into(),
+            blame_path: "src/lib.rs".into(),
+            ..Tab::default()
+        };
+        let initial = snapshot(&tab);
+
+        tab.blame_selected_line = Some(20);
+        tab.blame_focus_sha = Some("selected-commit".into());
+        tab.ahead = 3;
+        assert_eq!(snapshot(&tab), initial);
+
+        tab.head_oid = Some("new-head".into());
+        let new_head = snapshot(&tab);
+        assert_ne!(new_head, initial);
+
+        tab.blame_show_diff = true;
+        let diff = snapshot(&tab);
+        assert_ne!(diff, new_head);
+        tab.blame_patch.raw = "updated patch".into();
+        assert_ne!(snapshot(&tab), diff);
+
+        tab.blame_show_diff = false;
+        tab.blame.push(git::BlameLine::default());
+        assert_ne!(snapshot(&tab), new_head);
+    }
+}

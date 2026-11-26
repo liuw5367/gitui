@@ -1,0 +1,2 @@
+[patch.crates-io]
+nsh-base = { path = "vendor/nsh-base" }

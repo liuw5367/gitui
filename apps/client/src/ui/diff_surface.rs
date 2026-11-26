@@ -89,18 +89,33 @@ pub(crate) fn diff_surface(
 }
 
 /// 用 DiffView 显示单个完整源码文件，并将选中行与纵向滚动交给调用方同步。
-/// 行索引与选中行都使用 DiffView 的零起始索引。
+/// 点击回调使用 DiffView 的零起始索引，选中行使用 Git blame 的一起始行号。
 pub(crate) fn source_file(
     source: SharedString,
     path: SharedString,
-    selected_line: Option<u32>,
+    selected_line: Memo<Option<u32>>,
     handle: &DiffHandle,
     on_line_press: impl Fn(u32) + 'static,
+    on_scroll_input: impl Fn() + 'static,
     on_scroll: impl Fn(Points) + 'static,
 ) -> impl IntoElement {
-    let reference_for_layout = handle.reference.clone();
-    let selected_once = std::rc::Rc::new(std::cell::Cell::new(false));
-    let selected_once_for_layout = selected_once.clone();
+    let reference = handle.reference.clone();
+    let laid_out = signal(false);
+    effect(move || {
+        let selected = selected_line.get();
+        if laid_out.get()
+            && let Some(api) = reference.api::<DiffViewApi>()
+        {
+            api.set_selected_lines(selected.map(|line| {
+                let index = line.saturating_sub(1);
+                let mut range = DiffLineRange::default();
+                range.side = DiffSide::New;
+                range.start = index;
+                range.end = index;
+                range
+            }));
+        }
+    });
     return diff_view()
         .w_full()
         .h_full()
@@ -117,25 +132,17 @@ pub(crate) fn source_file(
         .line_height(Points(ui::CODE_LINE))
         .soft_wrap(false)
         .on_line_number_press(move |line: &DiffLine| on_line_press(line.line))
+        .track_scroll_input(true)
+        .on_scroll_input(on_scroll_input)
         .on_scroll(move |event: &DiffViewEvent| {
-            if let DiffViewEvent::Scroll(offset, _, _) = event {
-                on_scroll(offset.y);
+            if let DiffViewEvent::Scroll(offset, content, viewport) = event {
+                let limit = (content.height - viewport.height).max(Points::ZERO);
+                on_scroll(offset.y.clamp(Points::ZERO, limit));
             }
         })
         .on_layout(move |_: &Bounds<Points>| {
-            let Some(line) = selected_line else {
-                return;
-            };
-            if selected_once_for_layout.get() {
-                return;
-            }
-            if let Some(api) = reference_for_layout.api::<DiffViewApi>() {
-                let mut range = DiffLineRange::default();
-                range.side = DiffSide::New;
-                range.start = line;
-                range.end = line;
-                api.set_selected_lines(Some(range));
-                selected_once_for_layout.set(true);
+            if !laid_out.get_untracked() {
+                laid_out.set(true);
             }
         });
 }
@@ -416,6 +423,75 @@ mod tests {
             language,
             std::sync::Arc::new(|_| {}),
         )
+    }
+
+    #[component]
+    fn HorizontalDiffFixture() -> impl IntoElement {
+        let long = "x".repeat(256);
+        diff_view()
+            .w_full()
+            .h_full()
+            .old_value(Some(SharedString::from(format!(
+                "{}\n{long}",
+                "a".repeat(32)
+            ))))
+            .new_value(Some(SharedString::from(format!(
+                "{}\n{long}",
+                "z".repeat(32)
+            ))))
+            .layout(DiffLayout::Split)
+    }
+
+    #[test]
+    fn either_split_side_can_drive_horizontal_scrolling() {
+        use nsh_core::{
+            Command, MountItem,
+            element::Root,
+            platform::{Idiom, Os},
+        };
+        use std::sync::{Arc, Mutex};
+
+        let old = "a".repeat(32);
+        let new = "z".repeat(32);
+        let mut config = nsh_engine::EngineConfig {
+            viewport: Size::new(px(900.0), px(600.0)),
+            ..nsh_engine::EngineConfig::new(Root::of::<HorizontalDiffFixture>())
+        };
+        config.environment.os = Os::MacOs;
+        config.environment.idiom = Idiom::Desktop;
+        let mut app = nsh_testing::Headless::start(config).unwrap();
+        app.wait_for(&format!("text:{old}")).unwrap();
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let observed = writes.clone();
+        app.observe(move |_, batch| {
+            observed
+                .lock()
+                .unwrap()
+                .extend(batch.items.iter().filter_map(|item| {
+                    let MountItem::Command {
+                        id,
+                        command: Command::ScrollTo { x, .. },
+                    } = item
+                    else {
+                        return None;
+                    };
+                    Some((*id, *x))
+                }));
+        });
+
+        app.scroll(&format!("text:{old}"), px(80.0)).unwrap();
+        let from_old = std::mem::take(&mut *writes.lock().unwrap());
+        let (follower, x) = *from_old.last().expect("left side moves the right side");
+        assert_eq!(x, px(80.0));
+        assert!(from_old.iter().all(|(id, _)| *id == follower));
+
+        app.wheel(&format!("text:{new}"), point(px(60.0), px(0.0)))
+            .unwrap();
+        let from_new = std::mem::take(&mut *writes.lock().unwrap());
+        let (other_follower, x) = *from_new.last().expect("right wheel moves the left side");
+        assert_eq!(x, px(140.0));
+        assert_ne!(other_follower, follower);
+        assert!(from_new.iter().all(|(id, _)| *id == other_follower));
     }
 
     const STAGING_PATCH: &str = "diff --git a/main.rs b/main.rs\n--- a/main.rs\n+++ b/main.rs\n@@ -1,2 +1,3 @@\n fn main() {\n+    let count = 42;\n }\n";

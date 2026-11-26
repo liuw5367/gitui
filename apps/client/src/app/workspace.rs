@@ -270,6 +270,11 @@ fn center_content(
             })
         }
     });
+    let current_blame = computed(move || {
+        current.with(|tab| tab.as_ref().map(crate::features::history::blame::snapshot))
+    });
+    let blame_selected_line =
+        computed(move || current.with(|tab| tab.as_ref().and_then(|tab| tab.blame_selected_line)));
     let current_exists = computed({
         let current = current;
         move || current.get().is_some()
@@ -461,12 +466,13 @@ fn center_content(
                     view().w_full().flex_1().min_h_0().into_element()
                 }
                 crate::Mode::Blame => {
-                    let Some(tab) = current.get() else {
+                    let Some(tab) = current_blame.get() else {
                         return empty_workspace(language).into_element();
                     };
                     crate::features::history::blame_view(
                         language,
                         tab,
+                        blame_selected_line,
                         history.clone(),
                     )
                     .into_element()
