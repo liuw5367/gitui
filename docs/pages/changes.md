@@ -21,7 +21,7 @@
 
 ## 1. 骨架
 
-当前工作区文件 Diff 与 Stash Diff 使用共享的 NSH DiffView 面板，支持 Split / Unified、折叠上下文、软换行、显示空白、改动导航、复制 patch 和按文件路径语法高亮。差异行只使用红／绿背景，不显示左侧加减号。工具条显示新增与删除行数；Export 已移除。Changes 标题显示返回 Commits 和当前文件名。Stage Hunk 位于原有 hunk 分隔行，Stage Line 位于悬浮 gutter 操作槽，两者不增加 DiffView 的代码行高度。暂存索引仍依据原始 Git 补丁的上下文与变更行，不依赖 DiffView 重新编号。无文本 hunk 的二进制文件或模式变更显示无文本变化提示。
+当前工作区文件 Diff 与 Stash Diff 使用共享的 NSH DiffView 面板，支持 Split / Unified、折叠上下文、软换行、显示空白、改动导航、复制 patch 和按文件路径语法高亮。Split / Unified、折叠上下文、软换行、显示空白与忽略空白选择作为应用级本地偏好保存，History、Changes、Stash、Blame 和 Reflog 入口共用，切换文件或重启应用后保持一致。差异行只使用红／绿背景，不显示左侧加减号。工具条显示新增与删除行数；Export 已移除。Changes 标题显示返回 Commits 和当前文件名。Stage Hunk 位于原有 hunk 分隔行，Stage Line 位于悬浮 gutter 操作槽，两者不增加 DiffView 的代码行高度。暂存索引仍依据原始 Git 补丁的上下文与变更行，不依赖 DiffView 重新编号。无文本 hunk 的二进制文件或模式变更显示无文本变化提示。
 
 ```
 ┌────────────────┬──────────────────────────────────────────────────┬───────────────────────────────────┐

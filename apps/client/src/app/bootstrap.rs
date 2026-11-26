@@ -109,10 +109,15 @@ pub(crate) fn app() -> impl IntoElement {
     // 状态栏右端的短提示：复制成功、外部打开失败等。
     let notice = signal(Option::<String>::None);
     // diff 的并排/合并切换（设计板 04）。
-    let diff_split = signal(false);
+    let diff_preferences = settings_state.get_untracked();
+    let diff_split = signal(diff_preferences.diff_split);
     // diff 的布局与显示选项（设计板 04）。
-    let diff_options = signal(crate::shared::diff::DiffOptions::default());
-    let diff_ignore_whitespace = signal(false);
+    let diff_options = signal(crate::shared::diff::DiffOptions {
+        fold: diff_preferences.diff_fold,
+        wrap: diff_preferences.diff_wrap,
+        whitespace: diff_preferences.diff_whitespace,
+    });
+    let diff_ignore_whitespace = signal(diff_preferences.diff_ignore_whitespace);
     // 历史改写弹窗（改写说明 / 合并提交）。
     let rewrite_state = signal(Option::<features::commit::state::RewriteState>::None);
     // 命令面板的高亮行。

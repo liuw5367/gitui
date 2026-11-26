@@ -150,6 +150,16 @@ pub fn save_changelists(dir: &Path, repo: &str, lists: &[Changelist]) {
 pub struct Settings {
     /// 变更列表按目录分组（关闭时为平铺路径）。
     pub file_tree: bool,
+    /// DiffView 是否使用并排布局。
+    pub diff_split: bool,
+    /// DiffView 是否折叠未修改上下文。
+    pub diff_fold: bool,
+    /// DiffView 是否对长行软换行。
+    pub diff_wrap: bool,
+    /// DiffView 是否显示空格与制表符。
+    pub diff_whitespace: bool,
+    /// Git 生成差异时是否忽略空白变化。
+    pub diff_ignore_whitespace: bool,
     /// 合并空目录：只有一层子目录的层级合并成一行。
     pub merge_empty_dirs: bool,
     /// 压缩单子目录：`a/b/c` 这种链式目录合并显示。
@@ -201,6 +211,11 @@ impl Default for Settings {
     fn default() -> Self {
         return Settings {
             file_tree: true,
+            diff_split: false,
+            diff_fold: false,
+            diff_wrap: false,
+            diff_whitespace: false,
+            diff_ignore_whitespace: false,
             merge_empty_dirs: true,
             compact_single_child: true,
             restore_session: true,
@@ -263,6 +278,11 @@ struct GeneralPreferences {
     language: String,
     appearance: String,
     file_tree: bool,
+    diff_split: bool,
+    diff_fold: bool,
+    diff_wrap: bool,
+    diff_whitespace: bool,
+    diff_ignore_whitespace: bool,
     merge_empty_dirs: bool,
     compact_single_child: bool,
     restore_session: bool,
@@ -278,6 +298,11 @@ impl Default for GeneralPreferences {
             language: String::new(),
             appearance: String::new(),
             file_tree: settings.file_tree,
+            diff_split: settings.diff_split,
+            diff_fold: settings.diff_fold,
+            diff_wrap: settings.diff_wrap,
+            diff_whitespace: settings.diff_whitespace,
+            diff_ignore_whitespace: settings.diff_ignore_whitespace,
             merge_empty_dirs: settings.merge_empty_dirs,
             compact_single_child: settings.compact_single_child,
             restore_session: settings.restore_session,
@@ -428,6 +453,11 @@ impl StoredConfig {
     fn settings(&self) -> Settings {
         return Settings {
             file_tree: self.general.file_tree,
+            diff_split: self.general.diff_split,
+            diff_fold: self.general.diff_fold,
+            diff_wrap: self.general.diff_wrap,
+            diff_whitespace: self.general.diff_whitespace,
+            diff_ignore_whitespace: self.general.diff_ignore_whitespace,
             merge_empty_dirs: self.general.merge_empty_dirs,
             compact_single_child: self.general.compact_single_child,
             restore_session: self.general.restore_session,
@@ -457,6 +487,11 @@ impl StoredConfig {
 
     fn set_settings(&mut self, settings: &Settings) {
         self.general.file_tree = settings.file_tree;
+        self.general.diff_split = settings.diff_split;
+        self.general.diff_fold = settings.diff_fold;
+        self.general.diff_wrap = settings.diff_wrap;
+        self.general.diff_whitespace = settings.diff_whitespace;
+        self.general.diff_ignore_whitespace = settings.diff_ignore_whitespace;
         self.general.merge_empty_dirs = settings.merge_empty_dirs;
         self.general.compact_single_child = settings.compact_single_child;
         self.general.restore_session = settings.restore_session;
@@ -1028,6 +1063,11 @@ mod tests {
             dir.path(),
             &Settings {
                 file_tree: false,
+                diff_split: true,
+                diff_fold: true,
+                diff_wrap: true,
+                diff_whitespace: true,
+                diff_ignore_whitespace: true,
                 merge_empty_dirs: false,
                 compact_single_child: false,
                 restore_session: false,
@@ -1050,6 +1090,11 @@ mod tests {
         assert!(!dir.path().join("settings.txt").exists());
         let loaded = load_settings(dir.path());
         assert!(!loaded.file_tree);
+        assert!(loaded.diff_split);
+        assert!(loaded.diff_fold);
+        assert!(loaded.diff_wrap);
+        assert!(loaded.diff_whitespace);
+        assert!(loaded.diff_ignore_whitespace);
         assert!(!loaded.restore_session);
         assert!(!loaded.merge_empty_dirs);
         assert!(!loaded.compact_single_child);
@@ -1081,6 +1126,14 @@ mod tests {
         let loaded = load_settings(dir.path());
         assert!(!loaded.file_tree);
         assert_eq!(loaded.update_mode, Settings::default().update_mode);
+        assert_eq!(loaded.diff_split, Settings::default().diff_split);
+        assert_eq!(loaded.diff_fold, Settings::default().diff_fold);
+        assert_eq!(loaded.diff_wrap, Settings::default().diff_wrap);
+        assert_eq!(loaded.diff_whitespace, Settings::default().diff_whitespace);
+        assert_eq!(
+            loaded.diff_ignore_whitespace,
+            Settings::default().diff_ignore_whitespace
+        );
         assert_eq!(loaded.agent_model, Settings::default().agent_model);
     }
 

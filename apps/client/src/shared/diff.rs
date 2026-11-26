@@ -38,7 +38,7 @@ pub(crate) struct DiffState {
 #[derive(Clone)]
 pub(crate) struct DiffCommands {
     pub(crate) state: DiffState,
-    /// 文件树两项开关写进设置，因此需要设置与它所在目录。
+    /// DiffView 与文件树显示偏好写进本地设置。
     pub(crate) settings: Signal<store::Settings>,
     pub(crate) store_dir: std::path::PathBuf,
     /// 剪贴板提示等会话级状态。
@@ -48,7 +48,11 @@ pub(crate) struct DiffCommands {
 impl DiffCommands {
     /// 切换并排/合并视图（原 `set_diff_split`）。
     pub(crate) fn set_diff_split(&self, split: bool) {
+        if self.state.split.get_untracked() == split {
+            return;
+        }
         self.state.split.set(split);
+        self.persist_display_preferences();
     }
 
     /// 切换 diff 显示开关（`fold` / `wrap` / `whitespace`，原 `toggle_diff_option`）。
@@ -62,11 +66,25 @@ impl DiffCommands {
                 self.state
                     .ignore_whitespace
                     .set(!self.state.ignore_whitespace.get_untracked());
+                self.persist_display_preferences();
                 return;
             }
             _ => return,
         }
         self.state.options.set(next);
+        self.persist_display_preferences();
+    }
+
+    fn persist_display_preferences(&self) {
+        let mut next = self.settings.get_untracked();
+        let options = self.state.options.get_untracked();
+        next.diff_split = self.state.split.get_untracked();
+        next.diff_fold = options.fold;
+        next.diff_wrap = options.wrap;
+        next.diff_whitespace = options.whitespace;
+        next.diff_ignore_whitespace = self.state.ignore_whitespace.get_untracked();
+        self.settings.set(next.clone());
+        store::save_settings(&self.store_dir, &next);
     }
 
     /// 设置文件树的整体开关（原 `set_file_tree`）。
