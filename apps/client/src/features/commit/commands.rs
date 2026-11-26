@@ -24,7 +24,11 @@ pub(crate) struct CommitCommands {
 impl CommitCommands {
     /// 提交暂存内容（原 `commit`）。
     pub(crate) fn commit(&self) {
-        self.commit_inner(false);
+        if self.no_verify_selected() {
+            self.confirm_no_verify_commit();
+        } else {
+            self.commit_inner(false);
+        }
     }
 
     /// 提交本体：成功后按「Push after commit」决定是否立刻推送（原 `commit_inner`）。
@@ -60,6 +64,18 @@ impl CommitCommands {
 
     /// 跳过钩子提交（原 `commit_without_hooks`）：先强确认再提交（`--no-verify`）。
     pub(crate) fn commit_without_hooks(&self) {
+        self.confirm_no_verify_commit();
+    }
+
+    fn no_verify_selected(&self) -> bool {
+        let current = self.session.active.get_untracked();
+        return self
+            .session
+            .tabs
+            .with_untracked(|tabs| tabs.get(current).is_some_and(|tab| tab.no_verify));
+    }
+
+    fn confirm_no_verify_commit(&self) {
         let language = self.language;
         let language_now = language.get_untracked();
         let pending = crate::interactions::confirm(
@@ -78,7 +94,7 @@ impl CommitCommands {
         });
     }
 
-    /// 面板上的三个开关（设计板 10）（原 `set_commit_option`）。
+    /// 更新 Changes 面板中的提交选项。
     pub(crate) fn set_commit_option(&self, kind: &'static str, value: bool) {
         let tabs = self.session.tabs;
         let active = self.session.active;
@@ -105,6 +121,7 @@ impl CommitCommands {
                     }
                 }
                 "forcePush" => tab.force_push_after_commit = value && tab.push_after_commit,
+                "noVerify" => tab.no_verify = value,
                 _ => return,
             }
             tabs.set(list);

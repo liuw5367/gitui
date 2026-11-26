@@ -108,80 +108,146 @@ fn changes_commit_panel(
                         .w_full()
                         .flex_row()
                         .items_center()
-                        .gap(px(4.0))
-                        .child(checkbox_row(
-                            language,
-                            "commit.amendShort",
-                            move || current.with(|tab| tab.as_ref().is_some_and(|tab| tab.amend)),
-                            false,
-                            {
-                                let cmd = cmd.clone();
-                                move || {
-                                    let amend = current.with_untracked(|tab| {
-                                        tab.as_ref().is_some_and(|tab| tab.amend)
-                                    });
-                                    cmd.set_commit_option("amend", !amend);
-                                }
-                            },
-                        ))
-                        .child(checkbox_row(
-                            language,
-                            "commit.signoffShort",
-                            move || current.with(|tab| tab.as_ref().is_some_and(|tab| tab.signoff)),
-                            false,
-                            {
-                                let cmd = cmd.clone();
-                                move || {
-                                    let signoff = current.with_untracked(|tab| {
-                                        tab.as_ref().is_some_and(|tab| tab.signoff)
-                                    });
-                                    cmd.set_commit_option("signoff", !signoff);
-                                }
-                            },
-                        ))
-                        .child(checkbox_row(
-                            language,
-                            "commit.pushAfterShort",
-                            move || {
-                                current.with(|tab| {
-                                    tab.as_ref().is_some_and(|tab| tab.push_after_commit)
-                                })
-                            },
-                            false,
-                            {
-                                let cmd = cmd.clone();
-                                move || {
-                                    let push_after = current.with_untracked(|tab| {
-                                        tab.as_ref().is_some_and(|tab| tab.push_after_commit)
-                                    });
-                                    cmd.set_commit_option("pushAfter", !push_after);
-                                }
-                            },
-                        ))
-                        .child(checkbox_row(
-                            language,
-                            "commit.forcePushShort",
-                            move || {
-                                current.with(|tab| {
-                                    tab.as_ref().is_some_and(|tab| tab.force_push_after_commit)
-                                })
-                            },
-                            move || {
-                                !current.with(|tab| {
-                                    tab.as_ref().is_some_and(|tab| tab.push_after_commit)
-                                })
-                            },
-                            {
-                                let cmd = cmd.clone();
-                                move || {
-                                    let force_push_after = current.with_untracked(|tab| {
-                                        tab.as_ref().is_some_and(|tab| tab.force_push_after_commit)
-                                    });
-                                    cmd.set_commit_option("forcePush", !force_push_after);
-                                }
-                            },
-                        ))
-                        .child(view().flex_1())
+                        .gap(px(8.0))
+                        .child(
+                            view()
+                                .flex_1()
+                                .min_w_0()
+                                .flex_col()
+                                .gap(px(2.0))
+                                .child(
+                                    view()
+                                        .w_full()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(4.0))
+                                        .child(checkbox_row(
+                                            language,
+                                            "commit.amendShort",
+                                            "commit.amendTooltip",
+                                            move || {
+                                                current.with(|tab| {
+                                                    tab.as_ref().is_some_and(|tab| tab.amend)
+                                                })
+                                            },
+                                            false,
+                                            {
+                                                let cmd = cmd.clone();
+                                                move || {
+                                                    let amend = current.with_untracked(|tab| {
+                                                        tab.as_ref().is_some_and(|tab| tab.amend)
+                                                    });
+                                                    cmd.set_commit_option("amend", !amend);
+                                                }
+                                            },
+                                        ))
+                                        .child(checkbox_row(
+                                            language,
+                                            "commit.signoffShort",
+                                            "commit.signoffTooltip",
+                                            move || {
+                                                current.with(|tab| {
+                                                    tab.as_ref().is_some_and(|tab| tab.signoff)
+                                                })
+                                            },
+                                            false,
+                                            {
+                                                let cmd = cmd.clone();
+                                                move || {
+                                                    let signoff = current.with_untracked(|tab| {
+                                                        tab.as_ref().is_some_and(|tab| tab.signoff)
+                                                    });
+                                                    cmd.set_commit_option("signoff", !signoff);
+                                                }
+                                            },
+                                        ))
+                                        .child(checkbox_row(
+                                            language,
+                                            "commit.noVerifyShort",
+                                            "commit.noVerifyTooltip",
+                                            move || {
+                                                current.with(|tab| {
+                                                    tab.as_ref().is_some_and(|tab| tab.no_verify)
+                                                })
+                                            },
+                                            false,
+                                            {
+                                                let cmd = cmd.clone();
+                                                move || {
+                                                    let no_verify = current.with_untracked(|tab| {
+                                                        tab.as_ref()
+                                                            .is_some_and(|tab| tab.no_verify)
+                                                    });
+                                                    cmd.set_commit_option("noVerify", !no_verify);
+                                                }
+                                            },
+                                        )),
+                                )
+                                .child(
+                                    view()
+                                        .w_full()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(4.0))
+                                        .child(checkbox_row(
+                                            language,
+                                            "commit.pushAfterShort",
+                                            "commit.pushAfterTooltip",
+                                            move || {
+                                                current.with(|tab| {
+                                                    tab.as_ref()
+                                                        .is_some_and(|tab| tab.push_after_commit)
+                                                })
+                                            },
+                                            false,
+                                            {
+                                                let cmd = cmd.clone();
+                                                move || {
+                                                    let push_after =
+                                                        current.with_untracked(|tab| {
+                                                            tab.as_ref().is_some_and(|tab| {
+                                                                tab.push_after_commit
+                                                            })
+                                                        });
+                                                    cmd.set_commit_option("pushAfter", !push_after);
+                                                }
+                                            },
+                                        ))
+                                        .child(checkbox_row(
+                                            language,
+                                            "commit.forcePushShort",
+                                            "commit.forcePushTooltip",
+                                            move || {
+                                                current.with(|tab| {
+                                                    tab.as_ref().is_some_and(|tab| {
+                                                        tab.force_push_after_commit
+                                                    })
+                                                })
+                                            },
+                                            move || {
+                                                !current.with(|tab| {
+                                                    tab.as_ref()
+                                                        .is_some_and(|tab| tab.push_after_commit)
+                                                })
+                                            },
+                                            {
+                                                let cmd = cmd.clone();
+                                                move || {
+                                                    let force_push_after =
+                                                        current.with_untracked(|tab| {
+                                                            tab.as_ref().is_some_and(|tab| {
+                                                                tab.force_push_after_commit
+                                                            })
+                                                        });
+                                                    cmd.set_commit_option(
+                                                        "forcePush",
+                                                        !force_push_after,
+                                                    );
+                                                }
+                                            },
+                                        )),
+                                ),
+                        )
                         .child(crate::ui::button::button(
                             move || i18n::t(language.get().as_str(), "commit.actionShort"),
                             crate::ui::button::ButtonVariant::Primary,
@@ -216,20 +282,26 @@ fn changes_commit_panel(
 fn checkbox_row<MC, MD>(
     language: Signal<SharedString>,
     key: &'static str,
+    tooltip_key: &'static str,
     checked: impl IntoProp<bool, MC> + 'static,
     disabled: impl IntoProp<bool, MD> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     // 原生 Checkbox：按压、键盘激活与无障碍状态由组件负责，外观取自 ui 层。
     let toggle = move |_next: bool| on_press();
-    return crate::ui::check::check_inline(
-        move || i18n::t(language.get().as_str(), key),
-        checked,
-        22.0,
-        12.0,
-        disabled,
-        toggle,
-    );
+    return view()
+        .tooltip(crate::ui::button::localized_text_tooltip(
+            language,
+            tooltip_key,
+        ))
+        .child(crate::ui::check::check_inline(
+            move || i18n::t(language.get().as_str(), key),
+            checked,
+            22.0,
+            12.0,
+            disabled,
+            toggle,
+        ));
 }
 
 /// 提交操作反馈块：成功绿点、失败红点，命令输出等宽显示。

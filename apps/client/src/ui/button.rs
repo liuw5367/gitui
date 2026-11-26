@@ -486,3 +486,10 @@ pub(crate) fn file_list_toggle(
 pub(crate) fn text_tooltip(label: String) -> nsh_base::TooltipElement {
     tooltip_bubble(move || label.clone())
 }
+
+pub(crate) fn localized_text_tooltip(
+    language: Signal<SharedString>,
+    key: &'static str,
+) -> nsh_base::TooltipElement {
+    tooltip_bubble(move || crate::i18n::t(language.get().as_str(), key))
+}

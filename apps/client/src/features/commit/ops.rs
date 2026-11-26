@@ -67,7 +67,7 @@ pub(crate) fn commit_staged(tab: &mut Tab) {
 
 /// 提交暂存区；`no_verify` 为真时跳过钩子（界面走强确认）。
 ///
-/// 面板上的「改写上一条」与「sign-off」来自 `Tab` 的开关，成功后归位，
+/// 面板上的「改写上一条」、「sign-off」与「no-verify」来自 `Tab` 的开关，成功后归位，
 /// 避免下一次提交意外沿用。
 pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
     let summary = tab.summary.trim().to_string();
@@ -106,6 +106,7 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
             tab.description.clear();
             tab.amend = false;
             tab.signoff = false;
+            tab.no_verify = false;
             refresh_changes(tab);
             // 提交后历史新增一条，重新读取以显示。
             let filter = tab.filter.clone();
@@ -201,9 +202,11 @@ mod tests {
         commit_staged(&mut tab);
         assert!(!tab.hook_ok, "钩子应拦住普通提交");
 
+        tab.no_verify = true;
         commit_staged_with(&mut tab, true);
         assert!(tab.hook_ok, "跳过钩子应成功：{:?}", tab.hook_log);
         assert_eq!(tab.commits[0].summary, "Blocked");
+        assert!(!tab.no_verify, "成功后 no-verify 开关应归位");
     }
 
     #[test]

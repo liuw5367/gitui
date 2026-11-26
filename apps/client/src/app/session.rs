@@ -161,9 +161,10 @@ pub(crate) struct Tab {
     pub(crate) hook_ok: bool,
     /// 反馈属于钩子、提交还是提交后推送。
     pub(crate) commit_feedback_kind: CommitFeedbackKind,
-    /// 提交面板的三个开关（设计板 10）。成功后归位。
+    /// 提交选项：成功后 amend、sign-off 与 no-verify 归位。
     pub(crate) amend: bool,
     pub(crate) signoff: bool,
+    pub(crate) no_verify: bool,
     pub(crate) push_after_commit: bool,
     /// 提交后推送时是否允许使用 `--force-with-lease`。
     pub(crate) force_push_after_commit: bool,
