@@ -70,6 +70,7 @@ pub(crate) fn commit_staged(tab: &mut Tab) {
 /// 面板上的「改写上一条」、「sign-off」与「no-verify」来自 `Tab` 的开关，成功后归位，
 /// 避免下一次提交意外沿用。
 pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
+    tab.commit_feedback_progress = None;
     let summary = tab.summary.trim().to_string();
     if summary.is_empty() {
         tab.hook_log = Some("提交说明不能为空".to_string());

@@ -97,7 +97,7 @@ Fetch、Pull、Push 都在同一块 800×520 面板内显示各自选项、目�
 
 面板头的 ×、脚部 Close 都只隐藏面板，任务继续；运行中的 Cancel 会终止 Git 子进程。重开面板可继续查看任务，完成后显示成功、失败或取消状态。任务结束时按原 tab ID 与路径刷新仓库状态、分支、远端引用、工作区变更和未完成的 merge/rebase 操作；若目标标签已关闭，不会把结果写到其它仓库。
 
-Push 遇到 non-fast-forward 时显示 Pull with Rebase、Pull with Merge 和 Cancel；选择一种 Pull 且成功后会重试原 Push。Force with lease 只传 `--force-with-lease`，选中时提示会改写远端历史，不会自动使用 `--force`。取消 Pull 不会自动 abort 已开始的 merge/rebase；取消 Push 后远端可能已收到部分对象，需再 Fetch 确认。
+Push 遇到 non-fast-forward 时显示 Pull with Rebase、Pull with Merge 和 Cancel；选择一种 Pull 且成功后会重试原 Push。恢复链的 Activity 标题在 Pull 与重试 Push 时分别显示 `2/3`、`3/3`，进行期间为橙点，整条链成功后为绿点，失败为红点。单独的 Fetch、Pull、Push 不显示步数。Force with lease 只传 `--force-with-lease`，选中时提示会改写远端历史，不会自动使用 `--force`。取消 Pull 不会自动 abort 已开始的 merge/rebase；取消 Push 后远端可能已收到部分对象，需再 Fetch 确认。
 
 ## 7. 画板没覆盖的组合（待补设计）
 

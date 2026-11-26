@@ -5,7 +5,7 @@
 
 use super::ops;
 use super::state::{SyncDialogState, SyncState, SyncSummary, SyncTaskState};
-use crate::app::session::{Sync, SyncOptions};
+use crate::app::session::{Sync, SyncOptions, WorkflowProgress};
 use crate::features::SessionHandle;
 use nsh_core::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -707,11 +707,12 @@ impl SyncCommands {
             None,
             false,
             SyncPresentation::Dialog,
+            None,
         );
     }
 
     /// 提交成功后直接推送当前仓库；Force 复选框覆盖本次推送的同步面板选项。
-    pub(crate) fn run_push_after_commit(&self, tab_id: u64, force_with_lease: bool) {
+    pub(crate) fn run_push_after_commit(&self, tab_id: u64, force_with_lease: bool) -> bool {
         let state = self
             .state
             .dialog
@@ -721,7 +722,7 @@ impl SyncCommands {
             .map(|state| (state.remote, state.options))
             .unwrap_or_default();
         options.push.force_with_lease = force_with_lease;
-        self.start_sync_with(
+        return self.start_sync_with(
             Sync::Push,
             tab_id,
             remote,
@@ -729,6 +730,7 @@ impl SyncCommands {
             None,
             false,
             SyncPresentation::CommitFeedback,
+            None,
         );
     }
 
@@ -741,14 +743,15 @@ impl SyncCommands {
         follow_up_push: Option<SyncOptions>,
         retry_push: bool,
         presentation: SyncPresentation,
-    ) {
+        workflow_progress: Option<WorkflowProgress>,
+    ) -> bool {
         if self
             .state
             .task
             .get_untracked()
             .is_some_and(|task| task.result.is_none())
         {
-            return;
+            return false;
         }
 
         let tabs = self.session.tabs;
@@ -768,7 +771,7 @@ impl SyncCommands {
                 dialog.running = false;
                 self.state.dialog.set(Some(dialog));
             }
-            return;
+            return false;
         };
 
         let path = target.path.clone();
@@ -796,6 +799,7 @@ impl SyncCommands {
             summary: None,
             cancelled: false,
             show_dialog: presentation == SyncPresentation::Dialog,
+            workflow_progress,
             follow_up_push: follow_up_push.clone(),
             retry_push,
             cancel: cancel.clone(),
@@ -992,6 +996,12 @@ impl SyncCommands {
                                     target.commit_feedback_kind =
                                         crate::app::session::CommitFeedbackKind::Push;
                                     target.hook_ok = outcome.is_ok();
+                                    target.commit_feedback_progress =
+                                        target.commit_feedback_progress.map(|mut progress| {
+                                            progress.step = progress.total;
+                                            progress.running = false;
+                                            progress
+                                        });
                                     target.hook_log = Some(if output.trim().is_empty() {
                                         detail
                                     } else {
@@ -1010,6 +1020,8 @@ impl SyncCommands {
                                     None => Ok(String::new()),
                                 }
                             };
+                            let workflow_continues =
+                                follow_up_push.is_some() && !cancelled && outcome.is_ok();
                             tabs.set(tabs_now);
 
                             if let Some(mut task) = task_signal.get_untracked() {
@@ -1022,6 +1034,10 @@ impl SyncCommands {
                                     task.result = Some(outcome.clone());
                                     task.summary = summary.clone();
                                     task.cancelled = cancelled;
+                                    if let Some(mut progress) = task.workflow_progress {
+                                        progress.running = workflow_continues;
+                                        task.workflow_progress = Some(progress);
+                                    }
                                     task_signal.set(Some(task));
                                 }
                             }
@@ -1046,6 +1062,11 @@ impl SyncCommands {
                                         None,
                                         true,
                                         SyncPresentation::Dialog,
+                                        Some(WorkflowProgress {
+                                            step: 3,
+                                            total: 3,
+                                            running: true,
+                                        }),
                                     );
                                 } else if let Err(message) = outcome {
                                     crate::interactions::notify(notice, message);
@@ -1117,6 +1138,11 @@ impl SyncCommands {
                                 Some(options),
                                 false,
                                 SyncPresentation::Dialog,
+                                Some(WorkflowProgress {
+                                    step: 2,
+                                    total: 3,
+                                    running: true,
+                                }),
                             );
                             return;
                         }
@@ -1126,6 +1152,7 @@ impl SyncCommands {
                 }
             });
         });
+        return true;
     }
 
     pub(crate) fn cancel_sync(&self) {

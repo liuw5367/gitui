@@ -5,7 +5,7 @@
 
 use super::ops;
 use super::state::{CommitState, RewriteKind, RewriteState};
-use crate::app::session::CommitFeedbackKind;
+use crate::app::session::{CommitFeedbackKind, WorkflowProgress};
 use crate::features::SessionHandle;
 use crate::features::sync::commands::SyncCommands;
 use nsh_core::prelude::*;
@@ -43,14 +43,26 @@ impl CommitCommands {
             return;
         };
         let tab_id = tab.id;
+        let push_after_requested = tab.push_after_commit;
         tab.summary = commit_summary.get_untracked();
         tab.description = commit_description.get_untracked();
         ops::commit_staged_with(tab, no_verify);
+        if push_after_requested {
+            let commit_succeeded = tab.hook_ok;
+            tab.commit_feedback_progress = Some(WorkflowProgress {
+                step: if commit_succeeded { 2 } else { 1 },
+                total: 2,
+                running: commit_succeeded,
+            });
+            if commit_succeeded {
+                tab.commit_feedback_kind = CommitFeedbackKind::PushRunning;
+            }
+        }
         if tab.hook_ok {
             commit_summary.set(String::new());
             commit_description.set(String::new());
         }
-        let push_after = tab.push_after_commit && tab.hook_ok;
+        let push_after = push_after_requested && tab.hook_ok;
         let force_push_after = tab.force_push_after_commit;
         if push_after {
             tab.push_after_commit = false;
@@ -58,8 +70,30 @@ impl CommitCommands {
         }
         tabs.set(list);
         if push_after {
-            self.sync.run_push_after_commit(tab_id, force_push_after);
+            if !self.sync.run_push_after_commit(tab_id, force_push_after) {
+                self.report_push_not_started(tab_id);
+            }
         }
+    }
+
+    fn report_push_not_started(&self, tab_id: u64) {
+        let tabs = self.session.tabs;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+            return;
+        };
+        tab.commit_feedback_kind = CommitFeedbackKind::Push;
+        tab.commit_feedback_progress = Some(WorkflowProgress {
+            step: 2,
+            total: 2,
+            running: false,
+        });
+        tab.hook_ok = false;
+        tab.hook_log = Some(crate::i18n::t(
+            self.language.get_untracked().as_str(),
+            "commit.pushNotStarted",
+        ));
+        tabs.set(list);
     }
 
     /// 跳过钩子提交（原 `commit_without_hooks`）：先强确认再提交（`--no-verify`）。

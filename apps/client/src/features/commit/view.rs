@@ -5,7 +5,7 @@
 
 use super::commands::CommitCommands;
 use super::state::CommitState;
-use crate::app::session::{CommitFeedbackKind, Tab};
+use crate::app::session::{CommitFeedbackKind, Tab, WorkflowProgress};
 use crate::design::{self, metrics};
 use crate::features::changes::commands::ChangesCommands;
 use crate::i18n;
@@ -46,8 +46,14 @@ fn changes_commit_panel(
         let current = current;
         move || {
             current.with(|tab| {
-                tab.as_ref()
-                    .map(|tab| (tab.hook_log.clone(), tab.hook_ok, tab.commit_feedback_kind))
+                tab.as_ref().map(|tab| {
+                    (
+                        tab.hook_log.clone(),
+                        tab.hook_ok,
+                        tab.commit_feedback_kind,
+                        tab.commit_feedback_progress,
+                    )
+                })
             })
         }
     });
@@ -63,7 +69,7 @@ fn changes_commit_panel(
             &changes, tab, current, show_tree, tree,
         ))
         .child(dynamic(move || -> AnyElement {
-            let Some((Some(log), ok, kind)) = hook_snapshot.get() else {
+            let Some((Some(log), ok, kind, progress)) = hook_snapshot.get() else {
                 return view().w_full().h(px(0.0)).into_element();
             };
             return view()
@@ -73,7 +79,14 @@ fn changes_commit_panel(
                 .py(px(8.0))
                 .border_t_1()
                 .border_color(move || design::line_soft())
-                .child(hook_box(language, log, ok, kind, hook_cmd.clone()))
+                .child(hook_box(
+                    language,
+                    log,
+                    ok,
+                    kind,
+                    progress,
+                    hook_cmd.clone(),
+                ))
                 .into_element();
         }))
         .child(
@@ -312,9 +325,11 @@ fn hook_box(
     log: String,
     ok: bool,
     kind: CommitFeedbackKind,
+    progress: Option<WorkflowProgress>,
     cmd: CommitCommands,
 ) -> impl IntoElement {
     let has_log = !log.trim().is_empty();
+    let step_label = progress.and_then(WorkflowProgress::label);
     // 面板里只显示末尾若干行，完整内容在 `View full log` 弹层。
     let preview: String = {
         let lines: Vec<&str> = log.lines().collect();
@@ -349,19 +364,22 @@ fn hook_box(
                 .flex_row()
                 .items_center()
                 .gap(px(5.0))
-                .child(
-                    view()
-                        .w(px(6.0))
-                        .h(px(6.0))
-                        .rounded(px(3.0))
-                        .bg(move || if ok { design::ok() } else { design::danger() }),
-                )
+                .child(view().w(px(6.0)).h(px(6.0)).rounded(px(3.0)).bg(move || {
+                    if !ok {
+                        design::danger()
+                    } else if progress.is_some_and(|progress| progress.running) {
+                        design::warn()
+                    } else {
+                        design::ok()
+                    }
+                }))
                 .child(
                     text(move || {
                         let key = match kind {
                             CommitFeedbackKind::Hooks if ok => "commit.hooksPassed",
                             CommitFeedbackKind::Hooks => "commit.hooksFailed",
                             CommitFeedbackKind::Commit => "commit.commitFailed",
+                            CommitFeedbackKind::PushRunning => "commit.pushRunning",
                             CommitFeedbackKind::Push if ok => "commit.pushPassed",
                             CommitFeedbackKind::Push => "commit.pushFailed",
                         };
@@ -371,6 +389,14 @@ fn hook_box(
                     .text_color(move || design::text2()),
                 )
                 .child(view().flex_1())
+                .when(step_label.is_some(), |row| {
+                    row.child(
+                        text(step_label.clone().unwrap_or_default())
+                            .text_size(px(crate::ui::SECONDARY))
+                            .font_family(crate::ui::MONO)
+                            .text_color(move || design::text3()),
+                    )
+                })
                 .child(crate::ui::button::icon_button(
                     "x",
                     move || i18n::t(language.get().as_str(), "common.close"),

@@ -3,7 +3,7 @@
 //! 只放属于本功能、且不跨功能的信号；同步结果（`sync_message` / `sync_failed` /
 //! `sync_fault`）是每个仓库各自的数据，挂在 `Tab` 上，仍留在 `Tab` 里。
 
-use crate::app::session::{Sync, SyncOptions};
+use crate::app::session::{Sync, SyncOptions, WorkflowProgress};
 use nsh_core::prelude::*;
 
 /// 远端操作完成后供面板本地化呈现的事实摘要。
@@ -77,6 +77,8 @@ pub(crate) struct SyncTaskState {
     pub cancelled: bool,
     /// 是否由同步面板启动；提交后自动推送走提交反馈块，不弹同步面板。
     pub show_dialog: bool,
+    /// 串行同步操作链进度；普通单步 Fetch/Pull/Push 为空。
+    pub workflow_progress: Option<WorkflowProgress>,
     pub follow_up_push: Option<SyncOptions>,
     pub retry_push: bool,
     pub cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -94,6 +96,7 @@ impl PartialEq for SyncTaskState {
             && self.summary == other.summary
             && self.cancelled == other.cancelled
             && self.show_dialog == other.show_dialog
+            && self.workflow_progress == other.workflow_progress
             && self.follow_up_push == other.follow_up_push
             && self.retry_push == other.retry_push;
     }

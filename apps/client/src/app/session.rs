@@ -43,7 +43,27 @@ pub(crate) enum CommitFeedbackKind {
     #[default]
     Hooks,
     Commit,
+    PushRunning,
     Push,
+}
+
+/// 一条串行操作链当前进行到的步骤。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct WorkflowProgress {
+    /// 当前步骤，从 1 开始。
+    pub(crate) step: usize,
+    pub(crate) total: usize,
+    /// 整条操作链仍在运行时保持为真，包括步骤切换期间。
+    pub(crate) running: bool,
+}
+
+impl WorkflowProgress {
+    pub(crate) fn label(self) -> Option<String> {
+        if self.total <= 1 || self.step == 0 {
+            return None;
+        }
+        return Some(format!("{}/{}", self.step, self.total));
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -159,8 +179,10 @@ pub(crate) struct Tab {
     pub(crate) hook_log: Option<String>,
     /// 最近一次提交或提交后推送是否成功。
     pub(crate) hook_ok: bool,
-    /// 反馈属于钩子、提交还是提交后推送。
+    /// 反馈属于钩子、提交、提交后推送进行中或推送结果。
     pub(crate) commit_feedback_kind: CommitFeedbackKind,
+    /// 提交区自动推送期间的两步进度。
+    pub(crate) commit_feedback_progress: Option<WorkflowProgress>,
     /// 提交选项：成功后 amend、sign-off 与 no-verify 归位。
     pub(crate) amend: bool,
     pub(crate) signoff: bool,
@@ -1145,6 +1167,29 @@ impl SyncOptions {
 mod tests {
     use super::*;
     use crate::test_support::TempRepo;
+
+    #[test]
+    fn workflow_progress_labels_only_multi_step_flows() {
+        assert_eq!(
+            WorkflowProgress {
+                step: 2,
+                total: 3,
+                running: true,
+            }
+            .label()
+            .as_deref(),
+            Some("2/3")
+        );
+        assert_eq!(
+            WorkflowProgress {
+                step: 1,
+                total: 1,
+                running: false,
+            }
+            .label(),
+            None
+        );
+    }
 
     #[test]
     fn loading_a_repo_fills_the_tab_and_selects_the_first_commit() {

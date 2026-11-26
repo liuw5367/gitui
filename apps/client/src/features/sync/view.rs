@@ -537,8 +537,12 @@ fn log_panel(
     let color_remote = target_remote.clone();
     let log_result = result.clone();
     let log_task = task;
-    let log_path = target_path;
-    let log_remote = target_remote;
+    let log_path = target_path.clone();
+    let log_remote = target_remote.clone();
+    let title_task = task;
+    let title_path = target_path;
+    let title_remote = target_remote;
+    let title_language = language;
     let log_scroll = element_ref();
     let mut content = view()
         .w(px(metrics::SYNC_SHEET_W / 2.0 - 1.0))
@@ -549,13 +553,56 @@ fn log_panel(
         .border_l_1()
         .border_color(move || design::line())
         .bg(move || design::panel())
-        .child(
-            text(move || i18n::t(language.get().as_str(), sync_log_title_key(kind)))
-                .text_size(px(ui::SECONDARY))
-                .line_height(px(ui::SECONDARY_LINE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(move || design::text2()),
-        )
+        .child(dynamic(move || -> AnyElement {
+            let task = title_task.get().filter(|task| {
+                sync_task_matches(
+                    task,
+                    kind,
+                    target_tab_id,
+                    title_path.as_deref(),
+                    title_remote.as_deref(),
+                )
+            });
+            let progress = task
+                .as_ref()
+                .and_then(|task| task.workflow_progress)
+                .filter(|progress| progress.label().is_some());
+            let title = text(i18n::t(
+                title_language.get().as_str(),
+                sync_log_title_key(kind),
+            ))
+            .text_size(px(ui::SECONDARY))
+            .line_height(px(ui::SECONDARY_LINE))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(move || design::text2());
+            let Some(progress) = progress else {
+                return title.into_element();
+            };
+            let color = if progress.running {
+                design::warn()
+            } else if task
+                .as_ref()
+                .is_some_and(|task| task.result.as_ref().is_some_and(Result::is_ok))
+            {
+                design::ok()
+            } else {
+                design::danger()
+            };
+            return view()
+                .w_full()
+                .flex_row()
+                .items_center()
+                .gap(px(ui::GAP_SM))
+                .child(view().w(px(6.0)).h(px(6.0)).rounded(px(3.0)).bg(color))
+                .child(title.flex_1().min_w_0())
+                .child(
+                    text(progress.label().unwrap_or_default())
+                        .text_size(px(ui::SECONDARY))
+                        .font_family(ui::MONO)
+                        .text_color(move || design::text3()),
+                )
+                .into_element();
+        }))
         .child(
             view()
                 .w_full()
@@ -963,6 +1010,7 @@ mod log_panel_tests {
             summary: None,
             cancelled: false,
             show_dialog: true,
+            workflow_progress: None,
             follow_up_push: None,
             retry_push: false,
             cancel: Arc::new(AtomicBool::new(false)),
