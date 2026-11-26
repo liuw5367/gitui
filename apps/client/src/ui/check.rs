@@ -12,11 +12,12 @@ use nsh_core::prelude::*;
 ///
 /// 用于表格单元格里的「暂存」开关——点击它只切换暂存，不选中行（`data_table`
 /// 会把按压交给该单元格视图，它吞掉后就不触发行选中）。
-pub(crate) fn indicator_action(
-    checked: bool,
+pub(crate) fn indicator_action<M>(
+    checked: impl IntoProp<bool, M> + 'static,
     label: impl Into<SharedString>,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
+    let checked: Prop<bool> = checked.into_prop().into();
     return nsh_base::button()
         .accessibility_label(Some(label.into()))
         .w(px(12.0))
@@ -27,14 +28,14 @@ pub(crate) fn indicator_action(
         .rounded(px(3.0))
         .border_1()
         .border_color(move || {
-            if checked {
+            if checked.get() {
                 AdaptiveColor::TRANSPARENT
             } else {
                 design::line_strong()
             }
         })
         .bg(move || {
-            if checked {
+            if checked.get() {
                 design::accent()
             } else {
                 AdaptiveColor::TRANSPARENT
@@ -42,13 +43,9 @@ pub(crate) fn indicator_action(
         })
         .on_press(move || on_press())
         .child(
-            text(if checked {
-                "✓".to_string()
-            } else {
-                String::new()
-            })
-            .text_size(px(ui::META))
-            .text_color(move || design::content()),
+            text(move || if checked.get() { "✓" } else { "" }.to_string())
+                .text_size(px(ui::META))
+                .text_color(move || design::content()),
         );
 }
 

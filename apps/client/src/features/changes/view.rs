@@ -7,36 +7,59 @@
 //! （提示与文案取自 `cmd`），冲突文件的解决走 `cmd.merge`。
 
 use super::commands::ChangesCommands;
-use crate::app::session::Tab;
+use crate::app::session::{ChangeEntry, StashDiff, Tab};
 use crate::design::{self, metrics};
 use crate::i18n;
 use nsh_core::element::desktop::MenuItem;
 use nsh_core::prelude::*;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ChangesDiffSnapshot {
+    Change {
+        path: String,
+        staged: bool,
+        patch: domain::diff::Patch,
+    },
+    Stash {
+        tab_id: u64,
+        stash: StashDiff,
+    },
+}
+
+pub(crate) fn diff_snapshot(tab: &Tab) -> Option<ChangesDiffSnapshot> {
+    if let Some(stash) = tab.stash_diff.clone() {
+        return Some(ChangesDiffSnapshot::Stash {
+            tab_id: tab.id,
+            stash,
+        });
+    }
+    let index = tab.selected_change?;
+    let entry = tab.changes.get(index);
+    return Some(ChangesDiffSnapshot::Change {
+        path: entry.map(|entry| entry.path.clone()).unwrap_or_default(),
+        staged: entry.is_some_and(|entry| entry.staged),
+        patch: tab.change_diff.clone(),
+    });
+}
+
 pub(crate) fn change_diff(
     cmd: &ChangesCommands,
     diff_state: &crate::shared::diff::DiffState,
     diff_cmd: &crate::shared::diff::DiffCommands,
-    tab: Tab,
+    snapshot: ChangesDiffSnapshot,
 ) -> AnyElement {
     let language = cmd.language;
-    if let Some(stash) = tab.stash_diff.clone() {
-        return stash_diff_view(language, cmd, diff_state, diff_cmd, tab.id, stash);
-    }
-    let patch = tab.change_diff.clone();
-    let label = tab
-        .selected_change
-        .and_then(|index| tab.changes.get(index))
-        .map(|entry| entry.path.clone())
-        .unwrap_or_default();
+    let (label, staged_selection, patch) = match snapshot {
+        ChangesDiffSnapshot::Change {
+            path,
+            staged,
+            patch,
+        } => (path, staged, patch),
+        ChangesDiffSnapshot::Stash { tab_id, stash } => {
+            return stash_diff_view(language, cmd, diff_state, diff_cmd, tab_id, stash);
+        }
+    };
     let blame_path = label.clone();
-    // 逐行走一遍，记住当前在第几个 hunk、hunk 内第几行，供行级操作定位。
-    let staged_selection = tab
-        .selected_change
-        .and_then(|index| tab.changes.get(index))
-        .map(|entry| entry.staged)
-        .unwrap_or(false);
-    let selected_change = tab.selected_change;
     let ignore_whitespace = diff_state.ignore_whitespace.get();
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
     let apply_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)> = {
@@ -56,10 +79,9 @@ pub(crate) fn change_diff(
         std::sync::Arc::new(move |ignore| reload_cmd.reload_selected_diff(ignore));
     let on_file: std::sync::Arc<dyn Fn()> = {
         let cmd = cmd.clone();
+        let path = label.clone();
         std::sync::Arc::new(move || {
-            if let Some(index) = selected_change {
-                cmd.toggle_stage(index);
-            }
+            cmd.toggle_stage_path(path.clone());
         })
     };
     let header = view()
@@ -190,11 +212,24 @@ fn stash_diff_view(
 pub(crate) fn changelists_panel(
     cmd: &ChangesCommands,
     tab: Tab,
+    current: Memo<Option<Tab>>,
     show_tree: bool,
     tree: crate::app::session::TreeOptions,
 ) -> AnyElement {
     let language = cmd.language;
     let tree_mode = signal(show_tree);
+    let selected_path = computed({
+        let current = current;
+        move || {
+            current.with(|tab| {
+                tab.as_ref().and_then(|tab| {
+                    tab.selected_change
+                        .and_then(|index| tab.changes.get(index))
+                        .map(|entry| entry.path.clone())
+                })
+            })
+        }
+    });
     let filter_open = signal(false);
     let filter_query = signal(String::new());
     let dragged_path = signal(Option::<String>::None);
@@ -203,8 +238,7 @@ pub(crate) fn changelists_panel(
     let collapsed_changelists = cmd.state.collapsed_changelists;
     let changelist_tree_expanded = cmd.state.changelist_tree_expanded;
     let total = tab.changes.len();
-    let staged_count = tab.changes.iter().filter(|entry| entry.staged).count();
-    let unstaged_count = total - staged_count;
+    let current_for_summary = current;
     let notice = cmd.notice;
     let copy_text: std::sync::Arc<dyn Fn(String)> = {
         let language = language;
@@ -221,6 +255,14 @@ pub(crate) fn changelists_panel(
     let toggle_stage: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |index| cmd.toggle_stage(index))
+    };
+    let toggle_stage_path: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |path| cmd.toggle_stage_path(path))
+    };
+    let select_change_path: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |path| cmd.select_change_path(path))
     };
     let discard_change: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
@@ -325,6 +367,8 @@ pub(crate) fn changelists_panel(
     }
     for (name, _label, mut indices) in groups {
         indices.sort_by_key(|index| tab.changes[*index].path.clone());
+        let toggle_stage_path_for_rows = toggle_stage_path.clone();
+        let select_change_path_for_rows = select_change_path.clone();
         let group_target = name.clone();
         let leave_target = name.clone();
         let background_target = name.clone();
@@ -510,37 +554,44 @@ pub(crate) fn changelists_panel(
                 })
                 .collect::<Vec<_>>();
             if tree_view {
-                let paths = visible_indices
+                let path_entries = visible_indices
                     .iter()
-                    .filter_map(|index| entries.get(*index).map(|entry| entry.path.clone()))
-                    .collect::<Vec<_>>();
+                    .filter_map(|index| {
+                        entries
+                            .get(*index)
+                            .map(|entry| (entry.path.clone(), (*index, entry.clone())))
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                let paths = path_entries.keys().cloned().collect::<Vec<_>>();
                 let (items, default_expanded) = crate::ui::tree::file_tree(
                     paths,
                     tree.merge_empty_dirs,
                     tree.compact_single_child,
                 );
-                let path_indices = visible_indices
-                    .iter()
-                    .filter_map(|index| {
-                        entries
-                            .get(*index)
-                            .map(|entry| (entry.path.clone(), *index))
-                    })
-                    .collect::<std::collections::BTreeMap<_, _>>();
                 let tree_key = (repo_id_for_rows, group_name_for_rows.clone());
-                let selected_id = tab
-                    .selected_change
-                    .and_then(|index| entries.get(index))
-                    .filter(|entry| path_indices.contains_key(&entry.path))
-                    .map(|entry| SharedString::from(format!("file:{}", entry.path)));
-                let tree_select = command_for_rows.clone();
+                let visible_paths = path_entries
+                    .keys()
+                    .cloned()
+                    .collect::<std::collections::BTreeSet<_>>();
+                let selected_path_for_tree = selected_path;
+                let selected_id = move || {
+                    selected_path_for_tree
+                        .get()
+                        .filter(|path| visible_paths.contains(path))
+                        .map(|path| SharedString::from(format!("file:{path}")))
+                };
+                let tree_select = select_change_path_for_rows.clone();
                 let tree_expanded = tree_expanded_for_rows;
                 let expanded_key = tree_key.clone();
                 let render_entries = entries.clone();
-                let render_indices = path_indices.clone();
+                let render_indices = path_entries
+                    .iter()
+                    .map(|(path, (index, _))| (path.clone(), *index))
+                    .collect::<std::collections::BTreeMap<_, _>>();
                 let render_lists = lists_for_rows.clone();
                 let render_root = root_for_rows.clone();
                 let render_toggle = toggle_for_rows.clone();
+                let render_toggle_path = toggle_stage_path_for_rows.clone();
                 let render_discard = discard_for_rows.clone();
                 let render_copy = copy_for_rows.clone();
                 let render_open = open_for_rows.clone();
@@ -554,11 +605,8 @@ pub(crate) fn changelists_panel(
                     move || tree_expanded.get().get(&expanded_key).cloned(),
                     selected_id,
                     move |id| {
-                        if let Some(index) = id
-                            .strip_prefix("file:")
-                            .and_then(|path| path_indices.get(path))
-                        {
-                            tree_select.select_change(*index);
+                        if let Some(path) = id.strip_prefix("file:") {
+                            tree_select(path.to_string());
                         }
                     },
                     move |expanded| {
@@ -616,12 +664,45 @@ pub(crate) fn changelists_panel(
                         };
                         let path = entry.path.clone();
                         let filename = tree_entry.label.to_string();
-                        let status = entry.status_letter();
+                        let staged = live_change_value(
+                            current,
+                            repo_id_for_rows,
+                            path.clone(),
+                            entry.staged,
+                            |entry| entry.staged,
+                        );
+                        let additions = live_change_value(
+                            current,
+                            repo_id_for_rows,
+                            path.clone(),
+                            entry.additions,
+                            |entry| entry.additions,
+                        );
+                        let deletions = live_change_value(
+                            current,
+                            repo_id_for_rows,
+                            path.clone(),
+                            entry.deletions,
+                            |entry| entry.deletions,
+                        );
+                        let status_text = live_change_value(
+                            current,
+                            repo_id_for_rows,
+                            path.clone(),
+                            entry.status_letter(),
+                            ChangeEntry::status_letter,
+                        );
+                        let status_for_color = live_change_value(
+                            current,
+                            repo_id_for_rows,
+                            path.clone(),
+                            entry.status_letter(),
+                            ChangeEntry::status_letter,
+                        );
+                        let path_for_toggle = path.clone();
                         let source_list = entry.changelist.clone();
                         let start_path = path.clone();
                         let path_for_menu = path.clone();
-                        let staged = entry.staged;
-                        let untracked = entry.untracked;
                         let move_for_drag = render_move.clone();
                         let root_for_menu = render_root.clone();
                         let lists_for_menu = render_lists.clone();
@@ -631,6 +712,8 @@ pub(crate) fn changelists_panel(
                         let open_for_menu = render_open.clone();
                         let reveal_for_menu = render_reveal.clone();
                         let move_for_menu = render_move.clone();
+                        let current_for_menu = current;
+                        let repo_id_for_menu = repo_id_for_rows;
                         let target_for_row = render_target;
                         let drag_start = render_dragged;
                         let drag_end = render_dragged;
@@ -643,11 +726,11 @@ pub(crate) fn changelists_panel(
                             .pl(px(4.0 + depth * 12.0))
                             .pr(px(4.0))
                             .child(crate::ui::check::indicator_action(
-                                entry.staged,
+                                move || staged(),
                                 filename.clone(),
                                 {
-                                    let command = render_toggle.clone();
-                                    move || command(index)
+                                    let command = render_toggle_path.clone();
+                                    move || command(path_for_toggle.clone())
                                 },
                             ))
                             .child(crate::ui::icon::icon_view(
@@ -665,24 +748,24 @@ pub(crate) fn changelists_panel(
                                     .text_overflow(nsh_core::EllipsizeMode::Tail),
                             )
                             .child(
-                                text(format!("+{}", entry.additions))
+                                text(move || format!("+{}", additions()))
                                     .flex_shrink_0()
                                     .text_size(px(crate::ui::META))
                                     .text_color(move || design::add_fg()),
                             )
                             .child(
-                                text(format!("−{}", entry.deletions))
+                                text(move || format!("−{}", deletions()))
                                     .flex_shrink_0()
                                     .text_size(px(crate::ui::META))
                                     .text_color(move || design::del_fg()),
                             )
                             .child(
-                                text(status.to_string())
+                                text(move || status_text().to_string())
                                     .w(px(14.0))
                                     .flex_shrink_0()
                                     .text_size(px(crate::ui::META))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(move || status_color(status)),
+                                    .text_color(move || status_color(status_for_color())),
                             )
                             .on_pan_start(move |_: &PanEvent| {
                                 drag_start.set(Some(start_path.clone()));
@@ -704,13 +787,27 @@ pub(crate) fn changelists_panel(
                                 target_for_row.set(None);
                             })
                             .on_context_menu(move |event: &ContextMenuEvent| {
+                                let Some((index, menu_entry)) =
+                                    current_for_menu.with_untracked(|tab| {
+                                        let tab = tab
+                                            .as_ref()
+                                            .filter(|tab| tab.id == repo_id_for_menu)?;
+                                        let index = tab
+                                            .changes
+                                            .iter()
+                                            .position(|entry| entry.path == path_for_menu)?;
+                                        Some((index, tab.changes[index].clone()))
+                                    })
+                                else {
+                                    return;
+                                };
                                 let items = file_menu(
                                     language,
                                     root_for_menu.as_str(),
                                     path_for_menu.as_str(),
                                     lists_for_menu.clone(),
-                                    staged,
-                                    untracked,
+                                    menu_entry.staged,
+                                    menu_entry.untracked,
                                     index,
                                     toggle_for_menu.clone(),
                                     discard_for_menu.clone(),
@@ -734,10 +831,11 @@ pub(crate) fn changelists_panel(
 
                 let path = entry.path.clone();
                 let filename = path.clone();
+                let path_for_select = path.clone();
+                let path_for_toggle = path.clone();
                 let source_list = entry.changelist.clone();
-                let status = entry.status_letter();
-                let select = command_for_rows.clone();
-                let toggle = command_for_rows.clone();
+                let select = select_change_path_for_rows.clone();
+                let toggle = toggle_stage_path_for_rows.clone();
                 let drop_cmd = command_for_rows.clone();
                 let toggle_for_menu = toggle_for_rows.clone();
                 let discard_for_menu = discard_for_rows.clone();
@@ -751,10 +849,37 @@ pub(crate) fn changelists_panel(
                 let end_path = path.clone();
                 let path_for_menu = path.clone();
                 let tooltip_path = path.clone();
-                let staged_for_menu = entry.staged;
-                let untracked_for_menu = entry.untracked;
                 let filename_for_row = filename.clone();
-                let selected_file = tab.selected_change == Some(index);
+                let staged =
+                    live_change_value(current, repo_id, path.clone(), entry.staged, |entry| {
+                        entry.staged
+                    });
+                let additions =
+                    live_change_value(current, repo_id, path.clone(), entry.additions, |entry| {
+                        entry.additions
+                    });
+                let deletions =
+                    live_change_value(current, repo_id, path.clone(), entry.deletions, |entry| {
+                        entry.deletions
+                    });
+                let status_text = live_change_value(
+                    current,
+                    repo_id,
+                    path.clone(),
+                    entry.status_letter(),
+                    ChangeEntry::status_letter,
+                );
+                let status_for_color = live_change_value(
+                    current,
+                    repo_id,
+                    path.clone(),
+                    entry.status_letter(),
+                    ChangeEntry::status_letter,
+                );
+                let selected_path_for_row = selected_path;
+                let path_for_selected = path.clone();
+                let current_for_menu = current;
+                let repo_id_for_menu = repo_id;
                 let drag_start = dragged_path;
                 let drag_end = dragged_path;
                 let target_for_row = drop_target;
@@ -768,39 +893,52 @@ pub(crate) fn changelists_panel(
                         .items_center()
                         .gap(px(6.0))
                         .child(crate::ui::check::indicator_action(
-                            entry.staged,
+                            move || staged(),
                             filename.clone(),
-                            move || toggle.toggle_stage(index),
+                            move || toggle(path_for_toggle.clone()),
                         ))
                         .child(
                             view()
                                 .flex_1()
                                 .min_w_0()
-                                .child(crate::ui::row::row_sized(
-                                    move || filename_for_row.clone(),
-                                    None,
-                                    None,
-                                    vec![
-                                        text(format!("+{}", entry.additions))
-                                            .text_size(px(crate::ui::META))
-                                            .text_color(move || design::add_fg())
-                                            .into_element(),
-                                        text(format!("−{}", entry.deletions))
-                                            .text_size(px(crate::ui::META))
-                                            .text_color(move || design::del_fg())
-                                            .into_element(),
-                                        text(status.to_string())
-                                            .w(px(14.0))
-                                            .text_size(px(crate::ui::META))
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(move || status_color(status))
-                                            .into_element(),
-                                    ],
-                                    selected_file,
-                                    false,
-                                    28.0,
-                                    move || select.select_change(index),
-                                ))
+                                .child(dynamic(move || {
+                                    let selected = selected_path_for_row.get().as_deref()
+                                        == Some(path_for_selected.as_str());
+                                    let filename_for_row = filename_for_row.clone();
+                                    let additions = additions.clone();
+                                    let deletions = deletions.clone();
+                                    let status_text = status_text.clone();
+                                    let status_for_color = status_for_color.clone();
+                                    let select = select.clone();
+                                    let path_for_select = path_for_select.clone();
+                                    crate::ui::row::row_sized(
+                                        move || filename_for_row.clone(),
+                                        None,
+                                        None,
+                                        vec![
+                                            text(move || format!("+{}", additions()))
+                                                .text_size(px(crate::ui::META))
+                                                .text_color(move || design::add_fg())
+                                                .into_element(),
+                                            text(move || format!("−{}", deletions()))
+                                                .text_size(px(crate::ui::META))
+                                                .text_color(move || design::del_fg())
+                                                .into_element(),
+                                            text(move || status_text().to_string())
+                                                .w(px(14.0))
+                                                .text_size(px(crate::ui::META))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(
+                                                    move || status_color(status_for_color()),
+                                                )
+                                                .into_element(),
+                                        ],
+                                        selected,
+                                        false,
+                                        28.0,
+                                        move || select(path_for_select.clone()),
+                                    )
+                                }))
                                 .tooltip(crate::ui::button::text_tooltip(tooltip_path)),
                         )
                         .on_pan_start(move |_: &PanEvent| {
@@ -823,13 +961,26 @@ pub(crate) fn changelists_panel(
                             target_for_row.set(None);
                         })
                         .on_context_menu(move |event: &ContextMenuEvent| {
+                            let Some((index, menu_entry)) =
+                                current_for_menu.with_untracked(|tab| {
+                                    let tab =
+                                        tab.as_ref().filter(|tab| tab.id == repo_id_for_menu)?;
+                                    let index = tab
+                                        .changes
+                                        .iter()
+                                        .position(|entry| entry.path == path_for_menu)?;
+                                    Some((index, tab.changes[index].clone()))
+                                })
+                            else {
+                                return;
+                            };
                             let items = file_menu(
                                 language,
                                 root_for_menu.as_str(),
                                 path_for_menu.as_str(),
                                 lists_for_menu.clone(),
-                                staged_for_menu,
-                                untracked_for_menu,
+                                menu_entry.staged,
+                                menu_entry.untracked,
                                 index,
                                 toggle_for_menu.clone(),
                                 discard_for_menu.clone(),
@@ -889,12 +1040,19 @@ pub(crate) fn changelists_panel(
                 )
                 .child(
                     text(move || {
+                        let (staged, total) = current_for_summary.with(|tab| {
+                            tab.as_ref().map_or((0, 0), |tab| {
+                                let staged =
+                                    tab.changes.iter().filter(|entry| entry.staged).count();
+                                (staged, tab.changes.len())
+                            })
+                        });
                         i18n::with_arguments(
                             language.get().as_str(),
                             "changes.summary",
                             &[
-                                ("staged", staged_count.to_string()),
-                                ("unstaged", unstaged_count.to_string()),
+                                ("staged", staged.to_string()),
+                                ("unstaged", total.saturating_sub(staged).to_string()),
                             ],
                         )
                     })
@@ -1011,10 +1169,7 @@ pub(crate) fn changelists_panel(
                     if !manage_open.get() {
                         return view().w(px(0.0)).h(px(0.0)).into_element();
                     }
-                    let selected_path = tab_for_manage
-                        .selected_change
-                        .and_then(|index| tab_for_manage.changes.get(index))
-                        .map(|entry| entry.path.clone());
+                    let selected_path = selected_path.get();
                     return changelist_pop(
                         language,
                         tab_for_manage.clone(),
@@ -1027,6 +1182,28 @@ pub(crate) fn changelists_panel(
         )
         .child(rename_changelist_dialog(language, cmd.clone()))
         .into_element();
+}
+
+fn live_change_value<T, F>(
+    current: Memo<Option<Tab>>,
+    tab_id: u64,
+    path: String,
+    fallback: T,
+    select: F,
+) -> std::rc::Rc<dyn Fn() -> T>
+where
+    T: Clone + 'static,
+    F: Fn(&ChangeEntry) -> T + 'static,
+{
+    return std::rc::Rc::new(move || {
+        current.with(|tab| {
+            tab.as_ref()
+                .filter(|tab| tab.id == tab_id)
+                .and_then(|tab| tab.changes.iter().find(|entry| entry.path == path))
+                .map(&select)
+                .unwrap_or_else(|| fallback.clone())
+        })
+    });
 }
 
 fn tree_mode_controls(language: Signal<SharedString>, tree_mode: Signal<bool>) -> AnyElement {

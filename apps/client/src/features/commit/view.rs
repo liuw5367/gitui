@@ -9,284 +9,25 @@ use crate::app::session::{CommitFeedbackKind, Tab};
 use crate::design::{self, metrics};
 use crate::features::changes::commands::ChangesCommands;
 use crate::i18n;
+use nsh_core::element::IntoProp;
 use nsh_core::prelude::*;
 
 /// 提交面板的初始宽度（可由工作区分栏拖拽调整）。
 pub(crate) const WIDTH: f32 = 360.0;
 
-/// Changes 使用独立的紧凑提交区；Refs 保留原提交检查器布局。
+/// 工作区右侧统一使用当前 Changes 提交面板。
 pub(crate) fn commit_panel(
     state: &CommitState,
     cmd: &CommitCommands,
-    changes: Option<ChangesCommands>,
+    changes: ChangesCommands,
     language: Signal<SharedString>,
     tab: Tab,
+    current: Memo<Option<Tab>>,
     show_tree: bool,
     tree: crate::app::session::TreeOptions,
-    ask_agent: Option<std::sync::Arc<dyn Fn()>>,
 ) -> AnyElement {
-    if let Some(changes) = changes {
-        return changes_commit_panel(state, cmd, changes, language, tab, show_tree, tree)
-            .into_element();
-    }
-    return refs_commit_panel(
-        state,
-        cmd,
-        None,
-        language,
-        tab,
-        show_tree,
-        tree,
-        ask_agent.unwrap_or_else(|| std::sync::Arc::new(|| {})),
-    )
-    .into_element();
-}
-
-fn refs_commit_panel(
-    state: &CommitState,
-    cmd: &CommitCommands,
-    changes: Option<ChangesCommands>,
-    language: Signal<SharedString>,
-    tab: Tab,
-    show_tree: bool,
-    tree: crate::app::session::TreeOptions,
-    ask_agent: std::sync::Arc<dyn Fn()>,
-) -> impl IntoElement {
-    let summary = state.summary;
-    let description = state.description;
-    let staged: Vec<_> = tab
-        .changes
-        .iter()
-        .filter(|entry| entry.staged)
-        .cloned()
-        .collect();
-    let staged_count = staged.len();
-    let unstaged_count = tab.changes.len() - staged_count;
-    let hook_log = tab.hook_log.clone();
-    let hook_ok = tab.hook_ok;
-    let hook_kind = tab.commit_feedback_kind;
-    let commit = {
-        let cmd = cmd.clone();
-        move || cmd.commit()
-    };
-    let amend = tab.amend;
-    let signoff = tab.signoff;
-    let push_after = tab.push_after_commit;
-    let force_push_after = tab.force_push_after_commit;
-    let hook_cmd = cmd.clone();
-    let force_cmd = cmd.clone();
-    let ask_agent_header = ask_agent.clone();
-    // 「改写上一条」时不需要暂存内容：只改提交说明也是合法操作。
-    let can_commit = staged_count > 0 || amend;
-    return view()
-        .w_full()
-        .min_w_0()
-        .h_full()
-        .flex_col()
-        .bg(move || design::panel())
-        .child(
-            view()
-                .w_full()
-                .h(px(33.0))
-                .flex_row()
-                .items_center()
-                .gap(px(7.0))
-                .px(px(14.0))
-                .border_b_1()
-                .border_color(move || design::line_soft())
-                .child(
-                    text(move || i18n::t(language.get().as_str(), "commit.tab"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .font_weight(FontWeight(600))
-                        .text_color(move || design::text()),
-                )
-                .child(
-                    view()
-                        .px(px(4.0))
-                        .rounded(px(4.0))
-                        .bg(move || design::panel2())
-                        .child(
-                            text(tab.changes.len().to_string())
-                                .text_size(px(crate::ui::META))
-                                .text_color(move || design::text2()),
-                        ),
-                )
-                .child(view().flex_1())
-                .child(crate::ui::button::button_icon(
-                    || "Agent".to_string(),
-                    "sparkle",
-                    crate::ui::button::ButtonVariant::Ghost,
-                    crate::ui::button::ButtonSize::Small,
-                    false,
-                    move || ask_agent_header(),
-                )),
-        )
-        .child(dynamic(move || -> AnyElement {
-            let Some(changes) = changes.clone() else {
-                return view().w_full().h(px(0.0)).into_element();
-            };
-            return crate::features::changes::view::changelists_panel(
-                &changes,
-                tab.clone(),
-                show_tree,
-                tree,
-            );
-        }))
-        .child(
-            view()
-                .w_full()
-                .flex_1()
-                .min_h_0()
-                .p(px(12.0))
-                .flex_col()
-                .gap(px(8.0))
-                .child(
-                    scroll().w_full().flex_1().child(
-                        view()
-                            .w_full()
-                            .flex_col()
-                            .gap(px(8.0))
-                            .child(
-                                text(move || {
-                                    i18n::with_arguments(
-                                        language.get().as_str(),
-                                        "changes.summary",
-                                        &[
-                                            ("staged", staged_count.to_string()),
-                                            ("unstaged", unstaged_count.to_string()),
-                                        ],
-                                    )
-                                })
-                                .text_size(px(crate::ui::SECONDARY))
-                                .text_color(move || design::text3()),
-                            )
-                            .child(field_label(language, "commit.summary", "commit.required"))
-                            .child(crate::ui::text_input::text_input(
-                                summary,
-                                move || {
-                                    i18n::t(language.get().as_str(), "commit.summaryPlaceholder")
-                                },
-                                false,
-                                move |text| summary.set(text.to_string()),
-                            ))
-                            .child(field_label(
-                                language,
-                                "commit.description",
-                                "commit.markdown",
-                            ))
-                            .child(crate::ui::text_input::text_area(
-                                description,
-                                move || {
-                                    i18n::t(
-                                        language.get().as_str(),
-                                        "commit.descriptionPlaceholder",
-                                    )
-                                },
-                                Some(76.0),
-                                false,
-                                move |text| description.set(text.to_string()),
-                            ))
-                            .child(crate::ui::button::button(
-                                move || i18n::t(language.get().as_str(), "commit.askAgent"),
-                                crate::ui::button::ButtonVariant::Ghost,
-                                crate::ui::button::ButtonSize::Small,
-                                false,
-                                {
-                                    let ask_agent = ask_agent.clone();
-                                    move || ask_agent()
-                                },
-                            ))
-                            .child(dynamic(move || -> AnyElement {
-                                let Some(log) = hook_log.clone() else {
-                                    return view().w_full().h(px(0.0)).into_element();
-                                };
-                                return hook_box(
-                                    language,
-                                    log,
-                                    hook_ok,
-                                    hook_kind,
-                                    hook_cmd.clone(),
-                                )
-                                .into_element();
-                            })),
-                    ),
-                ),
-        )
-        .child(
-            view()
-                .w_full()
-                .p(px(12.0))
-                .flex_col()
-                .gap(px(4.0))
-                .border_t_1()
-                .border_color(move || design::line())
-                .child(
-                    view()
-                        .w_full()
-                        .flex_col()
-                        .gap(px(3.0))
-                        .child(checkbox_row(language, "commit.amend", amend, false, {
-                            let cmd = cmd.clone();
-                            move || cmd.set_commit_option("amend", !amend)
-                        }))
-                        .child(checkbox_row(language, "commit.signoff", signoff, false, {
-                            let cmd = cmd.clone();
-                            move || cmd.set_commit_option("signoff", !signoff)
-                        }))
-                        .child(
-                            view()
-                                .w_full()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(8.0))
-                                .child(checkbox_row(
-                                    language,
-                                    "commit.pushAfter",
-                                    push_after,
-                                    false,
-                                    {
-                                        let cmd = cmd.clone();
-                                        move || cmd.set_commit_option("pushAfter", !push_after)
-                                    },
-                                ))
-                                .child(checkbox_row(
-                                    language,
-                                    "commit.forcePushShort",
-                                    force_push_after,
-                                    !push_after,
-                                    {
-                                        let cmd = force_cmd.clone();
-                                        move || {
-                                            cmd.set_commit_option("forcePush", !force_push_after)
-                                        }
-                                    },
-                                )),
-                        ),
-                )
-                .child(crate::ui::button::button(
-                    move || {
-                        if amend {
-                            return i18n::t(language.get().as_str(), "commit.amendAction");
-                        }
-                        i18n::with_arguments(
-                            language.get().as_str(),
-                            "commit.action",
-                            &[("count", staged_count.to_string())],
-                        )
-                    },
-                    crate::ui::button::ButtonVariant::Primary,
-                    crate::ui::button::ButtonSize::Regular,
-                    false,
-                    {
-                        let commit = commit.clone();
-                        move || {
-                            if can_commit {
-                                commit();
-                            }
-                        }
-                    },
-                )),
-        );
+    return changes_commit_panel(state, cmd, changes, language, tab, current, show_tree, tree)
+        .into_element();
 }
 
 fn changes_commit_panel(
@@ -295,22 +36,22 @@ fn changes_commit_panel(
     changes: ChangesCommands,
     language: Signal<SharedString>,
     tab: Tab,
+    current: Memo<Option<Tab>>,
     show_tree: bool,
     tree: crate::app::session::TreeOptions,
 ) -> impl IntoElement {
     let summary = state.summary;
     let description = state.description;
-    let staged_count = tab.changes.iter().filter(|entry| entry.staged).count();
-    let amend = tab.amend;
-    let signoff = tab.signoff;
-    let push_after = tab.push_after_commit;
-    let force_push_after = tab.force_push_after_commit;
-    let can_commit = staged_count > 0 || amend;
-    let hook_log = tab.hook_log.clone();
-    let hook_ok = tab.hook_ok;
-    let hook_kind = tab.commit_feedback_kind;
+    let hook_snapshot = computed({
+        let current = current;
+        move || {
+            current.with(|tab| {
+                tab.as_ref()
+                    .map(|tab| (tab.hook_log.clone(), tab.hook_ok, tab.commit_feedback_kind))
+            })
+        }
+    });
     let hook_cmd = cmd.clone();
-    let force_cmd = cmd.clone();
 
     return view()
         .w_full()
@@ -319,10 +60,10 @@ fn changes_commit_panel(
         .flex_col()
         .bg(move || design::panel())
         .child(crate::features::changes::view::changelists_panel(
-            &changes, tab, show_tree, tree,
+            &changes, tab, current, show_tree, tree,
         ))
         .child(dynamic(move || -> AnyElement {
-            let Some(log) = hook_log.clone() else {
+            let Some((Some(log), ok, kind)) = hook_snapshot.get() else {
                 return view().w_full().h(px(0.0)).into_element();
             };
             return view()
@@ -332,13 +73,7 @@ fn changes_commit_panel(
                 .py(px(8.0))
                 .border_t_1()
                 .border_color(move || design::line_soft())
-                .child(hook_box(
-                    language,
-                    log,
-                    hook_ok,
-                    hook_kind,
-                    hook_cmd.clone(),
-                ))
+                .child(hook_box(language, log, ok, kind, hook_cmd.clone()))
                 .into_element();
         }))
         .child(
@@ -374,38 +109,76 @@ fn changes_commit_panel(
                         .flex_row()
                         .items_center()
                         .gap(px(4.0))
-                        .child(checkbox_row(language, "commit.amendShort", amend, false, {
-                            let cmd = cmd.clone();
-                            move || cmd.set_commit_option("amend", !amend)
-                        }))
                         .child(checkbox_row(
                             language,
-                            "commit.signoffShort",
-                            signoff,
+                            "commit.amendShort",
+                            move || current.with(|tab| tab.as_ref().is_some_and(|tab| tab.amend)),
                             false,
                             {
                                 let cmd = cmd.clone();
-                                move || cmd.set_commit_option("signoff", !signoff)
+                                move || {
+                                    let amend = current.with_untracked(|tab| {
+                                        tab.as_ref().is_some_and(|tab| tab.amend)
+                                    });
+                                    cmd.set_commit_option("amend", !amend);
+                                }
+                            },
+                        ))
+                        .child(checkbox_row(
+                            language,
+                            "commit.signoffShort",
+                            move || current.with(|tab| tab.as_ref().is_some_and(|tab| tab.signoff)),
+                            false,
+                            {
+                                let cmd = cmd.clone();
+                                move || {
+                                    let signoff = current.with_untracked(|tab| {
+                                        tab.as_ref().is_some_and(|tab| tab.signoff)
+                                    });
+                                    cmd.set_commit_option("signoff", !signoff);
+                                }
                             },
                         ))
                         .child(checkbox_row(
                             language,
                             "commit.pushAfterShort",
-                            push_after,
+                            move || {
+                                current.with(|tab| {
+                                    tab.as_ref().is_some_and(|tab| tab.push_after_commit)
+                                })
+                            },
                             false,
                             {
                                 let cmd = cmd.clone();
-                                move || cmd.set_commit_option("pushAfter", !push_after)
+                                move || {
+                                    let push_after = current.with_untracked(|tab| {
+                                        tab.as_ref().is_some_and(|tab| tab.push_after_commit)
+                                    });
+                                    cmd.set_commit_option("pushAfter", !push_after);
+                                }
                             },
                         ))
                         .child(checkbox_row(
                             language,
                             "commit.forcePushShort",
-                            force_push_after,
-                            !push_after,
+                            move || {
+                                current.with(|tab| {
+                                    tab.as_ref().is_some_and(|tab| tab.force_push_after_commit)
+                                })
+                            },
+                            move || {
+                                !current.with(|tab| {
+                                    tab.as_ref().is_some_and(|tab| tab.push_after_commit)
+                                })
+                            },
                             {
-                                let cmd = force_cmd.clone();
-                                move || cmd.set_commit_option("forcePush", !force_push_after)
+                                let cmd = cmd.clone();
+                                move || {
+                                    let force_push_after = current.with_untracked(|tab| {
+                                        tab.as_ref().is_some_and(|tab| tab.force_push_after_commit)
+                                    });
+                                    cmd.set_commit_option("forcePush", !force_push_after);
+                                }
                             },
                         ))
                         .child(view().flex_1())
@@ -413,10 +186,22 @@ fn changes_commit_panel(
                             move || i18n::t(language.get().as_str(), "commit.actionShort"),
                             crate::ui::button::ButtonVariant::Primary,
                             crate::ui::button::ButtonSize::Regular,
-                            !can_commit,
+                            move || {
+                                !current.with(|tab| {
+                                    tab.as_ref().is_some_and(|tab| {
+                                        tab.amend || tab.changes.iter().any(|entry| entry.staged)
+                                    })
+                                })
+                            },
                             {
                                 let cmd = cmd.clone();
                                 move || {
+                                    let can_commit = current.with_untracked(|tab| {
+                                        tab.as_ref().is_some_and(|tab| {
+                                            tab.amend
+                                                || tab.changes.iter().any(|entry| entry.staged)
+                                        })
+                                    });
                                     if can_commit {
                                         cmd.commit();
                                     }
@@ -427,35 +212,12 @@ fn changes_commit_panel(
         );
 }
 
-fn field_label(
-    language: Signal<SharedString>,
-    key: &'static str,
-    hint_key: &'static str,
-) -> impl IntoElement {
-    return view()
-        .w_full()
-        .flex_row()
-        .items_center()
-        .gap(px(5.0))
-        .child(
-            text(move || i18n::t(language.get().as_str(), key))
-                .text_size(px(crate::ui::SECONDARY))
-                .font_weight(FontWeight(600))
-                .text_color(move || design::text2()),
-        )
-        .child(
-            text(move || i18n::t(language.get().as_str(), hint_key))
-                .text_size(px(crate::ui::SECONDARY))
-                .text_color(move || design::text3()),
-        );
-}
-
 /// 一行复选：14px 方框加标签，与设计板的 `check` 行一致。
-fn checkbox_row(
+fn checkbox_row<MC, MD>(
     language: Signal<SharedString>,
     key: &'static str,
-    checked: bool,
-    disabled: bool,
+    checked: impl IntoProp<bool, MC> + 'static,
+    disabled: impl IntoProp<bool, MD> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     // 原生 Checkbox：按压、键盘激活与无障碍状态由组件负责，外观取自 ui 层。

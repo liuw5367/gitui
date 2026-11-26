@@ -43,18 +43,37 @@ impl ChangesCommands {
         }
     }
 
-    /// 选中第 `index` 个变更并读它的补丁（原 `select_change`）。
+    /// 选中第 `index` 个变更、读取补丁并切到 Changes 模式显示 Diff。
     pub(crate) fn select_change(&self, index: usize) {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
-        if let Some(tab) = list.get_mut(current) {
-            tab.stash_diff = None;
-            ops::load_change_diff_with_whitespace(
-                tab,
-                index,
-                self.diff_state.ignore_whitespace.get_untracked(),
-            );
-            self.session.tabs.set(list);
+        let Some(tab) = list.get_mut(current) else {
+            return;
+        };
+        if index >= tab.changes.len() {
+            return;
+        }
+        tab.stash_diff = None;
+        ops::load_change_diff_with_whitespace(
+            tab,
+            index,
+            self.diff_state.ignore_whitespace.get_untracked(),
+        );
+        self.session.tabs.set(list);
+        self.mode.set(crate::Mode::Changes);
+    }
+
+    /// 按文件路径选中变更，避免暂存重排后沿用旧列表索引。
+    pub(crate) fn select_change_path(&self, path: String) {
+        let current = self.session.active.get_untracked();
+        let index = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .and_then(|tab| tab.changes.iter().position(|change| change.path == path));
+        if let Some(index) = index {
+            self.select_change(index);
         }
     }
 
@@ -118,6 +137,20 @@ impl ChangesCommands {
         if let Some(tab) = list.get_mut(current) {
             ops::toggle_stage(tab, index);
             self.session.tabs.set(list);
+        }
+    }
+
+    /// 按文件路径暂存或取消暂存，避免清单重排后索引指向另一条变更。
+    pub(crate) fn toggle_stage_path(&self, path: String) {
+        let current = self.session.active.get_untracked();
+        let index = self
+            .session
+            .tabs
+            .get_untracked()
+            .get(current)
+            .and_then(|tab| tab.changes.iter().position(|change| change.path == path));
+        if let Some(index) = index {
+            self.toggle_stage(index);
         }
     }
 

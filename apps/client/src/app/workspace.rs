@@ -261,6 +261,15 @@ fn center_content(
             })
         }
     });
+    let current_changes_diff = computed({
+        let current = current;
+        move || {
+            current.with(|tab| {
+                tab.as_ref()
+                    .and_then(crate::features::changes::view::diff_snapshot)
+            })
+        }
+    });
     let current_exists = computed({
         let current = current;
         move || current.get().is_some()
@@ -526,15 +535,12 @@ fn center_content(
                     .into_element()
                 }
                 crate::Mode::Changes => {
-                    let Some(tab) = current.get() else {
-                        return empty_workspace(language).into_element();
-                    };
-                    if tab.stash_diff.is_some() || tab.selected_change.is_some() {
+                    if let Some(snapshot) = current_changes_diff.get() {
                         crate::features::changes::view::change_diff(
                             &changes,
                             &history.diff.state,
                             &history.diff,
-                            tab,
+                            snapshot,
                         )
                     } else {
                         let Some(tab) = history_tab.get() else {
@@ -838,6 +844,44 @@ fn comparison_endpoint_label(tab: &Tab, language: &str, endpoint: &str) -> Strin
     return endpoint.chars().take(10).collect();
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RightPanelStructure {
+    tab_id: u64,
+    path: String,
+    loaded: bool,
+    error: Option<String>,
+    changes: Vec<(String, Option<String>)>,
+    changelists: Vec<String>,
+    active_changelist: Option<String>,
+    conflicts: Vec<String>,
+}
+
+impl RightPanelStructure {
+    fn from_tab(tab: &Tab) -> Self {
+        let mut changes = tab
+            .changes
+            .iter()
+            .map(|entry| (entry.path.clone(), entry.changelist.clone()))
+            .collect::<Vec<_>>();
+        // 暂存会让 Git 按 staged/unstaged 重排列表；右侧树只关心稳定的路径和清单归属。
+        changes.sort();
+        return Self {
+            tab_id: tab.id,
+            path: tab.path.clone(),
+            loaded: tab.loaded,
+            error: tab.error.clone(),
+            changes,
+            changelists: tab
+                .changelists
+                .iter()
+                .map(|list| list.name.clone())
+                .collect(),
+            active_changelist: tab.active_changelist.clone(),
+            conflicts: tab.conflicts.clone(),
+        };
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn right_content(
     language: Signal<SharedString>,
@@ -853,6 +897,10 @@ fn right_content(
     settings_state: Signal<store::Settings>,
 ) -> impl IntoElement {
     let mode = search.state.mode;
+    let current_structure = computed({
+        let current = current;
+        move || current.with(|tab| tab.as_ref().map(RightPanelStructure::from_tab))
+    });
     let inspector_file_list_mode = signal(inspector::FileListMode::Tree);
     let reflog_file_tree_expanded: Signal<Option<Vec<SharedString>>> = signal(None);
     let reflog_tree_selection: Signal<Option<refs::state::ReflogEntryKey>> = signal(None);
@@ -861,13 +909,27 @@ fn right_content(
         .h_full()
         .min_w_0()
         .child(dynamic(move || -> AnyElement {
-            let Some(tab) = current.get().filter(|tab| tab.error.is_none()) else {
+            let current_mode = mode.get();
+            // Changes / Refs 的提交面板只在文件树结构变化时重建；staged、行数统计和
+            // 当前选择继续由面板内部的绑定单独响应。
+            let structure = matches!(current_mode, crate::Mode::Changes | crate::Mode::Refs)
+                .then(|| current_structure.get());
+            let tab = if structure.is_some() {
+                current.get_untracked()
+            } else {
+                current.get()
+            };
+            let Some(tab) = tab.filter(|tab| tab.error.is_none()) else {
                 return view().w_full().h_full().into_element();
             };
-            if !tab.loaded {
+            let loaded = match structure {
+                Some(Some(structure)) => structure.loaded,
+                Some(None) => return view().w_full().h_full().into_element(),
+                None => tab.loaded,
+            };
+            if !loaded {
                 return repository_inspector_loading();
             }
-            let current_mode = mode.get();
             if current_mode != crate::Mode::Refs && reflog_tree_selection.get().is_some() {
                 reflog_tree_selection.set(None);
                 reflog_file_tree_expanded.set(None);
@@ -892,12 +954,12 @@ fn right_content(
                 crate::Mode::Changes => crate::features::commit::view::commit_panel(
                     &commit.state,
                     &commit,
-                    Some(changes.clone()),
+                    changes.clone(),
                     language,
                     tab,
+                    current,
                     show_tree,
                     tree,
-                    None,
                 )
                 .into_element(),
                 crate::Mode::Blame => crate::features::history::blame::blame_history_panel(
@@ -1000,23 +1062,15 @@ fn right_content(
                         reflog_tree_selection.set(None);
                         reflog_file_tree_expanded.set(None);
                     }
-                    let ask_agent: std::sync::Arc<dyn Fn()> = {
-                        let agent = agent.clone();
-                        let mode = mode;
-                        std::sync::Arc::new(move || {
-                            mode.set(crate::Mode::Agent);
-                            agent.propose_plan();
-                        })
-                    };
                     crate::features::commit::view::commit_panel(
                         &commit.state,
                         &commit,
-                        None,
+                        changes.clone(),
                         language,
                         tab,
+                        current,
                         show_tree,
                         tree,
-                        Some(ask_agent),
                     )
                     .into_element()
                 }

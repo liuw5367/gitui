@@ -41,8 +41,13 @@ pub(crate) fn load_changes_checked(
     return Ok((status, entries));
 }
 
-/// 刷新变更列表（暂存、取消暂存、丢弃之后调用），保留选中项。
+/// 刷新变更列表（暂存、取消暂存、丢弃之后调用），保留选中项；无选择时不自动打开文件。
 pub(crate) fn refresh_changes(tab: &mut Tab) {
+    return refresh_changes_for_path(tab, None);
+}
+
+/// 暂存指定文件后刷新清单；只在该文件就是当前 Diff 时重读补丁。
+fn refresh_changes_for_path(tab: &mut Tab, changed_path: Option<&str>) {
     let repo = match tab.open_repo() {
         Ok(repo) => repo,
         Err(error) => {
@@ -63,15 +68,12 @@ pub(crate) fn refresh_changes(tab: &mut Tab) {
     tab.operation = repo.operation();
     tab.conflicts = repo.conflicts().unwrap_or_default();
     tab.remote_urls = repo.remote_urls().unwrap_or_default();
-    tab.selected_change = previous
-        .and_then(|path| tab.changes.iter().position(|entry| entry.path == path))
-        .or(if tab.changes.is_empty() {
-            None
-        } else {
-            Some(0)
-        });
+    tab.selected_change =
+        previous.and_then(|path| tab.changes.iter().position(|entry| entry.path == path));
     if let Some(index) = tab.selected_change {
-        load_change_diff(tab, index);
+        if changed_path.is_none_or(|path| tab.changes[index].path == path) {
+            load_change_diff(tab, index);
+        }
     } else {
         tab.change_diff = domain::diff::Patch::default();
     }
@@ -326,7 +328,7 @@ pub(crate) fn toggle_stage(tab: &mut Tab, index: usize) {
         repo.stage(&paths)
     };
     match result {
-        Ok(()) => refresh_changes(tab),
+        Ok(()) => refresh_changes_for_path(tab, Some(entry.path.as_str())),
         Err(error) => tab.error = Some(error.detail()),
     }
 }

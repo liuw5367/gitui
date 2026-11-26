@@ -19,6 +19,7 @@
 use crate::design;
 use crate::ui;
 use nsh_base::SelectValue;
+use nsh_core::element::IntoProp;
 use nsh_core::prelude::*;
 use std::collections::BTreeMap;
 
@@ -131,7 +132,7 @@ pub(crate) fn tree(
         items,
         Vec::new(),
         || None,
-        selected,
+        SelectValue::from(selected),
         on_select,
         |_| {},
         None,
@@ -139,11 +140,11 @@ pub(crate) fn tree(
 }
 
 /// 带应用内行内容的树。树的层级、选中、焦点与键盘样式仍由此公共组件统一处理。
-pub(crate) fn tree_with_renderer(
+pub(crate) fn tree_with_renderer<M>(
     items: Vec<TreeItem>,
     default_expanded: Vec<SharedString>,
     expanded: impl Fn() -> Option<Vec<SharedString>> + 'static,
-    selected: Option<SharedString>,
+    selected: impl IntoProp<SelectValue, M> + 'static,
     on_select: impl Fn(&str) + 'static,
     on_expanded: impl Fn(Vec<SharedString>) + 'static,
     render_item: impl Fn(&TreeEntry) -> AnyElement + 'static,
@@ -159,11 +160,11 @@ pub(crate) fn tree_with_renderer(
     );
 }
 
-fn tree_inner(
+fn tree_inner<M>(
     items: Vec<TreeItem>,
     default_expanded: Vec<SharedString>,
     expanded: impl Fn() -> Option<Vec<SharedString>> + 'static,
-    selected: Option<SharedString>,
+    selected: impl IntoProp<SelectValue, M> + 'static,
     on_select: impl Fn(&str) + 'static,
     on_expanded: impl Fn(Vec<SharedString>) + 'static,
     render_item: Option<std::rc::Rc<dyn Fn(&TreeEntry) -> AnyElement>>,
@@ -176,7 +177,7 @@ fn tree_inner(
         .default_expanded(default_expanded)
         .w_full()
         .h_full()
-        .selected(SelectValue::from(selected))
+        .selected(selected)
         .item_class(
             "group hover:bg-secondary selected:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
         )

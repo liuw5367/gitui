@@ -6,6 +6,7 @@
 use crate::design::{self, metrics};
 use crate::ui::icon::{IconSize, icon_view};
 use crate::ui::{self, FOCUS_WIDTH, focus_color};
+use nsh_core::element::IntoProp;
 use nsh_core::prelude::*;
 
 /// 按钮的语义变体。
@@ -160,15 +161,16 @@ fn button_icon_inner(
 }
 
 /// 按钮外壳：变体、尺寸、焦点与按压行为。内容由 [`button`] / [`button_hint`] 补。
-fn button_shell(
+fn button_shell<MD>(
     variant: ButtonVariant,
     size: ButtonSize,
-    disabled: bool,
+    disabled: impl IntoProp<bool, MD> + 'static,
     on_press: impl Fn() + 'static,
 ) -> nsh_base::ButtonElement {
+    let disabled: Prop<bool> = disabled.into_prop().into();
     let mut element = nsh_base::button()
         .disabled(disabled)
-        .opacity(if disabled { 0.45 } else { 1.0 })
+        .opacity(move || if disabled.get() { 0.45 } else { 1.0_f32 })
         .h(px(size.height()))
         .px(px(size.pad_x()))
         .flex_row()
@@ -215,11 +217,11 @@ fn foreground(variant: ButtonVariant) -> AdaptiveColor {
     };
 }
 
-pub(crate) fn button(
+pub(crate) fn button<MD>(
     label: impl Fn() -> String + 'static,
     variant: ButtonVariant,
     size: ButtonSize,
-    disabled: bool,
+    disabled: impl IntoProp<bool, MD> + 'static,
     on_press: impl Fn() + 'static,
 ) -> impl IntoElement {
     let color = foreground(variant);
