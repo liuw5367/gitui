@@ -263,6 +263,9 @@ impl SearchCommands {
                 self.state.palette_open.set(true);
             }
             "newTab" => self.session.go_repo_manager(),
+            "helpShortcuts" => self
+                .settings
+                .go_settings_section(crate::features::settings::state::Section::Shortcuts),
             "closeTab" => {
                 if nsh_core::element::desktop::main_window()
                     .state()

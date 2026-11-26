@@ -5,7 +5,10 @@
 
 use nsh_core::desktop::MenuRole;
 use nsh_core::element::desktop::MenuItem;
+use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
+use store::RecentRepo;
 
 use crate::i18n;
 
@@ -14,6 +17,10 @@ pub(crate) fn build_menu(
     language: &str,
     run: Arc<dyn Fn(&'static str)>,
     choose_folder: Arc<dyn Fn()>,
+    open_recent: Arc<dyn Fn(String)>,
+    clear_recent: Arc<dyn Fn()>,
+    recent: &[RecentRepo],
+    has_active_repo: bool,
     combo: &dyn Fn(&str) -> String,
     shortcuts: bool,
 ) -> Vec<MenuItem> {
@@ -35,6 +42,28 @@ pub(crate) fn build_menu(
             return move || run(id);
         }
     };
+    let recent_labels = recent_labels(recent);
+    let mut recent_items = Vec::with_capacity(recent.len() + 2);
+    if recent.is_empty() {
+        recent_items.push(MenuItem::new(menu("menu.noRecent")).disabled(true));
+    } else {
+        for (repo, label) in recent.iter().zip(recent_labels) {
+            recent_items.push(MenuItem::new(label).on_select({
+                let open_recent = open_recent.clone();
+                let path = repo.path.clone();
+                move || open_recent(path.clone())
+            }));
+        }
+    }
+    recent_items.push(MenuItem::separator());
+    recent_items.push(
+        MenuItem::new(menu("menu.clearRecent"))
+            .disabled(recent.is_empty())
+            .on_select({
+                let clear_recent = clear_recent.clone();
+                move || clear_recent()
+            }),
+    );
     return vec![
         MenuItem::submenu(
             crate::brand::PRODUCT_NAME,
@@ -58,9 +87,14 @@ pub(crate) fn build_menu(
                     let choose_folder = choose_folder.clone();
                     move || choose_folder()
                 }),
+                MenuItem::submenu(menu("menu.openRecent"), recent_items)
+                    .disabled(recent.is_empty()),
+                MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.newTab")), "newTab")
                     .on_select(menu_run("newTab")),
-                MenuItem::new(menu("menu.closeTab")).on_select(menu_run("closeTab")),
+                MenuItem::new(menu("menu.closeTab"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("closeTab")),
                 MenuItem::separator(),
             ],
         ),
@@ -82,9 +116,15 @@ pub(crate) fn build_menu(
                 shortcut_item(MenuItem::new(menu("menu.commandPalette")), "openPalette")
                     .on_select(menu_run("openPalette")),
                 MenuItem::separator(),
-                MenuItem::new(menu("menu.showHistory")).on_select(menu_run("history")),
-                MenuItem::new(menu("menu.showChanges")).on_select(menu_run("changes")),
-                MenuItem::new(menu("menu.toggleInspector")).on_select(menu_run("inspector")),
+                MenuItem::new(menu("menu.showHistory"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("history")),
+                MenuItem::new(menu("menu.showChanges"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("changes")),
+                MenuItem::new(menu("menu.toggleInspector"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("inspector")),
                 MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.cycleAppearance")), "toggleTheme")
                     .on_select(menu_run("toggleTheme")),
@@ -94,11 +134,18 @@ pub(crate) fn build_menu(
         MenuItem::submenu(
             menu("menu.app.repository"),
             vec![
-                MenuItem::new(menu("menu.fetch")).on_select(menu_run("fetch")),
-                MenuItem::new(menu("menu.pull")).on_select(menu_run("pull")),
-                MenuItem::new(menu("menu.push")).on_select(menu_run("push")),
+                MenuItem::new(menu("menu.fetch"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("fetch")),
+                MenuItem::new(menu("menu.pull"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("pull")),
+                MenuItem::new(menu("menu.push"))
+                    .disabled(!has_active_repo)
+                    .on_select(menu_run("push")),
                 MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.refresh")), "refresh")
+                    .disabled(!has_active_repo)
                     .on_select(menu_run("refresh")),
                 MenuItem::new(menu("menu.repoManager")).on_select(menu_run("repoManager")),
             ],
@@ -114,7 +161,11 @@ pub(crate) fn build_menu(
         ),
         MenuItem::submenu(
             menu("menu.app.help"),
-            vec![MenuItem::new(menu("menu.welcome")).on_select(menu_run("welcome"))],
+            vec![
+                MenuItem::new(menu("menu.keyboardShortcuts")).on_select(menu_run("helpShortcuts")),
+                MenuItem::separator(),
+                MenuItem::new(menu("menu.welcome")).on_select(menu_run("welcome")),
+            ],
         ),
     ];
 }
@@ -134,6 +185,9 @@ mod menu_tests {
             "menu.app.window",
             "menu.app.help",
             "menu.openRepo",
+            "menu.openRecent",
+            "menu.noRecent",
+            "menu.clearRecent",
             "menu.closeTab",
             "menu.commandPalette",
             "menu.showHistory",
@@ -148,6 +202,7 @@ mod menu_tests {
             "menu.repoManager",
             "menu.settings",
             "menu.welcome",
+            "menu.keyboardShortcuts",
         ];
         for key in keys {
             let english = i18n::t(i18n::DEFAULT_LANGUAGE, key);
@@ -157,4 +212,58 @@ mod menu_tests {
             assert_ne!(english, chinese, "{key} 两种语言不应相同");
         }
     }
+
+    #[test]
+    fn duplicate_recent_names_include_their_parent_directory() {
+        let recent = vec![
+            RecentRepo {
+                path: "/work/alpha/project".to_string(),
+                opened_at: 2,
+                branch: String::new(),
+            },
+            RecentRepo {
+                path: "/archive/beta/project".to_string(),
+                opened_at: 1,
+                branch: String::new(),
+            },
+        ];
+
+        let labels = recent_labels(&recent);
+
+        assert!(labels[0].contains("project"));
+        assert!(labels[0].contains("alpha"));
+        assert!(labels[1].contains("beta"));
+    }
+}
+
+fn recent_labels(recent: &[RecentRepo]) -> Vec<String> {
+    let mut counts = HashMap::new();
+    for repo in recent {
+        *counts
+            .entry(repo_name(&repo.path).to_lowercase())
+            .or_insert(0) += 1;
+    }
+    return recent
+        .iter()
+        .map(|repo| {
+            let name = repo_name(&repo.path);
+            if counts.get(&name.to_lowercase()).copied().unwrap_or(0) < 2 {
+                return name;
+            }
+            let parent = Path::new(&repo.path)
+                .parent()
+                .map(|path| path.display().to_string())
+                .filter(|path| !path.is_empty())
+                .unwrap_or_else(|| repo.path.clone());
+            return format!("{name} — {parent}");
+        })
+        .collect();
+}
+
+fn repo_name(path: &str) -> String {
+    return Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| path.to_string());
 }

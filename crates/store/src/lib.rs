@@ -870,6 +870,11 @@ pub fn forget_recent(dir: &Path, repos: &[RecentRepo], path: &str) -> Vec<Recent
     return next;
 }
 
+/// 清空最近仓库列表；不影响扫描结果、会话或仓库数据。
+pub fn clear_recent(dir: &Path) {
+    write_recent(dir, &[]);
+}
+
 /// 记录某个最近仓库的分支，保持原来的打开时间。
 ///
 /// 分支只在从仓库读到后写入；读取失败或路径已不在列表里时什么也不做。
@@ -1379,6 +1384,17 @@ mod tests {
         assert_eq!(next.len(), 1);
         assert_eq!(next[0].path, "/b");
         assert_eq!(load_recent(dir.path())[0].path, "/b");
+    }
+
+    #[test]
+    fn clearing_recent_removes_all_entries() {
+        let dir = TempDir::new("clear-recent");
+        remember_recent(dir.path(), &[], "/a");
+        remember_recent(dir.path(), &load_recent(dir.path()), "/b");
+
+        clear_recent(dir.path());
+
+        assert!(load_recent(dir.path()).is_empty());
     }
 
     #[test]

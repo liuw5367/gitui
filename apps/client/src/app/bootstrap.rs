@@ -750,10 +750,24 @@ pub(crate) fn app() -> impl IntoElement {
             let welcome = handles.welcome.clone();
             Arc::new(move || welcome.choose_folder())
         };
+        let open_recent: Arc<dyn Fn(String)> = {
+            let session = handles.session.clone();
+            Arc::new(move |path| session.open_path(path))
+        };
+        let clear_recent: Arc<dyn Fn()> = {
+            let recent = handles.session.recent;
+            let store_dir = handles.session.store_dir.clone();
+            Arc::new(move || {
+                store::clear_recent(&store_dir);
+                recent.set(Vec::new());
+            })
+        };
         effect({
             let language = language;
             let shortcuts = shortcut_registry;
             let recording = settings_commands.state.recording_shortcut;
+            let recent = handles.session.recent;
+            let tabs = handles.session.tabs;
             move || {
                 let lang = language.get();
                 // 菜单里的加速键也取注册表：改键后菜单跟着变。
@@ -761,10 +775,16 @@ pub(crate) fn app() -> impl IntoElement {
                 let combo = move |id: &str| bindings.combo(id).to_string();
                 // 录制期间临时摘掉菜单加速键：原生菜单会先于窗口按键表消费组合键。
                 let shortcuts_enabled = recording.get().is_none();
+                let recent_items = recent.get();
+                let has_active_repo = !tabs.get().is_empty();
                 let items = crate::app::menu::build_menu(
                     lang.as_str(),
                     run.clone(),
                     choose_folder.clone(),
+                    open_recent.clone(),
+                    clear_recent.clone(),
+                    &recent_items,
+                    has_active_repo,
                     &combo,
                     shortcuts_enabled,
                 );

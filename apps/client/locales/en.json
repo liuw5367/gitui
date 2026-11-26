@@ -1183,6 +1183,9 @@
       "help": "Help"
     },
     "openRepo": "Open Repository…",
+    "openRecent": "Open Recent",
+    "noRecent": "No Recent Repositories",
+    "clearRecent": "Clear Recent",
     "newTab": "New Tab",
     "closeTab": "Close Tab",
     "closeTabsRight": "Close Tabs to the Right",
@@ -1200,7 +1203,8 @@
     "refresh": "Refresh",
     "repoManager": "Repository Manager",
     "settings": "Settings…",
-    "welcome": "Welcome"
+    "welcome": "Welcome",
+    "keyboardShortcuts": "Keyboard Shortcuts…"
   },
   "rewrite": {
     "rewordTitle": "Edit Commit Message",
