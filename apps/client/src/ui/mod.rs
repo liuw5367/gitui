@@ -64,8 +64,9 @@ pub(crate) const PAGE_TITLE_LINE: f32 = 22.0;
 pub(crate) const TITLE: f32 = 15.0;
 /// 面板与设置页分段标题行高。
 pub(crate) const TITLE_LINE: f32 = 20.0;
-/// 等宽字体族。
-pub(crate) const MONO: &str = "SF Mono";
+/// 等宽字体族，按顺序选择可用字体，并为缺字保留后续字体回退。
+pub(crate) const MONO: &str =
+    "'JetBrains Mono', 'Hack Nerd Font Mono', Menlo, 'PT Mono', monospace";
 
 // ---- 控件与区域高度 ----
 
