@@ -11,7 +11,7 @@ use crate::exec::run_git;
 impl Repo {
     /// 工作区与 index 的变更文件。
     pub fn status(&self) -> Result<Vec<StatusEntry>, GitError> {
-        let output = self.run_git(&["status", "--porcelain=v1", "-z"])?;
+        let output = self.run_git(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
         return parse_status(&output);
     }
 

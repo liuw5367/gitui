@@ -77,7 +77,17 @@ pub(crate) fn run_git_with(
     directory: &Path,
     args: &[&str],
 ) -> Result<Vec<u8>, GitError> {
-    return run_git_inner(executable, directory, args, true);
+    return run_git_inner(executable, directory, args, true, None);
+}
+
+/// 运行允许某个非零退出码的 Git 命令；`diff --no-index` 找到差异时会返回 1。
+pub(crate) fn run_git_allow_exit_code_with(
+    executable: &GitExecutable,
+    directory: &Path,
+    args: &[&str],
+    allowed_exit_code: i32,
+) -> Result<Vec<u8>, GitError> {
+    return run_git_inner(executable, directory, args, true, Some(allowed_exit_code));
 }
 
 pub(crate) fn run_git_full_with(
@@ -85,7 +95,7 @@ pub(crate) fn run_git_full_with(
     directory: &Path,
     args: &[&str],
 ) -> Result<Vec<u8>, GitError> {
-    return run_git_inner(executable, directory, args, false);
+    return run_git_inner(executable, directory, args, false, None);
 }
 
 fn run_git_inner(
@@ -93,6 +103,7 @@ fn run_git_inner(
     directory: &Path,
     args: &[&str],
     limit_stdout: bool,
+    allowed_exit_code: Option<i32>,
 ) -> Result<Vec<u8>, GitError> {
     let program = executable.path().display().to_string();
     let mut command = executable.command();
@@ -106,7 +117,9 @@ fn run_git_inner(
         program: program.clone(),
         reason: error.to_string(),
     })?;
-    if !output.status.success() {
+    if !output.status.success()
+        && (output.status.code() != allowed_exit_code || !output.stderr.is_empty())
+    {
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let detail = truncate(&detail, MAX_DETAIL);
         let joined = args.join(" ");

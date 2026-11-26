@@ -250,6 +250,45 @@ impl Repo {
                 deletions: deletions.parse().unwrap_or(0),
             });
         }
+
+        if !staged {
+            let output = self.run_git(&["ls-files", "--others", "--exclude-standard", "-z"])?;
+            for path in output
+                .split(|byte| *byte == 0)
+                .filter(|path| !path.is_empty())
+            {
+                let path = String::from_utf8_lossy(path).to_string();
+                let diff = self.run_git_allow_exit_code(
+                    &[
+                        "diff",
+                        "--no-index",
+                        "--numstat",
+                        "-z",
+                        "--",
+                        "/dev/null",
+                        path.as_str(),
+                    ],
+                    1,
+                )?;
+                let Some(record) = diff.split(|byte| *byte == 0).find(|line| !line.is_empty())
+                else {
+                    continue;
+                };
+                let line = String::from_utf8_lossy(record);
+                let mut parts = line.splitn(3, '\t');
+                let additions = parts.next().unwrap_or("");
+                let deletions = parts.next().unwrap_or("");
+                if parts.next().is_none() {
+                    continue;
+                }
+                stats.push(DiffStat {
+                    status: 'A',
+                    path,
+                    additions: additions.parse().unwrap_or(0),
+                    deletions: deletions.parse().unwrap_or(0),
+                });
+            }
+        }
         return Ok(stats);
     }
 }

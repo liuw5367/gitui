@@ -39,6 +39,8 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 
 `diff_between_with_whitespace(base, target, ...)` 用 `git diff <base> <target>` 比较两端 tree；它不计算 `git log base..target` 的提交集合。`diff_trees_with_whitespace` 是这项 tree 比较的明确入口。`merge_base(left, right)` 返回共同祖先 OID，无共同祖先时返回 `None`。`diff_worktree_with_whitespace(revision, ...)` 比较指定 revision 与当前 index/工作区，覆盖已暂存和未暂存的 tracked 文件；Git diff 不包含未跟踪文件。
 
+`status()` 为未跟踪目录返回逐个文件的状态。`numstat_section(false)` 除 tracked 文件外，也统计未跟踪文件相对于空文件的新增行数；二进制文件沿用 Git 的 `-` 统计并显示为 0 行。
+
 `Repo::refs` 返回 `Refs { branches, remotes, remote_info, remote_branches, tags, stashes, submodules, worktrees }`。`ref_oid_snapshot` 返回全部非符号引用到 OID 的映射，可在不读取提交历史的情况下检测当前分支之外的引用是否移动；`sync_ref_snapshot` 仍只包含远端跟踪引用与 tags，供同步前后比较。`RemoteInfo` 保存全部 fetch/push URL；`RemoteBranch` 分开保存远端名和远端内的分支名，`full_name()` 返回 `origin/feature/topic` 形式。远端 HEAD 符号别名不会作为远端分支返回。`Branch` 带 `current`、`ahead`、`behind`；`Stash` 保存显示序号 `reference`、提交 OID `oid` 与摘要，操作可按 OID 在序号变化后重新定位。`SubmoduleInfo` 保存 `.gitmodules` 的路径、URL、可选跟踪分支，以及初始化状态、当前提交、父仓库 index 中的 gitlink 提交和子模块自身是否有改动。`update_submodule(path, false)` 初始化并检出父仓库记录的版本，`update_submodule(path, true)` 要求配置跟踪分支并按 `--remote` 更新；`sync_submodule` 同步配置 URL，`remove_submodule` 会拒绝删除含本地改动或未记录提交的已初始化子模块。`WorktreeInfo` 记录关联工作树路径、主工作树标记、分支、锁定、失效登记、目录存在状态及工作区是否干净；`add_worktree` 可检出现有分支或从起点新建分支，`remove_worktree` 只移除干净、未锁定、非主工作树的登记路径且不使用强制选项，`prune_worktrees` 立即清理 Git 标为失效的登记。`stash_push_selected` 以 literal pathspec 只保存指定路径，`stash_show` 与 `stash_show_with_whitespace` 可读取包含未跟踪文件的差异，后者支持忽略空白差异。
 
 `rebase_onto` 把当前分支变基到指定引用；若 Git 因冲突退出，仓库会保留 rebase 状态供界面继续解决。`checkout_tracking_branch` 创建并检出跟踪指定远端分支的本地分支。`pull_remote_branch` 拉取指定远端分支并合入当前分支。`push_branch` 推送指定本地分支到远端同名分支，不要求当前检出该分支；`delete_remote_branch` 通过非强制删除 refspec 移除服务器分支。
