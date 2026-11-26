@@ -25,7 +25,7 @@ pub(crate) mod welcome;
 /// 标签页集合与活动页签的句柄。用例要读写当前标签页时用它，避免逐个传信号。
 ///
 /// 除了标签页本身，还收打开仓库、返回欢迎页、重新定位、关闭与切换页签这些
-/// **跨功能的会话动作** 所需的句柄：屏幕、欢迎窗口、最近仓库、数据目录与当前
+/// **跨功能的会话动作** 所需的句柄：Welcome 模态状态、最近仓库、数据目录与当前
 /// 筛选条件。辅助工作树窗口使用独立标签集合，并关闭主会话持久化。
 ///
 /// P4 会把 `Tab` 的壳收进 `app/session.rs`，届时这里只剩类型别名。
@@ -33,9 +33,9 @@ pub(crate) mod welcome;
 pub(crate) struct SessionHandle {
     pub(crate) tabs: Signal<Vec<Tab>>,
     pub(crate) active: Signal<usize>,
-    /// 仓库加载任务的 owner：不随欢迎窗口等短生命周期视图关闭而取消。
+    /// 仓库加载任务的 owner：不随 Welcome 等短生命周期视图关闭而取消。
     pub(crate) task_owner: Owner,
-    /// 欢迎窗口是否打开（独立窗口；打开仓库后关掉，关掉最后一个标签页后重新打开）。
+    /// Welcome 模态层是否打开；没有仓库时必须打开，打开仓库后关闭。
     pub(crate) welcome_open: Signal<bool>,
     /// 主窗口关闭后置为 true；Dock 重开时据此按设置显示工作区或欢迎页。
     pub(crate) dock_reopen_pending: Signal<bool>,
@@ -59,8 +59,6 @@ pub(crate) struct SessionHandle {
     pub(crate) auxiliary: bool,
     pub(crate) persist_session: bool,
     pub(crate) window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
-    /// Welcome 窗口的原生引用；关闭时清空，重复入口用它置前。
-    pub(crate) welcome_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
     /// Settings 窗口的原生引用；关闭时清空，重复入口用它置前。
     pub(crate) settings_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
     /// 每个标签最多运行一个刷新任务；运行期间的重复事件合并为一次后续读取。
@@ -488,7 +486,7 @@ impl SessionHandle {
             store::remember_recent(&store_dir, &recent.get_untracked(), path.as_str());
             recent.set(store::load_recent(&store_dir));
         }
-        // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
+        // 从 Welcome 进入工作区：关闭主窗口内的模态层并聚焦主窗口。
         if !auxiliary {
             self.dock_reopen_pending.set(false);
             welcome_open.set(false);
@@ -533,19 +531,16 @@ impl SessionHandle {
         });
     }
 
-    /// 打开欢迎窗口（独立窗口，由 `welcome_open` 驱动）。
+    /// 在主窗口显示 Welcome 模态层；无仓库时该模态层不会响应关闭请求。
     pub(crate) fn go_welcome(&self) {
-        if let Some(window) = self.welcome_window.get_untracked() {
-            self.welcome_open.set(true);
-            window.focus();
-            return;
-        }
         // 列表要显示当前分支，而不是上次打开时的快照。
         self.refresh_recent_branches();
         self.welcome_open.set(true);
+        nsh_core::element::desktop::main_window().show();
+        nsh_core::element::desktop::main_window().focus();
     }
 
-    /// 打开仓库管理页（原 `Actions::go_repo_manager`）：入口就是欢迎窗口。
+    /// 打开仓库管理页（原 `Actions::go_repo_manager`）：入口就是 Welcome 模态层。
     pub(crate) fn go_repo_manager(&self) {
         self.go_welcome();
     }
@@ -844,7 +839,6 @@ impl SessionHandle {
                 window.close();
             }
         } else {
-            nsh_core::element::desktop::main_window().hide();
             self.go_welcome();
         }
     }
@@ -964,7 +958,6 @@ mod session_tab_tests {
             auxiliary: true,
             persist_session: false,
             window: signal(None),
-            welcome_window: signal(None),
             settings_window: signal(None),
             refresh_requests: Arc::new(Mutex::new(HashMap::new())),
         };

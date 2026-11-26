@@ -66,14 +66,38 @@ pub(crate) fn modal(
     content: impl Fn() -> AnyElement + 'static,
     on_dismiss: impl Fn() + 'static,
 ) -> impl IntoElement {
+    return modal_with_dismissal(open, title, z_index, content, || true, || true, on_dismiss);
+}
+
+/// 用响应式关闭能力呈现模态层；空会话的 Welcome 用它拦截 Escape 与遮罩关闭。
+pub(crate) fn modal_with_dismissal(
+    open: impl Fn() -> bool + 'static,
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl Fn() -> AnyElement + 'static,
+    close_on_escape: impl Fn() -> bool + 'static,
+    may_dismiss: impl Fn() -> bool + 'static,
+    on_dismiss: impl Fn() + 'static,
+) -> impl IntoElement {
     let title = std::rc::Rc::new(title);
     let content = std::rc::Rc::new(content);
+    let close_on_escape = std::rc::Rc::new(close_on_escape);
+    let may_dismiss = std::rc::Rc::new(may_dismiss);
     let on_dismiss = std::rc::Rc::new(on_dismiss);
     return when(open, move || {
         let title = title.clone();
         let content = content.clone();
+        let close_on_escape = close_on_escape.clone();
+        let may_dismiss = may_dismiss.clone();
         let on_dismiss = on_dismiss.clone();
-        return modal_open(move || title(), z_index, content(), move || on_dismiss());
+        return modal_open_with_dismissal(
+            move || title(),
+            z_index,
+            content(),
+            move || close_on_escape(),
+            move || may_dismiss(),
+            move || on_dismiss(),
+        );
     });
 }
 
@@ -84,15 +108,41 @@ pub(crate) fn modal_open(
     content: impl IntoElement,
     on_dismiss: impl Fn() + 'static,
 ) -> AnyElement {
+    return modal_open_with_dismissal(title, z_index, content, || true, || true, on_dismiss);
+}
+
+/// 关闭能力由调用方状态决定的模态层。
+///
+/// `close_on_escape` 是响应式条件；事件回调通过 `may_dismiss` 再检查一次未跟踪状态，
+/// 让关闭语义在状态刚发生变化时仍由业务规则兜底。
+pub(crate) fn modal_open_with_dismissal(
+    title: impl Fn() -> String + 'static,
+    z_index: i32,
+    content: impl IntoElement,
+    close_on_escape: impl Fn() -> bool + 'static,
+    may_dismiss: impl Fn() -> bool + 'static,
+    on_dismiss: impl Fn() + 'static,
+) -> AnyElement {
     let on_dismiss = std::rc::Rc::new(on_dismiss);
     let cancel = on_dismiss.clone();
     let backdrop = on_dismiss.clone();
+    let may_cancel = std::rc::Rc::new(may_dismiss);
+    let may_backdrop = may_cancel.clone();
     return modal_element(
         title,
         z_index,
         content,
-        move || cancel(),
-        move || backdrop(),
+        move || {
+            if may_cancel() {
+                cancel();
+            }
+        },
+        move || {
+            if may_backdrop() {
+                backdrop();
+            }
+        },
+        close_on_escape,
         None,
         false,
         ModalAnimation::Fade,
@@ -115,6 +165,7 @@ pub(crate) fn modal_open_with_blur(
         content,
         move || cancel(),
         || {},
+        true,
         Some(blur),
         false,
         ModalAnimation::Fade,
@@ -137,6 +188,7 @@ pub(crate) fn modal_open_transparent(
         content,
         move || cancel(),
         || {},
+        true,
         None,
         true,
         ModalAnimation::None,
@@ -160,6 +212,7 @@ pub(crate) fn popover_overlay(
         content,
         move || cancel(),
         move || backdrop(),
+        true,
         None,
         true,
         ModalAnimation::None,
@@ -173,6 +226,7 @@ fn modal_element(
     content: impl IntoElement,
     on_cancel: impl Fn() + 'static,
     on_backdrop: impl Fn() + 'static,
+    close_on_escape: impl IntoReactive<bool>,
     blur: Option<f32>,
     transparent_backdrop: bool,
     animation: ModalAnimation,
@@ -199,7 +253,7 @@ fn modal_element(
     }
     return nsh_base::dialog()
         .animation(animation)
-        .close_on_escape(true)
+        .close_on_escape(close_on_escape)
         // 遮罩由应用绘制，自己的点击处理负责关闭。
         .close_on_backdrop_press(false)
         .label(move || SharedString::from(title()))

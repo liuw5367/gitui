@@ -12,6 +12,17 @@ use store::RecentRepo;
 
 use crate::i18n;
 
+pub(crate) type WindowMenuEntry = crate::app::windows::MenuWindowEntry;
+
+pub(crate) struct MenuState {
+    pub(crate) recent: Vec<RecentRepo>,
+    pub(crate) has_active_repo: bool,
+    pub(crate) sidebar_open: bool,
+    pub(crate) inspector_open: bool,
+    pub(crate) tab_navigation_enabled: bool,
+    pub(crate) windows: Vec<WindowMenuEntry>,
+}
+
 /// 构建原生菜单。`language` 取当前语言，切换语言后重建即可。
 pub(crate) fn build_menu(
     language: &str,
@@ -19,8 +30,7 @@ pub(crate) fn build_menu(
     choose_folder: Arc<dyn Fn()>,
     open_recent: Arc<dyn Fn(String)>,
     clear_recent: Arc<dyn Fn()>,
-    recent: &[RecentRepo],
-    has_active_repo: bool,
+    state: &MenuState,
     combo: &dyn Fn(&str) -> String,
     shortcuts: bool,
 ) -> Vec<MenuItem> {
@@ -42,12 +52,12 @@ pub(crate) fn build_menu(
             return move || run(id);
         }
     };
-    let recent_labels = recent_labels(recent);
-    let mut recent_items = Vec::with_capacity(recent.len() + 2);
-    if recent.is_empty() {
+    let recent_labels = recent_labels(&state.recent);
+    let mut recent_items = Vec::with_capacity(state.recent.len() + 2);
+    if state.recent.is_empty() {
         recent_items.push(MenuItem::new(menu("menu.noRecent")).disabled(true));
     } else {
-        for (repo, label) in recent.iter().zip(recent_labels) {
+        for (repo, label) in state.recent.iter().zip(recent_labels) {
             recent_items.push(MenuItem::new(label).on_select({
                 let open_recent = open_recent.clone();
                 let path = repo.path.clone();
@@ -58,7 +68,7 @@ pub(crate) fn build_menu(
     recent_items.push(MenuItem::separator());
     recent_items.push(
         MenuItem::new(menu("menu.clearRecent"))
-            .disabled(recent.is_empty())
+            .disabled(state.recent.is_empty())
             .on_select({
                 let clear_recent = clear_recent.clone();
                 move || clear_recent()
@@ -88,12 +98,12 @@ pub(crate) fn build_menu(
                     move || choose_folder()
                 }),
                 MenuItem::submenu(menu("menu.openRecent"), recent_items)
-                    .disabled(recent.is_empty()),
+                    .disabled(state.recent.is_empty()),
                 MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.newTab")), "newTab")
                     .on_select(menu_run("newTab")),
                 MenuItem::new(menu("menu.closeTab"))
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("closeTab")),
                 MenuItem::new(menu("menu.closeWindow")).on_select(menu_run("closeWindow")),
                 MenuItem::new(menu("menu.closeAllWindows"))
@@ -121,14 +131,27 @@ pub(crate) fn build_menu(
                     .on_select(menu_run("openPalette")),
                 MenuItem::separator(),
                 MenuItem::new(menu("menu.showHistory"))
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("history")),
                 MenuItem::new(menu("menu.showChanges"))
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("changes")),
-                MenuItem::new(menu("menu.toggleInspector"))
-                    .disabled(!has_active_repo)
-                    .on_select(menu_run("inspector")),
+                MenuItem::new(menu(if state.sidebar_open {
+                    "menu.hideSidebar"
+                } else {
+                    "menu.showSidebar"
+                }))
+                .disabled(!state.has_active_repo)
+                .on_select(menu_run("sidebar")),
+                MenuItem::new(menu(if state.inspector_open {
+                    "menu.hideInspector"
+                } else {
+                    "menu.showInspector"
+                }))
+                .disabled(!state.has_active_repo)
+                .on_select(menu_run("inspector")),
+                MenuItem::separator(),
+                MenuItem::role(MenuRole::ToggleFullScreen),
                 MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.cycleAppearance")), "toggleTheme")
                     .on_select(menu_run("toggleTheme")),
@@ -139,29 +162,24 @@ pub(crate) fn build_menu(
             menu("menu.app.repository"),
             vec![
                 MenuItem::new(menu("menu.fetch"))
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("fetch")),
                 MenuItem::new(menu("menu.pull"))
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("pull")),
                 MenuItem::new(menu("menu.push"))
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("push")),
                 MenuItem::separator(),
                 shortcut_item(MenuItem::new(menu("menu.refresh")), "refresh")
-                    .disabled(!has_active_repo)
+                    .disabled(!state.has_active_repo)
                     .on_select(menu_run("refresh")),
                 MenuItem::new(menu("menu.repoManager")).on_select(menu_run("repoManager")),
             ],
         ),
         MenuItem::submenu(
             menu("menu.app.window"),
-            vec![
-                MenuItem::role(MenuRole::Minimize),
-                MenuItem::role(MenuRole::Zoom),
-                MenuItem::separator(),
-                MenuItem::role(MenuRole::ToggleFullScreen),
-            ],
+            window_menu(language, run.clone(), combo, shortcuts, state),
         ),
         MenuItem::submenu(
             menu("menu.app.help"),
@@ -172,6 +190,74 @@ pub(crate) fn build_menu(
             ],
         ),
     ];
+}
+
+fn window_menu(
+    language: &str,
+    run: Arc<dyn Fn(&'static str)>,
+    combo: &dyn Fn(&str) -> String,
+    shortcuts: bool,
+    state: &MenuState,
+) -> Vec<MenuItem> {
+    let menu = |key| i18n::t(language, key);
+    let menu_run = {
+        let run = run.clone();
+        move |id: &'static str| {
+            let run = run.clone();
+            move || run(id)
+        }
+    };
+    let shortcut_item = |item: MenuItem, id: &str| {
+        if shortcuts {
+            item.shortcut(&combo(id))
+        } else {
+            item
+        }
+    };
+    let mut items = vec![
+        MenuItem::role(MenuRole::Minimize),
+        MenuItem::role(MenuRole::Zoom),
+        MenuItem::separator(),
+        shortcut_item(MenuItem::new(menu("menu.previousTab")), "prevTab")
+            .disabled(!state.tab_navigation_enabled)
+            .on_select(menu_run("prevTab")),
+        shortcut_item(MenuItem::new(menu("menu.nextTab")), "nextTab")
+            .disabled(!state.tab_navigation_enabled)
+            .on_select(menu_run("nextTab")),
+        MenuItem::separator(),
+        MenuItem::new(menu("menu.bringAllToFront"))
+            .disabled(state.windows.is_empty())
+            .on_select(menu_run("bringAllToFront")),
+        MenuItem::separator(),
+    ];
+    if state.windows.is_empty() {
+        items.push(MenuItem::new(menu("menu.noWindows")).disabled(true));
+        return items;
+    }
+    let mut counts = HashMap::new();
+    for entry in &state.windows {
+        *counts.entry(entry.0.to_lowercase()).or_insert(0) += 1;
+    }
+    let mut entries: Vec<&WindowMenuEntry> = state.windows.iter().collect();
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    for entry in entries {
+        let label = if counts.get(&entry.0.to_lowercase()).copied().unwrap_or(0) > 1 {
+            entry
+                .1
+                .as_ref()
+                .map(|detail| format!("{} — {detail}", entry.0))
+                .unwrap_or_else(|| entry.0.clone())
+        } else {
+            entry.0.clone()
+        };
+        let window = entry.2.clone();
+        items.push(
+            MenuItem::new(label)
+                .checked(entry.3)
+                .on_select(move || window.focus()),
+        );
+    }
+    return items;
 }
 
 #[cfg(test)]
@@ -198,7 +284,15 @@ mod menu_tests {
             "menu.commandPalette",
             "menu.showHistory",
             "menu.showChanges",
-            "menu.toggleInspector",
+            "menu.showSidebar",
+            "menu.hideSidebar",
+            "menu.showInspector",
+            "menu.hideInspector",
+            "menu.previousTab",
+            "menu.nextTab",
+            "menu.bringAllToFront",
+            "menu.noWindows",
+            "menu.uiGallery",
             "menu.cycleAppearance",
             "menu.switchLanguage",
             "menu.fetch",
@@ -245,14 +339,21 @@ mod menu_tests {
     fn native_menu_build_accepts_close_all_shortcut() {
         let bindings = crate::shortcuts::Registry::defaults();
         let combo = |id: &str| bindings.combo(id).to_string();
+        let state = MenuState {
+            recent: Vec::new(),
+            has_active_repo: false,
+            sidebar_open: false,
+            inspector_open: false,
+            tab_navigation_enabled: false,
+            windows: Vec::new(),
+        };
         let items = build_menu(
             "en",
             Arc::new(|_| {}),
             Arc::new(|| {}),
             Arc::new(|_| {}),
             Arc::new(|| {}),
-            &[],
-            false,
+            &state,
             &combo,
             true,
         );

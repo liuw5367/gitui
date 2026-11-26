@@ -1,13 +1,10 @@
-//! 窗口与会话级函数：欢迎页与设置声明式窗口、关联工作树辅助窗、会话持久化与标题栏留白。
+//! 窗口与会话级函数：设置与 AskPass 声明式窗口、关联工作树辅助窗、会话持久化与标题栏留白。
 //!
-//! 欢迎与设置窗口以**声明式** `window()` 元素挂在 App 根（见 `bootstrap`）：nsh 0.6.0 的
-//! `open_window()` 会忽略 `Window::open`（命令式建出来的窗口只能被用户关闭），而这两
-//! 扇窗都要能被信号开关——打开仓库时关欢迎页、关掉最后一个标签页时重新打开它、菜单
-//! 与 Done 开关设置页。
+//! Settings 与 AskPass 以**声明式** `window()` 元素挂在 App 根（见 `bootstrap`）。Welcome
+//! 是主窗口里的模态层；关联工作树仍使用命令式独立窗口。
 //!
-//! 两者共用一个模型：各自的 id、标题（走 i18n）、初始与最小尺寸、`open` 信号与
-//! `on_open_change` 写回，内容在 `features/*/view.rs`。Welcome 与 Settings 都是独立的
-//! 普通窗口；设置仍不允许 Esc 关窗，因为录制快捷键时 Esc 是取消键。
+//! 设置使用自己的原生标题栏、最小尺寸、`open` 信号和 `on_open_change` 写回；它仍不
+//! 允许 Esc 关窗，因为录制快捷键时 Esc 是取消键。
 
 use crate::app::handles::AppHandles;
 use crate::app::session::Tab;
@@ -19,11 +16,31 @@ use nsh_core::desktop::{
 use nsh_core::element::desktop::title_bar;
 use nsh_core::prelude::*;
 
-/// App 的两个独立窗口。挂在根视图里，`is_open` 由信号驱动。
+#[derive(Clone)]
+pub(crate) struct WorktreeWindow {
+    pub(crate) path: String,
+    pub(crate) window: nsh_core::element::desktop::WindowRef,
+    pub(crate) search: crate::features::search::commands::SearchCommands,
+}
+
+impl PartialEq for WorktreeWindow {
+    fn eq(&self, other: &Self) -> bool {
+        // 同一路径只登记一扇工作树窗口，关闭时会先从列表移除再允许重新打开。
+        self.path == other.path
+    }
+}
+
+impl Eq for WorktreeWindow {}
+
+pub(crate) type MenuWindowEntry = (
+    String,
+    Option<String>,
+    nsh_core::element::desktop::WindowRef,
+    bool,
+);
+
+/// App 自有的 Settings 与 AskPass 窗口。挂在根视图里，`is_open` 由信号驱动。
 pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
-    let welcome = handles.welcome.clone();
-    let welcome_open = welcome.session.welcome_open;
-    let welcome_window_ref = welcome.session.welcome_window;
     let settings = handles.settings.clone();
     let settings_open = settings.session.settings_open;
     let settings_window_ref = settings.session.settings_window;
@@ -36,38 +53,8 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     // 标题在窗口元素构建时定一次：响应式标题会让整扇窗（含整棵内容树）随着语言
     // 变化重建，而内容里的复选控件不支持被这样重建（nsh 会在旧 owner 上写 prop）。
     let lang = language.get_untracked();
-    let welcome_title = i18n::t(lang.as_str(), "welcome.windowTitle");
     let settings_title = i18n::t(lang.as_str(), "settings.title");
     let askpass_title = i18n::t(lang.as_str(), "askpass.title");
-
-    let welcome_window = nsh_core::element::desktop::window()
-        .id("welcome")
-        .title(welcome_title)
-        .default_size(size(Points(900.0), Points(600.0)))
-        // 没有位置时 nsh 从主窗口左上角层叠（每扇窗偏移 24pt），三扇窗会互相错开而不是
-        // 落在屏幕中央；欢迎页与设置窗都显式居中。
-        .default_position(WindowPosition::Center)
-        .attributes(attributes_with_min_size(800.0, 520.0))
-        .open(welcome_open)
-        .on_open_change(move |event| {
-            if !event.open {
-                welcome_open.set(false);
-                welcome_window_ref.set(None);
-            }
-        })
-        .content(move || {
-            center_this_window();
-            welcome_window_ref.set(Some(nsh_core::element::desktop::current_window()));
-            // 快捷键按窗口绑定：`on_key` 属于 `current_window`，主窗口的 ⌘F 不会
-            // 在欢迎窗口触发（反之亦然）。
-            let focus = welcome.clone();
-            on_key("mod+f", move |_| focus.focus_search());
-            let open_repository = welcome.clone();
-            on_key("mod+o", move |_| open_repository.open_or_choose());
-            let window = nsh_core::element::desktop::current_window();
-            on_key("mod+w", move |_| window.close());
-            return features::welcome::view::welcome(&welcome.state, &welcome);
-        });
 
     let settings_window = nsh_core::element::desktop::window()
         .id("settings")
@@ -129,18 +116,13 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             return askpass.view(language);
         });
 
-    return view()
-        .child(welcome_window)
-        .child(settings_window)
-        .child(askpass_window);
+    return view().child(settings_window).child(askpass_window);
 }
 
 /// 窗口内容挂载后把窗口居中一次。
 ///
-/// `default_position(Center)` 只在窗口打开的那一刻生效，而窗口的 frame 会随标题栏与
-/// 属性在打开之后变化（实测 900×600 的欢迎页落在主窗口层叠位置、主窗口纵向偏 43pt），
-/// 所以真正的居中要等窗口拿到最终尺寸后再做一次。内容闭包每次开窗只跑一次，因此在
-/// 这里请求下一帧居中不会和用户拖动窗口打架。
+/// `default_position(Center)` 只在窗口打开时生效，窗口 frame 随标题栏与属性变化后，
+/// 再按最终尺寸请求一次居中。内容闭包每次开窗只运行一次，因此不会和用户拖动窗口打架。
 fn center_this_window() {
     let window = nsh_core::element::desktop::current_window();
     request_animation_frame(move |_| window.center(None));
@@ -182,20 +164,14 @@ pub(crate) fn close_focused_window(
         window.close();
         return;
     }
-    if let Some(window) = handles.session.welcome_window.get_untracked()
-        && focused(&window)
-    {
-        window.close();
-        return;
-    }
-    if let Some((_, window)) = handles
+    if let Some(window) = handles
         .refs
         .worktree_windows
         .get_untracked()
         .into_iter()
-        .find(|(_, window)| focused(window))
+        .find(|window| focused(&window.window))
     {
-        window.close();
+        window.window.close();
         return;
     }
     if nsh_core::element::desktop::main_window()
@@ -218,17 +194,134 @@ pub(crate) fn close_all_windows(
     if let Some(window) = handles.session.settings_window.get_untracked() {
         window.close();
     }
-    if let Some(window) = handles.session.welcome_window.get_untracked() {
-        window.close();
-    }
-    for (_, window) in handles.refs.worktree_windows.get_untracked() {
-        window.close();
+    for window in handles.refs.worktree_windows.get_untracked() {
+        window.window.close();
     }
     if let Some(window) = gallery_window.get_untracked() {
         window.close();
     }
     gallery_open.set(false);
     handles.session.close_workspace();
+}
+
+/// Bring every app window to the front using AppKit's native ordering action.
+pub(crate) fn bring_all_to_front() {
+    #[cfg(target_os = "macos")]
+    if let Some(mtm) = nsh_platform_macos::objc2::MainThreadMarker::new() {
+        nsh_platform_macos::objc2_app_kit::NSApplication::sharedApplication(mtm)
+            .arrangeInFront(None);
+    }
+}
+
+/// The workspace commands belonging to the focused workspace window.
+pub(crate) fn focused_workspace_search(
+    handles: &AppHandles,
+) -> Option<crate::features::search::commands::SearchCommands> {
+    if nsh_core::element::desktop::main_window()
+        .state()
+        .is_some_and(|state| state.focused)
+        && !handles.session.tabs.get_untracked().is_empty()
+    {
+        return Some(handles.search.clone());
+    }
+    return handles
+        .refs
+        .worktree_windows
+        .get_untracked()
+        .into_iter()
+        .find(|window| window.window.state().is_some_and(|state| state.focused))
+        .filter(|window| !window.search.session.tabs.get_untracked().is_empty())
+        .map(|window| window.search);
+}
+
+/// State used to enable the front workspace's repository and panel menu actions.
+pub(crate) fn focused_workspace_menu_state(handles: &AppHandles) -> Option<(usize, bool, bool)> {
+    if nsh_core::element::desktop::main_window()
+        .state()
+        .is_some_and(|state| state.focused)
+    {
+        let tab_count = handles.session.tabs.get().len();
+        if tab_count > 0 {
+            return Some((
+                tab_count,
+                handles.search.sidebar_open.get(),
+                handles.search.right_panel_open.get(),
+            ));
+        }
+    }
+    for window in handles.refs.worktree_windows.get() {
+        if window.window.state().is_some_and(|state| state.focused) {
+            let tab_count = window.search.session.tabs.get().len();
+            if tab_count > 0 {
+                return Some((
+                    tab_count,
+                    window.search.sidebar_open.get(),
+                    window.search.right_panel_open.get(),
+                ));
+            }
+        }
+    }
+    return None;
+}
+
+/// Live, visible or minimized windows for the Window menu. AskPass is transient and excluded.
+pub(crate) fn menu_window_entries(
+    handles: &AppHandles,
+    gallery_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+    language: &str,
+) -> Vec<MenuWindowEntry> {
+    let mut entries = Vec::new();
+    if handles.session.settings_open.get()
+        && let Some(window) = handles.session.settings_window.get()
+    {
+        append_menu_window(
+            &mut entries,
+            i18n::t(language, "settings.title"),
+            None,
+            window,
+        );
+    }
+    append_menu_window(
+        &mut entries,
+        crate::brand::PRODUCT_NAME.to_string(),
+        None,
+        nsh_core::element::desktop::main_window(),
+    );
+    for window in handles.refs.worktree_windows.get() {
+        let title = std::path::Path::new(&window.path)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| window.path.clone());
+        append_menu_window(
+            &mut entries,
+            title,
+            Some(window.path.clone()),
+            window.window,
+        );
+    }
+    if let Some(window) = gallery_window.get() {
+        append_menu_window(
+            &mut entries,
+            i18n::t(language, "menu.uiGallery"),
+            None,
+            window,
+        );
+    }
+    return entries;
+}
+
+fn append_menu_window(
+    entries: &mut Vec<MenuWindowEntry>,
+    title: String,
+    detail: Option<String>,
+    window: nsh_core::element::desktop::WindowRef,
+) {
+    if let Some(state) = window.state()
+        && (state.visible || state.minimized)
+    {
+        entries.push((title, detail, window, state.focused));
+    }
 }
 
 /// Open a registered linked worktree in its own one-repository native window.
@@ -288,12 +381,12 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
     }
     let path = repo.root().display().to_string();
     let windows = handles.refs.worktree_windows;
-    if let Some((_, existing)) = windows
+    if let Some(existing) = windows
         .get_untracked()
         .into_iter()
-        .find(|(open_path, _)| open_path == &path)
+        .find(|window| window.path == path)
     {
-        existing.focus();
+        existing.window.focus();
         return;
     }
 
@@ -301,6 +394,7 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
     install_worktree_opener(&mut worktree_handles);
     worktree_handles.session.open_path(path.clone());
     let session = worktree_handles.session.clone();
+    let search = worktree_handles.search.clone();
     let content_handles = worktree_handles.clone();
     let id = worktree_window_id(path.as_str());
     let title = repo.name();
@@ -314,7 +408,7 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
         .attributes(worktree_window_attributes())
         .on_open_change(move |change| {
             if !change.open {
-                registry.update(|open| open.retain(|(open_path, _)| open_path != &close_path));
+                registry.update(|open| open.retain(|window| window.path != close_path));
             }
         })
         .content(move || {
@@ -324,8 +418,12 @@ pub(crate) fn open_worktree_window(handles: &AppHandles, tab_id: u64, path: Stri
     if let Some(window_ref) = nsh_core::element::desktop::open_window(window) {
         session.window.set(Some(window_ref.clone()));
         windows.update(|open| {
-            open.retain(|(open_path, _)| open_path != &path);
-            open.push((path, window_ref));
+            open.retain(|window| window.path != path);
+            open.push(WorktreeWindow {
+                path,
+                window: window_ref,
+                search,
+            });
         });
     } else {
         crate::interactions::notify(

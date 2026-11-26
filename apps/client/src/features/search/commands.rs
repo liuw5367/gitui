@@ -267,9 +267,10 @@ impl SearchCommands {
                 .settings
                 .go_settings_section(crate::features::settings::state::Section::Shortcuts),
             "closeTab" => {
-                if nsh_core::element::desktop::main_window()
-                    .state()
-                    .is_some_and(|state| state.focused)
+                if self.session.auxiliary
+                    || nsh_core::element::desktop::main_window()
+                        .state()
+                        .is_some_and(|state| state.focused)
                 {
                     self.session.close_tab(self.session.active.get_untracked());
                 }
@@ -279,6 +280,7 @@ impl SearchCommands {
             "changes" => self.set_mode(crate::Mode::Changes),
             // `commit` 是已保存快捷键的稳定 id，现在用于打开 Changes 面板。
             "commit" => self.set_mode(crate::Mode::Changes),
+            "sidebar" => self.sidebar_open.set(!self.sidebar_open.get_untracked()),
             "inspector" => self
                 .right_panel_open
                 .set(!self.right_panel_open.get_untracked()),
@@ -289,7 +291,7 @@ impl SearchCommands {
             "fetch" => self.sync.open_sync(Sync::Fetch),
             "pull" => self.sync.open_sync(Sync::Pull),
             "push" => self.sync.open_sync(Sync::Push),
-            // ⌘F：欢迎窗口打开时聚焦左栏搜索；主窗口里打开历史过滤浮层。
+            // ⌘F：Welcome 模态层打开时聚焦左栏搜索；主窗口里打开历史过滤浮层。
             "filter" => {
                 if self.session.welcome_open.get_untracked() {
                     self.welcome.focus_search();

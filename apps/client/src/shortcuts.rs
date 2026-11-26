@@ -48,7 +48,7 @@ pub const ACTIONS: [Action; 23] = [
         default: "mod+p",
         scope: Scope::Global,
     },
-    // 新建标签页：打开欢迎窗口挑仓库，也为键盘用户提供入口。
+    // 新建标签页：打开 Welcome 模态层挑选仓库，也为键盘用户提供入口。
     Action {
         id: "newTab",
         key: "shortcut.newTab",

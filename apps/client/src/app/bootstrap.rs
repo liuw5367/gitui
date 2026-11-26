@@ -284,9 +284,7 @@ pub(crate) fn app() -> impl IntoElement {
     }
     // 验收开关：`GITUI_SETTINGS=1` 启动即打开设置窗口，用于截图核对。
     let settings_open = signal(acceptance::flag("GITUI_SETTINGS"));
-    // 欢迎页是独立窗口：没有可恢复的标签页时打开它。
-    // 验收开关：`GITUI_NO_WELCOME=1` 时不打开欢迎窗口。
-    // 欢迎页与组件画廊都是独立窗口；截图脚本关闭欢迎页，避免误截较小的欢迎窗口。
+    // 没有仓库时必须显示 Welcome 模态层；验收开关仅用于截图时抑制该模态层。
     let suppress_welcome = acceptance::flag("GITUI_NO_WELCOME");
     let welcome_open = signal(initial_tabs.is_empty() && !suppress_welcome);
     let active = signal(session.active.min(initial_tabs.len().saturating_sub(1)));
@@ -393,7 +391,6 @@ pub(crate) fn app() -> impl IntoElement {
         auxiliary: false,
         persist_session: true,
         window: signal(None),
-        welcome_window: signal(None),
         settings_window: signal(None),
         refresh_requests: std::sync::Arc::new(std::sync::Mutex::new(
             std::collections::HashMap::new(),
@@ -422,7 +419,6 @@ pub(crate) fn app() -> impl IntoElement {
                 reopen_session.refresh_active_tab();
                 return;
             }
-            main_window().hide();
             reopen_session.go_welcome();
             return;
         }
@@ -430,14 +426,11 @@ pub(crate) fn app() -> impl IntoElement {
             reopen_session.refresh_active_tab();
             return;
         }
-        main_window().hide();
         if !reopen_session.welcome_open.get_untracked() && !suppress_welcome {
             reopen_session.go_welcome();
         }
     });
-    if !session.welcome_open.get_untracked() {
-        main_window().show();
-    }
+    main_window().show();
     // 首屏直接落在欢迎页时，列表里的分支 tag 要先按仓库当前 HEAD 刷新一次。
     if session.welcome_open.get_untracked() {
         session.refresh_recent_branches();
@@ -771,7 +764,26 @@ pub(crate) fn app() -> impl IntoElement {
                     gallery_open,
                     gallery_window,
                 ),
-                _ => search.run_command(id),
+                "bringAllToFront" => crate::app::windows::bring_all_to_front(),
+                _ => {
+                    let is_app_command = matches!(
+                        id,
+                        "newTab"
+                            | "repoManager"
+                            | "settings"
+                            | "toggleTheme"
+                            | "toggleLanguage"
+                            | "welcome"
+                            | "helpShortcuts"
+                    );
+                    let commands = if is_app_command {
+                        search.clone()
+                    } else {
+                        crate::app::windows::focused_workspace_search(&window_handles)
+                            .unwrap_or_else(|| search.clone())
+                    };
+                    commands.run_command(id);
+                }
             })
         };
         let choose_folder: Arc<dyn Fn()> = {
@@ -795,7 +807,8 @@ pub(crate) fn app() -> impl IntoElement {
             let shortcuts = shortcut_registry;
             let recording = settings_commands.state.recording_shortcut;
             let recent = handles.session.recent;
-            let tabs = handles.session.tabs;
+            let menu_handles = handles.clone();
+            let gallery_window = gallery_window_ref;
             move || {
                 let lang = language.get();
                 // 菜单里的加速键也取注册表：改键后菜单跟着变。
@@ -803,16 +816,27 @@ pub(crate) fn app() -> impl IntoElement {
                 let combo = move |id: &str| bindings.combo(id).to_string();
                 // 录制期间临时摘掉菜单加速键：原生菜单会先于窗口按键表消费组合键。
                 let shortcuts_enabled = recording.get().is_none();
-                let recent_items = recent.get();
-                let has_active_repo = !tabs.get().is_empty();
+                let workspace = crate::app::windows::focused_workspace_menu_state(&menu_handles);
+                let windows = crate::app::windows::menu_window_entries(
+                    &menu_handles,
+                    gallery_window,
+                    lang.as_str(),
+                );
+                let menu_state = crate::app::menu::MenuState {
+                    recent: recent.get(),
+                    has_active_repo: workspace.is_some(),
+                    sidebar_open: workspace.is_some_and(|(_, sidebar, _)| sidebar),
+                    inspector_open: workspace.is_some_and(|(_, _, inspector)| inspector),
+                    tab_navigation_enabled: workspace.is_some_and(|(count, _, _)| count > 1),
+                    windows,
+                };
                 let items = crate::app::menu::build_menu(
                     lang.as_str(),
                     run.clone(),
                     choose_folder.clone(),
                     open_recent.clone(),
                     clear_recent.clone(),
-                    &recent_items,
-                    has_active_repo,
+                    &menu_state,
                     &combo,
                     shortcuts_enabled,
                 );
@@ -824,8 +848,7 @@ pub(crate) fn app() -> impl IntoElement {
     // 快捷键与命令面板导航；Esc 的浮层退出顺序也按同一份状态处理。
     crate::app::hotkeys::install(&handles, gallery_open);
 
-    // 欢迎与设置是两个独立窗口，由 `app::windows` 以声明式元素挂在这里：
-    // 它们的开与关只跟 `welcome_open` / `settings_open` 走。
+    // Welcome 是主窗口内的模态层；Settings 与 AskPass 仍由 `app::windows` 创建独立窗口。
     let current_tab = computed(move || tabs.with(|tabs| tabs.get(active.get()).cloned()));
     let language_value = language;
     let handles_for_screen = handles.clone();
@@ -841,7 +864,10 @@ pub(crate) fn app() -> impl IntoElement {
         .child(workspace_host(tabs, move || {
             crate::app::workspace::workspace(&handles_for_screen).into_element()
         }))
-        // 两个独立窗口（欢迎、设置）。它们的内容渲染在各自的窗口里。
+        .child(features::welcome::view::welcome_modal(
+            &welcome_commands.state,
+            &welcome_commands,
+        ))
         .child(crate::app::windows::windows(&handles))
         .child(features::commit::rewrite_dialog::rewrite_dialog(
             &handles.commit.state,

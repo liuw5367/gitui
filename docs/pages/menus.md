@@ -6,7 +6,7 @@
 
 本板是**独立规格页**，外壳与 16 同族：`gallery-page`（`min-height:100vh`、内距 30×34、gap 14、渐变底），预览 **1440×1400**。没有窗口骨架；页内是一行标题（只有标题与副标，**没有返回按钮**）加一个 12 张卡的栅格。样式表里 `gallery-grid` 默认 2 列，板内内联改成 3 列。
 
-macOS 原生菜单栏不在本画板内：最左侧应用名称菜单取 `brand::PRODUCT_NAME`，包含 About、Settings（`⌘,`）、Hide App、Hide Others、Show All 和 Quit App；Services 不在当前菜单中。File 提供 Open Recent、Clear Recent、Close Window 与 Close All Windows（`⌥⌘W`），重名仓库附带父目录路径；关闭主窗口会保存会话并保留 Dock 进程。Help 提供 Keyboard Shortcuts 并打开设置中的快捷键分区。无活动仓库时依赖仓库的菜单项置灰。About 使用系统 About 面板，Welcome 保留在 Help 菜单。Settings 不在 Repository 菜单重复出现；Welcome、主窗口齿轮与应用菜单再次调用 Settings 时都会聚焦已有窗口。
+macOS 原生菜单栏不在本画板内：最左侧应用名称菜单取 `brand::PRODUCT_NAME`，包含 About、Settings（`⌘,`）、Hide App、Hide Others、Show All 和 Quit App；Services 不在当前菜单中。File 提供 Open Recent、Clear Recent、Close Window 与 Close All Windows（`⌥⌘W`），重名仓库附带父目录路径；关闭主窗口会保存会话并保留 Dock 进程。View 提供引用侧栏与 Inspector 的显示／隐藏及全屏操作，切换文案跟随面板状态。Window 提供上一／下一标签、Bring All to Front 和按标题排序的原生窗口列表，可聚焦 Settings、主工作区、关联工作树及组件画廊；Welcome 是主窗口模态层，不单独列出；AskPass 临时窗口不列出，重名窗口通过仓库路径区分。Help 提供 Keyboard Shortcuts 并打开设置中的快捷键分区，也可打开 Welcome。没有主窗口仓库时 Welcome 自动显示且不响应 Escape 或遮罩关闭；有仓库时可关闭。无活动工作区时依赖仓库的菜单项置灰，标签切换也不可用。About 使用系统 About 面板。Settings 不在 Repository 菜单重复出现；Welcome、主窗口齿轮与应用菜单再次调用 Settings 时都会聚焦已有窗口。
 
 ## 当前实现
 

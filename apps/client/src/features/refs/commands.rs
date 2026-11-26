@@ -178,7 +178,7 @@ pub(crate) struct RefsCommands {
     pub(crate) askpass: crate::askpass::AskPassClient,
     /// Root session and auxiliary-window registry guard worktree removal.
     pub(crate) main_tabs: Signal<Vec<crate::app::session::Tab>>,
-    pub(crate) worktree_windows: Signal<Vec<(String, nsh_core::element::desktop::WindowRef)>>,
+    pub(crate) worktree_windows: Signal<Vec<crate::app::windows::WorktreeWindow>>,
     pub(crate) open_worktree_window: Option<Arc<dyn Fn(u64, String)>>,
 }
 
@@ -1017,7 +1017,7 @@ impl RefsCommands {
                 .worktree_windows
                 .get_untracked()
                 .iter()
-                .any(|(open_path, _)| Self::same_worktree_path(open_path.as_str(), path));
+                .any(|window| Self::same_worktree_path(window.path.as_str(), path));
     }
 
     fn same_worktree_path(left: &str, right: &str) -> bool {

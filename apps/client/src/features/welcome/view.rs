@@ -78,6 +78,83 @@ pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoE
         );
 }
 
+/// 在主窗口内显示仓库选择模态层；空会话时必须先打开仓库才能关闭。
+pub(crate) fn welcome_modal(
+    state: &WelcomeState,
+    cmd: &WelcomeCommands,
+) -> impl IntoElement + use<> {
+    let open = cmd.session.welcome_open;
+    let tabs = cmd.session.tabs;
+    let language = cmd.language;
+    let session = cmd.session.clone();
+    let title_language = language;
+    let close_language = language;
+    let close_tabs = tabs;
+    let close_session = session.clone();
+    let welcome_state = state.clone();
+    let welcome_cmd = cmd.clone();
+
+    return ui::dialog::modal_with_dismissal(
+        move || open.get(),
+        move || i18n::t(title_language.get().as_str(), "welcome.windowTitle"),
+        200,
+        move || {
+            let tabs = close_tabs;
+            let close_session = close_session.clone();
+            let close_button = dynamic(move || -> AnyElement {
+                if tabs.get().is_empty() {
+                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                }
+                let session = close_session.clone();
+                return view()
+                    .absolute()
+                    .top(px(ui::GAP))
+                    .right(px(ui::GAP))
+                    .z_index(1)
+                    .child(icon_button_tip(
+                        "x",
+                        move || i18n::t(close_language.get().as_str(), "common.close"),
+                        ButtonSize::Small,
+                        false,
+                        move || i18n::t(close_language.get().as_str(), "common.close"),
+                        move || {
+                            if !tabs.get_untracked().is_empty() {
+                                session.welcome_open.set(false);
+                            }
+                        },
+                    ))
+                    .into_element();
+            });
+            return ui::dialog::modality(
+                view()
+                    .relative()
+                    .w(px(900.0))
+                    .h(px(600.0))
+                    .rounded(px(crate::design::metrics::RADIUS_PANEL + 2.0))
+                    .overflow_hidden()
+                    .border_1()
+                    .border_color(move || design::line_strong())
+                    .bg(move || design::token("popover"))
+                    .shadow_lg()
+                    .child(welcome(&welcome_state, &welcome_cmd))
+                    .child(close_button),
+            )
+            .into_element();
+        },
+        move || welcome_can_dismiss(tabs.get().len()),
+        move || !tabs.get_untracked().is_empty(),
+        move || {
+            if !session.tabs.get_untracked().is_empty() {
+                session.welcome_open.set(false);
+            }
+        },
+    );
+}
+
+fn welcome_can_dismiss(open_tab_count: usize) -> bool {
+    open_tab_count > 0
+}
+
 /// 克隆进行中的提示：浮在右下角，不遮挡表单。
 ///
 /// 未克隆时整块不渲染——留下 0 高的带边框卡片会画出一条横线（右下角那条多余的
@@ -1164,6 +1241,74 @@ fn home_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[component]
+    fn WelcomeDismissalFixture() -> impl IntoElement {
+        let open = signal(true);
+        let open_tab_count = signal(0_usize);
+        view()
+            .w_full()
+            .h_full()
+            .child(view().w_full().h_full().child(button(
+                || "Workspace".to_string(),
+                ButtonVariant::Secondary,
+                ButtonSize::Regular,
+                false,
+                || {},
+            )))
+            .child(ui::dialog::modal_with_dismissal(
+                move || open.get(),
+                || "Welcome".to_string(),
+                200,
+                move || {
+                    ui::dialog::modality(view().child(text("Welcome content")).child(button(
+                        || "Open repository".to_string(),
+                        ButtonVariant::Secondary,
+                        ButtonSize::Regular,
+                        false,
+                        move || open_tab_count.set(1),
+                    )))
+                    .into_element()
+                },
+                move || welcome_can_dismiss(open_tab_count.get()),
+                move || welcome_can_dismiss(open_tab_count.get_untracked()),
+                move || {
+                    if welcome_can_dismiss(open_tab_count.get_untracked()) {
+                        open.set(false);
+                    }
+                },
+            ))
+    }
+
+    #[test]
+    fn welcome_dismissal_requires_an_open_repository() {
+        let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig::new(
+            nsh_core::element::Root::of::<WelcomeDismissalFixture>(),
+        ))
+        .unwrap();
+        let close_on_escape_values = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = close_on_escape_values.clone();
+        app.observe(move |_, batch| {
+            for item in &batch.items {
+                if let nsh_core::MountItem::ModalConfig { config, .. } = item {
+                    observed.lock().unwrap().push(config.close_on_escape);
+                }
+            }
+        });
+        app.first_render().unwrap();
+        app.wait_for("text:Welcome content").unwrap();
+        assert_eq!(
+            close_on_escape_values.lock().unwrap().last(),
+            Some(&false),
+            "empty session must disable the platform Escape close"
+        );
+        app.press_key("escape").unwrap();
+        app.press("Workspace").unwrap();
+        assert!(app.shows("Welcome content"));
+        app.press("Open repository").unwrap();
+        app.press_key("escape").unwrap();
+        assert!(!app.shows("Welcome content"));
+    }
 
     #[test]
     fn buckets_use_calendar_days() {

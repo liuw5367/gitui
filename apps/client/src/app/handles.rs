@@ -78,7 +78,6 @@ impl AppHandles {
             auxiliary: true,
             persist_session: false,
             window: signal(None),
-            welcome_window: signal(None),
             settings_window: signal(None),
             refresh_requests: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),

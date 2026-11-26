@@ -5,9 +5,9 @@
 # 沙箱或只读缓存目录下会得到 "Operation not permitted"。把 HOME 指到仓库内的
 # .tmp/nsh-home 后，锁、增量缓存与应用数据都落在工作区内，可写也可清理。
 #
-# 但 CARGO_HOME 不跟着改：它决定依赖源码落在哪个 registry 下，路径不同会让 cargo
-# 把整套依赖判为变更，开发者的 `nsh run` 与截图脚本会互相作废对方的编译产物。
-# 所以这里把它钉在真实 HOME 的 ~/.cargo 上（可用 SHOTS_REAL_HOME 覆盖）。
+# CARGO_HOME 与 RUSTUP_HOME 都不跟着改：前者决定依赖源码所在的 registry，路径不同会让
+# cargo 把整套依赖判为变更；后者提供已安装的 toolchain，避免隔离 HOME 触发网络同步。
+# 两者默认指向真实 HOME 下的目录，可用 CARGO_HOME / RUSTUP_HOME 或 SHOTS_REAL_HOME 覆盖。
 #
 # 用法：
 #   tools/shots.sh gallery            # 独立组件画廊窗口（GITUI_GALLERY=1）
@@ -32,7 +32,7 @@
 #   GITUI_CONFLICT=1    指定仓库有进行中的冲突时启动即打开冲突面板（板 14）
 #   GITUI_CONFLICT_FILES=1   同时打开冲突文件浮层（Tree/List）
 #   GITUI_DIRTY=1       在 GITUI_REPO 里制造一处改动，让 Changes/diff 有内容
-#   GITUI_NO_WELCOME=1  不打开欢迎窗口，避免截图时选中比画廊更小的欢迎窗口
+#   GITUI_NO_WELCOME=1  不打开 Welcome 模态层（截图欢迎页时会设为 0）
 #   GITUI_WELCOME_FORM=open|clone|init   欢迎页初始分段
 #   GITUI_WELCOME_STATE=empty|recent|clone-error
 #   GITUI_WELCOME_RECENT=path|branch:path|branch   recent 状态的种子数据
@@ -60,6 +60,7 @@ app_home="$root/.tmp/app-home"
 # 依赖判为变更，开发者下次 `nsh run` 就要全量重编一次（实测 1m26s，反之亦然）。
 real_home="${SHOTS_REAL_HOME:-$HOME}"
 cargo_home="${CARGO_HOME:-$real_home/.cargo}"
+rustup_home="${RUSTUP_HOME:-$real_home/.rustup}"
 swift_cache="$root/.tmp/swift-cache"
 bin="$root/.tmp/bin/winid"
 out_dir="$root/.tmp/shots"
@@ -103,6 +104,7 @@ echo "启动应用（HOME=${home_dir}）…"
   APP_HOME="$app_home" \
   HOME="$home_dir" \
   CARGO_HOME="$cargo_home" \
+  RUSTUP_HOME="$rustup_home" \
   GITUI_NO_WELCOME="$([ "$welcome_shot" = 1 ] && echo 0 || echo 1)" \
   GITUI_GALLERY="$([ "$name" = "gallery" ] && echo 1 || echo 0)" \
   GITUI_SYNC="${GITUI_SYNC:-0}" \
@@ -121,15 +123,15 @@ echo "启动应用（HOME=${home_dir}）…"
   echo $! >"$home_dir/run-$name.pid"
 )
 
-# 取窗口 id：主窗口最大；欢迎页、设置页、组件画廊是较小的独立窗口，用 --smallest。
+# 取窗口 id：Welcome 是主窗口模态层；设置页与组件画廊是较小的独立窗口，用 --smallest。
 if [ ! -x "$bin" ] || [ "$root/tools/winid.swift" -nt "$bin" ]; then
   CLANG_MODULE_CACHE_PATH="$swift_cache" SWIFT_MODULE_CACHE_PATH="$swift_cache" \
     swiftc -O "$root/tools/winid.swift" -o "$bin" || { echo "winid 编译失败" >&2; exit 1; }
 fi
-# 欢迎页、设置页与组件画廊都是独立窗口，比主窗口小：用 --smallest 取目标窗口。
+# 只有设置页与组件画廊是独立小窗；Welcome 截主窗口，其中包含模态层。
 window_flag="--id"
 case "$name" in
-  welcome*|settings*|gallery*) window_flag="--smallest" ;;
+  settings*|gallery*) window_flag="--smallest" ;;
 esac
 # 等窗口出现的上限要按冷构建算：改动 rust 源码后 nsh 会重新编译，实测 60–100s，
 # 早先按热构建的 60s 设上限，改完代码必然超时（曾因此误以为「窗口没出现」）。
@@ -144,7 +146,7 @@ if [ -z "${window_id:-}" ]; then
   exit 1
 fi
 sleep "$settle_seconds"
-# 独立窗口（欢迎、设置、组件画廊）可能比主窗口晚出现：等待结束后再按"最小窗口"重取一次 id，
+# 独立窗口（设置、组件画廊）可能比主窗口晚出现：等待结束后再按"最小窗口"重取一次 id，
 # 否则截到的是先出现的主窗口。
 if [ "$window_flag" = "--smallest" ]; then
   latest="$("$bin" nsh-app --smallest 2>/dev/null || true)"
