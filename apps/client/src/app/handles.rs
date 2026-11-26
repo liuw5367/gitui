@@ -66,6 +66,7 @@ impl AppHandles {
             active,
             task_owner: self.session.task_owner,
             welcome_open: self.session.welcome_open,
+            dock_reopen_pending: self.session.dock_reopen_pending,
             settings_open: self.session.settings_open,
             mode,
             recent: self.session.recent,

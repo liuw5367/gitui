@@ -1188,6 +1188,8 @@
     "clearRecent": "清除最近使用记录",
     "newTab": "新建标签页",
     "closeTab": "关闭标签",
+    "closeWindow": "关闭窗口",
+    "closeAllWindows": "关闭所有窗口",
     "closeTabsRight": "关闭右侧标签页",
     "closeTabsLeft": "关闭左侧标签页",
     "closeAllTabs": "关闭全部标签页",

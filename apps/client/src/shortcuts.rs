@@ -5,7 +5,8 @@
 //! 组合是一份**固定清单**（[`catalog`]）：应用把清单里的每个组合都绑一次，按下时
 //! 再查表决定执行哪个动作。录制因此只能在清单内改键，界面会写明这一点。
 //!
-//! 清单刻意排除 macOS 保留键（⌘Q / ⌘H / ⌘M / ⌘⇧H）：`on_key` 遇到保留键会 panic。
+//! 清单刻意排除 macOS 保留键（⌘Q / ⌘H / ⌘M / ⌘⇧H）与 Close All Windows 的 ⌥⌘W：
+//! `on_key` 遇到系统保留键会 panic，关闭窗口组合由原生菜单处理。
 
 use crate::i18n;
 
@@ -219,6 +220,8 @@ pub fn catalog() -> Vec<String> {
     combos.push("mod+shift+]".to_string());
     combos.push("mod+enter".to_string());
     combos.push("mod+,".to_string());
+    // Close All Windows owns this native menu shortcut; it must not become user-rebindable.
+    combos.retain(|combo| combo != "alt+mod+w");
     return combos;
 }
 
@@ -436,6 +439,15 @@ mod tests {
         assert!(
             combos.iter().all(|combo| !catalog().contains(combo)),
             "可绑定清单里的组合由 catalog 自己绑定，不该重复出现在回显集合里"
+        );
+    }
+
+    #[test]
+    fn close_all_windows_shortcut_is_not_bindable() {
+        assert!(!catalog().iter().any(|combo| combo == "alt+mod+w"));
+        assert_eq!(
+            Registry::defaults().rebind("closeTab", "alt+mod+w"),
+            Err(BindError::NotBindable)
         );
     }
 

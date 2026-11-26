@@ -95,6 +95,10 @@ pub(crate) fn build_menu(
                 MenuItem::new(menu("menu.closeTab"))
                     .disabled(!has_active_repo)
                     .on_select(menu_run("closeTab")),
+                MenuItem::new(menu("menu.closeWindow")).on_select(menu_run("closeWindow")),
+                MenuItem::new(menu("menu.closeAllWindows"))
+                    .shortcut("alt+mod+w")
+                    .on_select(menu_run("closeAllWindows")),
                 MenuItem::separator(),
             ],
         ),
@@ -189,6 +193,8 @@ mod menu_tests {
             "menu.noRecent",
             "menu.clearRecent",
             "menu.closeTab",
+            "menu.closeWindow",
+            "menu.closeAllWindows",
             "menu.commandPalette",
             "menu.showHistory",
             "menu.showChanges",
@@ -233,6 +239,25 @@ mod menu_tests {
         assert!(labels[0].contains("project"));
         assert!(labels[0].contains("alpha"));
         assert!(labels[1].contains("beta"));
+    }
+
+    #[test]
+    fn native_menu_build_accepts_close_all_shortcut() {
+        let bindings = crate::shortcuts::Registry::defaults();
+        let combo = |id: &str| bindings.combo(id).to_string();
+        let items = build_menu(
+            "en",
+            Arc::new(|_| {}),
+            Arc::new(|| {}),
+            Arc::new(|_| {}),
+            Arc::new(|| {}),
+            &[],
+            false,
+            &combo,
+            true,
+        );
+
+        assert!(!items.is_empty());
     }
 }
 

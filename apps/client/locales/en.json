@@ -1188,6 +1188,8 @@
     "clearRecent": "Clear Recent",
     "newTab": "New Tab",
     "closeTab": "Close Tab",
+    "closeWindow": "Close Window",
+    "closeAllWindows": "Close All Windows",
     "closeTabsRight": "Close Tabs to the Right",
     "closeTabsLeft": "Close Tabs to the Left",
     "closeAllTabs": "Close All Tabs",

@@ -20,6 +20,7 @@ fn main() -> impl std::process::Termination {
             title: nsh_app::brand::PRODUCT_NAME.to_owned(),
             // 设计板内容区：1440×900 视口减四边 24px 桌面留白。
             size: (1392, 852),
+            keep_alive_on_close: true,
             ..Default::default()
         },
     )

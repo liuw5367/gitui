@@ -37,6 +37,8 @@ pub(crate) struct SessionHandle {
     pub(crate) task_owner: Owner,
     /// 欢迎窗口是否打开（独立窗口；打开仓库后关掉，关掉最后一个标签页后重新打开）。
     pub(crate) welcome_open: Signal<bool>,
+    /// 主窗口关闭后置为 true；Dock 重开时据此按设置显示工作区或欢迎页。
+    pub(crate) dock_reopen_pending: Signal<bool>,
     /// 设置窗口是否打开（独立窗口；菜单、工具栏与 Done 都只改这个信号）。
     pub(crate) settings_open: Signal<bool>,
     /// 当前主区模式；刷新时只重读当前页面的文件级补丁。
@@ -465,6 +467,7 @@ impl SessionHandle {
         {
             self.activate_tab(index);
             if !auxiliary {
+                self.dock_reopen_pending.set(false);
                 welcome_open.set(false);
                 nsh_core::element::desktop::main_window().show();
                 nsh_core::element::desktop::main_window().focus();
@@ -487,6 +490,7 @@ impl SessionHandle {
         }
         // 从欢迎页进入主窗口：关掉欢迎窗口并聚焦主窗口。
         if !auxiliary {
+            self.dock_reopen_pending.set(false);
             welcome_open.set(false);
             nsh_core::element::desktop::main_window().show();
             nsh_core::element::desktop::main_window().focus();
@@ -711,10 +715,11 @@ impl SessionHandle {
         self.finish_empty_session();
     }
 
-    /// 关闭主窗口时保存当前标签组，供下次启动恢复，然后关闭窗口。
+    /// 关闭主窗口时保存当前标签组并隐藏窗口，供 Dock 重开时复用。
     pub(crate) fn close_workspace(&self) {
         self.persist();
-        nsh_core::element::desktop::main_window().close();
+        self.dock_reopen_pending.set(true);
+        nsh_core::element::desktop::main_window().hide();
     }
 
     /// 将指定标签放到新位置，并保持原活动仓库不变。
@@ -946,6 +951,7 @@ mod session_tab_tests {
             tabs: signal(tabs),
             active: signal(active_index),
             welcome_open: signal(false),
+            dock_reopen_pending: signal(false),
             settings_open: signal(false),
             mode: signal(crate::Mode::History),
             recent: signal(Vec::new()),

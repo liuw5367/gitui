@@ -22,6 +22,7 @@ pub(crate) struct AskPassClient {
 #[derive(Clone)]
 pub(crate) struct AskPassUi {
     pub(crate) open: Signal<bool>,
+    pub(crate) window_ref: Signal<Option<nsh_core::element::desktop::WindowRef>>,
     active: Signal<Option<PromptState>>,
     queued: Signal<Vec<PromptState>>,
 }
@@ -59,6 +60,7 @@ pub(crate) fn channel() -> (AskPassUi, AskPassClient, Receiver<UiEvent>) {
     return (
         AskPassUi {
             open: signal(false),
+            window_ref: signal(None),
             active: signal(None),
             queued: signal(Vec::new()),
         },

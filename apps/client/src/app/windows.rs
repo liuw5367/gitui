@@ -31,6 +31,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
     let active = handles.session.active;
     let askpass = handles.askpass.clone();
     let askpass_open = askpass.open;
+    let askpass_window_ref = askpass.window_ref;
     let language = handles.language;
     // 标题在窗口元素构建时定一次：响应式标题会让整扇窗（含整棵内容树）随着语言
     // 变化重建，而内容里的复选控件不支持被这样重建（nsh 会在旧 owner 上写 prop）。
@@ -115,6 +116,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
             move |event| {
                 if !event.open {
                     askpass_open.set(false);
+                    askpass_window_ref.set(None);
                     askpass.dismiss_active();
                 }
             }
@@ -122,6 +124,7 @@ pub(crate) fn windows(handles: &AppHandles) -> impl IntoElement + use<> {
         .content(move || {
             center_this_window();
             let window = nsh_core::element::desktop::current_window();
+            askpass_window_ref.set(Some(window.clone()));
             on_key("mod+w", move |_| window.close());
             return askpass.view(language);
         });
@@ -151,6 +154,81 @@ pub(crate) fn install_worktree_opener(handles: &mut AppHandles) {
         open_worktree_window(&opener_handles, tab_id, path)
     });
     handles.refs.open_worktree_window = Some(opener);
+}
+
+/// Close the window that currently owns keyboard focus.
+pub(crate) fn close_focused_window(
+    handles: &AppHandles,
+    gallery_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+) {
+    let focused = |window: &nsh_core::element::desktop::WindowRef| {
+        window.state().is_some_and(|state| state.focused)
+    };
+    if let Some(window) = handles.askpass.window_ref.get_untracked()
+        && focused(&window)
+    {
+        window.close();
+        return;
+    }
+    if let Some(window) = gallery_window.get_untracked()
+        && focused(&window)
+    {
+        window.close();
+        return;
+    }
+    if let Some(window) = handles.session.settings_window.get_untracked()
+        && focused(&window)
+    {
+        window.close();
+        return;
+    }
+    if let Some(window) = handles.session.welcome_window.get_untracked()
+        && focused(&window)
+    {
+        window.close();
+        return;
+    }
+    if let Some((_, window)) = handles
+        .refs
+        .worktree_windows
+        .get_untracked()
+        .into_iter()
+        .find(|(_, window)| focused(window))
+    {
+        window.close();
+        return;
+    }
+    if nsh_core::element::desktop::main_window()
+        .state()
+        .is_some_and(|state| state.focused)
+    {
+        handles.session.close_workspace();
+    }
+}
+
+/// Close all app windows while keeping the process and saved workspace alive in the Dock.
+pub(crate) fn close_all_windows(
+    handles: &AppHandles,
+    gallery_open: Signal<bool>,
+    gallery_window: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+) {
+    if let Some(window) = handles.askpass.window_ref.get_untracked() {
+        window.close();
+    }
+    if let Some(window) = handles.session.settings_window.get_untracked() {
+        window.close();
+    }
+    if let Some(window) = handles.session.welcome_window.get_untracked() {
+        window.close();
+    }
+    for (_, window) in handles.refs.worktree_windows.get_untracked() {
+        window.close();
+    }
+    if let Some(window) = gallery_window.get_untracked() {
+        window.close();
+    }
+    gallery_open.set(false);
+    handles.session.close_workspace();
 }
 
 /// Open a registered linked worktree in its own one-repository native window.

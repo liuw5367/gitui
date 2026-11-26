@@ -14,7 +14,10 @@ use nsh_core::desktop::WindowPosition;
 use nsh_core::prelude::*;
 
 /// 组件画廊是独立调试窗口，不参与主窗口的命中测试。
-pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
+pub(crate) fn gallery(
+    open: Signal<bool>,
+    window_ref: Signal<Option<nsh_core::element::desktop::WindowRef>>,
+) -> impl IntoElement {
     let input_value = signal(String::new());
     let area_value = signal(String::new());
     let checked = signal(true);
@@ -31,9 +34,11 @@ pub(crate) fn gallery(open: Signal<bool>) -> impl IntoElement {
         .on_open_change(move |change| {
             if !change.open {
                 open.set(false);
+                window_ref.set(None);
             }
         })
         .content(move || {
+            window_ref.set(Some(nsh_core::element::desktop::current_window()));
             body(
                 open,
                 input_value,

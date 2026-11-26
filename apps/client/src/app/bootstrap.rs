@@ -80,6 +80,7 @@ pub(crate) fn app() -> impl IntoElement {
     let palette_open = signal(acceptance::flag("GITUI_PALETTE"));
     // 组件画廊是独立验收窗口：⌘⇧D 打开或关闭；`GITUI_GALLERY=1` 用于截图启动时打开。
     let gallery_open = signal(acceptance::flag("GITUI_GALLERY"));
+    let gallery_window_ref = signal(None);
     let settings_state = signal(store::load_settings(&store_dir));
     let git_executable: Arc<dyn Fn() -> git::GitExecutable + Send + Sync> = {
         let settings_state = settings_state;
@@ -380,6 +381,7 @@ pub(crate) fn app() -> impl IntoElement {
         active,
         task_owner: Owner::current(),
         welcome_open,
+        dock_reopen_pending: signal(false),
         settings_open,
         mode,
         recent,
@@ -407,8 +409,21 @@ pub(crate) fn app() -> impl IntoElement {
         }
     });
     let reopen_session = session.clone();
+    let reopen_settings = settings_state;
     main_window().on_focus_change(move |focused| {
         if !focused || suppress_welcome {
+            return;
+        }
+        if reopen_session.dock_reopen_pending.get_untracked() {
+            reopen_session.dock_reopen_pending.set(false);
+            if reopen_settings.get_untracked().restore_session
+                && !reopen_session.tabs.get_untracked().is_empty()
+            {
+                reopen_session.refresh_active_tab();
+                return;
+            }
+            main_window().hide();
+            reopen_session.go_welcome();
             return;
         }
         if !reopen_session.tabs.get_untracked().is_empty() {
@@ -744,7 +759,20 @@ pub(crate) fn app() -> impl IntoElement {
     {
         let run: Arc<dyn Fn(&'static str)> = {
             let search = handles.search.clone();
-            Arc::new(move |id: &'static str| search.run_command(id))
+            let window_handles = handles.clone();
+            let gallery_open = gallery_open;
+            let gallery_window = gallery_window_ref;
+            Arc::new(move |id: &'static str| match id {
+                "closeWindow" => {
+                    crate::app::windows::close_focused_window(&window_handles, gallery_window)
+                }
+                "closeAllWindows" => crate::app::windows::close_all_windows(
+                    &window_handles,
+                    gallery_open,
+                    gallery_window,
+                ),
+                _ => search.run_command(id),
+            })
         };
         let choose_folder: Arc<dyn Fn()> = {
             let welcome = handles.welcome.clone();
@@ -868,7 +896,7 @@ pub(crate) fn app() -> impl IntoElement {
                 .into_element();
             }
         }))
-        .child(ui::gallery::gallery(gallery_open));
+        .child(ui::gallery::gallery(gallery_open, gallery_window_ref));
 }
 
 fn workspace_host(
