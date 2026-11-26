@@ -93,6 +93,8 @@ impl CommitLoadQueue {
 pub(crate) struct HistoryState {
     /// 工具栏搜索框里的关键字。
     pub(crate) query: Signal<String>,
+    /// History 工具栏搜索框的句柄，供快捷键聚焦。
+    pub(crate) query_ref: ElementRef,
     /// 筛选浮层中尚未应用的条件。
     pub(crate) draft: Signal<FilterDraft>,
     /// 是否展开筛选浮层（设计板 05）。

@@ -31,6 +31,22 @@ pub(crate) struct HistoryCommands {
 }
 
 impl HistoryCommands {
+    /// 关闭筛选浮层并聚焦 History 工具栏搜索框。
+    pub(crate) fn focus_search(&self) {
+        self.state.filter_open.set(false);
+        self.state.filter_menu.set(None);
+        let query_ref = self.state.query_ref;
+        let mode = self.mode;
+        Owner::detached().run(|| {
+            spawn(async move {
+                next_frame().await;
+                if mode.get_untracked() == crate::Mode::History {
+                    query_ref.focus();
+                }
+            });
+        });
+    }
+
     /// 先显示行选中态并切到 History，再异步更新提交数据。
     pub(crate) fn request_commit_selection(&self, tab_id: u64, sha: String) {
         let active = self.session.active.get_untracked();

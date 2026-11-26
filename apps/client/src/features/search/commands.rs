@@ -291,7 +291,8 @@ impl SearchCommands {
                 if self.session.welcome_open.get_untracked() {
                     self.welcome.focus_search();
                 } else {
-                    self.open_history_filter_centered();
+                    self.set_mode(crate::Mode::History);
+                    self.history.focus_search();
                 }
             }
             // ⇧⌘F 始终是历史过滤。

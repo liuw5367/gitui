@@ -1015,7 +1015,7 @@
     "descCloseTab": "Close the current repository tab.",
     "descNewTab": "Open the welcome window and pick a repository.",
     "descRefresh": "Reload the current repository.",
-    "descFilter": "Focus the changes filter.",
+    "descFilter": "Focus the current view's search field.",
     "descFilterHistory": "Filter the history list.",
     "descPush": "Push the current branch.",
     "descCommit": "Open the Changes panel.",

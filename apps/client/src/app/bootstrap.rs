@@ -434,6 +434,7 @@ pub(crate) fn app() -> impl IntoElement {
     // 提交历史（P2 竖切的第一片）：信号收进 HistoryState，用例收进 HistoryCommands。
     let history_state = features::history::state::HistoryState {
         query: history_query,
+        query_ref: element_ref(),
         draft: filter_draft,
         filter_open,
         filter_position: signal(None),

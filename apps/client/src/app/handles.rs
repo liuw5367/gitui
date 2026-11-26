@@ -114,6 +114,7 @@ impl AppHandles {
         let draft = signal(handles.history.state.draft.get_untracked());
         handles.history.state = crate::features::history::state::HistoryState {
             query,
+            query_ref: element_ref(),
             draft,
             filter_open: signal(false),
             filter_position: signal(None),

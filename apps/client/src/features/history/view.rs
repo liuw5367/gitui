@@ -818,6 +818,7 @@ fn hist_bar(
     filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
 ) -> impl IntoElement + use<> {
     let query = state.query;
+    let query_ref = state.query_ref;
     let filter_open = state.filter_open;
     let filter_tab_id = state.filter_tab_id;
     let compare_refs_open = state.compare_refs_open;
@@ -973,11 +974,12 @@ fn hist_bar(
         // 快速搜索与已应用筛选独立；输入立即筛选提交，清空按钮只在有内容时出现。
         .child(
             view().w(px(128.0)).child(
-                crate::ui::text_input::search_field_clearable(
+                crate::ui::text_input::search_field_clearable_ref(
                     query,
                     move || i18n::t(language.get().as_str(), "history.filter"),
                     move || i18n::t(language.get().as_str(), "history.clear"),
                     move |value| query.set(value.to_string()),
+                    &query_ref,
                 )
                 .h(px(crate::ui::CONTROL_SMALL)),
             ),

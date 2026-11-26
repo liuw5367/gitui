@@ -1015,7 +1015,7 @@
     "descCloseTab": "关闭当前仓库标签页。",
     "descNewTab": "打开欢迎窗口选择仓库。",
     "descRefresh": "重新载入当前仓库。",
-    "descFilter": "聚焦变更过滤器。",
+    "descFilter": "聚焦当前视图的搜索框。",
     "descFilterHistory": "过滤历史列表。",
     "descPush": "推送当前分支。",
     "descCommit": "切换到 Changes 面板。",

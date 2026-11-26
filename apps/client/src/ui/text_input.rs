@@ -391,6 +391,24 @@ pub(crate) fn search_field_clearable(
     );
 }
 
+/// 可清空搜索框，并提供快捷键聚焦句柄。
+pub(crate) fn search_field_clearable_ref(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    clear_label: impl Fn() -> String + 'static,
+    on_change: impl Fn(&str) + 'static,
+    handle: &ElementRef,
+) -> nsh_core::element::View {
+    return search_field_inner(
+        value,
+        placeholder,
+        None,
+        on_change,
+        Some(*handle),
+        Some(std::rc::Rc::new(clear_label)),
+    );
+}
+
 fn search_field_inner(
     value: Signal<String>,
     placeholder: impl Fn() -> String + 'static,
