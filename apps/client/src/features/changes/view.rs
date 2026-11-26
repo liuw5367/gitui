@@ -583,6 +583,7 @@ pub(crate) fn changelists_panel(
                 let tree_select = select_change_path_for_rows.clone();
                 let tree_expanded = tree_expanded_for_rows;
                 let expanded_key = tree_key.clone();
+                let current_changelist = group_name_for_rows.clone();
                 let render_entries = entries.clone();
                 let render_indices = path_entries
                     .iter()
@@ -597,6 +598,7 @@ pub(crate) fn changelists_panel(
                 let render_open = open_for_rows.clone();
                 let render_reveal = reveal_for_rows.clone();
                 let render_move = move_for_rows.clone();
+                let render_stage_directory = command_for_rows.clone();
                 let render_dragged = dragged_path;
                 let render_target = drop_target;
                 return crate::ui::tree::tree_with_renderer(
@@ -618,6 +620,17 @@ pub(crate) fn changelists_panel(
                         let entry_id = tree_entry.id.to_string();
                         let depth = tree_entry.depth as f32;
                         if tree_entry.folder {
+                            let directory = entry_id
+                                .strip_prefix("directory:")
+                                .unwrap_or_default()
+                                .to_string();
+                            let stage_command = render_stage_directory.clone();
+                            let stage_directory = directory.clone();
+                            let stage_changelist = current_changelist.clone();
+                            let unstage_command = render_stage_directory.clone();
+                            let unstage_directory = directory;
+                            let unstage_changelist = current_changelist.clone();
+                            let folder_language = language;
                             return view()
                                 .w_full()
                                 .h(px(crate::ui::ROW))
@@ -651,6 +664,34 @@ pub(crate) fn changelists_panel(
                                         .number_of_lines(1)
                                         .text_overflow(nsh_core::EllipsizeMode::Head),
                                 )
+                                .on_context_menu(move |event: &ContextMenuEvent| {
+                                    let lang = folder_language.get_untracked();
+                                    let stage_command = stage_command.clone();
+                                    let stage_directory = stage_directory.clone();
+                                    let stage_changelist = stage_changelist.clone();
+                                    let unstage_command = unstage_command.clone();
+                                    let unstage_directory = unstage_directory.clone();
+                                    let unstage_changelist = unstage_changelist.clone();
+                                    let items = vec![
+                                        MenuItem::new(i18n::t(lang.as_str(), "changes.stageAll"))
+                                            .on_select(move || {
+                                                stage_command.stage_directory(
+                                                    stage_directory.clone(),
+                                                    stage_changelist.clone(),
+                                                    true,
+                                                );
+                                            }),
+                                        MenuItem::new(i18n::t(lang.as_str(), "changes.unstageAll"))
+                                            .on_select(move || {
+                                                unstage_command.stage_directory(
+                                                    unstage_directory.clone(),
+                                                    unstage_changelist.clone(),
+                                                    false,
+                                                );
+                                            }),
+                                    ];
+                                    crate::ui::menu::popup_at(items, event.page_position);
+                                })
                                 .into_element();
                         }
                         let Some(index) = entry_id

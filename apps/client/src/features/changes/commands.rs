@@ -227,6 +227,16 @@ impl ChangesCommands {
         }
     }
 
+    /// 暂存或取消暂存当前清单下某个目录中的全部文件。
+    pub(crate) fn stage_directory(&self, directory: String, name: Option<String>, stage: bool) {
+        let current = self.session.active.get_untracked();
+        let mut tabs = self.session.tabs.get_untracked();
+        if let Some(tab) = tabs.get_mut(current) {
+            ops::stage_directory(tab, name.as_deref(), directory.as_str(), stage);
+            self.session.tabs.set(tabs);
+        }
+    }
+
     /// 按 hunk / 单行暂存或取消暂存（原 `apply_piece`）。
     pub(crate) fn apply_piece(
         &self,

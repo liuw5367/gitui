@@ -227,15 +227,34 @@ pub(crate) fn stage_changelist(tab: &mut Tab, name: Option<&str>, stage: bool) {
         .changes
         .iter()
         .filter(|entry| entry.changelist.as_deref() == name)
-        .filter(|entry| {
-            if stage {
-                entry.worktree != ' ' || entry.untracked
-            } else {
-                entry.index != ' ' && entry.index != '?'
-            }
-        })
+        .filter(|entry| is_stageable(entry, stage))
         .map(|entry| entry.path.clone())
         .collect::<Vec<_>>();
+    return stage_paths(tab, paths, stage);
+}
+
+/// 暂存或取消暂存当前清单下某个目录的全部文件。
+pub(crate) fn stage_directory(tab: &mut Tab, name: Option<&str>, directory: &str, stage: bool) {
+    let prefix = format!("{directory}/");
+    let paths = tab
+        .changes
+        .iter()
+        .filter(|entry| entry.changelist.as_deref() == name)
+        .filter(|entry| entry.path.starts_with(&prefix))
+        .filter(|entry| is_stageable(entry, stage))
+        .map(|entry| entry.path.clone())
+        .collect::<Vec<_>>();
+    return stage_paths(tab, paths, stage);
+}
+
+fn is_stageable(entry: &ChangeEntry, stage: bool) -> bool {
+    if stage {
+        return entry.worktree != ' ' || entry.untracked;
+    }
+    return entry.index != ' ' && entry.index != '?';
+}
+
+fn stage_paths(tab: &mut Tab, paths: Vec<String>, stage: bool) {
     if paths.is_empty() {
         return;
     }
