@@ -16,8 +16,8 @@ use nsh_core::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ChangesDiffSnapshot {
     Change {
+        tab_id: u64,
         path: String,
-        staged: bool,
         patch: domain::diff::Patch,
     },
     Stash {
@@ -36,8 +36,8 @@ pub(crate) fn diff_snapshot(tab: &Tab) -> Option<ChangesDiffSnapshot> {
     let index = tab.selected_change?;
     let entry = tab.changes.get(index);
     return Some(ChangesDiffSnapshot::Change {
+        tab_id: tab.id,
         path: entry.map(|entry| entry.path.clone()).unwrap_or_default(),
-        staged: entry.is_some_and(|entry| entry.staged),
         patch: tab.change_diff.clone(),
     });
 }
@@ -46,15 +46,16 @@ pub(crate) fn change_diff(
     cmd: &ChangesCommands,
     diff_state: &crate::shared::diff::DiffState,
     diff_cmd: &crate::shared::diff::DiffCommands,
+    current: Memo<Option<Tab>>,
     snapshot: ChangesDiffSnapshot,
 ) -> AnyElement {
     let language = cmd.language;
-    let (label, staged_selection, patch) = match snapshot {
+    let (tab_id, label, patch) = match snapshot {
         ChangesDiffSnapshot::Change {
+            tab_id,
             path,
-            staged,
             patch,
-        } => (path, staged, patch),
+        } => (tab_id, path, patch),
         ChangesDiffSnapshot::Stash { tab_id, stash } => {
             return stash_diff_view(language, cmd, diff_state, diff_cmd, tab_id, stash);
         }
@@ -62,10 +63,10 @@ pub(crate) fn change_diff(
     let blame_path = label.clone();
     let ignore_whitespace = diff_state.ignore_whitespace.get();
     // 视图回调要 `Arc<dyn Fn>`，这里把本功能的命令包一层。
-    let apply_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)> = {
+    let apply_piece: std::sync::Arc<dyn Fn(usize, bool)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |hunk: usize, line: Option<usize>, reverse: bool| {
-            cmd.apply_piece(hunk, line, reverse, ignore_whitespace)
+        std::sync::Arc::new(move |hunk: usize, reverse: bool| {
+            cmd.apply_piece(hunk, reverse, ignore_whitespace)
         })
     };
     let clear = cmd.clone();
@@ -77,11 +78,16 @@ pub(crate) fn change_diff(
     let reload_cmd = cmd.clone();
     let on_ignore_whitespace: std::sync::Arc<dyn Fn(bool)> =
         std::sync::Arc::new(move |ignore| reload_cmd.reload_selected_diff(ignore));
-    let on_file: std::sync::Arc<dyn Fn()> = {
-        let cmd = cmd.clone();
-        let path = label.clone();
-        std::sync::Arc::new(move || {
-            cmd.toggle_stage_path(path.clone());
+    let hunk_staged: std::rc::Rc<dyn Fn(usize) -> bool> = {
+        let current = current;
+        std::rc::Rc::new(move |index| {
+            current.with(|tab| {
+                tab.as_ref()
+                    .filter(|tab| tab.id == tab_id)
+                    .and_then(|tab| tab.change_hunk_staged.get(index))
+                    .copied()
+                    .unwrap_or(false)
+            })
         })
     };
     let header = view()
@@ -133,10 +139,9 @@ pub(crate) fn change_diff(
             Some(open_blame),
             Some(on_ignore_whitespace),
             Some(crate::ui::diff_surface::StagingActions {
-                staged: staged_selection,
+                hunk_staged,
                 location_patch,
                 on_piece: apply_piece,
-                on_file,
             }),
         ))
         .into_element();
@@ -256,9 +261,9 @@ pub(crate) fn changelists_panel(
         let cmd = cmd.clone();
         std::sync::Arc::new(move |index| cmd.toggle_stage(index))
     };
-    let toggle_stage_path: std::sync::Arc<dyn Fn(String)> = {
+    let set_stage_path: std::sync::Arc<dyn Fn(String, bool)> = {
         let cmd = cmd.clone();
-        std::sync::Arc::new(move |path| cmd.toggle_stage_path(path))
+        std::sync::Arc::new(move |path, stage| cmd.set_stage_path(path, stage))
     };
     let select_change_path: std::sync::Arc<dyn Fn(String)> = {
         let cmd = cmd.clone();
@@ -367,7 +372,7 @@ pub(crate) fn changelists_panel(
     }
     for (name, _label, mut indices) in groups {
         indices.sort_by_key(|index| tab.changes[*index].path.clone());
-        let toggle_stage_path_for_rows = toggle_stage_path.clone();
+        let set_stage_path_for_rows = set_stage_path.clone();
         let select_change_path_for_rows = select_change_path.clone();
         let group_target = name.clone();
         let leave_target = name.clone();
@@ -592,7 +597,7 @@ pub(crate) fn changelists_panel(
                 let render_lists = lists_for_rows.clone();
                 let render_root = root_for_rows.clone();
                 let render_toggle = toggle_for_rows.clone();
-                let render_toggle_path = toggle_stage_path_for_rows.clone();
+                let render_set_stage_path = set_stage_path_for_rows.clone();
                 let render_discard = discard_for_rows.clone();
                 let render_copy = copy_for_rows.clone();
                 let render_open = open_for_rows.clone();
@@ -709,8 +714,15 @@ pub(crate) fn changelists_panel(
                             current,
                             repo_id_for_rows,
                             path.clone(),
-                            entry.staged,
-                            |entry| entry.staged,
+                            entry.is_fully_staged(),
+                            ChangeEntry::is_fully_staged,
+                        );
+                        let partially_staged = live_change_value(
+                            current,
+                            repo_id_for_rows,
+                            path.clone(),
+                            entry.is_partially_staged(),
+                            ChangeEntry::is_partially_staged,
                         );
                         let additions = live_change_value(
                             current,
@@ -741,6 +753,7 @@ pub(crate) fn changelists_panel(
                             ChangeEntry::status_letter,
                         );
                         let path_for_toggle = path.clone();
+                        let set_stage_path = render_set_stage_path.clone();
                         let source_list = entry.changelist.clone();
                         let start_path = path.clone();
                         let path_for_menu = path.clone();
@@ -766,13 +779,11 @@ pub(crate) fn changelists_panel(
                             .gap(px(crate::ui::GAP_XS))
                             .pl(px(4.0 + depth * 12.0))
                             .pr(px(4.0))
-                            .child(crate::ui::check::indicator_action(
+                            .child(crate::ui::check::indicator_action_state(
                                 move || staged(),
+                                move || partially_staged(),
                                 filename.clone(),
-                                {
-                                    let command = render_toggle_path.clone();
-                                    move || command(path_for_toggle.clone())
-                                },
+                                move |next| set_stage_path(path_for_toggle.clone(), next),
                             ))
                             .child(crate::ui::icon::icon_view(
                                 "file",
@@ -847,7 +858,7 @@ pub(crate) fn changelists_panel(
                                     root_for_menu.as_str(),
                                     path_for_menu.as_str(),
                                     lists_for_menu.clone(),
-                                    menu_entry.staged,
+                                    menu_entry.is_fully_staged(),
                                     menu_entry.untracked,
                                     index,
                                     toggle_for_menu.clone(),
@@ -876,7 +887,7 @@ pub(crate) fn changelists_panel(
                 let path_for_toggle = path.clone();
                 let source_list = entry.changelist.clone();
                 let select = select_change_path_for_rows.clone();
-                let toggle = toggle_stage_path_for_rows.clone();
+                let set_stage_path = set_stage_path_for_rows.clone();
                 let drop_cmd = command_for_rows.clone();
                 let toggle_for_menu = toggle_for_rows.clone();
                 let discard_for_menu = discard_for_rows.clone();
@@ -891,10 +902,20 @@ pub(crate) fn changelists_panel(
                 let path_for_menu = path.clone();
                 let tooltip_path = path.clone();
                 let filename_for_row = filename.clone();
-                let staged =
-                    live_change_value(current, repo_id, path.clone(), entry.staged, |entry| {
-                        entry.staged
-                    });
+                let staged = live_change_value(
+                    current,
+                    repo_id,
+                    path.clone(),
+                    entry.is_fully_staged(),
+                    ChangeEntry::is_fully_staged,
+                );
+                let partially_staged = live_change_value(
+                    current,
+                    repo_id,
+                    path.clone(),
+                    entry.is_partially_staged(),
+                    ChangeEntry::is_partially_staged,
+                );
                 let additions =
                     live_change_value(current, repo_id, path.clone(), entry.additions, |entry| {
                         entry.additions
@@ -933,10 +954,11 @@ pub(crate) fn changelists_panel(
                         .flex_row()
                         .items_center()
                         .gap(px(6.0))
-                        .child(crate::ui::check::indicator_action(
+                        .child(crate::ui::check::indicator_action_state(
                             move || staged(),
+                            move || partially_staged(),
                             filename.clone(),
-                            move || toggle(path_for_toggle.clone()),
+                            move |next| set_stage_path(path_for_toggle.clone(), next),
                         ))
                         .child(
                             view()
@@ -1020,7 +1042,7 @@ pub(crate) fn changelists_panel(
                                 root_for_menu.as_str(),
                                 path_for_menu.as_str(),
                                 lists_for_menu.clone(),
-                                menu_entry.staged,
+                                menu_entry.is_fully_staged(),
                                 menu_entry.untracked,
                                 index,
                                 toggle_for_menu.clone(),
@@ -1081,11 +1103,16 @@ pub(crate) fn changelists_panel(
                 )
                 .child(
                     text(move || {
-                        let (staged, total) = current_for_summary.with(|tab| {
+                        let (staged, unstaged) = current_for_summary.with(|tab| {
                             tab.as_ref().map_or((0, 0), |tab| {
                                 let staged =
                                     tab.changes.iter().filter(|entry| entry.staged).count();
-                                (staged, tab.changes.len())
+                                let unstaged = tab
+                                    .changes
+                                    .iter()
+                                    .filter(|entry| entry.has_unstaged_changes())
+                                    .count();
+                                (staged, unstaged)
                             })
                         });
                         i18n::with_arguments(
@@ -1093,7 +1120,7 @@ pub(crate) fn changelists_panel(
                             "changes.summary",
                             &[
                                 ("staged", staged.to_string()),
-                                ("unstaged", total.saturating_sub(staged).to_string()),
+                                ("unstaged", unstaged.to_string()),
                             ],
                         )
                     })

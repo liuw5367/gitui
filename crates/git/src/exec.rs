@@ -90,6 +90,15 @@ pub(crate) fn run_git_allow_exit_code_with(
     return run_git_inner(executable, directory, args, true, Some(allowed_exit_code));
 }
 
+pub(crate) fn run_git_full_allow_exit_code_with(
+    executable: &GitExecutable,
+    directory: &Path,
+    args: &[&str],
+    allowed_exit_code: i32,
+) -> Result<Vec<u8>, GitError> {
+    return run_git_inner(executable, directory, args, false, Some(allowed_exit_code));
+}
+
 pub(crate) fn run_git_full_with(
     executable: &GitExecutable,
     directory: &Path,

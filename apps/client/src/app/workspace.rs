@@ -546,6 +546,7 @@ fn center_content(
                             &changes,
                             &history.diff.state,
                             &history.diff,
+                            current,
                             snapshot,
                         )
                     } else {

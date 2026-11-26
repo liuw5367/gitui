@@ -160,16 +160,122 @@ impl Repo {
         return self.patch_with_full_context(&args);
     }
 
+    /// 相对 HEAD（或空树）的单文件完整工作区差异，包含已暂存与未暂存改动。
+    pub fn file_diff_from_head_with_whitespace(
+        &self,
+        path: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        let base = self.diff_base_oid()?;
+        let mut args = vec!["diff", "--no-color", "--no-renames"];
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push(base.as_str());
+        args.push("--");
+        args.push(path);
+        return self.patch_with_full_context(&args);
+    }
+
+    /// 相对 HEAD（或空树）的单文件暂存区补丁原文，用于比较暂存行，不额外读取全文上下文。
+    pub fn staged_file_patch_from_head_with_whitespace(
+        &self,
+        path: &str,
+        ignore_whitespace: bool,
+    ) -> Result<String, GitError> {
+        let base = self.diff_base_oid()?;
+        let mut args = vec!["diff", "--no-color", "--no-renames", "--cached"];
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.push(base.as_str());
+        args.push("--");
+        args.push(path);
+        let output = self.run_git(&args)?;
+        return Ok(String::from_utf8_lossy(&output).to_string());
+    }
+
+    /// 未跟踪文件相对空文件的差异。
+    pub fn untracked_file_diff_with_whitespace(
+        &self,
+        path: &str,
+        ignore_whitespace: bool,
+    ) -> Result<Patch, GitError> {
+        let mut args = vec!["diff", "--no-index", "--no-color", "--no-renames"];
+        if ignore_whitespace {
+            args.push("--ignore-all-space");
+        }
+        args.extend(["--", "/dev/null", path]);
+        return self.patch_with_full_context_allowed(&args, Some(1));
+    }
+
+    /// 统计 HEAD 到工作区的全部变更，并补上 Git diff 默认排除的未跟踪文件。
+    pub fn numstat_worktree_from_head(&self) -> Result<Vec<DiffStat>, GitError> {
+        let base = self.diff_base_oid()?;
+        let output = self.run_git(&["diff", "--numstat", "--no-renames", "-z", base.as_str()])?;
+        let mut stats = parse_numstat_z(&output);
+
+        let output = self.run_git(&["ls-files", "--others", "--exclude-standard", "-z"])?;
+        for path in output
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+        {
+            let path = String::from_utf8_lossy(path).to_string();
+            let diff = self.run_git_allow_exit_code(
+                &[
+                    "diff",
+                    "--no-index",
+                    "--numstat",
+                    "-z",
+                    "--",
+                    "/dev/null",
+                    path.as_str(),
+                ],
+                1,
+            )?;
+            let Some(mut stat) = parse_numstat_z(&diff).into_iter().next() else {
+                continue;
+            };
+            stat.status = 'A';
+            stat.path = path;
+            stats.push(stat);
+        }
+        return Ok(stats);
+    }
+
+    fn diff_base_oid(&self) -> Result<String, GitError> {
+        if let Some(head) = self.head_oid() {
+            return Ok(head);
+        }
+        let output = self.run_git(&["hash-object", "-t", "tree", "--", "/dev/null"])?;
+        return Ok(String::from_utf8_lossy(&output).trim().to_string());
+    }
+
     /// 保留 Git 默认上下文补丁，并额外读一份足够大上下文的补丁供全文显示。
     pub(crate) fn patch_with_full_context(&self, args: &[&str]) -> Result<Patch, GitError> {
-        let output = self.run_git(args)?;
+        return self.patch_with_full_context_allowed(args, None);
+    }
+
+    fn patch_with_full_context_allowed(
+        &self,
+        args: &[&str],
+        allowed_exit_code: Option<i32>,
+    ) -> Result<Patch, GitError> {
+        let output = match allowed_exit_code {
+            Some(code) => self.run_git_allow_exit_code(args, code)?,
+            None => self.run_git(args)?,
+        };
         let text = String::from_utf8_lossy(&output).to_string();
         let mut patch = Patch::parse(text.as_str());
 
         let mut full_args = args.to_vec();
         let option_index = if args.first() == Some(&"stash") { 2 } else { 1 };
         full_args.insert(option_index, "--unified=999999999");
-        if let Ok(output) = self.run_git_full(&full_args) {
+        let full_output = match allowed_exit_code {
+            Some(code) => self.run_git_full_allow_exit_code(&full_args, code),
+            None => self.run_git_full(&full_args),
+        };
+        if let Ok(output) = full_output {
             patch.full_context = Some(String::from_utf8_lossy(&output).to_string());
         }
         return Ok(patch);
@@ -291,6 +397,29 @@ impl Repo {
         }
         return Ok(stats);
     }
+}
+
+fn parse_numstat_z(output: &[u8]) -> Vec<DiffStat> {
+    let mut stats = Vec::new();
+    for record in output
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
+        let mut parts = record.splitn(3, |byte| *byte == b'\t');
+        let additions = parts.next().unwrap_or_default();
+        let deletions = parts.next().unwrap_or_default();
+        let path = parts.next().unwrap_or_default();
+        if path.is_empty() {
+            continue;
+        }
+        stats.push(DiffStat {
+            status: 'M',
+            path: String::from_utf8_lossy(path).to_string(),
+            additions: String::from_utf8_lossy(additions).parse().unwrap_or(0),
+            deletions: String::from_utf8_lossy(deletions).parse().unwrap_or(0),
+        });
+    }
+    return stats;
 }
 
 #[cfg(test)]

@@ -25,7 +25,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 |---|---|
 | 打开与状态 | `Repo::open`、`Repo::open_with_executable`、`GitExecutable`、`root`、`name`、`summary`、`abbrev_branch`、`head_state`、`ahead_behind`、`status`、`refs`、`ref_oid_snapshot`、`sync_ref_snapshot`、`upstream_ref`、`head_oid`、`resolve_commit_oid`、`commit_oids_between`、`is_ancestor` |
 | 历史与内容 | `log`、`log_filtered`、`log_all`、`log_history`、`resolve_commit`、`authors`、`commit_details`、`commits_between`、`merge_base`、`diff_between`、`diff_between_with_whitespace`、`diff_trees_with_whitespace`、`diff_worktree_with_whitespace`、`patch`、`patch_with_whitespace`、`patch_for_path`、`patch_for_path_with_whitespace`、`numstat`、`blame`、`file_history`、`reflog`、`reflog_page` |
-| 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`file_diff`、`file_diff_with_whitespace` |
+| 暂存区 | `stage`、`stage_all`、`unstage`、`unstage_all`、`discard`、`apply_cached`、`numstat_section`、`numstat_worktree_from_head`、`file_diff`、`file_diff_with_whitespace`、`file_diff_from_head_with_whitespace`、`staged_file_patch_from_head_with_whitespace`、`untracked_file_diff_with_whitespace` |
 | 提交与改写 | `commit`、`commit_with`、`reword_commit`、`squash_commits`、`cherry_pick`、`revert`、`rebase_onto`、`reset_to`、`reset_hard`、`is_tip`、`can_rewrite` |
 | 引用与配置 | `create_branch`、`checkout_new_branch`、`checkout_tracking_branch`、`checkout_branch`、`delete_branch`、`rename_branch`、`merge`、`create_tag`、`create_tag_with`、`delete_tag`、`add_remote`、`remove_remote`、`set_remote_url`、`remote_urls`、`remote_info`、`config_get`、`config_get_local`、`config_set`、`config_unset`、`stash_push`、`stash_push_with`、`stash_push_selected`、`stash_show`、`stash_show_with_whitespace`、`stash_show_patch_with_whitespace`、`stash_pop`、`stash_apply`、`stash_drop` |
 | 子模块 | `SubmoduleInfo`、`update_submodule`、`sync_submodule`、`remove_submodule` |
@@ -35,7 +35,7 @@ Git 执行层。仓库里只有这里拼装并运行 `git` 命令，并把输出
 | 克隆与初始化 | `clone`、`clone_with`、`clone_with_executable`、`start_clone`、`start_clone_with_executable`、`init_repository`、`init_repository_with_executable`、`init_with`、`init_with_executable` |
 | 本机信息与底层执行 | `info`、`info_with`、`credential_helper`、`credential_helper_with` |
 
-`diff_between`、`patch`、`patch_for_path`、`file_diff` 返回已解析的 `domain::diff::Patch`；Git 的默认上下文原文保存在 `Patch::raw`，供复制与暂存使用，并额外查询 `Patch::full_context` 供 DiffView 展示整个文件。带 `with_whitespace` 的方法可附加 Git `--ignore-all-space`，只改变展示查询；提交差异固定以第一父提交为基准，根提交与空 tree 比较，merge commit 不使用 combined diff。贮藏的完整差异由 `stash_show_patch_with_whitespace` 返回同样结构。
+`diff_between`、`patch`、`patch_for_path`、`file_diff` 返回已解析的 `domain::diff::Patch`；Git 的默认上下文原文保存在 `Patch::raw`，供复制与暂存使用，并额外查询 `Patch::full_context` 供 DiffView 展示整个文件。Changes 使用 `file_diff_from_head_with_whitespace` 展示 HEAD（或空树）到工作区的完整差异，并用 `staged_file_patch_from_head_with_whitespace` 读取 HEAD 到 index 的原始补丁，判断每个 hunk 的暂存状态，避免为状态比对额外生成全文上下文；未跟踪文件使用 `untracked_file_diff_with_whitespace` 与空文件比较。`numstat_worktree_from_head` 同时统计 tracked 与未跟踪文件的工作区最终差异。带 `with_whitespace` 的方法可附加 Git `--ignore-all-space`，只改变展示查询；提交差异固定以第一父提交为基准，根提交与空 tree 比较，merge commit 不使用 combined diff。贮藏的完整差异由 `stash_show_patch_with_whitespace` 返回同样结构。
 
 `diff_between_with_whitespace(base, target, ...)` 用 `git diff <base> <target>` 比较两端 tree；它不计算 `git log base..target` 的提交集合。`diff_trees_with_whitespace` 是这项 tree 比较的明确入口。`merge_base(left, right)` 返回共同祖先 OID，无共同祖先时返回 `None`。`diff_worktree_with_whitespace(revision, ...)` 比较指定 revision 与当前 index/工作区，覆盖已暂存和未暂存的 tracked 文件；Git diff 不包含未跟踪文件。
 

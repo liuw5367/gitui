@@ -14,14 +14,14 @@
 - Changelists 是无外围圆角与边框的弹性区域，列表在内部滚动。标题行显示文件总数及 staged / unstaged 数，并提供全部折叠／展开切换；筛选框为 24 高、有上下留白，输入有内容时可在框内清空。每个清单名称行保持方角，整行点击折叠或展开，右键菜单提供设为默认、修改名称、删除、暂存全部和取消暂存全部；折叠状态按仓库标签保留。
 - 保留底部拖动提示与清单管理入口，提示说明拖动文件可将其移动到其他清单，去掉前置省略号图标；Manage 保持贴右，按钮文案不再带省略号。移除改变 Changelists 高度的拖拽手柄。
 - 清单管理弹窗在标题栏右侧提供关闭按钮，贴近底部的 Manage 入口显示；移除底部 “Filters only” 提示。默认清单也显示禁用的删除按钮，以保持操作列对齐；非默认清单可显式删除，删除后其变更回到默认清单。拖动清空的自定义清单会保留，且空清单可跨应用重启恢复。
-- 清单文件树复用提交信息面板的共享层级树控件，文件夹可折叠、右键可暂存或取消暂存该目录在当前清单中的全部文件，并显示从仓库根目录起的完整相对路径，空间不足时从左侧省略；平铺模式显示完整文件路径并在悬停时提示。文件行仍使用 Changes 的暂存、选择、拖放和右键菜单操作，状态标记排在增删行数之后，已暂存复选框不显示边框。拖放目标以整个清单区域的背景色标记。
+- 清单文件树复用提交信息面板的共享层级树控件，首次显示时递归展开所有目录，之后各目录仍可独立折叠或展开；右键可暂存或取消暂存该目录在当前清单中的全部文件。目录显示从仓库根目录起的完整相对路径，空间不足时从左侧省略；平铺模式显示完整文件路径并在悬停时提示。文件行仍使用 Changes 的暂存、选择、拖放和右键菜单操作，状态标记排在增删行数之后，已暂存复选框不显示边框。拖放目标以整个清单区域的背景色标记。
 - Summary 和 Description 固定在提交区底部，没有单独标签，通过 placeholder 说明用途；Description 从一行随内容增高，最多三行。amend、sign-off、no verify 位于第一行，push 与 force push 位于第二行，Commit 在右侧垂直居中。勾选 no verify 后点击 Commit 会先要求确认，再使用 `--no-verify` 跳过钩子；提交成功后恢复关闭。Force push 始终显示，Push 未开启时禁用，启用后使用 `--force-with-lease`。无暂存改动时不显示额外提示。提交与钩子结果显示在输入区上方，状态块可关闭；勾选提交区的 push 后，提交反馈标题显示“推送中”和当前步骤/总步数，推送进行中为橙点，整个流程成功后变为绿点，失败显示红点。工具栏 Push 的结果仍只显示在同步弹窗。
 - 开启 amend 时，自动载入 `HEAD` 的提交摘要和正文作为新的提交草稿。
 - 该运行布局是按用户反馈批准的设计差异，见 [DEVIATIONS #59](../design/DEVIATIONS.md#59-changes-面板与提交区布局)。
 
 ## 1. 骨架
 
-当前工作区文件 Diff 与 Stash Diff 使用共享的 NSH DiffView 面板，支持 Split / Unified、折叠上下文、软换行、显示空白、改动导航、复制 patch 和按文件路径语法高亮。Split / Unified、折叠上下文、软换行、显示空白与忽略空白选择作为应用级本地偏好保存，History、Changes、Stash、Blame 和 Reflog 入口共用，切换文件或重启应用后保持一致。差异行只使用红／绿背景，不显示左侧加减号。工具条显示新增与删除行数；Export 已移除。Changes 标题显示返回 Commits 和当前文件名。Stage Hunk 位于原有 hunk 分隔行，Stage Line 位于悬浮 gutter 操作槽，两者不增加 DiffView 的代码行高度。暂存索引仍依据原始 Git 补丁的上下文与变更行，不依赖 DiffView 重新编号。无文本 hunk 的二进制文件或模式变更显示无文本变化提示。
+当前工作区文件 Diff 与 Stash Diff 使用共享的 NSH DiffView 面板，支持 Split / Unified、折叠上下文、软换行、显示空白、改动导航、复制 patch 和按文件路径语法高亮。Split / Unified、折叠上下文、软换行、显示空白与忽略空白选择作为应用级本地偏好保存，History、Changes、Stash、Blame 和 Reflog 入口共用，切换文件或重启应用后保持一致。差异行只使用红／绿背景，不显示左侧加减号。工具条显示新增与删除行数；Export 已移除。Changes 标题显示返回 Commits 和当前文件名。Stage Hunk 复用原有 hunk 分隔行上的复选框，复选框和文字可一起切换暂存状态；不提供行级暂存按钮。暂存索引仍依据原始 Git 补丁的上下文与变更行，不依赖 DiffView 重新编号；展开模式显示全文时也保留每个原始 hunk 的独立暂存复选框。无文本 hunk 的二进制文件或模式变更显示无文本变化提示。
 
 ```
 ┌────────────────┬──────────────────────────────────────────────────┬───────────────────────────────────┐
@@ -42,7 +42,7 @@
 │ Submodules 2   │  21 canCommit=true  | (empty)                    │ 4 more unstaged files…            │
 │ Worktrees 3    │ (empty)             | 21 !!message.trim()        │ Drag files onto another…          │
 │                │  22 return (        | 22 return (                │ Commit to main                    │
-│                │ [Unstage line]  added-line action                │             3 staged · 9 unstaged │
+│                │                                                  │             3 staged · 9 unstaged │
 │                │ [v] 9 unchanged lines                            │ Summary  Polish composer…         │
 │                │                                                  │ Description  Disable…             │
 │                │                                                  │ ☑ Sign off                        │
@@ -73,7 +73,7 @@
 
 - **横幅** 30 高、`accent-soft` 底、下边框 1、10 `text2`：图标位 14×14（`accent` 分支图标）→ `<b>Merging origin/main into main</b>`（600、`text`）→ `· 2 conflicts to resolve.` → 弹性空隙 → `Resolve…`（`<a>` 链 14）与 `Abort` 两个小按钮都被压到 20 高、9.5、内距 0×7。样式表另有 `.op-banner.warn`（`warn` 11% 混底、图标转 `warn`），板上没用。
 - **返回条与工具条**：返回条是 `< Commits` chip（22 高、左箭头 10、`aria-label="Back to commit list"`）→ `Staged` 徽章（18 高、圆角 4、内距 0×6、`panel-2` 底、1px `line-soft`、9.5）→ 文件名（10.5 `text3`）→ 空隙 → `12 files · +149 −90`；工具条左簇是同一枚徽章 + 10 的右箭头 + 路径（mono 11）+ `+42` / `−17`（mono 9.5），右簇为 `Split | Unified`（tiny：项高 21、内距 0×7、10.5）、1×18 竖线、三个 24×24 图标（折叠/换行/`¶`）、竖线、`1 of 3`（10.5 等宽数字）、只有 `Next change` 一个箭头。
-- **主体**：由 NSH DiffView 绘制，行号与语法高亮随文件路径识别；新增／删除行仅使用对应背景色。Stage Hunk 复用 hunk 标题行，Stage Line 通过行号 gutter 的悬浮动作槽出现，不插入行下注释。
+- **主体**：由 NSH DiffView 绘制，行号与语法高亮随文件路径识别；新增／删除行仅使用对应背景色。Stage Hunk 复用 hunk 标题行上的复选框，复选框与文案共用切换动作。
 
 ## 3. 提交面板的 Changelists 段
 
@@ -137,7 +137,7 @@
 | 1 | 横幅 | `Resolve…` / `Abort` | 小按钮压到 20 高 | 去 14 解冲突 / 放弃合并 | 仅横幅出现时 |
 | 2 | 返回条 | `< Commits`（`aria-label=Back to commit list`） | chip 22 高 | 回 04 | 常驻 |
 | 3 | diff 工具条 | 折叠 / 换行 / `¶` / `>`（`Collapse all hunks` / `Toggle word wrap` / `Show whitespace` / `Next change`） | 图标 24×24 | 视图开关 / 下一处改动 | 都无 `on` 态；没有上一个 |
-| 4 | hunk 右端 / 新增行内 | Unstage Hunk / Unstage line | mini 17 高 / 行内 8.5 | 反暂存该 hunk / 该行 | 每 hunk、每个新增行各一个 |
+| 4 | hunk 分隔行 | Stage Hunk / Unstage Hunk 复选框与文案 | 复用分隔行 | 暂存或取消暂存该 hunk | 每个 hunk 一个，可切换 |
 | 5 | 列表头 | 树 / 平铺（`Tree view` / `List view`）；漏斗（`Filter changes`） | 图标对 22×18；图标 24×24 | 换列表排法；过滤文件 | 当前项白底 |
 | 6 | 组头 / 文件行 | `…`（`aria-label=<组名> options` / `<文件名> actions`） | 18×17 / 18×18 | 组操作 / 文件菜单 | 每组、每行各一个 |
 | 7 | 文件菜单 | 7 项，`Revert Changes…` 至 `Discard…` | 菜单项 24 高 | 见 §3 | 末项 `danger` |
@@ -152,7 +152,7 @@
 ## 8. 文案要点
 
 - 三处计数口径不同：`12 files · +149 −90`（整个工作区）、`3 staged · 9 unstaged`（暂存/未暂存）、`3 staged files across all changelists`（跨变更集合计），主按钮只数已暂存。清单负责分组和筛选，真正进入提交的是已暂存文件。
-- `Unstage Hunk` / `Unstage line` / `Unstage File` 分别对应 hunk、行、文件三级，三个词不要互换。
+- Stage Hunk / Unstage Hunk 对应 hunk 级暂存；文件级暂存由文件树复选框操作。
 
 ## 9. 与其它画板的关系
 

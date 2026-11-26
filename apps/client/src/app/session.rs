@@ -127,6 +127,8 @@ pub(crate) struct Tab {
     pub(crate) selected_change: Option<usize>,
     /// 选中变更的 diff（加载期解析好，渲染期不再解析）。
     pub(crate) change_diff: domain::diff::Patch,
+    /// 选中变更每个 diff hunk 是否仍包含暂存改动。
+    pub(crate) change_hunk_staged: Vec<bool>,
     /// 变更清单（本地存储，按仓库分组）。
     pub(crate) changelists: Vec<store::Changelist>,
     /// 当前清单名；`None` 表示默认清单。
@@ -243,6 +245,18 @@ pub(crate) struct ChangeEntry {
 }
 
 impl ChangeEntry {
+    pub(crate) fn has_unstaged_changes(&self) -> bool {
+        return self.untracked || self.worktree != ' ';
+    }
+
+    pub(crate) fn is_fully_staged(&self) -> bool {
+        return self.staged && !self.has_unstaged_changes();
+    }
+
+    pub(crate) fn is_partially_staged(&self) -> bool {
+        return self.staged && self.has_unstaged_changes();
+    }
+
     /// 设计稿里显示的状态字母。
     pub(crate) fn status_letter(&self) -> char {
         if self.untracked {
@@ -575,7 +589,7 @@ pub(crate) struct RefreshSnapshot {
     summary: domain::RepoSummary,
     status: Vec<StatusEntry>,
     changes: Vec<ChangeEntry>,
-    selected_change: Option<(Option<usize>, domain::diff::Patch)>,
+    selected_change: Option<(Option<usize>, domain::diff::Patch, Vec<bool>, String)>,
     operation: git::Operation,
     conflicts: Vec<String>,
     conflict_editor: Option<ConflictEditorRefresh>,
@@ -589,6 +603,7 @@ pub(crate) struct RefreshSnapshot {
 }
 
 /// 刷新所需的轻量输入，不复制标签中缓存的完整提交历史、diff 和 blame 数据。
+#[derive(Clone)]
 pub(crate) struct RefreshInput {
     path: String,
     git_executable: GitExecutable,
@@ -718,13 +733,15 @@ pub(crate) fn read_refresh_snapshot(
                 .or_else(|| {
                     (!changes.is_empty()).then_some(old_index.min(changes.len().saturating_sub(1)))
                 });
-            let patch = match index.and_then(|index| changes.get(index)) {
-                Some(change) if !change.untracked => repo
-                    .file_diff(change.path.as_str(), change.staged)
-                    .map_err(|error| error.detail())?,
-                _ => domain::diff::Patch::default(),
-            };
-            return Ok((index, patch));
+            let (patch, staged_hunks, staged_patch) =
+                match index.and_then(|index| changes.get(index)) {
+                    Some(change) => {
+                        crate::features::changes::ops::read_change_diff(&repo, change, false)
+                            .map_err(|error| error.detail())?
+                    }
+                    _ => (domain::diff::Patch::default(), Vec::new(), String::new()),
+                };
+            return Ok((index, patch, staged_hunks, staged_patch));
         });
     let selected_change = match selected_change {
         Some(result) => Some(result?),
@@ -827,6 +844,42 @@ pub(crate) fn read_refresh_snapshot(
         history,
         blame,
     });
+}
+
+/// 把刷新时自动清掉的 hunk 暂存状态同步回 Git index。
+pub(crate) fn reconcile_refresh_snapshot(
+    input: &RefreshInput,
+    mode: crate::Mode,
+    snapshot: RefreshSnapshot,
+) -> Result<RefreshSnapshot, String> {
+    if mode != crate::Mode::Changes {
+        return Ok(snapshot);
+    }
+    let Some(path) = input.selected_change_path.as_deref() else {
+        return Ok(snapshot);
+    };
+    let Some((Some(index), patch, _, staged_patch)) = snapshot.selected_change.as_ref() else {
+        return Ok(snapshot);
+    };
+    if snapshot
+        .changes
+        .get(*index)
+        .is_none_or(|change| change.path != path || change.untracked)
+    {
+        return Ok(snapshot);
+    }
+    let repo = Repo::open_with_executable(input.path.as_str(), &input.git_executable)
+        .map_err(|error| error.detail())?;
+    let changed = crate::features::changes::ops::unstage_hunks_missing_from_worktree(
+        &repo,
+        patch.raw.as_str(),
+        staged_patch.as_str(),
+    )
+    .map_err(|error| error.detail())?;
+    if !changed {
+        return Ok(snapshot);
+    }
+    return read_refresh_snapshot(input, mode);
 }
 
 fn refreshed_conflict_path(
@@ -933,9 +986,10 @@ pub(crate) fn apply_refresh_snapshot(tab: &mut Tab, snapshot: RefreshSnapshot) -
     changed |= replace_if_changed(&mut tab.head, snapshot.head);
     changed |= replace_if_changed(&mut tab.head_oid, snapshot.head_oid);
     changed |= replace_if_changed(&mut tab.remote_urls, snapshot.remote_urls);
-    if let Some((selected, patch)) = snapshot.selected_change {
+    if let Some((selected, patch, staged_hunks, _)) = snapshot.selected_change {
         changed |= replace_if_changed(&mut tab.selected_change, selected);
         changed |= replace_if_changed(&mut tab.change_diff, patch);
+        changed |= replace_if_changed(&mut tab.change_hunk_staged, staged_hunks);
     }
     changed |= apply_operation_refresh(tab, snapshot.operation, snapshot.conflicts);
     if let Some(editor) = snapshot.conflict_editor
@@ -1357,6 +1411,97 @@ mod tests {
     }
 
     #[test]
+    fn refresh_unstages_hunks_that_diffview_clears_after_conflicting_edits() {
+        use crate::features::changes::ops::{apply_piece, load_change_diff};
+
+        let (repo, mut changed, mut tab) = three_hunk_change("auto-unstage-adjacent-edit");
+        apply_piece(&mut tab, 0, false).expect("stage first hunk");
+        let input = RefreshInput::from_tab(&tab);
+        changed[2] = "line3-adjacent-edit".to_string();
+        std::fs::write(repo.path.join("a.txt"), format!("{}\n", changed.join("\n")))
+            .expect("edit adjacent unstaged line");
+        let snapshot =
+            read_refresh_snapshot(&input, crate::Mode::Changes).expect("read adjacent edit");
+        assert_eq!(
+            snapshot.selected_change.as_ref().expect("selected diff").2,
+            vec![true, false, false],
+            "unchanged staged content should remain checked beside a new unstaged edit"
+        );
+        let snapshot = reconcile_refresh_snapshot(&input, crate::Mode::Changes, snapshot)
+            .expect("reconcile adjacent edit");
+        assert!(apply_refresh_snapshot(&mut tab, snapshot));
+        let staged = tab
+            .open_repo()
+            .expect("repo")
+            .staged_file_patch_from_head_with_whitespace("a.txt", false)
+            .expect("staged patch");
+        assert!(staged.contains("line2-staged"));
+
+        let (repo, mut changed, mut tab) = three_hunk_change("auto-unstage-one");
+        let index = tab.selected_change.expect("selected change");
+        apply_piece(&mut tab, 0, false).expect("stage first hunk");
+
+        changed[1] = "line2-edited-after-stage".to_string();
+        std::fs::write(repo.path.join("a.txt"), format!("{}\n", changed.join("\n")))
+            .expect("edit staged line");
+        load_change_diff(&mut tab, index);
+        assert_eq!(tab.selected_change, Some(index));
+        assert!(
+            !tab.changes[index].staged,
+            "the file tree should become unchecked when the only staged hunk is cleared"
+        );
+        assert_eq!(tab.change_hunk_staged, vec![false, false, false]);
+        let staged = tab
+            .open_repo()
+            .expect("repo")
+            .staged_file_patch_from_head_with_whitespace("a.txt", false)
+            .expect("staged patch");
+        assert!(!staged.contains("line2-staged"));
+        assert!(
+            staged.is_empty(),
+            "the index should no longer contain the hunk"
+        );
+
+        let (repo, mut changed, mut tab) = three_hunk_change("auto-unstage-partial");
+        for hunk in 0..3 {
+            apply_piece(&mut tab, hunk, false).expect("stage hunk");
+        }
+        let input = RefreshInput::from_tab(&tab);
+        changed[13] = "line14-edited-after-stage".to_string();
+        std::fs::write(repo.path.join("a.txt"), format!("{}\n", changed.join("\n")))
+            .expect("edit middle staged line");
+
+        let snapshot =
+            read_refresh_snapshot(&input, crate::Mode::Changes).expect("read conflicted diff");
+        assert_eq!(
+            snapshot.selected_change.as_ref().expect("selected diff").2,
+            vec![true, false, true],
+            "DiffView should clear only the edited hunk"
+        );
+        let snapshot = reconcile_refresh_snapshot(&input, crate::Mode::Changes, snapshot)
+            .expect("reconcile cleared hunk");
+        assert!(apply_refresh_snapshot(&mut tab, snapshot));
+        let entry = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == "a.txt")
+            .expect("file tree entry");
+        assert!(
+            entry.is_partially_staged(),
+            "two staged hunks should leave a half selection"
+        );
+        assert_eq!(tab.change_hunk_staged, vec![true, false, true]);
+        let staged = tab
+            .open_repo()
+            .expect("repo")
+            .staged_file_patch_from_head_with_whitespace("a.txt", false)
+            .expect("staged patch");
+        assert!(staged.contains("line2-staged"));
+        assert!(!staged.contains("line14-staged"));
+        assert!(staged.contains("line26-staged"));
+    }
+
+    #[test]
     fn refresh_reads_history_when_a_non_current_ref_moves() {
         let repo = TempRepo::new("non-current-ref-refresh");
         run_test_git(&repo.path, &["branch", "side"]);
@@ -1438,6 +1583,38 @@ mod tests {
             args,
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    fn three_hunk_change(name: &str) -> (TempRepo, Vec<String>, Tab) {
+        let repo = TempRepo::new(name);
+        let base: Vec<String> = (1..=30).map(|index| format!("line{index}")).collect();
+        std::fs::write(repo.path.join("a.txt"), format!("{}\n", base.join("\n")))
+            .expect("write base file");
+        run_test_git(&repo.path, &["add", "-A"]);
+        run_test_git(&repo.path, &["commit", "-q", "-m", "multi-line base"]);
+
+        let mut changed = base;
+        changed[1] = "line2-staged".to_string();
+        changed[13] = "line14-staged".to_string();
+        changed[25] = "line26-staged".to_string();
+        std::fs::write(repo.path.join("a.txt"), format!("{}\n", changed.join("\n")))
+            .expect("write changed file");
+
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "a.txt")
+            .expect("changed file");
+        crate::features::changes::ops::load_change_diff(&mut tab, index);
+        assert_eq!(
+            domain::stage::Sections::parse(tab.change_diff.raw.as_str()).files[0]
+                .hunks
+                .len(),
+            3,
+            "fixture should have three hunks"
+        );
+        return (repo, changed, tab);
     }
 
     #[test]

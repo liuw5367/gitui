@@ -363,8 +363,6 @@
     "revert": "撤销修改…",
     "stageHunk": "暂存此段",
     "unstageHunk": "取消暂存此段",
-    "stageLine": "暂存此行",
-    "unstageLine": "取消暂存此行",
     "pieceApplied": "已应用"
   },
   "commit": {

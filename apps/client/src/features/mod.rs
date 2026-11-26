@@ -155,8 +155,9 @@ impl SessionHandle {
                     };
                     let mode = session.mode.get_untracked();
                     let refresh_started = std::time::Instant::now();
+                    let refresh_input_for_read = refresh_input.clone();
                     let refresh_result = match blocking(move || {
-                        crate::app::session::read_refresh_snapshot(&refresh_input, mode)
+                        crate::app::session::read_refresh_snapshot(&refresh_input_for_read, mode)
                     })
                     .await
                     {
@@ -178,6 +179,58 @@ impl SessionHandle {
                                 }
                                 continue;
                             }
+                            let current = session.active.get_untracked();
+                            let still_active = session.tabs.with_untracked(|list| {
+                                list.get(current).is_some_and(|active| {
+                                    active.id == tab_id_at_start
+                                        && active.load_id == load_id_at_start
+                                        && active.path == path_at_start
+                                })
+                            });
+                            if !still_active {
+                                session.finish_refresh_request(tab_id);
+                                return;
+                            }
+                            let snapshot = match blocking(move || {
+                                crate::app::session::reconcile_refresh_snapshot(
+                                    &refresh_input,
+                                    mode,
+                                    snapshot,
+                                )
+                            })
+                            .await
+                            {
+                                Ok(Ok(snapshot)) => snapshot,
+                                Ok(Err(detail)) => {
+                                    log::warn!(
+                                        target: "gitui::history",
+                                        "event=repo_refresh.failed tab_id={} elapsed_ms={} reason={}",
+                                        tab_id,
+                                        refresh_started.elapsed().as_millis(),
+                                        detail,
+                                    );
+                                    crate::interactions::notify(session.notice, detail);
+                                    if !session.repeat_or_finish_refresh(tab_id) {
+                                        return;
+                                    }
+                                    continue;
+                                }
+                                Err(error) => {
+                                    let detail = format!("仓库刷新任务失败：{error}");
+                                    log::warn!(
+                                        target: "gitui::history",
+                                        "event=repo_refresh.failed tab_id={} elapsed_ms={} reason={}",
+                                        tab_id,
+                                        refresh_started.elapsed().as_millis(),
+                                        detail,
+                                    );
+                                    crate::interactions::notify(session.notice, detail);
+                                    if !session.repeat_or_finish_refresh(tab_id) {
+                                        return;
+                                    }
+                                    continue;
+                                }
+                            };
                             let mut list = session.tabs.get_untracked();
                             let current = session.active.get_untracked();
                             let is_still_active = list.get(current).is_some_and(|active| {

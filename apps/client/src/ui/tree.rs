@@ -67,11 +67,7 @@ pub(crate) fn file_tree(
         directory.files.push(path);
     }
     let items = directory_items(&root, "", merge_empty_dirs, compact_single_child);
-    let expanded = items
-        .iter()
-        .filter(|item| !item.children.is_empty())
-        .map(|item| item.id.clone())
-        .collect();
+    let expanded = folder_ids(&items);
     return (items, expanded);
 }
 
@@ -228,6 +224,41 @@ mod tests {
         assert_eq!(
             merged[0].children[0].id.as_ref(),
             "file:src/git/deep/file.rs"
+        );
+    }
+
+    #[test]
+    fn file_tree_defaults_all_nested_directories_to_expanded() {
+        let paths = vec![
+            "apps/client/README.md".to_string(),
+            "apps/client/src/app/session.rs".to_string(),
+            "apps/client/src/features/changes.rs".to_string(),
+            "apps/client/src/ui/tree.rs".to_string(),
+        ];
+        let (items, expanded) = file_tree(paths, true, true);
+        let expanded = expanded
+            .iter()
+            .map(SharedString::as_ref)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            expanded,
+            vec![
+                "directory:apps/client",
+                "directory:apps/client/src/app",
+                "directory:apps/client/src/features",
+                "directory:apps/client/src/ui",
+            ]
+        );
+        let client = items
+            .iter()
+            .find(|item| item.id.as_ref() == "directory:apps/client")
+            .expect("merged apps/client directory");
+        assert!(
+            client
+                .children
+                .iter()
+                .any(|item| item.id.as_ref() == "file:apps/client/README.md")
         );
     }
 

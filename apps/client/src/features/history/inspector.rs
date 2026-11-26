@@ -270,7 +270,7 @@ fn files_body(
     let deletions = files.iter().map(|file| file.deletions).sum::<u32>();
     let count = files.len();
     let all_directories = crate::ui::tree::folder_ids(&items);
-    // History 检查器默认完整展开；公共 file_tree 的默认值只打开根目录。
+    // History 检查器使用外层受控展开状态，初始时显式打开所有目录。
     let expanded = all_directories.clone();
     let initial_expanded = expanded.clone();
     let files_for_list = files.clone();

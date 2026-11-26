@@ -96,7 +96,7 @@ fn body(
                 "Staging diff",
                 view().w_full().h(px(240.0)).child(crate::ui::diff_surface::staging_surface(
                     SharedString::from("diff --git a/main.rs b/main.rs\n--- a/main.rs\n+++ b/main.rs\n@@ -1 +1 @@\n-let count = 41;\n+let count = 42;\n"),
-                    false, language, std::sync::Arc::new(|_, _, _| {}))),
+                    false, language, std::sync::Arc::new(|_, _| {}))),
             ))
             .child(section(
                 "Buttons",

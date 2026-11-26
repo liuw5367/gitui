@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use crate::exec::{
     GitExecutable, run_git_allow_exit_code_with, run_git_combined_with_executable,
-    run_git_combined_with_executable_env, run_git_full_with, run_git_with,
+    run_git_combined_with_executable_env, run_git_full_allow_exit_code_with, run_git_full_with,
+    run_git_with,
 };
 use crate::parse::parse_track;
 
@@ -71,6 +72,19 @@ impl Repo {
         allowed_exit_code: i32,
     ) -> Result<Vec<u8>, GitError> {
         return run_git_allow_exit_code_with(&self.executable, &self.root, args, allowed_exit_code);
+    }
+
+    pub(crate) fn run_git_full_allow_exit_code(
+        &self,
+        args: &[&str],
+        allowed_exit_code: i32,
+    ) -> Result<Vec<u8>, GitError> {
+        return run_git_full_allow_exit_code_with(
+            &self.executable,
+            &self.root,
+            args,
+            allowed_exit_code,
+        );
     }
 
     pub(crate) fn run_git_full(&self, args: &[&str]) -> Result<Vec<u8>, GitError> {

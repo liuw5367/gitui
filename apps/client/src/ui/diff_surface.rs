@@ -149,12 +149,11 @@ pub(crate) fn source_file(
 
 #[derive(Clone)]
 pub(crate) struct StagingActions {
-    pub(crate) staged: bool,
-    /// 原始 Git patch，保留真实 hunk 与行索引供暂存操作定位。
+    /// 展开 diff 中每个 hunk 是否包含暂存改动。
+    pub(crate) hunk_staged: std::rc::Rc<dyn Fn(usize) -> bool>,
+    /// 原始 Git patch，保留真实 hunk 边界供全文视图重建分组。
     pub(crate) location_patch: SharedString,
-    pub(crate) on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
-    /// 全文模式把所有改动并成一个可见 hunk，按该 hunk 操作时整文件暂存。
-    pub(crate) on_file: std::sync::Arc<dyn Fn()>,
+    pub(crate) on_piece: std::sync::Arc<dyn Fn(usize, bool)>,
 }
 
 pub(crate) fn configured_surface(
@@ -167,6 +166,16 @@ pub(crate) fn configured_surface(
     on_hunk_copy: std::sync::Arc<dyn Fn(&DiffHunk)>,
     staging: Option<StagingActions>,
 ) -> impl IntoElement + use<> {
+    let patch = if show_full_file {
+        staging.as_ref().map_or(patch.clone(), |staging| {
+            SharedString::from(
+                full_context_with_hunk_headers(patch.as_str(), staging.location_patch.as_str())
+                    .unwrap_or_else(|| staging.location_patch.to_string()),
+            )
+        })
+    } else {
+        patch
+    };
     let layout_name = match layout {
         Layout::Split => "split",
         Layout::Unified => "unified",
@@ -200,9 +209,6 @@ pub(crate) fn configured_surface(
         "bg-green-600/15 data-dark:bg-green-400/15",
     ));
     classes.line_deleted = Some(SharedString::from("bg-red-600/15 data-dark:bg-red-400/15"));
-    let locations = staging
-        .as_ref()
-        .map(|staging| staging_locations(staging.location_patch.as_str()));
     let on_hunk_copy = std::rc::Rc::new(on_hunk_copy);
     let mut surface = diff_view()
         .w_full()
@@ -241,101 +247,142 @@ pub(crate) fn configured_surface(
             .into_element();
         });
     if let Some(staging) = staging {
-        let locations = locations.unwrap_or_default();
         let on_piece = staging.on_piece.clone();
-        let on_file = staging.on_file.clone();
-        let line_piece = on_piece.clone();
-        let staged = staging.staged;
+        let hunk_staged = staging.hunk_staged.clone();
         let stage_handle = handle.clone();
-        surface = surface
-            .render_separator(move |separator: &DiffSeparator| -> AnyElement {
-                let lines = separator.lines;
-                let gap = separator.gap;
-                let header = separator.header.clone().unwrap_or_default();
-                let language = language;
-                let mut row = view()
-                    .w_full()
-                    .h_full()
-                    .px(px(ui::GAP_SM))
-                    .flex_row()
-                    .items_center()
-                    .justify_between()
-                    .bg(move || crate::design::panel2());
-                if lines > 0 {
-                    let handle = stage_handle.clone();
-                    row = row.child(crate::ui::button::button(
-                        move || format!("⋯ {lines}"),
-                        crate::ui::button::ButtonVariant::Ghost,
-                        crate::ui::button::ButtonSize::Small,
-                        false,
-                        move || handle.expand(gap),
-                    ));
-                } else {
-                    row = row.child(
-                        text(header)
-                            .flex_1()
-                            .text_size(px(ui::CODE))
-                            .text_color(move || crate::design::text3()),
-                    );
-                    let apply = on_piece.clone();
-                    let apply_file = on_file.clone();
-                    let gap = separator.gap as usize;
-                    row = row.child(crate::ui::button::button(
-                        move || {
-                            crate::i18n::t(
-                                language.get().as_str(),
-                                if staged {
-                                    "changes.unstageHunk"
-                                } else {
-                                    "changes.stageHunk"
-                                },
-                            )
-                        },
-                        crate::ui::button::ButtonVariant::Ghost,
-                        crate::ui::button::ButtonSize::Small,
-                        false,
-                        move || {
-                            if show_full_file {
-                                apply_file();
-                            } else {
-                                apply(gap, None, staged);
-                            }
-                        },
-                    ));
-                }
-                row.into_element()
-            })
-            .render_add_annotation(move |range: &DiffLineRange| -> AnyElement {
-                let Some((hunk, line)) = locations
-                    .iter()
-                    .find(|(side, line, _, _)| {
-                        *side == range.side && *line == range.start && range.start == range.end
-                    })
-                    .map(|(_, _, hunk, line)| (*hunk, *line))
-                else {
-                    return view().into_element();
-                };
-                let on_piece = line_piece.clone();
-                crate::ui::button::button(
-                    move || {
-                        crate::i18n::t(
-                            language.get().as_str(),
-                            if staged {
-                                "changes.unstageLine"
-                            } else {
-                                "changes.stageLine"
-                            },
-                        )
-                    },
+        surface = surface.render_separator(move |separator: &DiffSeparator| -> AnyElement {
+            let lines = separator.lines;
+            let gap = separator.gap;
+            let header = separator.header.clone().unwrap_or_default();
+            let language = language;
+            let mut row = view()
+                .w_full()
+                .h_full()
+                .px(px(ui::GAP_SM))
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .bg(move || crate::design::panel2());
+            if lines > 0 {
+                let handle = stage_handle.clone();
+                row = row.child(crate::ui::button::button(
+                    move || format!("⋯ {lines}"),
                     crate::ui::button::ButtonVariant::Ghost,
                     crate::ui::button::ButtonSize::Small,
                     false,
-                    move || on_piece(hunk, Some(line), staged),
-                )
-                .into_element()
-            });
+                    move || handle.expand(gap),
+                ));
+            } else {
+                row = row.child(
+                    text(header)
+                        .flex_1()
+                        .text_size(px(ui::CODE))
+                        .text_color(move || crate::design::text3()),
+                );
+                let apply = on_piece.clone();
+                let gap = separator.gap as usize;
+                let checked = {
+                    let hunk_staged = hunk_staged.clone();
+                    std::rc::Rc::new(move || hunk_staged(gap))
+                };
+                let label_checked = checked.clone();
+                let label_language = language;
+                // Changes 用带文案的复选框表达暂存状态；文字与方框共用切换动作。
+                row = row.child(crate::ui::check::check_inline(
+                    move || {
+                        crate::i18n::t(
+                            label_language.get().as_str(),
+                            if label_checked() {
+                                "changes.unstageHunk"
+                            } else {
+                                "changes.stageHunk"
+                            },
+                        )
+                    },
+                    move || checked(),
+                    22.0,
+                    12.0,
+                    false,
+                    move |next| apply(gap, !next),
+                ));
+            }
+            row.into_element()
+        });
     }
     return surface;
+}
+
+/// 在全文补丁里保留默认 diff 的 hunk 边界，让每个变更组继续对应原始暂存操作。
+fn full_context_with_hunk_headers(full_context: &str, raw_patch: &str) -> Option<String> {
+    let full_sections = domain::stage::Sections::parse(full_context);
+    let raw_sections = domain::stage::Sections::parse(raw_patch);
+    let (Some(full_file), Some(raw_file)) =
+        (full_sections.files.first(), raw_sections.files.first())
+    else {
+        return None;
+    };
+    if raw_file.hunks.is_empty() {
+        return Some(full_context.to_string());
+    }
+    if raw_file.hunks.len() == 1 {
+        return Some(full_context.to_string());
+    }
+    if full_file.hunks.len() != 1 {
+        return None;
+    }
+    let full_hunk = &full_file.hunks[0];
+    let mut boundaries = vec![(0, full_hunk.old_start, full_hunk.new_start)];
+    for hunk in raw_file.hunks.iter().skip(1) {
+        let mut old_line = full_hunk.old_start;
+        let mut new_line = full_hunk.new_start;
+        let mut index = None;
+        for (line_index, line) in full_hunk.lines.iter().enumerate() {
+            if old_line == hunk.old_start && new_line == hunk.new_start {
+                index = Some(line_index);
+                break;
+            }
+            match domain::stage::classify(line) {
+                Some(domain::stage::LineKind::Add) => new_line += 1,
+                Some(domain::stage::LineKind::Remove) => old_line += 1,
+                Some(domain::stage::LineKind::Context) => {
+                    old_line += 1;
+                    new_line += 1;
+                }
+                None => {}
+            }
+        }
+        let Some(index) = index else {
+            return None;
+        };
+        boundaries.push((index, hunk.old_start, hunk.new_start));
+    }
+    if boundaries.windows(2).any(|pair| pair[0].0 >= pair[1].0) {
+        return None;
+    }
+
+    let mut lines = full_file.header.clone();
+    for (index, (start, old_start, new_start)) in boundaries.iter().enumerate() {
+        let end = boundaries
+            .get(index + 1)
+            .map(|boundary| boundary.0)
+            .unwrap_or(full_hunk.lines.len());
+        let body = &full_hunk.lines[*start..end];
+        let (old_count, new_count) = body.iter().fold((0, 0), |(old, new), line| {
+            match domain::stage::classify(line) {
+                Some(domain::stage::LineKind::Add) => (old, new + 1),
+                Some(domain::stage::LineKind::Remove) => (old + 1, new),
+                Some(domain::stage::LineKind::Context) => (old + 1, new + 1),
+                None => (old, new),
+            }
+        });
+        lines.push(format!(
+            "@@ -{old_start},{old_count} +{new_start},{new_count} @@"
+        ));
+        lines.extend(body.iter().cloned());
+    }
+    let mut patch = lines.join("\n");
+    patch.push('\n');
+    return Some(patch);
 }
 
 /// 预览 Gallery 中可写变更的暂存外观。
@@ -343,11 +390,10 @@ pub(crate) fn staging_surface(
     patch: SharedString,
     staged: bool,
     language: Signal<SharedString>,
-    on_piece: std::sync::Arc<dyn Fn(usize, Option<usize>, bool)>,
+    on_piece: std::sync::Arc<dyn Fn(usize, bool)>,
 ) -> impl IntoElement {
     let handle = DiffHandle::new();
     let location_patch = patch.clone();
-    let on_file = on_piece.clone();
     return configured_surface(
         patch,
         Layout::Unified,
@@ -357,51 +403,11 @@ pub(crate) fn staging_surface(
         language,
         std::sync::Arc::new(|_| {}),
         Some(StagingActions {
-            staged,
+            hunk_staged: std::rc::Rc::new(move |_| staged),
             location_patch,
             on_piece,
-            on_file: std::sync::Arc::new(move || on_file(0, None, staged)),
         }),
     );
-}
-
-fn staging_locations(patch: &str) -> Vec<(DiffSide, u32, usize, usize)> {
-    let sections = domain::stage::Sections::parse(patch);
-    let mut annotations = Vec::new();
-    if let Some(file) = sections.files.first() {
-        for (hunk, section) in file.hunks.iter().enumerate() {
-            let (mut old, mut new) = (
-                section.old_start.saturating_sub(1),
-                section.new_start.saturating_sub(1),
-            );
-            // 行号是 DiffView 拼接各个 hunk 后的位置；应用索引保留原始正文中的上下文与无换行标记。
-            for (line, raw) in section.lines.iter().enumerate() {
-                let kind = domain::stage::classify(raw);
-                if matches!(
-                    kind,
-                    Some(domain::stage::LineKind::Add | domain::stage::LineKind::Remove)
-                ) {
-                    let removed = kind == Some(domain::stage::LineKind::Remove);
-                    let side = if removed {
-                        DiffSide::Old
-                    } else {
-                        DiffSide::New
-                    };
-                    annotations.push((side, if removed { old } else { new }, hunk, line));
-                }
-                match kind {
-                    Some(domain::stage::LineKind::Context) => {
-                        old += 1;
-                        new += 1;
-                    }
-                    Some(domain::stage::LineKind::Remove) => old += 1,
-                    Some(domain::stage::LineKind::Add) => new += 1,
-                    None => {}
-                }
-            }
-        }
-    }
-    annotations
 }
 
 #[cfg(test)]
@@ -495,8 +501,7 @@ mod tests {
     }
 
     const STAGING_PATCH: &str = "diff --git a/main.rs b/main.rs\n--- a/main.rs\n+++ b/main.rs\n@@ -1,2 +1,3 @@\n fn main() {\n+    let count = 42;\n }\n";
-    static ACTIONS: std::sync::Mutex<Vec<(usize, Option<usize>, bool)>> =
-        std::sync::Mutex::new(Vec::new());
+    static ACTIONS: std::sync::Mutex<Vec<(usize, bool)>> = std::sync::Mutex::new(Vec::new());
 
     #[component]
     fn StagingFixture() -> impl IntoElement {
@@ -504,22 +509,12 @@ mod tests {
             SharedString::from(STAGING_PATCH),
             false,
             signal(SharedString::from("en")),
-            std::sync::Arc::new(|hunk, line, reverse| {
-                ACTIONS.lock().unwrap().push((hunk, line, reverse))
-            }),
+            std::sync::Arc::new(|hunk, reverse| ACTIONS.lock().unwrap().push((hunk, reverse))),
         )
     }
 
     #[test]
-    fn staging_preserves_context_offsets_and_actions() {
-        let locations = staging_locations(STAGING_PATCH);
-        assert_eq!(locations.len(), 1);
-        assert_eq!((locations[0].2, locations[0].3), (0, 1));
-        assert_eq!(locations[0].1, 1);
-        let patch = domain::stage::Sections::parse(STAGING_PATCH)
-            .line_patch(0, locations[0].2, locations[0].3)
-            .unwrap();
-        assert!(patch.contains("+    let count = 42;"));
+    fn staging_exposes_hunk_action() {
         ACTIONS.lock().unwrap().clear();
         let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig {
             viewport: Size::new(px(800.0), px(600.0)),
@@ -527,30 +522,73 @@ mod tests {
         })
         .unwrap();
         app.first_render().unwrap();
-        app.wait_for("Stage Line").unwrap();
-        app.press("Stage Line").unwrap();
         app.press("Stage Hunk").unwrap();
-        assert_eq!(
-            *ACTIONS.lock().unwrap(),
-            vec![(0, Some(1), false), (0, None, false)]
-        );
+        assert_eq!(*ACTIONS.lock().unwrap(), vec![(0, false)]);
     }
 
     #[test]
-    fn staging_locations_keep_raw_indices_across_hunks() {
-        let raw = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -10,2 +10,2 @@\n context\n-old\n+new\n@@ -30 +30,2 @@\n tail\n+added\n";
-        let locations = staging_locations(raw);
-        let indices = locations
-            .iter()
-            .map(|(side, line, hunk, raw_line)| (*side, *line, *hunk, *raw_line))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            indices,
-            vec![
-                (nsh_base::DiffSide::Old, 10, 0, 1),
-                (nsh_base::DiffSide::New, 10, 0, 2),
-                (nsh_base::DiffSide::New, 30, 1, 1)
-            ]
+    fn full_context_keeps_each_raw_hunk_as_a_staging_group() {
+        let header = "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n";
+        let mut full_lines = vec!["@@ -1,30 +1,30 @@".to_string()];
+        for line in 1..=30 {
+            match line {
+                2 => {
+                    full_lines.push("-line2".to_string());
+                    full_lines.push("+line2-new".to_string());
+                }
+                14 => {
+                    full_lines.push("-line14".to_string());
+                    full_lines.push("+line14-new".to_string());
+                }
+                26 => {
+                    full_lines.push("-line26".to_string());
+                    full_lines.push("+line26-new".to_string());
+                }
+                _ => full_lines.push(format!(" line{line}")),
+            }
+        }
+        let full = format!("{header}{}\n", full_lines.join("\n"));
+        let mut raw_lines = vec!["@@ -1,5 +1,5 @@".to_string()];
+        raw_lines.extend([
+            " line1".to_string(),
+            "-line2".to_string(),
+            "+line2-new".to_string(),
+            " line3".to_string(),
+            " line4".to_string(),
+            " line5".to_string(),
+            "@@ -11,7 +11,7 @@".to_string(),
+        ]);
+        raw_lines.extend((11..=17).flat_map(|line| match line {
+            14 => vec!["-line14".to_string(), "+line14-new".to_string()],
+            _ => vec![format!(" line{line}")],
+        }));
+        raw_lines.push("@@ -23,7 +23,7 @@".to_string());
+        raw_lines.extend((23..=29).flat_map(|line| match line {
+            26 => vec!["-line26".to_string(), "+line26-new".to_string()],
+            _ => vec![format!(" line{line}")],
+        }));
+        let raw = format!("{header}{}\n", raw_lines.join("\n"));
+
+        let display = full_context_with_hunk_headers(&full, &raw).expect("hunk boundaries");
+        let sections = domain::stage::Sections::parse(&display);
+        assert_eq!(sections.files[0].hunks.len(), 3);
+        assert!(
+            sections.files[0].hunks[0]
+                .lines
+                .iter()
+                .any(|line| line == "+line2-new")
+        );
+        assert!(
+            sections.files[0].hunks[1]
+                .lines
+                .iter()
+                .any(|line| line == "+line14-new")
+        );
+        assert!(
+            sections.files[0].hunks[2]
+                .lines
+                .iter()
+                .any(|line| line == "+line26-new")
         );
     }
 

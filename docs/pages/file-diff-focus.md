@@ -67,7 +67,7 @@ History 中栏在提交列表与 Diff 之间整栏切换，两个视图不会上
 
 History、Changes、Stash、Blame 和 Reflog 的 Diff 共用 NSH DiffView 正文与工具条：增删行数、Unified/Split 单图标切换、变更片段／完整文件切换、软换行、显示空白、忽略空白、改动位置和前后导航、复制 patch。工具栏每个图标按钮悬停时显示本地化名称，Export 已移除。Changes、Stash 和 Reflog 的标题按场景显示返回入口和当前文件名；History 与 Reflog 的单文件标题另提供前后文件切换和提交文件总数。标题摘要和文件名各限一行，空间不足时尾部省略；增删行数靠左，其余工具靠右；增删数字分别使用 `add-fg` / `del-fg`。
 
-折叠模式显示 Git 默认上下文的变更片段；展开模式显示完整文件。完整上下文由 Git 生成的第二份 patch 提供，原 patch 继续用于变更统计、单行暂存与折叠模式的 hunk 暂存。完整文件视图把可见的大 hunk 视为当前文件整体，Stage Hunk 会暂存或取消暂存该文件。
+折叠模式显示 Git 默认上下文的变更片段；展开模式显示完整文件。完整上下文由 Git 生成的第二份 patch 提供，原 patch 继续用于变更统计、单行暂存与 hunk 暂存。展开模式在全文补丁中保留原始 hunk 边界，因此每个原始 hunk 仍有独立复选框，并只切换对应的 index 片段。
 
 语法高亮由 NSH DiffView 处理，应用启用了 `highlight` feature。它按每个文件的目标路径（删除文件回退到旧路径）调用 NSH 语言目录解析扩展名或文件名；多文件 patch 会为每个文件建立独立的语法段。桌面语法集来自 two-face（bat / syntect），覆盖其内置语法；无法识别的路径会以纯文本呈现，因此不能承诺覆盖所有语言，也没有额外应用自建映射表。
 
@@ -87,7 +87,7 @@ History、Changes、Stash、Blame 和 Reflog 的 Diff 共用 NSH DiffView 正文
 ```
 
 - NSH DiffView 负责统一和分栏布局、行号与按路径语法高亮；差异行使用红／绿背景，不显示左侧加减号标记。hunk 复制动作使用行内图标按钮，并在悬停时显示名称。
-- Changes 的 Stage Hunk 位于原有 `@@` 分隔行，Stage Line 位于悬浮 gutter 操作槽；两者不创建额外代码行，也不覆盖源码文本。展开模式下的 Stage Hunk 针对整个文件。
+- Changes 的 Stage Hunk 复用原有 `@@` 分隔行上的复选框，文字与复选框共用切换动作；不显示行级暂存按钮。展开模式会在完整文件上下文中保留原始 hunk 分隔，因此 Stage Hunk 仍针对单个原始 hunk。
 - **上下文行**两侧行号同号；**删除行**左格 `del-bg`、左行号 `del-ln`、右格与右行号是 `.empty`（`panel-2` + 0.55 透明）；**新增行**对称。
 - **词级高亮**：删除侧 `columns = split ? 2 : 1`、新增侧 `maxWidth = 96,` 各是一块圆角 2 的 `del-word` / `add-word` 底色，板上一共只有这两处。
 - **折叠行**横跨四格：高 20、`fold-bg`、上下 1px `line-soft`、居中 10 无衬线，文案 `14 unchanged lines` / `24 unchanged lines`，两侧各一个 11 的箭头（板上两个都朝下）。

@@ -95,6 +95,7 @@ impl ChangesCommands {
         if let Some(tab) = list.get_mut(current) {
             tab.selected_change = None;
             tab.change_diff = domain::diff::Patch::default();
+            tab.change_hunk_staged.clear();
             self.session.tabs.set(list);
         }
     }
@@ -135,22 +136,27 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            ops::toggle_stage(tab, index);
+            ops::toggle_stage(
+                tab,
+                index,
+                self.diff_state.ignore_whitespace.get_untracked(),
+            );
             self.session.tabs.set(list);
         }
     }
 
-    /// 按文件路径暂存或取消暂存，避免清单重排后索引指向另一条变更。
-    pub(crate) fn toggle_stage_path(&self, path: String) {
+    /// 按文件路径切换到明确的暂存状态，避免清单重排后索引指向另一条变更。
+    pub(crate) fn set_stage_path(&self, path: String, stage: bool) {
         let current = self.session.active.get_untracked();
-        let index = self
-            .session
-            .tabs
-            .get_untracked()
-            .get(current)
-            .and_then(|tab| tab.changes.iter().position(|change| change.path == path));
-        if let Some(index) = index {
-            self.toggle_stage(index);
+        let mut list = self.session.tabs.get_untracked();
+        if let Some(tab) = list.get_mut(current) {
+            ops::set_stage_path(
+                tab,
+                path.as_str(),
+                stage,
+                self.diff_state.ignore_whitespace.get_untracked(),
+            );
+            self.session.tabs.set(list);
         }
     }
 
@@ -222,7 +228,12 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut tabs = self.session.tabs.get_untracked();
         if let Some(tab) = tabs.get_mut(current) {
-            ops::stage_changelist(tab, name.as_deref(), stage);
+            ops::stage_changelist(
+                tab,
+                name.as_deref(),
+                stage,
+                self.diff_state.ignore_whitespace.get_untracked(),
+            );
             self.session.tabs.set(tabs);
         }
     }
@@ -232,19 +243,19 @@ impl ChangesCommands {
         let current = self.session.active.get_untracked();
         let mut tabs = self.session.tabs.get_untracked();
         if let Some(tab) = tabs.get_mut(current) {
-            ops::stage_directory(tab, name.as_deref(), directory.as_str(), stage);
+            ops::stage_directory(
+                tab,
+                name.as_deref(),
+                directory.as_str(),
+                stage,
+                self.diff_state.ignore_whitespace.get_untracked(),
+            );
             self.session.tabs.set(tabs);
         }
     }
 
-    /// 按 hunk / 单行暂存或取消暂存（原 `apply_piece`）。
-    pub(crate) fn apply_piece(
-        &self,
-        hunk: usize,
-        line: Option<usize>,
-        reverse: bool,
-        ignore_whitespace: bool,
-    ) {
+    /// 按 hunk 暂存或取消暂存。
+    pub(crate) fn apply_piece(&self, hunk: usize, reverse: bool, ignore_whitespace: bool) {
         let tabs = self.session.tabs;
         let active = self.session.active;
         let notice = self.notice;
@@ -252,7 +263,7 @@ impl ChangesCommands {
         let current = active.get_untracked();
         let mut list = tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            match ops::apply_piece_with_whitespace(tab, hunk, line, reverse, ignore_whitespace) {
+            match ops::apply_piece_with_whitespace(tab, hunk, reverse, ignore_whitespace) {
                 Ok(()) => {
                     let lang = language.get_untracked();
                     crate::interactions::notify(

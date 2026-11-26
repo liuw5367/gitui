@@ -363,8 +363,6 @@
     "revert": "Revert Changes…",
     "stageHunk": "Stage Hunk",
     "unstageHunk": "Unstage Hunk",
-    "stageLine": "Stage Line",
-    "unstageLine": "Unstage Line",
     "pieceApplied": "Applied"
   },
   "commit": {

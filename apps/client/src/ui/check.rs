@@ -8,45 +8,63 @@ use crate::ui;
 use nsh_core::element::IntoProp;
 use nsh_core::prelude::*;
 
-/// 可点的方框标记：外观同 [`indicator`]，但自己是按压目标。
-///
-/// 用于表格单元格里的「暂存」开关——点击它只切换暂存，不选中行（`data_table`
-/// 会把按压交给该单元格视图，它吞掉后就不触发行选中）。
-pub(crate) fn indicator_action<M>(
-    checked: impl IntoProp<bool, M> + 'static,
+/// 可操作的 tri-state 复选框，用于工作区文件的暂存状态。
+pub(crate) fn indicator_action_state<MC, MI>(
+    checked: impl IntoProp<bool, MC> + 'static,
+    indeterminate: impl IntoProp<bool, MI> + 'static,
     label: impl Into<SharedString>,
-    on_press: impl Fn() + 'static,
+    on_change: impl Fn(bool) + 'static,
 ) -> impl IntoElement {
     let checked: Prop<bool> = checked.into_prop().into();
-    return nsh_base::button()
+    let indeterminate: Prop<bool> = indeterminate.into_prop().into();
+    return nsh_base::checkbox()
         .accessibility_label(Some(label.into()))
+        .checked(checked)
+        .indeterminate(indeterminate)
         .w(px(12.0))
         .h(px(12.0))
         .flex_shrink_0()
-        .items_center()
-        .justify_center()
-        .rounded(px(3.0))
-        .border_1()
-        .border_color(move || {
-            if checked.get() {
-                AdaptiveColor::TRANSPARENT
-            } else {
-                design::line_strong()
-            }
+        .indicator_style(move |style| {
+            style
+                .w(px(12.0))
+                .h(px(12.0))
+                .items_center()
+                .justify_center()
+                .rounded(px(3.0))
+                .border_1()
+                .bg(move || {
+                    if checked.get() || indeterminate.get() {
+                        design::accent()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .border_color(move || {
+                    if checked.get() || indeterminate.get() {
+                        design::accent()
+                    } else {
+                        design::line_strong()
+                    }
+                })
         })
-        .bg(move || {
-            if checked.get() {
-                design::accent()
-            } else {
-                AdaptiveColor::TRANSPARENT
+        .indicator(dynamic(move || -> AnyElement {
+            if indeterminate.get() {
+                return text("−")
+                    .text_size(px(ui::META))
+                    .text_color(move || design::content())
+                    .into_element();
             }
-        })
-        .on_press(move || on_press())
-        .child(
-            text(move || if checked.get() { "✓" } else { "" }.to_string())
-                .text_size(px(ui::META))
-                .text_color(move || design::content()),
-        );
+            if checked.get() {
+                return crate::ui::icon::icon_view(
+                    "check",
+                    crate::ui::icon::IconSize::Compact,
+                    move || design::content(),
+                )
+                .into_element();
+            }
+            return view().into_element();
+        }))
+        .on_change(move |next: &bool| on_change(*next));
 }
 
 /// 复选行：左侧 14pt 指示器 + 13pt 文案。
