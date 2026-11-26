@@ -39,6 +39,14 @@ pub(crate) struct SearchCommands {
 }
 
 impl SearchCommands {
+    fn open_history_filter_centered(&self) {
+        self.set_mode(crate::Mode::History);
+        self.history.begin_filter();
+        self.history.state.filter_menu.set(None);
+        self.history.state.filter_position.set(None);
+        self.history.state.filter_open.set(true);
+    }
+
     fn active_tab_id(&self) -> Option<u64> {
         return self
             .session
@@ -266,6 +274,8 @@ impl SearchCommands {
             "refresh" => self.history.refresh(),
             "history" => self.set_mode(crate::Mode::History),
             "changes" => self.set_mode(crate::Mode::Changes),
+            // `commit` 是已保存快捷键的稳定 id，现在用于打开 Changes 面板。
+            "commit" => self.set_mode(crate::Mode::Changes),
             "inspector" => self
                 .right_panel_open
                 .set(!self.right_panel_open.get_untracked()),
@@ -281,17 +291,11 @@ impl SearchCommands {
                 if self.session.welcome_open.get_untracked() {
                     self.welcome.focus_search();
                 } else {
-                    self.set_mode(crate::Mode::History);
-                    self.history.begin_filter();
-                    self.history.state.filter_open.set(true);
+                    self.open_history_filter_centered();
                 }
             }
             // ⇧⌘F 始终是历史过滤。
-            "filterHistory" => {
-                self.set_mode(crate::Mode::History);
-                self.history.begin_filter();
-                self.history.state.filter_open.set(true);
-            }
+            "filterHistory" => self.open_history_filter_centered(),
             // ⌘↵：只在 Changes 里提交，避免在历史视图误提交。
             "primary" => {
                 if self.state.mode.get_untracked() == crate::Mode::Changes {

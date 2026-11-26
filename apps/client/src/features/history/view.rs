@@ -732,7 +732,7 @@ pub(crate) fn history(
             if !menu_matches_tab || (!advanced && menu.is_none()) {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            let (left, top) = filter_position.get();
+            let position = filter_position.get();
             let title_key = match menu {
                 Some(crate::features::history::state::FilterMenu::Branches) => "filter.branch",
                 Some(crate::features::history::state::FilterMenu::Authors) => "filter.author",
@@ -759,9 +759,7 @@ pub(crate) fn history(
                 .into_element()
             };
             let close_state = filter_state.clone();
-            return crate::ui::dialog::popover_overlay(
-                move || i18n::t(language_value.get().as_str(), title_key),
-                80,
+            let content = if let Some((left, top)) = position {
                 view().w_full().h_full().relative().child(
                     view()
                         .absolute()
@@ -769,7 +767,15 @@ pub(crate) fn history(
                         .top(px(top))
                         .z_index(1)
                         .child(crate::ui::dialog::modality(panel)),
-                ),
+                )
+                .into_element()
+            } else {
+                crate::ui::dialog::modality(panel).into_element()
+            };
+            return crate::ui::dialog::popover_overlay(
+                move || i18n::t(language_value.get().as_str(), title_key),
+                80,
+                content,
                 move || {
                     close_state.filter_open.set(false);
                     close_state.filter_menu.set(None);
@@ -808,7 +814,7 @@ fn hist_bar(
     state: &HistoryState,
     cmd: &HistoryCommands,
     tab: &Tab,
-    filter_position: Signal<(f32, f32)>,
+    filter_position: Signal<Option<(f32, f32)>>,
     filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
 ) -> impl IntoElement + use<> {
     let query = state.query;
@@ -869,12 +875,12 @@ fn hist_bar(
             }
             branch_cmd.begin_quick_filter(tab_id);
             branch_filter_open.set(false);
-            branch_filter_position.set(filter_popover_position(
+            branch_filter_position.set(Some(filter_popover_position(
                 position,
                 local_position,
                 QUICK_FILTER_W,
                 QUICK_FILTER_W,
-            ));
+            )));
             branch_filter_menu.set(Some(crate::features::history::state::FilterMenu::Branches));
         },
     );
@@ -915,12 +921,12 @@ fn hist_bar(
             }
             author_cmd.begin_quick_filter(tab_id);
             author_filter_open.set(false);
-            author_filter_position.set(filter_popover_position(
+            author_filter_position.set(Some(filter_popover_position(
                 position,
                 local_position,
                 QUICK_FILTER_W,
                 QUICK_FILTER_W,
-            ));
+            )));
             author_filter_menu.set(Some(crate::features::history::state::FilterMenu::Authors));
         },
     );
@@ -1022,7 +1028,7 @@ fn hist_bar(
 fn widgets_icon(
     language: Signal<SharedString>,
     filter_open: Signal<bool>,
-    filter_position: Signal<(f32, f32)>,
+    filter_position: Signal<Option<(f32, f32)>>,
     filter_menu: Signal<Option<crate::features::history::state::FilterMenu>>,
     filter_active: bool,
     filter_tab_id: Signal<Option<u64>>,
@@ -1051,12 +1057,12 @@ fn widgets_icon(
             // 完整过滤浮层在筛选按钮下方右对齐。
             cmd.begin_filter_for_tab(tab_id);
             filter_menu.set(None);
-            filter_position.set(filter_popover_position(
+            filter_position.set(Some(filter_popover_position(
                 position,
                 local_position,
                 24.0,
                 POP_W,
-            ));
+            )));
             filter_open.set(true);
         },
     );

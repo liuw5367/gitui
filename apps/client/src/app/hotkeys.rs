@@ -21,7 +21,16 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
             let search = handles.search.clone();
             Arc::new(move |id: &'static str| search.run_command(id))
         };
-        on_key(combo.as_str(), move |_| {
+        // Auto leaves Return to focused text inputs, so the primary commit binding must run there.
+        let options = if combo == "mod+enter" {
+            KeyOptions {
+                when: nsh_core::keymap::When::Always,
+                ..Default::default()
+            }
+        } else {
+            KeyOptions::default()
+        };
+        on_key_with(combo.as_str(), options, move |_| {
             // 录制期间按键只用于改键，不执行命令。
             if recording.get_untracked().is_some() {
                 return;

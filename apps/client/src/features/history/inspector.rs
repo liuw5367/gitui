@@ -521,7 +521,11 @@ fn tree_file_row(
         .text_size(px(crate::ui::CODE))
         .text_color(move || color)
         .number_of_lines(1)
-        .text_overflow(nsh_core::EllipsizeMode::Tail);
+        .text_overflow(if directory {
+            nsh_core::EllipsizeMode::Head
+        } else {
+            nsh_core::EllipsizeMode::Tail
+        });
     row = row
         .child(crate::ui::icon::icon_view(
             if directory { "folder" } else { "file" },

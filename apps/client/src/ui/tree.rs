@@ -88,17 +88,15 @@ fn directory_items(
         } else {
             format!("{parent}/{name}")
         };
-        let mut label = name.clone();
         let mut child = child;
         while compact_single_child && child.files.is_empty() && child.directories.len() == 1 {
             let (name, next) = child.directories.iter().next().unwrap();
             path = format!("{path}/{name}");
-            label = format!("{label}/{name}");
             child = next;
         }
         let children = directory_items(child, &path, merge_empty_dirs, compact_single_child);
         if !merge_empty_dirs || !child.files.is_empty() {
-            items.push(node(format!("directory:{path}"), label, children));
+            items.push(node(format!("directory:{path}"), path.clone(), children));
         } else {
             items.extend(children);
         }
@@ -231,5 +229,19 @@ mod tests {
             merged[0].children[0].id.as_ref(),
             "file:src/git/deep/file.rs"
         );
+    }
+
+    #[test]
+    fn directory_labels_include_the_path_from_repository_root() {
+        let paths = vec!["src/git/file.rs".to_string(), "src/lib.rs".to_string()];
+        let (items, _) = file_tree(paths, false, false);
+        let git = items[0]
+            .children
+            .iter()
+            .find(|item| item.id.as_ref() == "directory:src/git")
+            .expect("nested directory should be present");
+
+        assert_eq!(items[0].label.as_ref(), "src");
+        assert_eq!(git.label.as_ref(), "src/git");
     }
 }

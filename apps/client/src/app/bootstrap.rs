@@ -436,7 +436,7 @@ pub(crate) fn app() -> impl IntoElement {
         query: history_query,
         draft: filter_draft,
         filter_open,
-        filter_position: signal((0.0, 0.0)),
+        filter_position: signal(None),
         filter_menu: signal(None),
         filter_tab_id: signal(None),
         quick_filter_baseline: signal(None),

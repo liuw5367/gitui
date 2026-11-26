@@ -97,8 +97,8 @@ pub(crate) struct HistoryState {
     pub(crate) draft: Signal<FilterDraft>,
     /// 是否展开筛选浮层（设计板 05）。
     pub(crate) filter_open: Signal<bool>,
-    /// 筛选浮层在主窗口根视图中的锚点位置。
-    pub(crate) filter_position: Signal<(f32, f32)>,
+    /// `Some` 表示按筛选按钮定位；`None` 表示快捷键打开时居中显示。
+    pub(crate) filter_position: Signal<Option<(f32, f32)>>,
     /// 顶栏快捷筛选的锚定浮层。
     pub(crate) filter_menu: Signal<Option<FilterMenu>>,
     /// 筛选草稿所属的仓库标签页，避免切仓后把草稿应用到别的仓库。

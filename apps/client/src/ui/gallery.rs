@@ -876,5 +876,7 @@ fn section(title: &'static str, content: impl IntoElement) -> impl IntoElement {
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(move || design::text3()),
         )
-        .child(ui::feedback::card(content));
+        .child(ui::feedback::card(
+            view().w_full().p(px(ui::GAP)).child(content),
+        ));
 }

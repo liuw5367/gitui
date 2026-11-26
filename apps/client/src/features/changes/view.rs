@@ -649,7 +649,7 @@ pub(crate) fn changelists_panel(
                                         .text_size(px(crate::ui::CODE))
                                         .text_color(move || design::text2())
                                         .number_of_lines(1)
-                                        .text_overflow(nsh_core::EllipsizeMode::Tail),
+                                        .text_overflow(nsh_core::EllipsizeMode::Head),
                                 )
                                 .into_element();
                         }
