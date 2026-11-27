@@ -49,10 +49,6 @@ enum RemoteOperation {
         name: String,
         remote: Option<String>,
     },
-    PushBranch {
-        branch: String,
-        remote: String,
-    },
     UpdateSubmodule {
         path: String,
         latest: bool,
@@ -81,7 +77,6 @@ impl RemoteOperation {
                 };
                 result.map(|_| ())
             }
-            Self::PushBranch { branch, remote } => ops::push_branch(tab, branch, remote),
             Self::UpdateSubmodule { path, latest } => {
                 ops::update_submodule(tab, path, *latest).map_err(|error| error.detail())
             }
@@ -113,7 +108,7 @@ impl RemoteOperation {
         updated: &crate::app::session::Tab,
     ) {
         match self {
-            Self::PushTag { .. } | Self::PushBranch { .. } => {}
+            Self::PushTag { .. } => {}
             Self::DeleteBranch { .. } => {
                 target.refs = updated.refs.clone();
                 target.remote_urls = updated.remote_urls.clone();
@@ -143,7 +138,7 @@ impl RemoteOperation {
 
     fn success_notice_key(&self) -> &'static str {
         match self {
-            Self::PushTag { .. } | Self::PushBranch { .. } => "toast.pushed",
+            Self::PushTag { .. } => "toast.pushed",
             Self::UpdateSubmodule { latest: true, .. } => "submodule.updatedLatest",
             Self::UpdateSubmodule { latest: false, .. } => "submodule.updated",
             Self::UpdateSubmodules { .. } => "submodule.updatedAll",
@@ -1929,13 +1924,7 @@ impl RefsCommands {
     }
 
     pub(crate) fn push_branch_at(&self, tab_id: u64, branch: String) {
-        self.run_remote_operation(
-            tab_id,
-            RemoteOperation::PushBranch {
-                branch,
-                remote: "origin".to_string(),
-            },
-        );
+        self.sync.open_push_for_branch(tab_id, branch);
     }
 
     pub(crate) fn pull_remote_branch_at(&self, tab_id: u64, remote: String, branch: String) {

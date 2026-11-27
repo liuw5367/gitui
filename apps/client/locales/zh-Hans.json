@@ -878,6 +878,7 @@
     "manualSummary": "手动计划"
   },
   "branch": {
+    "pushBranch": "推送 %{name}…",
     "checkout": "切换到此分支",
     "delete": "删除分支…",
     "deleteTitle": "删除这个分支？",
@@ -1092,13 +1093,18 @@
     "includeUntracked": "包含未跟踪文件"
   },
   "sync": {
+    "sourceBranch": "源分支",
+    "targetBranch": "目标分支",
+    "createTargetBranch": "创建远端分支…",
+    "newTargetName": "新远端分支名称",
+
     "title": "同步",
     "fetchTitle": "获取",
     "pullTitle": "拉取",
     "pushTitle": "推送",
     "fetchHint": "获取只更新远程跟踪引用，不改动工作区。",
     "pullHint": "按所选方式整合上游；取消后请检查仓库状态。",
-    "pushHint": "推送当前分支到上游；没有上游时会在 origin 建立跟踪关系。",
+    "pushHint": "选择要推送的本地分支及其在此远端的目标分支。",
     "tracking": "%{branch} · ↑%{ahead} ↓%{behind}",
     "trackingSummary": "领先 %{ahead} · 落后 %{behind}",
     "fetch": "获取",

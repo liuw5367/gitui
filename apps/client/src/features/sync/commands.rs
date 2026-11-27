@@ -579,6 +579,22 @@ impl SyncCommands {
             .map(|tab| tab.id);
     }
 
+    fn default_push_target(&self, tab_id: Option<u64>) -> Option<(String, String, String)> {
+        let tabs = self.session.tabs.get_untracked();
+        let tab = tabs.iter().find(|tab| Some(tab.id) == tab_id)?;
+        let (reference, _) = tab.open_repo().ok()?.upstream_ref()?;
+        let tracking = tab
+            .refs
+            .remote_branches
+            .iter()
+            .find(|branch| reference == format!("refs/remotes/{}", branch.full_name()))?;
+        Some((
+            tracking.remote.clone(),
+            tab.branch.clone(),
+            tracking.name.clone(),
+        ))
+    }
+
     /// 打开同步面板；已经打开时只切 tab，保留当前选项（原 `open_sync`）。
     pub(crate) fn open_sync(&self, kind: Sync) {
         let sync_state = self.state.dialog;
@@ -612,6 +628,12 @@ impl SyncCommands {
                     .find(|tab| tab.id == id)
                     .map(|tab| tab.path)
             });
+            if kind == Sync::Push
+                && let Some((remote, source, target)) = self.default_push_target(active_tab_id)
+            {
+                state.remote = Some(remote);
+                state.options.push.branches = Some((source, target));
+            }
             sync_state.set(Some(state));
             return;
         };
@@ -663,6 +685,45 @@ impl SyncCommands {
         sync_state.set(Some(state));
     }
 
+    pub(crate) fn open_push_for_branch(&self, tab_id: u64, branch: String) {
+        let target = self.session.tabs.with_untracked(|tabs| {
+            tabs.iter().find(|tab| tab.id == tab_id).and_then(|tab| {
+                let remote = tab
+                    .refs
+                    .remotes
+                    .iter()
+                    .find(|name| name.as_str() == "origin")
+                    .or_else(|| tab.refs.remotes.first())?
+                    .clone();
+                let destination = tab
+                    .refs
+                    .remote_branches
+                    .iter()
+                    .any(|item| item.remote == remote && item.name == branch);
+                Some((
+                    remote,
+                    if destination {
+                        branch.clone()
+                    } else {
+                        String::new()
+                    },
+                ))
+            })
+        });
+        let Some((remote, destination)) = target else {
+            return;
+        };
+        self.open_sync_for_remote(tab_id, Sync::Push, remote);
+        self.state.dialog.update(|dialog| {
+            if let Some(state) = dialog.as_mut().filter(|state| !state.running) {
+                state.options.push.all_branches = false;
+                state.options.push.branches = Some((branch, destination));
+                state.result = None;
+                state.summary = None;
+            }
+        });
+    }
+
     /// 选项开关（原 `set_sync_option`）：键名固定，策略三项互斥。
     pub(crate) fn set_sync_option(&self, key: &'static str, value: bool) {
         let sync_state = self.state.dialog;
@@ -692,13 +753,39 @@ impl SyncCommands {
     /// 执行同步动作，并把结果留在面板里（原 `run_sync`）。
     ///
     /// 推送被远端拒绝（非快进）时不自动强推，而是弹「拉取变基 / 拉取合并 / 取消」。
-    pub(crate) fn run_sync(&self, kind: Sync) {
-        let Some(state) = self.state.dialog.get_untracked() else {
+    pub(crate) fn run_sync_to(
+        &self,
+        kind: Sync,
+        branch_pair: Option<(String, String)>,
+        new_target: String,
+    ) {
+        let Some(mut state) = self.state.dialog.get_untracked() else {
             return;
         };
         let Some(target_tab_id) = state.target_tab_id.or_else(|| self.active_tab_id()) else {
             return;
         };
+        if kind == Sync::Push {
+            state.options.push.branches = branch_pair;
+            if state.remote.is_none() {
+                state.remote = self.session.tabs.with_untracked(|tabs| {
+                    tabs.iter()
+                        .find(|tab| tab.id == target_tab_id)
+                        .and_then(|tab| tab.refs.remotes.first().cloned())
+                });
+            }
+        }
+        if kind == Sync::Push
+            && !state.options.push.all_branches
+            && let Some((source, destination)) = &mut state.options.push.branches
+        {
+            if destination.is_empty() {
+                *destination = new_target.trim().to_string();
+            }
+            if source.is_empty() || destination.is_empty() {
+                return;
+            }
+        }
         self.start_sync_with(
             kind,
             target_tab_id,
@@ -721,6 +808,7 @@ impl SyncCommands {
         let (remote, mut options) = state
             .map(|state| (state.remote, state.options))
             .unwrap_or_default();
+        options.push.branches = None;
         options.push.force_with_lease = force_with_lease;
         return self.start_sync_with(
             Sync::Push,
@@ -1087,7 +1175,7 @@ impl SyncCommands {
                                 }
                                 return;
                             }
-                            if !rejected {
+                            if !rejected || options.push.branches.is_some() {
                                 return;
                             }
 

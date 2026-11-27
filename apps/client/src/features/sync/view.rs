@@ -30,10 +30,7 @@ pub(crate) fn sync_dialog(
         let cmd = cmd.clone();
         std::sync::Arc::new(move |key, value| cmd.set_sync_option(key, value))
     };
-    let on_run: std::sync::Arc<dyn Fn(Sync)> = {
-        let cmd = cmd.clone();
-        std::sync::Arc::new(move |kind| cmd.run_sync(kind))
-    };
+    let run_commands = cmd.clone();
     let on_cancel: std::sync::Arc<dyn Fn()> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move || cmd.cancel_sync())
@@ -55,7 +52,8 @@ pub(crate) fn sync_dialog(
             let language = language;
             let set_kind = set_kind.clone();
             let set_option = set_option.clone();
-            let on_run = on_run.clone();
+            let run_commands = run_commands.clone();
+            let new_target = signal(String::new());
             let on_cancel = on_cancel.clone();
             let on_close = on_close.clone();
 
@@ -113,7 +111,152 @@ pub(crate) fn sync_dialog(
 
                 let set_kind = set_kind.clone();
                 let set_option = set_option.clone();
-                let on_run = on_run.clone();
+                let local_branches = current_tab
+                    .as_ref()
+                    .map(|tab| {
+                        tab.refs
+                            .branches
+                            .iter()
+                            .map(|item| item.name.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let mut destinations = current_tab
+                    .as_ref()
+                    .map(|tab| {
+                        tab.refs
+                            .remote_branches
+                            .iter()
+                            .filter(|item| item.remote == remote)
+                            .map(|item| item.name.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let push_pair = (kind == Sync::Push && !options.push.all_branches).then(|| {
+                    options.push.branches.clone().unwrap_or_else(|| {
+                        let source = if local_branches.contains(&branch) {
+                            branch.clone()
+                        } else {
+                            local_branches.first().cloned().unwrap_or_default()
+                        };
+                        let destination = if destinations.contains(&source) {
+                            source.clone()
+                        } else {
+                            String::new()
+                        };
+                        (source, destination)
+                    })
+                });
+                if let Some((_, destination)) = &push_pair
+                    && !destination.is_empty()
+                    && !destinations.contains(destination)
+                {
+                    destinations.push(destination.clone());
+                }
+                let branch_fields = push_pair.as_ref().map(|(source, destination)| {
+                    let source = source.clone();
+                    let destination = destination.clone();
+                    let next_destination = destination.clone();
+                    let next_source = source.clone();
+                    let set_pair = move |source, destination| {
+                        dialog.update(|state| {
+                            if let Some(state) = state.as_mut().filter(|state| !state.running) {
+                                state.options.push.branches = Some((source, destination));
+                            }
+                        });
+                    };
+                    let dest_options = destinations
+                        .iter()
+                        .cloned()
+                        .map(|name| {
+                            ui::select::SelectOption::new(name.clone(), move || name.clone())
+                        })
+                        .chain(std::iter::once(ui::select::SelectOption::new(
+                            String::new(),
+                            move || i18n::t(language.get().as_str(), "sync.createTargetBranch"),
+                        )))
+                        .collect();
+                    let source_options = local_branches
+                        .iter()
+                        .cloned()
+                        .map(|name| {
+                            ui::select::SelectOption::new(name.clone(), move || name.clone())
+                        })
+                        .collect();
+                    let is_new = destination.is_empty();
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .gap(px(ui::GAP_XS))
+                        .child(
+                            view()
+                                .w_full()
+                                .flex_row()
+                                .gap(px(ui::GAP_SM))
+                                .child(
+                                    view()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .flex_col()
+                                        .child(push_field_label(language, "sync.sourceBranch"))
+                                        .child(ui::select::select(
+                                            source_options,
+                                            source.clone(),
+                                            None,
+                                            is_running,
+                                            move |name| {
+                                                new_target.set(name.clone());
+                                                set_pair(name, next_destination.clone());
+                                            },
+                                        )),
+                                )
+                                .child(
+                                    view()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .flex_col()
+                                        .child(push_field_label(language, "sync.targetBranch"))
+                                        .child(ui::select::select(
+                                            dest_options,
+                                            destination,
+                                            None,
+                                            is_running,
+                                            move |name: String| {
+                                                if name.is_empty() {
+                                                    new_target.set(next_source.clone());
+                                                }
+                                                set_pair(next_source.clone(), name);
+                                            },
+                                        )),
+                                ),
+                        )
+                        .when(is_new && !is_running, |field| {
+                            if new_target.get_untracked().is_empty() {
+                                new_target.set(source);
+                            }
+                            field.child(ui::text_input::text_input(
+                                new_target,
+                                move || i18n::t(language.get().as_str(), "sync.newTargetName"),
+                                false,
+                                move |value| new_target.set(value.to_string()),
+                            ))
+                        })
+                        .into_element()
+                });
+                let missing_source = (kind == Sync::Push
+                    && current_tab
+                        .as_ref()
+                        .is_none_or(|tab| tab.refs.remotes.is_empty()))
+                    || push_pair.as_ref().is_some_and(|(source, _)| {
+                        source.is_empty() || !local_branches.contains(source)
+                    });
+                let needs_name = push_pair
+                    .as_ref()
+                    .is_some_and(|(_, destination)| destination.is_empty());
+                let run_commands = run_commands.clone();
+                let on_run: std::sync::Arc<dyn Fn(Sync)> = std::sync::Arc::new(move |kind| {
+                    run_commands.run_sync_to(kind, push_pair.clone(), new_target.get_untracked());
+                });
                 let on_cancel = on_cancel.clone();
                 let on_close = on_close.clone();
                 let log = log_panel(
@@ -139,6 +282,8 @@ pub(crate) fn sync_dialog(
                     ahead,
                     behind,
                     set_option,
+                    branch_fields,
+                    move || missing_source || (needs_name && new_target.get().trim().is_empty()),
                     on_run,
                     on_cancel,
                 );
@@ -274,6 +419,8 @@ fn action_panel(
     ahead: u32,
     behind: u32,
     set_option: std::sync::Arc<dyn Fn(&'static str, bool)>,
+    branch_fields: Option<AnyElement>,
+    invalid_target: impl Fn() -> bool + 'static,
     on_run: std::sync::Arc<dyn Fn(Sync)>,
     on_cancel: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
@@ -331,6 +478,9 @@ fn action_panel(
             .text_color(move || design::text2()),
         );
 
+    if let Some(fields) = branch_fields {
+        form = form.child(fields);
+    }
     form = form.child(sync_options(
         language,
         kind,
@@ -374,7 +524,7 @@ fn action_panel(
                 move || i18n::t(language.get().as_str(), action_label_key),
                 crate::ui::button::ButtonVariant::Primary,
                 crate::ui::button::ButtonSize::Regular,
-                running,
+                move || running || invalid_target(),
                 move || {
                     if !running {
                         on_run(kind);
@@ -389,6 +539,12 @@ fn action_panel(
             .text_color(move || design::text3()),
     );
     return form;
+}
+
+fn push_field_label(language: Signal<SharedString>, key: &'static str) -> impl IntoElement {
+    text(move || i18n::t(language.get().as_str(), key))
+        .text_size(px(ui::SECONDARY))
+        .text_color(move || design::text2())
 }
 
 fn sync_options(

@@ -1134,7 +1134,7 @@ pub(crate) fn local_branch_menu_items(
     current: bool,
     current_branch: String,
     can_rebase: bool,
-    has_origin: bool,
+    _has_origin: bool,
 ) -> Vec<MenuItem> {
     let mut items = Vec::with_capacity(12);
     let checkout_cmd = cmd.clone();
@@ -1244,10 +1244,13 @@ pub(crate) fn local_branch_menu_items(
     items.push(ui::menu::action(
         i18n::with_arguments(
             language.get().as_str(),
-            "branch.pushOrigin",
+            "branch.pushBranch",
             &[("name", push_name.clone())],
         ),
-        has_origin,
+        cmd.session.tabs.with_untracked(|tabs| {
+            tabs.iter()
+                .any(|tab| tab.id == tab_id && !tab.refs.remotes.is_empty())
+        }),
         move || push_cmd.push_branch_at(tab_id, push_name.clone()),
     ));
     return items;

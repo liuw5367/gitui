@@ -878,6 +878,7 @@
     "manualSummary": "Manual plan"
   },
   "branch": {
+    "pushBranch": "Push %{name}…",
     "checkout": "Check Out",
     "delete": "Delete Branch…",
     "deleteTitle": "Delete this branch?",
@@ -1092,13 +1093,18 @@
     "includeUntracked": "Include untracked files"
   },
   "sync": {
+    "sourceBranch": "Source branch",
+    "targetBranch": "Target branch",
+    "createTargetBranch": "Create remote branch…",
+    "newTargetName": "New remote branch name",
+
     "title": "Sync",
     "fetchTitle": "Fetch",
     "pullTitle": "Pull",
     "pushTitle": "Push",
     "fetchHint": "Fetch updates remote-tracking refs only. The working tree is untouched.",
     "pullHint": "Integrates the upstream with the selected strategy. Inspect repository state after cancelling.",
-    "pushHint": "Pushes the current branch to its upstream, or sets one on origin when missing.",
+    "pushHint": "Choose the local branch to push and its destination on this remote.",
     "tracking": "%{branch} · ↑%{ahead} ↓%{behind}",
     "trackingSummary": "↑%{ahead} ahead · ↓%{behind} behind",
     "fetch": "Fetch",

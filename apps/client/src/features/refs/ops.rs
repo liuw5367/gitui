@@ -209,14 +209,6 @@ pub(crate) fn rebase_reference(tab: &mut Tab, reference: &str) -> Result<(), Str
     }
 }
 
-/// 推送指定本地分支，不依赖当前检出的分支。
-pub(crate) fn push_branch(tab: &mut Tab, branch: &str, remote: &str) -> Result<(), String> {
-    let repo = tab.open_repo().map_err(|error| error.detail())?;
-    repo.push_branch(remote, branch)
-        .map_err(|error| error.detail())?;
-    return Ok(());
-}
-
 /// 丢弃一条贮藏。
 pub(crate) fn drop_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = tab.open_repo().map_err(|error| error.detail())?;

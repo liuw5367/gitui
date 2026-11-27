@@ -83,6 +83,8 @@ pub struct PushOptions {
     pub force_with_lease: bool,
     /// 推送所有分支。
     pub all_branches: bool,
+    /// 将指定的本地分支推送到指定的远端分支。
+    pub branches: Option<(String, String)>,
 }
 
 const MAX_SYNC_OUTPUT: usize = 256 * 1024;
@@ -659,6 +661,25 @@ impl Repo {
         remote: Option<&str>,
         options: &PushOptions,
     ) -> Result<Vec<String>, GitError> {
+        if !options.all_branches
+            && let Some((source, target)) = &options.branches
+        {
+            self.run_git(&["check-ref-format", &format!("refs/heads/{source}")])?;
+            self.run_git(&["check-ref-format", &format!("refs/heads/{target}")])?;
+            let mut args = vec!["push".to_string()];
+            if options.force_with_lease {
+                args.push("--force-with-lease".to_string());
+            }
+            if options.tags {
+                args.push("--tags".to_string());
+            }
+            args.extend([
+                "--".to_string(),
+                remote.unwrap_or("origin").to_string(),
+                format!("refs/heads/{source}:refs/heads/{target}"),
+            ]);
+            return Ok(args);
+        }
         let branch = self.abbrev_branch()?;
         let has_upstream = self
             .run_git(&[
@@ -677,6 +698,9 @@ impl Repo {
         }
         if options.all_branches {
             args.push("--all".to_string());
+            if let Some(remote) = remote {
+                args.extend(["--".to_string(), remote.to_string()]);
+            }
         }
         if options.all_branches || options.tags {
             // 已经指定了范围，不再追加分支名。

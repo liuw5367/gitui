@@ -66,7 +66,7 @@ Remotes 父行是地球 14 + 名 + 计数，每个 remote 下先挂一行 URL（
 
 实现中的六组标题都可点按折叠，并在组标题的右键菜单中展开或收起；折叠状态按仓库标签保留。默认展开 Branches 与 Remotes 外层；Branches 内部的前缀组和各 remote 默认折叠，Tags 组默认折叠。Branches 按分支名分层显示斜杠前缀（例如 `feature/ui` 收在 `feature` 下），同级先显示分组，再显示分支；分组内部、分支内部继续按文字升序排列。前缀右键菜单提供「展开 / 收起」和「展开所有下级分组 / 收起所有下级分组」。
 
-Branch 行右键菜单依画板 22 的顺序包含：`Checkout`、`New Branch from '<name>'…`、`Compare with Current Branch`、`Rebase Current onto '<name>'`、`Merge '<name>' into Current`、`New Tag…`、`Rename…`、`Delete…`、`Copy Branch Name`、`Push '<name>' to origin`。当前分支的 Checkout、Rebase、Merge、Delete 禁用；Rebase 还要求当前 HEAD 位于分支上、工作区干净且没有其它 Git 操作；Push 在没有 `origin` 时禁用。会改写历史的 Rebase 会二次确认，冲突交给现有冲突面板处理。Branches 组头右键菜单另有 `New Branch…` 与组折叠操作。
+Branch 行右键菜单依画板 22 的顺序包含：`Checkout`、`New Branch from '<name>'…`、`Compare with Current Branch`、`Rebase Current onto '<name>'`、`Merge '<name>' into Current`、`New Tag…`、`Rename…`、`Delete…`、`Copy Branch Name`、`Push <name>…`。当前分支的 Checkout、Rebase、Merge、Delete 禁用；Rebase 还要求当前 HEAD 位于分支上、工作区干净且没有其它 Git 操作；Push 在没有远端时禁用。会改写历史的 Rebase 会二次确认，冲突交给现有冲突面板处理。Branches 组头右键菜单另有 `New Branch…` 与组折叠操作。
 
 重命名表单预填当前分支名。创建本地分支或标签后，History 在目标提交更新徽章。删除本地分支成功后，移除对应引用徽章及其菜单项，保留列表的选中项和滚动位置。点击侧栏分支、标签或 Stash 后会选中对应提交，并将该行滚到历史列表顶部附近；列表末尾受可用滚动距离限制。
 

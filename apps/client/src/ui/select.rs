@@ -7,13 +7,13 @@ use nsh_core::prelude::*;
 use std::rc::Rc;
 
 /// 一个选项：稳定 id 与随语言变化的文案。
-pub(crate) struct SelectOption {
-    pub(crate) id: &'static str,
+pub(crate) struct SelectOption<I = &'static str> {
+    pub(crate) id: I,
     pub(crate) label: Box<dyn Fn() -> String>,
 }
 
-impl SelectOption {
-    pub(crate) fn new(id: &'static str, label: impl Fn() -> String + 'static) -> SelectOption {
+impl<I> SelectOption<I> {
+    pub(crate) fn new(id: I, label: impl Fn() -> String + 'static) -> SelectOption<I> {
         return SelectOption {
             id,
             label: Box::new(label),
@@ -22,12 +22,12 @@ impl SelectOption {
 }
 
 /// 下拉字段。`width` 为 `None` 时占满父容器。
-pub(crate) fn select(
-    options: Vec<SelectOption>,
+pub(crate) fn select<I: AsRef<str> + Clone + 'static>(
+    options: Vec<SelectOption<I>>,
     selected: impl Into<SharedString>,
     width: Option<f32>,
     disabled: bool,
-    on_select: impl Fn(&'static str) + 'static,
+    on_select: impl Fn(I) + 'static,
 ) -> impl IntoElement {
     let options = Rc::new(options);
     let on_select = Rc::new(on_select);
@@ -35,13 +35,13 @@ pub(crate) fn select(
     let selected_id = selected.clone();
     let current = options
         .iter()
-        .find(|option| option.id == selected.as_ref())
+        .find(|option| option.id.as_ref() == selected.as_ref())
         .map(|option| (option.label)())
         .unwrap_or_default();
     let accessibility = SharedString::from(current);
     let items = options
         .iter()
-        .map(|option| SelectItem::new(option.id, (option.label)()))
+        .map(|option| SelectItem::new(option.id.as_ref().to_string(), (option.label)()))
         .collect::<Vec<_>>();
     let trigger_options = options.clone();
     let trigger_selected = selected.clone();
@@ -69,7 +69,7 @@ pub(crate) fn select(
             text(move || {
                 trigger_options
                     .iter()
-                    .find(|option| option.id == trigger_selected.as_ref())
+                    .find(|option| option.id.as_ref() == trigger_selected.as_ref())
                     .map(|option| (option.label)())
                     .unwrap_or_default()
             })
@@ -100,9 +100,9 @@ pub(crate) fn select(
             };
             if let Some(option) = change_options
                 .iter()
-                .find(|option| option.id == value.as_ref())
+                .find(|option| option.id.as_ref() == value.as_ref())
             {
-                choose(option.id);
+                choose(option.id.clone());
             }
         })
         .disabled(disabled)
