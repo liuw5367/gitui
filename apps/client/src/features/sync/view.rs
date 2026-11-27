@@ -175,36 +175,48 @@ pub(crate) fn sync_dialog(
                         .unwrap_or_else(|| branch.clone());
                     view()
                         .w_full()
-                        .flex_col()
-                        .child(push_field_label(language, "sync.pushRemote"))
-                        .child(ui::select::select_with_limit(
-                            entries,
-                            remote.clone(),
-                            None,
-                            is_running,
-                            Some(PUSH_LIST_HEIGHT),
-                            move |remote: String| {
-                                new_target.set(source.clone());
-                                dialog.update(|state| {
-                                    let Some(state) = state.as_mut().filter(|state| !state.running)
-                                    else {
-                                        return;
-                                    };
-                                    let destination = remote_branches
-                                        .iter()
-                                        .find(|branch| {
-                                            branch.remote == remote && branch.name == source
-                                        })
-                                        .map(|branch| branch.name.clone())
-                                        .unwrap_or_default();
-                                    state.remote = Some(remote);
-                                    state.options.push.branches =
-                                        Some((source.clone(), destination));
-                                    state.result = None;
-                                    state.summary = None;
-                                });
-                            },
-                        ))
+                        .flex_row()
+                        .items_center()
+                        .gap(px(ui::GAP))
+                        .child(
+                            view()
+                                .flex_shrink_0()
+                                .child(push_field_label(language, "sync.pushRemote")),
+                        )
+                        .child(
+                            view()
+                                .flex_1()
+                                .min_w_0()
+                                .child(ui::select::select_with_limit(
+                                    entries,
+                                    remote.clone(),
+                                    None,
+                                    is_running,
+                                    Some(PUSH_LIST_HEIGHT),
+                                    move |remote: String| {
+                                        new_target.set(source.clone());
+                                        dialog.update(|state| {
+                                            let Some(state) =
+                                                state.as_mut().filter(|state| !state.running)
+                                            else {
+                                                return;
+                                            };
+                                            let destination = remote_branches
+                                                .iter()
+                                                .find(|branch| {
+                                                    branch.remote == remote && branch.name == source
+                                                })
+                                                .map(|branch| branch.name.clone())
+                                                .unwrap_or_default();
+                                            state.remote = Some(remote);
+                                            state.options.push.branches =
+                                                Some((source.clone(), destination));
+                                            state.result = None;
+                                            state.summary = None;
+                                        });
+                                    },
+                                )),
+                        )
                         .into_element()
                 });
                 let branch_fields = push_pair.as_ref().map(|(source, destination)| {

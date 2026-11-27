@@ -465,17 +465,27 @@ pub(crate) fn tag_remote_field(
         .collect();
     view()
         .w_full()
-        .flex_col()
-        .gap(px(crate::ui::GAP_XS))
-        .child(field_label(language, "sync.pushRemote"))
-        .child(crate::ui::select::select_with_limit(
-            options,
-            selected,
-            None,
-            disabled,
-            Some(224.0),
-            on_select,
-        ))
+        .flex_row()
+        .items_center()
+        .gap(px(crate::ui::GAP))
+        .child(
+            view()
+                .flex_shrink_0()
+                .child(field_label(language, "sync.pushRemote")),
+        )
+        .child(
+            view()
+                .flex_1()
+                .min_w_0()
+                .child(crate::ui::select::select_with_limit(
+                    options,
+                    selected,
+                    None,
+                    disabled,
+                    Some(224.0),
+                    on_select,
+                )),
+        )
 }
 
 pub(crate) fn field_label(
