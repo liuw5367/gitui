@@ -52,30 +52,30 @@ struct CompareRef {
     value: String,
 }
 
-fn compare_refs_for_tab(tab: &Tab) -> Vec<CompareRef> {
+fn compare_refs_for_tab(refs_for_tab: &git::Refs) -> Vec<CompareRef> {
     let mut refs = Vec::new();
-    for branch in &tab.refs.branches {
+    for branch in &refs_for_tab.branches {
         refs.push(CompareRef {
             label_key: "compare.localBranch",
             name: branch.name.clone(),
             value: format!("refs/heads/{}", branch.name),
         });
     }
-    for branch in &tab.refs.remote_branches {
+    for branch in &refs_for_tab.remote_branches {
         refs.push(CompareRef {
             label_key: "compare.remoteBranch",
             name: branch.full_name(),
             value: format!("refs/remotes/{}", branch.full_name()),
         });
     }
-    for tag in &tab.refs.tags {
+    for tag in &refs_for_tab.tags {
         refs.push(CompareRef {
             label_key: "compare.tagRef",
             name: tag.clone(),
             value: format!("refs/tags/{tag}"),
         });
     }
-    for stash in &tab.refs.stashes {
+    for stash in &refs_for_tab.stashes {
         refs.push(CompareRef {
             label_key: "compare.stashRef",
             name: stash.summary.clone(),
@@ -151,6 +151,21 @@ pub(crate) fn history(
             .map(|branch| (branch.full_name(), branch.clone()))
             .collect::<std::collections::HashMap<_, _>>(),
     );
+    let tabs = cmd.session.tabs;
+    let local_branches = computed(move || {
+        tabs.with(|tabs| {
+            tabs.iter()
+                .find(|tab| tab.id == tab_id)
+                .map(|tab| {
+                    tab.refs
+                        .branches
+                        .iter()
+                        .map(|branch| branch.name.clone())
+                        .collect::<std::collections::HashSet<_>>()
+                })
+                .unwrap_or_default()
+        })
+    });
     let current_branch = tab.branch.clone();
     let can_rebase = matches!(&tab.head, git::HeadState::Branch(_))
         && tab.operation == git::Operation::None
@@ -274,26 +289,28 @@ pub(crate) fn history(
                 .collect::<Vec<_>>();
         })
     };
-    let mut branches = tab
-        .refs
-        .branches
-        .iter()
-        .map(|branch| FilterBranch {
-            label: branch.name.clone(),
-            reference: format!("refs/heads/{}", branch.name),
-            remote: false,
-        })
-        .collect::<Vec<_>>();
-    branches.extend(tab.refs.remote_branches.iter().map(|branch| FilterBranch {
-        label: branch.full_name(),
-        reference: format!("refs/remotes/{}/{}", branch.remote, branch.name),
-        remote: true,
-    }));
-    branches.sort_by(|left, right| left.label.cmp(&right.label));
-    branches.dedup_by(|left, right| left.reference == right.reference);
+    let remote_filter_branches = tab.refs.remote_branches.clone();
+    let filter_branches = move || {
+        let mut branches = local_branches
+            .get()
+            .iter()
+            .map(|branch| FilterBranch {
+                label: branch.clone(),
+                reference: format!("refs/heads/{branch}"),
+                remote: false,
+            })
+            .collect::<Vec<_>>();
+        branches.extend(remote_filter_branches.iter().map(|branch| FilterBranch {
+            label: branch.full_name(),
+            reference: format!("refs/remotes/{}/{}", branch.remote, branch.name),
+            remote: true,
+        }));
+        branches.sort_by(|left, right| left.label.cmp(&right.label));
+        branches.dedup_by(|left, right| left.reference == right.reference);
+        branches
+    };
     let authors = tab.authors.clone();
     let language_value = language;
-    let compare_refs = compare_refs_for_tab(&tab);
     let filter_open = state.filter_open;
     let filter_tab_id = state.filter_tab_id;
     let filter_position = state.filter_position;
@@ -534,7 +551,12 @@ pub(crate) fn history(
                                         let selected_now: std::sync::Arc<dyn Fn() -> bool> =
                                             std::sync::Arc::new(move || row_selected.get());
                                         let in_compare = compare_for_render.contains(&index);
-                                        let has_refs = !commit.refs.is_empty();
+                                        let raw_refs = commit.refs.clone();
+                                        let chip_remotes = remote_branches_for_render.clone();
+                                        let row_refs = computed(move || local_branches.with(|branches| {
+                                            live_commit_refs(&raw_refs, branches, &chip_remotes)
+                                        }));
+                                        let chip_remotes_for_row = remote_branches_for_render.clone();
                                         let row_selected_for_bg = selected_now.clone();
                                         let row_selected_for_hover = selected_now.clone();
                                         let row_selected_for_graph = selected_now;
@@ -542,7 +564,7 @@ pub(crate) fn history(
                                             .get(row as usize)
                                             .cloned()
                                             .unwrap_or_default();
-                                        let remote_branches = remote_branches_for_render.clone();
+
                                         return view()
                                             .w_full()
                                             .h(px(metrics::COMMIT_ROW_H))
@@ -596,12 +618,9 @@ pub(crate) fn history(
                                                             .flex_row()
                                                             .items_center()
                                                             .gap(px(4.0))
-                                                            .when(has_refs, |this| {
-                                                                this.child(ref_chips(
-                                                                    commit.refs.clone(),
-                                                                    remote_branches,
-                                                                ))
-                                                            }),
+                                                            .child(dynamic(move || {
+                                                                ref_chips(row_refs.get(), chip_remotes_for_row.clone())
+                                                            })),
                                                     ),
                                             )
                                             .child(
@@ -704,7 +723,8 @@ pub(crate) fn history(
                                         if !keep_selection {
                                             select_for_context(index);
                                         }
-                                        let targets = commit_ref_chips(commit.refs.clone(), &remotes_for_menu)
+                                        let live_refs = local_branches.with_untracked(|branches| live_commit_refs(&commit.refs, branches, &remotes_for_menu));
+                                        let targets = commit_ref_chips(live_refs, &remotes_for_menu)
                                             .into_iter().flat_map(|chip| chip.targets).collect::<Vec<_>>();
                                         let mut items = commit_ref_menu_items(&targets, &ref_badge_menu_for_menu);
                                         if !items.is_empty() {
@@ -826,6 +846,7 @@ pub(crate) fn history(
                 Some(crate::features::history::state::FilterMenu::Authors) => "filter.author",
                 None => "filter.title",
             };
+            let branches = filter_branches();
             let panel = if advanced {
                 filter_pop(
                     language_value,
@@ -876,7 +897,8 @@ pub(crate) fn history(
             }
             return compare_refs_dialog(
                 language_value,
-                compare_refs.clone(),
+                tabs.with(|tabs| tabs.iter().find(|tab| tab.id == tab_id)
+                    .map(|tab| compare_refs_for_tab(&tab.refs)).unwrap_or_default()),
                 compare_refs_state.clone(),
                 compare_refs_cmd.clone(),
             );
@@ -1942,6 +1964,25 @@ fn ref_chips(
     remote_branches: std::sync::Arc<std::collections::HashMap<String, git::RemoteBranch>>,
 ) -> impl IntoElement {
     render_ref_chips(commit_ref_chips(refs, &remote_branches))
+}
+
+fn live_commit_refs(
+    refs: &[String],
+    branches: &std::collections::HashSet<String>,
+    remote_branches: &std::collections::HashMap<String, git::RemoteBranch>,
+) -> Vec<String> {
+    refs.iter()
+        .filter(|reference| {
+            let label = reference.as_str();
+            label == "HEAD"
+                || label.starts_with("HEAD -> ")
+                || label.starts_with("tag: ")
+                || label.starts_with("stash: ")
+                || branches.contains(label)
+                || remote_branches.contains_key(label)
+        })
+        .cloned()
+        .collect()
 }
 
 fn commit_ref_chips(

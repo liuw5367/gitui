@@ -636,7 +636,11 @@ fn history_list_snapshot(tab: &Tab) -> Tab {
         branch: tab.branch.clone(),
         commits: tab.commits.clone(),
         graph_commits: tab.graph_commits.clone(),
-        refs: tab.refs.clone(),
+        refs: git::Refs {
+            // 本地分支由行徽标和筛选器直接订阅；删除分支不需要重建表格。
+            branches: Vec::new(),
+            ..tab.refs.clone()
+        },
         authors: tab.authors.clone(),
         filter: tab.filter.clone(),
         compare: tab.compare.clone(),

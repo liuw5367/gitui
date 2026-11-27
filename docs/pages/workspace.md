@@ -68,7 +68,7 @@ Remotes 父行是地球 14 + 名 + 计数，每个 remote 下先挂一行 URL（
 
 Branch 行右键菜单依画板 22 的顺序包含：`Checkout`、`New Branch from '<name>'…`、`Compare with Current Branch`、`Rebase Current onto '<name>'`、`Merge '<name>' into Current`、`New Tag…`、`Rename…`、`Delete…`、`Copy Branch Name`、`Push '<name>' to origin`。当前分支的 Checkout、Rebase、Merge、Delete 禁用；Rebase 还要求当前 HEAD 位于分支上、工作区干净且没有其它 Git 操作；Push 在没有 `origin` 时禁用。会改写历史的 Rebase 会二次确认，冲突交给现有冲突面板处理。Branches 组头右键菜单另有 `New Branch…` 与组折叠操作。
 
-重命名表单预填当前分支名。点击侧栏分支、标签或 Stash 后会选中对应提交，并将该行滚到历史列表顶部附近；列表末尾受可用滚动距离限制。
+重命名表单预填当前分支名。删除本地分支成功后，History 保持原有选中项和滚动位置，并移除对应引用徽章及其菜单项。点击侧栏分支、标签或 Stash 后会选中对应提交，并将该行滚到历史列表顶部附近；列表末尾受可用滚动距离限制。
 
 ## 4. 历史区
 

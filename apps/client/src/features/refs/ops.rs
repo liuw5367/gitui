@@ -119,7 +119,9 @@ pub(crate) fn delete_branch(tab: &mut Tab, branch: &str) {
     };
     match repo.delete_branch(branch) {
         Ok(()) => {
-            tab.refs = repo.refs().unwrap_or_default();
+            tab.refs
+                .branches
+                .retain(|candidate| candidate.name != branch);
             tab.error = None;
         }
         Err(error) => tab.error = Some(error.detail()),
