@@ -479,6 +479,7 @@ impl HistoryCommands {
                 && tab.compare_target.is_none()
             {
                 tab.show_commit_diff = false;
+                tab.file_patch = None;
             } else {
                 ops::return_to_history(tab);
             }
