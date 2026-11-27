@@ -153,6 +153,60 @@ pub(crate) fn sync_dialog(
                 {
                     destinations.push(destination.clone());
                 }
+                let available_remotes = current_tab
+                    .as_ref()
+                    .map(|tab| tab.refs.remotes.clone())
+                    .unwrap_or_default();
+                let remote_branches = current_tab
+                    .as_ref()
+                    .map(|tab| tab.refs.remote_branches.clone())
+                    .unwrap_or_default();
+                const PUSH_LIST_HEIGHT: f32 = 224.0;
+                let remote_field = (kind == Sync::Push).then(|| {
+                    let entries = available_remotes
+                        .into_iter()
+                        .map(|name| {
+                            ui::select::SelectOption::new(name.clone(), move || name.clone())
+                        })
+                        .collect();
+                    let source = push_pair
+                        .as_ref()
+                        .map(|(source, _)| source.clone())
+                        .unwrap_or_else(|| branch.clone());
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .child(push_field_label(language, "sync.pushRemote"))
+                        .child(ui::select::select_with_limit(
+                            entries,
+                            remote.clone(),
+                            None,
+                            is_running,
+                            Some(PUSH_LIST_HEIGHT),
+                            move |remote: String| {
+                                new_target.set(source.clone());
+                                dialog.update(|state| {
+                                    let Some(state) = state.as_mut().filter(|state| !state.running)
+                                    else {
+                                        return;
+                                    };
+                                    let destination = remote_branches
+                                        .iter()
+                                        .find(|branch| {
+                                            branch.remote == remote && branch.name == source
+                                        })
+                                        .map(|branch| branch.name.clone())
+                                        .unwrap_or_default();
+                                    state.remote = Some(remote);
+                                    state.options.push.branches =
+                                        Some((source.clone(), destination));
+                                    state.result = None;
+                                    state.summary = None;
+                                });
+                            },
+                        ))
+                        .into_element()
+                });
                 let branch_fields = push_pair.as_ref().map(|(source, destination)| {
                     let source = source.clone();
                     let destination = destination.clone();
@@ -199,11 +253,12 @@ pub(crate) fn sync_dialog(
                                         .min_w_0()
                                         .flex_col()
                                         .child(push_field_label(language, "sync.sourceBranch"))
-                                        .child(ui::select::select(
+                                        .child(ui::select::select_with_limit(
                                             source_options,
                                             source.clone(),
                                             None,
                                             is_running,
+                                            Some(PUSH_LIST_HEIGHT),
                                             move |name| {
                                                 new_target.set(name.clone());
                                                 set_pair(name, next_destination.clone());
@@ -216,11 +271,12 @@ pub(crate) fn sync_dialog(
                                         .min_w_0()
                                         .flex_col()
                                         .child(push_field_label(language, "sync.targetBranch"))
-                                        .child(ui::select::select(
+                                        .child(ui::select::select_with_limit(
                                             dest_options,
                                             destination,
                                             None,
                                             is_running,
+                                            Some(PUSH_LIST_HEIGHT),
                                             move |name: String| {
                                                 if name.is_empty() {
                                                     new_target.set(next_source.clone());
@@ -241,6 +297,15 @@ pub(crate) fn sync_dialog(
                                 move |value| new_target.set(value.to_string()),
                             ))
                         })
+                        .into_element()
+                });
+                let branch_fields = remote_field.map(|remote| {
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .gap(px(ui::GAP_XS))
+                        .child(remote)
+                        .child(branch_fields)
                         .into_element()
                 });
                 let missing_source = (kind == Sync::Push

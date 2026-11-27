@@ -1095,6 +1095,7 @@
     "includeUntracked": "包含未跟踪文件"
   },
   "sync": {
+    "pushRemote": "远端",
     "sourceBranch": "源分支",
     "targetBranch": "目标分支",
     "createTargetBranch": "创建远端分支…",

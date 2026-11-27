@@ -29,6 +29,17 @@ pub(crate) fn select<I: AsRef<str> + Clone + 'static>(
     disabled: bool,
     on_select: impl Fn(I) + 'static,
 ) -> impl IntoElement {
+    select_with_limit(options, selected, width, disabled, None, on_select)
+}
+
+pub(crate) fn select_with_limit<I: AsRef<str> + Clone + 'static>(
+    options: Vec<SelectOption<I>>,
+    selected: impl Into<SharedString>,
+    width: Option<f32>,
+    disabled: bool,
+    max_height: Option<f32>,
+    on_select: impl Fn(I) + 'static,
+) -> impl IntoElement {
     let options = Rc::new(options);
     let on_select = Rc::new(on_select);
     let selected = selected.into();
@@ -108,6 +119,13 @@ pub(crate) fn select<I: AsRef<str> + Clone + 'static>(
         .disabled(disabled)
         .accessibility_label(accessibility)
         .offset(px(4.0))
+        .list_style(move |style| {
+            if let Some(height) = max_height {
+                style.max_h(px(height))
+            } else {
+                style
+            }
+        })
         .popup_style(|style| {
             style
                 .p(px(4.0))

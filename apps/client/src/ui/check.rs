@@ -216,15 +216,10 @@ pub(crate) fn check_row<MC, MD>(
             if !checked.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            return view()
-                .w(px(9.0))
-                .h(px(9.0))
-                .child(ui::icon::icon_view(
-                    "check",
-                    ui::icon::IconSize::Button,
-                    || design::token("primary-foreground"),
-                ))
-                .into_element();
+            return ui::icon::icon_view("check", ui::icon::IconSize::Compact, || {
+                design::token("primary-foreground")
+            })
+            .into_element();
         }))
         .on_change(move |next: &bool| on_change(*next))
         .child(

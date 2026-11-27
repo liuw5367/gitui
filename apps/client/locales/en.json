@@ -1095,6 +1095,7 @@
     "includeUntracked": "Include untracked files"
   },
   "sync": {
+    "pushRemote": "Remote",
     "sourceBranch": "Source branch",
     "targetBranch": "Target branch",
     "createTargetBranch": "Create remote branch…",
