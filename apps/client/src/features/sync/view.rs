@@ -667,6 +667,9 @@ fn sync_options(
         ],
     };
     for (key, checked) in choices {
+        if key == "sync.optRebaseLocal" && options.pull.strategy != git::PullStrategy::Rebase {
+            continue;
+        }
         let option_id = match key {
             "sync.optPrune" => "prune",
             "sync.optTags" => "fetchTags",
@@ -680,9 +683,7 @@ fn sync_options(
             _ => continue,
         };
         let set_option = set_option.clone();
-        let row_disabled = disabled
-            || (key == "sync.optAutostashPop" && !options.pull.autostash)
-            || (key == "sync.optRebaseLocal" && options.pull.strategy != git::PullStrategy::Rebase);
+        let row_disabled = disabled || (key == "sync.optAutostashPop" && !options.pull.autostash);
         rows = rows.child(option_row(
             language,
             key,
