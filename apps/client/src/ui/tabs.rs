@@ -89,8 +89,7 @@ pub(crate) fn repository_tabs(
     language: Signal<SharedString>,
 ) -> impl IntoElement {
     let widths = signal(Vec::<(u64, f32)>::new());
-    let drop_boundary = signal(None::<usize>);
-    let tab_count = computed(move || tabs.with(|list| list.len()));
+    let drag_preview = signal(None::<(u64, usize, usize, f32, f32)>);
     return scroll()
         .horizontal()
         .scrollbar(false)
@@ -139,7 +138,6 @@ pub(crate) fn repository_tabs(
                         let context_session = session.clone();
                         let move_tabs = session.clone();
                         let width_state = widths;
-                        let drop_boundary_for_item = drop_boundary;
                         let start_x = signal(0.0_f32);
                         // 页签自身的悬停：× 的显隐跟着它走。设计稿的要求是「活动页签
                         // 平时不显示 ×、悬停才出现」，而 `on_mouse_enter` 在「指针进入
@@ -154,6 +152,31 @@ pub(crate) fn repository_tabs(
                         );
                         view()
                             .relative()
+                            .translate_x(move || {
+                                let Some((dragged, source, destination, delta, width)) =
+                                    drag_preview.get()
+                                else {
+                                    return px(0.0);
+                                };
+                                let position = index.get();
+                                if id == dragged {
+                                    return px(delta);
+                                }
+                                if position > source && position <= destination {
+                                    return px(-width);
+                                }
+                                if position < source && position >= destination {
+                                    return px(width);
+                                }
+                                px(0.0)
+                            })
+                            .z_index(move || {
+                                if drag_preview.get().is_some_and(|drag| drag.0 == id) {
+                                    2
+                                } else {
+                                    0
+                                }
+                            })
                             .element_ref(&tab_ref)
                             .h(px(27.0))
                             .max_w(px(178.0))
@@ -200,19 +223,18 @@ pub(crate) fn repository_tabs(
                             )))
                             .on_responder_grant(move |event: &ResponderEvent| {
                                 start_x.set(event.location.x.0);
-                                drop_boundary.set(None);
+                                drag_preview.set(None);
                             })
                             .on_responder_move({
                                 let tabs = tabs;
                                 let width_state = width_state;
-                                let drop_boundary = drop_boundary;
                                 move |event: &ResponderEvent| {
                                     let order: Vec<u64> =
                                         tabs.get_untracked().iter().map(|tab| tab.id).collect();
                                     let Some(source) =
                                         order.iter().position(|candidate| *candidate == id)
                                     else {
-                                        drop_boundary.set(None);
+                                        drag_preview.set(None);
                                         return;
                                     };
                                     let measured = width_state.get_untracked();
@@ -223,10 +245,18 @@ pub(crate) fn repository_tabs(
                                         &order,
                                         &measured,
                                     );
-                                    let boundary = tab_drop_boundary(source, destination);
-                                    if drop_boundary.get_untracked() != boundary {
-                                        drop_boundary.set(boundary);
-                                    }
+                                    let width = measured
+                                        .iter()
+                                        .find(|(key, _)| *key == id)
+                                        .map(|(_, width)| *width)
+                                        .unwrap_or(120.0);
+                                    drag_preview.set(Some((
+                                        id,
+                                        source,
+                                        destination,
+                                        event.gesture.delta.x.0,
+                                        width + 4.0,
+                                    )));
                                 }
                             })
                             .on_responder_release(move |event: &ResponderEvent| {
@@ -235,7 +265,7 @@ pub(crate) fn repository_tabs(
                                 let Some(source) =
                                     order.iter().position(|candidate| *candidate == id)
                                 else {
-                                    drop_boundary.set(None);
+                                    drag_preview.set(None);
                                     return;
                                 };
                                 let measured = width_state.get_untracked();
@@ -246,11 +276,11 @@ pub(crate) fn repository_tabs(
                                     &order,
                                     &measured,
                                 );
-                                drop_boundary.set(None);
+                                drag_preview.set(None);
                                 move_tabs.move_tab(id, destination);
                             })
                             .on_responder_terminate(move |_: &ResponderEvent| {
-                                drop_boundary.set(None);
+                                drag_preview.set(None);
                             })
                             .on_press(move || activate.activate_tab_id(id))
                             .on_context_menu(move |event: &ContextMenuEvent| {
@@ -423,29 +453,6 @@ pub(crate) fn repository_tabs(
                                             .text_color(move || design::text3()),
                                     ),
                             )
-                            .child(dynamic(move || -> AnyElement {
-                                let boundary = drop_boundary_for_item.get();
-                                let position = index.get();
-                                let count = tab_count.get();
-                                let at_start = boundary == Some(position);
-                                let at_end = position + 1 == count && boundary == Some(count);
-                                if !at_start && !at_end {
-                                    return view().w(px(0.0)).h(px(0.0)).into_element();
-                                }
-                                let marker = view()
-                                    .absolute()
-                                    .top(px(4.0))
-                                    .w(px(2.0))
-                                    .h(px(19.0))
-                                    .rounded(px(1.0))
-                                    .z_index(2)
-                                    .bg(move || design::token("primary-bg"));
-                                return if at_start {
-                                    marker.left(px(0.0)).into_element()
-                                } else {
-                                    marker.right(px(0.0)).into_element()
-                                };
-                            }))
                     },
                 )),
         );
@@ -487,20 +494,9 @@ fn tab_drop_destination(
     return destination;
 }
 
-fn tab_drop_boundary(source: usize, destination: usize) -> Option<usize> {
-    if destination == source {
-        return None;
-    }
-    return Some(if destination < source {
-        destination
-    } else {
-        destination + 1
-    });
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{tab_drop_boundary, tab_drop_destination};
+    use super::tab_drop_destination;
 
     #[test]
     fn tab_drop_destination_tracks_crossed_tab_midpoints() {
@@ -511,12 +507,5 @@ mod tests {
         assert_eq!(tab_drop_destination(2, 50.0, -101.0, &order, &widths), 1);
         assert_eq!(tab_drop_destination(2, 50.0, -199.0, &order, &widths), 1);
         assert_eq!(tab_drop_destination(2, 50.0, -201.0, &order, &widths), 0);
-    }
-
-    #[test]
-    fn tab_drop_boundary_marks_the_insertion_side_of_the_target() {
-        assert_eq!(tab_drop_boundary(1, 2), Some(3));
-        assert_eq!(tab_drop_boundary(2, 1), Some(1));
-        assert_eq!(tab_drop_boundary(1, 1), None);
     }
 }
