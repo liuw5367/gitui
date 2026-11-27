@@ -253,6 +253,7 @@ pub(crate) fn sync_dialog(
                                         .flex_1()
                                         .min_w_0()
                                         .flex_col()
+                                        .gap(px(ui::GAP_XS))
                                         .child(push_field_label(language, "sync.sourceBranch"))
                                         .child(ui::select::select_with_limit(
                                             source_options,
@@ -271,6 +272,7 @@ pub(crate) fn sync_dialog(
                                         .flex_1()
                                         .min_w_0()
                                         .flex_col()
+                                        .gap(px(ui::GAP_XS))
                                         .child(push_field_label(language, "sync.targetBranch"))
                                         .child(ui::select::select_with_limit(
                                             dest_options,
