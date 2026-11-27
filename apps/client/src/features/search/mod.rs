@@ -20,14 +20,38 @@ pub(crate) use form_dialog::{FormKind, FormState, form_dialog};
 /// `app::bootstrap` 与 `app::windows`），避免两扇窗各弹一个同样的表单。
 pub(crate) fn form_overlay(
     commands: &commands::SearchCommands,
+    refs: &crate::features::refs::commands::RefsCommands,
     language: Signal<SharedString>,
 ) -> impl IntoElement {
     let submit = commands.clone();
     let cancel = commands.clone();
+    let refs = refs.clone();
+    let state = commands.state.form;
+    let target = computed(move || {
+        state.with(|form| {
+            form.as_ref()
+                .and_then(|form| (form.kind == FormKind::NewTag).then_some(form.target_tab_id))
+        })
+    });
+    let tabs = commands.session.tabs;
+    let active = commands.session.active;
+    let remotes = computed(move || {
+        let Some(target) = target.get() else {
+            return Vec::new();
+        };
+        tabs.with(|tabs| {
+            let tab = match target {
+                Some(id) => tabs.iter().find(|tab| tab.id == id),
+                None => tabs.get(active.get()),
+            };
+            tab.map(|tab| tab.refs.remotes.clone()).unwrap_or_default()
+        })
+    });
     return form_dialog(
         language,
-        commands.state.form,
-        std::sync::Arc::new(move |form: FormState| submit.submit_form(form)),
+        state,
+        remotes,
+        std::sync::Arc::new(move |form: FormState| submit.submit_form(form, &refs)),
         std::sync::Arc::new(move || cancel.cancel_form()),
     );
 }

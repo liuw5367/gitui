@@ -132,6 +132,8 @@ pub(crate) struct FormState {
     pub flag: bool,
     /// 远端分支菜单要求建立上游跟踪关系。
     pub track_upstream: bool,
+    /// Some selects the remote for the optional post-create push.
+    pub tag_push_remote: Option<String>,
     /// Paths shown by the selected-file stash picker and its selection state.
     pub stash_paths: Vec<(String, bool)>,
     pub stash_selected_paths: BTreeSet<String>,
@@ -148,6 +150,7 @@ impl FormState {
             third: String::new(),
             flag: kind.flag_default(),
             track_upstream: false,
+            tag_push_remote: None,
             stash_paths: Vec::new(),
             stash_selected_paths: BTreeSet::new(),
             error: None,
@@ -170,6 +173,7 @@ impl FormState {
 pub(crate) fn form_dialog(
     language: Signal<SharedString>,
     state: Signal<Option<FormState>>,
+    tag_remotes: Memo<Vec<String>>,
     on_submit: std::sync::Arc<dyn Fn(FormState)>,
     on_cancel: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
@@ -240,7 +244,7 @@ pub(crate) fn form_dialog(
                             .into_element(),
                     );
                 }
-                if let Some(label) = kind.third_label() {
+                if let Some(label) = kind.third_label().filter(|_| kind != FormKind::NewTag) {
                     if kind != FormKind::NewWorktree || worktree_branch {
                         fields.push(
                             field(
@@ -262,6 +266,38 @@ pub(crate) fn form_dialog(
                                 .into_element(),
                         );
                     }
+                }
+                if kind == FormKind::NewTag {
+                    fields.push(
+                        view()
+                            .w_full()
+                            .flex_col()
+                            .gap(px(crate::ui::GAP_SM))
+                            .child(
+                                text(move || {
+                                    i18n::t(language.get().as_str(), "form.annotatedHelp")
+                                })
+                                .text_size(px(crate::ui::SECONDARY))
+                                .text_color(design::text2),
+                            )
+                            .child(when(
+                                move || {
+                                    state.with(|form| form.as_ref().is_some_and(|form| form.flag))
+                                },
+                                move || {
+                                    field(
+                                        language,
+                                        "form.message",
+                                        "form.placeholders.tagMessage",
+                                        state,
+                                        |form| form.third.clone(),
+                                        |form, value| form.third = value,
+                                    )
+                                },
+                            ))
+                            .child(tag_push_fields(language, state, tag_remotes))
+                            .into_element(),
+                    );
                 }
                 fields.push(
                     when(
@@ -291,8 +327,12 @@ pub(crate) fn form_dialog(
                 let disabled = computed(move || {
                     state.with(|state| {
                         state.as_ref().is_none_or(|form| {
-                            form.kind == FormKind::StashSelectedFiles
-                                && form.selected_stash_paths().is_empty()
+                            (form.kind == FormKind::StashSelectedFiles
+                                && form.selected_stash_paths().is_empty())
+                                || (form.kind == FormKind::NewTag
+                                    && form.tag_push_remote.as_ref().is_some_and(|remote| {
+                                        !tag_remotes.with(|remotes| remotes.contains(remote))
+                                    }))
                         })
                     })
                 });
@@ -308,7 +348,21 @@ pub(crate) fn form_dialog(
                     dynamic(move || {
                         let submit = submit.clone();
                         crate::ui::button::button(
-                            move || i18n::t(language.get().as_str(), kind.confirm()),
+                            move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    if kind == FormKind::NewTag
+                                        && state.with(|form| {
+                                            form.as_ref()
+                                                .is_some_and(|form| form.tag_push_remote.is_some())
+                                        })
+                                    {
+                                        "form.createAndPushTag"
+                                    } else {
+                                        kind.confirm()
+                                    },
+                                )
+                            },
                             crate::ui::button::ButtonVariant::Primary,
                             crate::ui::button::ButtonSize::Regular,
                             disabled.get(),
@@ -335,6 +389,104 @@ pub(crate) fn form_dialog(
         },
         move || dismiss(),
     )
+}
+
+fn tag_push_fields(
+    language: Signal<SharedString>,
+    state: Signal<Option<FormState>>,
+    remotes: Memo<Vec<String>>,
+) -> impl IntoElement {
+    view()
+        .w_full()
+        .flex_col()
+        .gap(px(crate::ui::GAP_SM))
+        .child(crate::ui::check::check_row(
+            move || i18n::t(language.get().as_str(), "form.pushTagAfter"),
+            move || {
+                state.with(|form| {
+                    form.as_ref()
+                        .is_some_and(|form| form.tag_push_remote.is_some())
+                })
+            },
+            move || {
+                remotes.with(|remotes| remotes.is_empty())
+                    && state.with(|form| {
+                        form.as_ref()
+                            .is_none_or(|form| form.tag_push_remote.is_none())
+                    })
+            },
+            move |enabled| {
+                state.update(|form| {
+                    if let Some(form) = form {
+                        form.tag_push_remote = if enabled {
+                            remotes.with_untracked(|remotes| {
+                                remotes
+                                    .iter()
+                                    .find(|name| name.as_str() == "origin")
+                                    .or_else(|| remotes.first())
+                                    .cloned()
+                            })
+                        } else {
+                            None
+                        };
+                        form.error = None;
+                    }
+                })
+            },
+        ))
+        .child(dynamic(move || -> AnyElement {
+            let Some(remote) =
+                state.with(|form| form.as_ref().and_then(|form| form.tag_push_remote.clone()))
+            else {
+                return view().into_element();
+            };
+            tag_remote_field(language, remotes.get(), remote, move |remote| {
+                state.update(|form| {
+                    if let Some(form) = form {
+                        form.tag_push_remote = Some(remote);
+                        form.error = None;
+                    }
+                })
+            })
+            .into_element()
+        }))
+}
+
+pub(crate) fn tag_remote_field(
+    language: Signal<SharedString>,
+    remotes: Vec<String>,
+    selected: String,
+    on_select: impl Fn(String) + 'static,
+) -> impl IntoElement {
+    let disabled = remotes.is_empty();
+    let options = remotes
+        .into_iter()
+        .map(|name| crate::ui::select::SelectOption::new(name.clone(), move || name.clone()))
+        .collect();
+    view()
+        .w_full()
+        .flex_col()
+        .gap(px(crate::ui::GAP_XS))
+        .child(field_label(language, "sync.pushRemote"))
+        .child(crate::ui::select::select_with_limit(
+            options,
+            selected,
+            None,
+            disabled,
+            Some(224.0),
+            on_select,
+        ))
+}
+
+pub(crate) fn field_label(
+    language: Signal<SharedString>,
+    label_key: &'static str,
+) -> impl IntoElement {
+    text(move || i18n::t(language.get().as_str(), label_key))
+        .text_size(px(crate::ui::SECONDARY))
+        .font_weight(FontWeight::SEMIBOLD)
+        .line_height(px(crate::ui::SECONDARY_LINE))
+        .text_color(design::text2)
 }
 
 fn choose_worktree_path(
@@ -519,13 +671,7 @@ fn field(
         .w_full()
         .flex_col()
         .gap(px(crate::ui::GAP_XS))
-        .child(
-            text(move || i18n::t(language.get().as_str(), label_key))
-                .text_size(px(crate::ui::SECONDARY))
-                .font_weight(FontWeight::SEMIBOLD)
-                .line_height(px(crate::ui::SECONDARY_LINE))
-                .text_color(design::text2),
-        )
+        .child(field_label(language, label_key))
         .child(crate::ui::text_input::text_input_bound(
             move || state.with(|form| form.as_ref().map(read).unwrap_or_default()),
             move || i18n::t(language.get().as_str(), placeholder_key),
@@ -568,6 +714,7 @@ mod tests {
         form_dialog(
             signal(SharedString::from("en")),
             state,
+            computed(Vec::new),
             std::sync::Arc::new(move |_| state.set(None)),
             std::sync::Arc::new(move || state.set(None)),
         )

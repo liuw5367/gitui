@@ -910,6 +910,7 @@ pub(crate) fn app() -> impl IntoElement {
     let language_value = language;
     let handles_for_screen = handles.clone();
     let search_for_overlay = handles.search.clone();
+    let refs_for_overlay = handles.refs.clone();
 
     return view()
         .w_full()
@@ -961,7 +962,8 @@ pub(crate) fn app() -> impl IntoElement {
             if settings_open.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            features::search::form_overlay(&search_for_overlay, language_value).into_element()
+            features::search::form_overlay(&search_for_overlay, &refs_for_overlay, language_value)
+                .into_element()
         }))
         .child(dynamic({
             let search = handles.search.clone();

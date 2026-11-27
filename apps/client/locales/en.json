@@ -1054,6 +1054,7 @@
   "form": {
     "placeholders": {
       "branchName": "feature/my-change",
+      "tagMessage": "Describe this release",
       "tagName": "v1.0.0",
       "revision": "Branch, tag or commit (e.g. HEAD)",
       "remoteName": "origin",
@@ -1091,6 +1092,9 @@
     "authorEmail": "Email",
     "targetClosed": "The repository was closed before this form was submitted.",
     "checkoutAfter": "Checkout after create",
+    "annotatedHelp": "Stores a message, tagger, and date. A lightweight tag only points to the commit.",
+    "pushTagAfter": "Push after creating",
+    "createAndPushTag": "Create and Push",
     "annotated": "Annotated tag",
     "includeUntracked": "Include untracked files"
   },

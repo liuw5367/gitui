@@ -442,6 +442,7 @@ fn worktree_window_content(handles: AppHandles) -> impl IntoElement + use<> {
     let current_tab = computed(move || tabs.with(|list| list.get(active.get()).cloned()));
     let language = handles.language;
     let search = handles.search.clone();
+    let refs = handles.refs.clone();
     let settings_open = handles.session.settings_open;
     let window = nsh_core::element::desktop::current_window();
     on_key("mod+w", move |_| window.close());
@@ -481,7 +482,7 @@ fn worktree_window_content(handles: AppHandles) -> impl IntoElement + use<> {
             if settings_open.get() {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             }
-            crate::features::search::form_overlay(&search, language).into_element()
+            crate::features::search::form_overlay(&search, &refs, language).into_element()
         }))
         .child(dynamic({
             let search = handles.search.clone();

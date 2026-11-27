@@ -1054,6 +1054,7 @@
   "form": {
     "placeholders": {
       "branchName": "例如 feature/my-change",
+      "tagMessage": "输入标签说明",
       "tagName": "例如 v1.0.0",
       "revision": "分支、标签或提交，例如 HEAD",
       "remoteName": "例如 origin",
@@ -1091,6 +1092,9 @@
     "authorEmail": "邮箱",
     "targetClosed": "提交表单前，该仓库已关闭。",
     "checkoutAfter": "创建后检出",
+    "annotatedHelp": "附注标签会记录说明、创建者和日期。轻量标签只指向提交。",
+    "pushTagAfter": "创建后推送",
+    "createAndPushTag": "创建并推送",
     "annotated": "附注标签",
     "includeUntracked": "包含未跟踪文件"
   },

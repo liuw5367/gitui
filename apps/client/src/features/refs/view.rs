@@ -1456,72 +1456,61 @@ pub(crate) fn push_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
                         .is_some_and(|tab| tab.refs.tags.contains(&display_name))
                 })
             };
-            ui::dialog::modality(
-                view()
-                    .w(px(440.0))
-                    .flex_col()
-                    .gap(px(ui::GAP))
-                    .p(px(ui::GAP_XL))
-                    .rounded(px(crate::design::metrics::RADIUS_PANEL))
-                    .bg(move || design::token("popover"))
-                    .child(
-                        text(name.clone())
-                            .text_size(px(ui::BODY))
-                            .text_color(move || design::text()),
+            let body = view()
+                .w_full()
+                .flex_col()
+                .gap(px(ui::GAP))
+                .child(
+                    view()
+                        .w_full()
+                        .flex_col()
+                        .gap(px(ui::GAP_XS))
+                        .child(crate::features::search::form_dialog::field_label(
+                            language,
+                            "form.name",
+                        ))
+                        .child(
+                            text(name.clone())
+                                .text_size(px(ui::BODY))
+                                .text_color(move || design::text()),
+                        ),
+                )
+                .child(dynamic(move || {
+                    crate::features::search::form_dialog::tag_remote_field(
+                        language,
+                        remotes.get(),
+                        remote.get(),
+                        move |name| remote.set(name),
                     )
-                    .child(
-                        text(move || i18n::t(language.get().as_str(), "sync.pushRemote"))
-                            .text_size(px(ui::SECONDARY))
-                            .text_color(move || design::text2()),
-                    )
-                    .child(dynamic(move || {
-                        let entries = remotes
-                            .get()
-                            .into_iter()
-                            .map(|name| {
-                                ui::select::SelectOption::new(name.clone(), move || name.clone())
-                            })
-                            .collect();
-                        ui::select::select_with_limit(
-                            entries,
-                            remote.get(),
-                            None,
-                            remotes.with(|list| list.is_empty()),
-                            Some(224.0),
-                            move |name| remote.set(name),
-                        )
-                    }))
-                    .child(
-                        view()
-                            .flex_row()
-                            .justify_end()
-                            .gap(px(ui::GAP_SM))
-                            .child(ui::button::button(
-                                move || i18n::t(language.get().as_str(), "common.cancel"),
-                                ui::button::ButtonVariant::Secondary,
-                                ui::button::ButtonSize::Regular,
-                                false,
-                                move || pending.set(None),
-                            ))
-                            .child(ui::button::button(
-                                move || i18n::t(language.get().as_str(), "sync.push"),
-                                ui::button::ButtonVariant::Primary,
-                                ui::button::ButtonSize::Regular,
-                                move || {
-                                    !tag_exists()
-                                        || !remotes.with(|list| list.contains(&remote.get()))
-                                },
-                                move || {
-                                    cmd.push_tag_to_remote_at(
-                                        id,
-                                        name.clone(),
-                                        remote.get_untracked(),
-                                    )
-                                },
-                            )),
-                    ),
+                }));
+            let footer = vec![
+                ui::button::button(
+                    move || i18n::t(language.get().as_str(), "common.cancel"),
+                    ui::button::ButtonVariant::Secondary,
+                    ui::button::ButtonSize::Regular,
+                    false,
+                    move || pending.set(None),
+                )
+                .into_element(),
+                ui::button::button(
+                    move || i18n::t(language.get().as_str(), "sync.push"),
+                    ui::button::ButtonVariant::Primary,
+                    ui::button::ButtonSize::Regular,
+                    move || !tag_exists() || !remotes.with(|list| list.contains(&remote.get())),
+                    move || cmd.push_tag_to_remote_at(id, name.clone(), remote.get_untracked()),
+                )
+                .into_element(),
+            ];
+            ui::dialog::dialog_panel(
+                420.0,
+                move || i18n::t(language.get().as_str(), "tag.pushTag"),
+                Some(std::rc::Rc::new(move || {
+                    i18n::t(language.get().as_str(), "common.close")
+                })),
+                body,
+                footer,
+                move || pending.set(None),
             )
-            .into_element()
         },
         move || pending.set(None),
     )

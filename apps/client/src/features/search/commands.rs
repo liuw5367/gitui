@@ -148,7 +148,11 @@ impl SearchCommands {
     }
 
     /// 提交表单：按种类执行对应的 Git 写操作，失败时把原因留在对话框里。
-    pub(crate) fn submit_form(&self, form: FormState) {
+    pub(crate) fn submit_form(
+        &self,
+        form: FormState,
+        refs: &crate::features::refs::commands::RefsCommands,
+    ) {
         let tabs = self.session.tabs;
         let active = self.session.active;
         let form_state = self.state.form;
@@ -209,6 +213,24 @@ impl SearchCommands {
             form_state.set(Some(next));
             return;
         }
+        let tag_push = if form.kind == FormKind::NewTag {
+            form.tag_push_remote
+                .as_ref()
+                .map(|remote| (tab.id, remote.clone()))
+        } else {
+            None
+        };
+        if let Some((_, remote)) = &tag_push
+            && !tab.refs.remotes.contains(remote)
+        {
+            let mut next = form;
+            next.error = Some(crate::i18n::t(
+                self.language.get_untracked().as_str(),
+                "tag.targetChanged",
+            ));
+            form_state.set(Some(next));
+            return;
+        }
         let result = match form.kind {
             FormKind::NewBranch if form.track_upstream => {
                 ops::checkout_tracking_branch(tab, first.as_str(), second.as_str())
@@ -247,7 +269,12 @@ impl SearchCommands {
         };
         tabs.set(list);
         match result {
-            Ok(()) => form_state.set(None),
+            Ok(()) => {
+                form_state.set(None);
+                if let Some((tab_id, remote)) = tag_push {
+                    refs.push_tag_to_remote_at(tab_id, first, remote);
+                }
+            }
             Err(detail) => {
                 let mut next = form;
                 next.error = Some(detail);
