@@ -166,11 +166,58 @@ pub(crate) fn history(
                 .unwrap_or_default()
         })
     });
-    let current_branch = tab.branch.clone();
-    let can_rebase = matches!(&tab.head, git::HeadState::Branch(_))
-        && tab.operation == git::Operation::None
-        && tab.status.is_empty();
-    let has_origin = tab.remote_urls.iter().any(|(remote, _)| remote == "origin");
+    let live_tags = computed(move || {
+        tabs.with(|tabs| {
+            tabs.iter()
+                .find(|tab| tab.id == tab_id)
+                .map(|tab| tab.refs.tags.clone())
+                .unwrap_or_default()
+        })
+    });
+    let new_history_refs = computed(move || {
+        tabs.with(|tabs| {
+            tabs.iter()
+                .find(|tab| tab.id == tab_id)
+                .map(|tab| tab.new_history_refs.clone())
+                .unwrap_or_default()
+        })
+    });
+    let row_badge_refs = move |sha: &str, raw: &[String], tracked: bool| {
+        let branches = if tracked {
+            local_branches.get()
+        } else {
+            local_branches.get_untracked()
+        };
+        let tags = if tracked {
+            live_tags.get()
+        } else {
+            live_tags.get_untracked()
+        };
+        let additions = if tracked {
+            new_history_refs.get()
+        } else {
+            new_history_refs.get_untracked()
+        };
+        let mut refs = additions
+            .iter()
+            .filter(|(_, oid)| oid.as_str() == sha)
+            .filter_map(|(name, _)| {
+                name.strip_prefix("refs/heads/")
+                    .map(str::to_string)
+                    .or_else(|| {
+                        name.strip_prefix("refs/tags/")
+                            .map(|name| format!("tag: {name}"))
+                    })
+            })
+            .chain(raw.iter().cloned())
+            .collect::<Vec<_>>();
+        refs.retain(|reference| {
+            reference
+                .strip_prefix("tag: ")
+                .is_none_or(|name| tags.iter().any(|tag| tag == name))
+        });
+        (refs, branches)
+    };
     let mut configured_remotes = if tab.refs.remote_info.is_empty() {
         tab.refs.remotes.clone()
     } else {
@@ -275,9 +322,9 @@ pub(crate) fn history(
         language,
         refs: refs.clone(),
         tab_id,
-        current_branch,
-        can_rebase,
-        has_origin,
+        current_branch: String::new(),
+        can_rebase: false,
+        has_origin: false,
         remotes: configured_remotes,
     };
     let visible = {
@@ -553,9 +600,11 @@ pub(crate) fn history(
                                         let in_compare = compare_for_render.contains(&index);
                                         let raw_refs = commit.refs.clone();
                                         let chip_remotes = remote_branches_for_render.clone();
-                                        let row_refs = computed(move || local_branches.with(|branches| {
-                                            live_commit_refs(&raw_refs, branches, &chip_remotes)
-                                        }));
+                                        let badge_sha = commit.sha.clone();
+                                        let row_refs = computed(move || {
+                                            let (refs, branches) = row_badge_refs(&badge_sha, &raw_refs, true);
+                                            live_commit_refs(&refs, &branches, &chip_remotes)
+                                        });
                                         let chip_remotes_for_row = remote_branches_for_render.clone();
                                         let row_selected_for_bg = selected_now.clone();
                                         let row_selected_for_hover = selected_now.clone();
@@ -723,10 +772,20 @@ pub(crate) fn history(
                                         if !keep_selection {
                                             select_for_context(index);
                                         }
-                                        let live_refs = local_branches.with_untracked(|branches| live_commit_refs(&commit.refs, branches, &remotes_for_menu));
+                                        let (badges, branches) = row_badge_refs(&commit.sha, &commit.refs, false);
+                                        let live_refs = live_commit_refs(&badges, &branches, &remotes_for_menu);
                                         let targets = commit_ref_chips(live_refs, &remotes_for_menu)
                                             .into_iter().flat_map(|chip| chip.targets).collect::<Vec<_>>();
-                                        let mut items = commit_ref_menu_items(&targets, &ref_badge_menu_for_menu);
+                                        let mut ref_context = ref_badge_menu_for_menu.clone();
+                                        tabs.with_untracked(|tabs| {
+                                            if let Some(tab) = tabs.iter().find(|tab| tab.id == tab_id) {
+                                                ref_context.current_branch.clone_from(&tab.branch);
+                                                ref_context.can_rebase = matches!(&tab.head, git::HeadState::Branch(_))
+                                                    && tab.operation == git::Operation::None && tab.status.is_empty();
+                                                ref_context.has_origin = tab.refs.remotes.iter().any(|name| name == "origin");
+                                            }
+                                        });
+                                        let mut items = commit_ref_menu_items(&targets, &ref_context);
                                         if !items.is_empty() {
                                             items.push(crate::ui::menu::divider());
                                         }
@@ -2091,7 +2150,7 @@ fn commit_ref_chips(
         CommitRefKind::Tag => 2,
         CommitRefKind::Stash => 3,
     });
-    return references.into_iter().take(3).collect();
+    return references;
 }
 
 fn render_ref_chips(references: Vec<CommitRefChip>) -> impl IntoElement {

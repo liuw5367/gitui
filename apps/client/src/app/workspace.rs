@@ -633,12 +633,17 @@ fn history_list_snapshot(tab: &Tab) -> Tab {
     let started = std::time::Instant::now();
     let snapshot = Tab {
         id: tab.id,
-        branch: tab.branch.clone(),
+        branch: if tab.commits.is_empty() {
+            tab.branch.clone()
+        } else {
+            String::new()
+        },
         commits: tab.commits.clone(),
         graph_commits: tab.graph_commits.clone(),
         refs: git::Refs {
-            // 本地分支由行徽标和筛选器直接订阅；删除分支不需要重建表格。
+            // 本地分支与标签由行徽标和筛选器直接订阅，避免重建表格。
             branches: Vec::new(),
+            tags: Vec::new(),
             ..tab.refs.clone()
         },
         authors: tab.authors.clone(),

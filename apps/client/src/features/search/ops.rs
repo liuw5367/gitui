@@ -29,6 +29,7 @@ pub(crate) fn create_branch(
             .create_branch(name, from)
             .map_err(|error| error.detail())?,
     }
+    record_history_ref(tab, &repo, format!("refs/heads/{name}"));
     refresh_refs(tab, &repo);
     if checkout {
         let filter = tab.filter.clone();
@@ -94,8 +95,20 @@ pub(crate) fn create_tag(
     };
     repo.create_tag_with(name, from, message, annotated)
         .map_err(|error| error.detail())?;
+    record_history_ref(tab, &repo, format!("refs/tags/{name}"));
     refresh_refs(tab, &repo);
     return Ok(());
+}
+
+fn record_history_ref(tab: &mut Tab, repo: &git::Repo, reference: String) {
+    if let Ok(sha) = repo.resolve_commit(&reference) {
+        if let Ok(mut refs) = repo.ref_oid_snapshot()
+            && let Some(oid) = refs.remove(&reference)
+        {
+            tab.ref_oids.insert(reference.clone(), oid);
+        }
+        tab.new_history_refs.insert(reference, sha);
+    }
 }
 
 /// 添加远程。

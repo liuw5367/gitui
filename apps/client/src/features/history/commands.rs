@@ -464,7 +464,7 @@ impl HistoryCommands {
                 let visible = ops::visible_commit_indices(
                     &tab.commits,
                     self.state.query.get_untracked().as_str(),
-                    tab.selected,
+                    None,
                 );
                 self.state.scroll_request.set(
                     visible
@@ -500,7 +500,7 @@ impl HistoryCommands {
                     let visible = ops::visible_commit_indices(
                         &tab.commits,
                         self.state.query.get_untracked().as_str(),
-                        tab.selected,
+                        None,
                     );
                     if let Some(&top) = visible.get(api.visible_rows().start as usize) {
                         let sha = tab.commits[top].sha.clone();

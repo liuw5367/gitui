@@ -92,6 +92,8 @@ pub(crate) struct Tab {
     pub(crate) head_oid: Option<String>,
     /// 所有非符号引用及其 OID；检测非当前分支推进后再决定是否读取 History。
     pub(crate) ref_oids: BTreeMap<String, String>,
+    /// 刚创建的本地引用及其指向的提交，用于增量更新 History 徽标。
+    pub(crate) new_history_refs: BTreeMap<String, String>,
     pub(crate) commits: Vec<Commit>,
     /// Ancestors retained to reconnect graph lanes after non-branch filters hide commits.
     pub(crate) graph_commits: Vec<Commit>,
