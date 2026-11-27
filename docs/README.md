@@ -41,6 +41,6 @@ Rust 格式由根目录 `rustfmt.toml` 固定；Agent 修改 Rust 代码后运�
 新增一类文档时：在 `docs/` 下开一个同级目录（例如 `docs/architecture/`），把该主题的
 入口写成 `<目录>/README.md`，再在本表加一行。不同主题的文件不要平铺在 `docs/` 根下。
 
-工作区分支选择器：标题栏当前分支名打开单选搜索弹层，本地分支可切换，远端分支可创建本地跟踪分支，各分支可跳转对应 commit；状态栏移除重复分支名并将临时提示移到左端。标题栏与状态栏交互见[工作区](pages/workspace.md)，页面开发规则见[页面开发规范](development/page-development.md)和项目 [AGENTS.md](../AGENTS.md)。
+工作区分支选择器：标题栏当前分支名打开单选搜索弹层，本地分支可切换，远端分支可创建本地跟踪分支，各分支可跳转对应 commit；状态栏移除重复分支名并将临时提示移到左端。History 可见的分支与 tag 徽标提供目标引用右键菜单；合并的同名本地／远端分支按完整 ref 分组操作，右键沿用提交行选中与多选规则。交互见[工作区](pages/workspace.md)与[历史筛选](pages/history-filters.md)，页面开发规则见[页面开发规范](development/page-development.md)和项目 [AGENTS.md](../AGENTS.md)。
 
 历史文档在 [archive/2026-11-15-docs/](../archive/2026-11-15-docs/)，已冻结，只作参考。

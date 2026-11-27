@@ -92,11 +92,41 @@ enum CommitRefKind {
     Stash,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CommitRefTarget {
+    LocalBranch { name: String },
+    RemoteBranch { remote: String, name: String },
+    Tag { name: String },
+}
+
+impl CommitRefTarget {
+    fn full_reference(&self) -> String {
+        return match self {
+            Self::LocalBranch { name } => format!("refs/heads/{name}"),
+            Self::RemoteBranch { remote, name } => format!("refs/remotes/{remote}/{name}"),
+            Self::Tag { name } => format!("refs/tags/{name}"),
+        };
+    }
+}
+
 #[derive(Clone)]
 struct CommitRefChip {
     label: String,
     kind: CommitRefKind,
     remote: bool,
+    targets: Vec<CommitRefTarget>,
+}
+
+#[derive(Clone)]
+struct RefBadgeMenuContext {
+    language: Signal<SharedString>,
+    refs: RefsCommands,
+    tab_id: u64,
+    current_branch: String,
+    can_rebase: bool,
+    has_origin: bool,
+    remotes: Vec<String>,
+    select_context: std::sync::Arc<dyn Fn(usize, String)>,
 }
 
 /// `use<>`：返回的元素只持有克隆出来的信号，不借用入参（edition 2024 的
@@ -114,13 +144,32 @@ pub(crate) fn history(
     let inspector_open = search.right_panel_open;
     let tab_id = tab.id;
     let commits = tab.commits.clone();
-    let remote_branch_names = std::sync::Arc::new(
+    let remote_branches_by_name = std::sync::Arc::new(
         tab.refs
             .remote_branches
             .iter()
-            .map(|branch| (branch.full_name(), branch.name.clone()))
+            .map(|branch| (branch.full_name(), branch.clone()))
             .collect::<std::collections::HashMap<_, _>>(),
     );
+    let current_branch = tab.branch.clone();
+    let can_rebase = matches!(&tab.head, git::HeadState::Branch(_))
+        && tab.operation == git::Operation::None
+        && tab.status.is_empty();
+    let has_origin = tab.remote_urls.iter().any(|(remote, _)| remote == "origin");
+    let mut configured_remotes = if tab.refs.remote_info.is_empty() {
+        tab.refs.remotes.clone()
+    } else {
+        tab.refs
+            .remote_info
+            .iter()
+            .map(|remote| remote.name.clone())
+            .collect()
+    };
+    configured_remotes.sort_by(|left, right| {
+        left.to_lowercase()
+            .cmp(&right.to_lowercase())
+            .then_with(|| left.cmp(right))
+    });
     let compare_refs_empty =
         tab.compare_base.is_some() && tab.compare_target.is_some() && tab.commits.is_empty();
     let graph_rows = graph::layout_filtered(&commits, &tab.graph_commits);
@@ -206,6 +255,34 @@ pub(crate) fn history(
     let query = state.query;
     let fast_selection = state.fast_selection;
     let multi_commit_selection = state.multi_commit_selection;
+    let select_context_for_badge = {
+        let select = select.clone();
+        let compare = compare.clone();
+        std::sync::Arc::new(move |index: usize, sha: String| {
+            let multi_selection = multi_commit_selection
+                .get_untracked()
+                .filter(|selection| selection.tab_id == tab_id);
+            if !history_context_keeps_selection(
+                index,
+                sha.as_str(),
+                tab_id,
+                &compare,
+                multi_selection.as_ref(),
+            ) {
+                select(index);
+            }
+        })
+    };
+    let ref_badge_menu_context = RefBadgeMenuContext {
+        language,
+        refs: refs.clone(),
+        tab_id,
+        current_branch,
+        can_rebase,
+        has_origin,
+        remotes: configured_remotes,
+        select_context: select_context_for_badge,
+    };
     let visible = {
         let commits = commits.clone();
         computed(move || {
@@ -400,7 +477,8 @@ pub(crate) fn history(
                                 .map(|(index, _commit)| vec![index.to_string()])
                                 .collect();
                             let commits_for_render = rows_snapshot.clone();
-                            let remote_branches_for_render = remote_branch_names.clone();
+                            let remote_branches_for_render = remote_branches_by_name.clone();
+                            let ref_badge_menu_for_render = ref_badge_menu_context.clone();
                             let compare_for_render = compare_for_rows.clone();
                             let fast_selection = fast_selection;
                             let multi_selection_for_render = multi_commit_selection;
@@ -480,6 +558,7 @@ pub(crate) fn history(
                                             .cloned()
                                             .unwrap_or_default();
                                         let remote_branches = remote_branches_for_render.clone();
+                                        let ref_badge_menu = ref_badge_menu_for_render.clone();
                                         return view()
                                             .w_full()
                                             .h(px(metrics::COMMIT_ROW_H))
@@ -537,6 +616,9 @@ pub(crate) fn history(
                                                                 this.child(ref_chips(
                                                                     commit.refs.clone(),
                                                                     remote_branches,
+                                                                    ref_badge_menu,
+                                                                    index,
+                                                                    commit.sha.clone(),
                                                                 ))
                                                             }),
                                                     ),
@@ -605,8 +687,13 @@ pub(crate) fn history(
                                             });
                                         let selected_by_compare =
                                             compare_selection_for_menu.contains(&index);
-                                        let keep_selection =
-                                            selected_by_multi || selected_by_compare;
+                                        let keep_selection = history_context_keeps_selection(
+                                            index,
+                                            commit.sha.as_str(),
+                                            tab_id,
+                                            &compare_selection_for_menu,
+                                            multi_selection.as_ref(),
+                                        );
                                         let context_squash_range = if selected_by_multi {
                                             multi_selection.as_ref().and_then(|selection| {
                                                 squash_range_for_shas(
@@ -1851,9 +1938,33 @@ fn filter_choice_row(
 /// 引用徽章：本地分支、远程、标签各用一组配色。
 fn ref_chips(
     refs: Vec<String>,
-    remote_branches: std::sync::Arc<std::collections::HashMap<String, String>>,
+    remote_branches: std::sync::Arc<std::collections::HashMap<String, git::RemoteBranch>>,
+    context: RefBadgeMenuContext,
+    commit_index: usize,
+    commit_sha: String,
 ) -> impl IntoElement {
-    let mut chips: Vec<AnyElement> = Vec::new();
+    let chips = commit_ref_chips(refs, &remote_branches);
+    return render_ref_chips(
+        chips,
+        Some(RefBadgeInteraction {
+            context,
+            commit_index,
+            commit_sha,
+        }),
+    );
+}
+
+#[derive(Clone)]
+struct RefBadgeInteraction {
+    context: RefBadgeMenuContext,
+    commit_index: usize,
+    commit_sha: String,
+}
+
+fn commit_ref_chips(
+    refs: Vec<String>,
+    remote_branches: &std::collections::HashMap<String, git::RemoteBranch>,
+) -> Vec<CommitRefChip> {
     let mut references = Vec::<CommitRefChip>::new();
     let mut branch_indices = std::collections::HashMap::<String, usize>::new();
     let mut seen_tags = std::collections::HashSet::<String>::new();
@@ -1867,6 +1978,7 @@ fn ref_chips(
                     label: String::from("HEAD"),
                     kind: CommitRefKind::Head,
                     remote: false,
+                    targets: Vec::new(),
                 });
             }
             target.to_string()
@@ -1877,6 +1989,7 @@ fn ref_chips(
                     label: String::from("HEAD"),
                     kind: CommitRefKind::Head,
                     remote: false,
+                    targets: Vec::new(),
                 });
             }
             continue;
@@ -1889,6 +2002,9 @@ fn ref_chips(
                     label: label.to_string(),
                     kind: CommitRefKind::Tag,
                     remote: false,
+                    targets: vec![CommitRefTarget::Tag {
+                        name: label.to_string(),
+                    }],
                 });
             }
             continue;
@@ -1899,22 +2015,39 @@ fn ref_chips(
                     label: label.to_string(),
                     kind: CommitRefKind::Stash,
                     remote: false,
+                    targets: Vec::new(),
                 });
             }
             continue;
         }
 
-        let remote_name = remote_branches.get(&label);
-        let remote = remote_name.is_some();
-        let branch_name = remote_name.cloned().unwrap_or_else(|| label.clone());
+        let target = if let Some(remote_branch) = remote_branches.get(&label) {
+            CommitRefTarget::RemoteBranch {
+                remote: remote_branch.remote.clone(),
+                name: remote_branch.name.clone(),
+            }
+        } else {
+            CommitRefTarget::LocalBranch {
+                name: label.clone(),
+            }
+        };
+        let branch_name = match &target {
+            CommitRefTarget::LocalBranch { name } => name.clone(),
+            CommitRefTarget::RemoteBranch { name, .. } => name.clone(),
+            CommitRefTarget::Tag { name } => name.clone(),
+        };
+        let remote = matches!(&target, CommitRefTarget::RemoteBranch { .. });
         if let Some(existing) = branch_indices
             .get(&branch_name)
             .and_then(|index| references.get_mut(*index))
         {
             existing.remote |= remote;
+            if !existing.targets.contains(&target) {
+                existing.targets.push(target);
+            }
             // 本地分支名优先显示；多个远端别名仍合并为同一个徽章和图标。
             if !remote {
-                existing.label = branch_name;
+                existing.label = branch_name.clone();
             }
             continue;
         }
@@ -1923,6 +2056,7 @@ fn ref_chips(
             label: if remote { label } else { branch_name.clone() },
             kind: CommitRefKind::Branch,
             remote,
+            targets: vec![target],
         };
         references.push(chip);
     }
@@ -1933,7 +2067,15 @@ fn ref_chips(
         CommitRefKind::Tag => 2,
         CommitRefKind::Stash => 3,
     });
-    for chip in references.into_iter().take(3) {
+    return references.into_iter().take(3).collect();
+}
+
+fn render_ref_chips(
+    references: Vec<CommitRefChip>,
+    interaction: Option<RefBadgeInteraction>,
+) -> impl IntoElement {
+    let mut chips: Vec<AnyElement> = Vec::new();
+    for chip in references {
         let is_head = chip.kind == CommitRefKind::Head;
         let is_branch = chip.kind == CommitRefKind::Branch;
         let is_tag = chip.kind == CommitRefKind::Tag;
@@ -1977,6 +2119,19 @@ fn ref_chips(
                     design::branch_bg()
                 }
             });
+        if matches!(chip.kind, CommitRefKind::Branch | CommitRefKind::Tag) {
+            if let Some(interaction) = interaction.clone() {
+                let targets = chip.targets.clone();
+                badge = badge.on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
+                    (interaction.context.select_context)(
+                        interaction.commit_index,
+                        interaction.commit_sha.clone(),
+                    );
+                    let items = commit_ref_menu_items(&targets, &interaction.context);
+                    crate::ui::menu::popup_at(items, event.page_position);
+                });
+            }
+        }
         if is_remote {
             badge = badge.child(crate::ui::icon::icon_view(
                 "globe",
@@ -2019,6 +2174,62 @@ fn ref_chips(
         .child(chips);
 }
 
+fn commit_ref_menu_items(
+    targets: &[CommitRefTarget],
+    context: &RefBadgeMenuContext,
+) -> Vec<MenuItem> {
+    if targets.len() == 1 {
+        return commit_ref_target_menu_items(&targets[0], context);
+    }
+    return targets
+        .iter()
+        .map(|target| {
+            MenuItem::submenu(
+                target.full_reference(),
+                commit_ref_target_menu_items(target, context),
+            )
+        })
+        .collect();
+}
+
+fn commit_ref_target_menu_items(
+    target: &CommitRefTarget,
+    context: &RefBadgeMenuContext,
+) -> Vec<MenuItem> {
+    match target {
+        CommitRefTarget::LocalBranch { name } => {
+            crate::features::refs::view::local_branch_menu_items(
+                context.language,
+                &context.refs,
+                context.tab_id,
+                name.clone(),
+                name == &context.current_branch,
+                context.current_branch.clone(),
+                context.can_rebase,
+                context.has_origin,
+            )
+        }
+        CommitRefTarget::RemoteBranch { remote, name } => {
+            crate::features::refs::view::remote_branch_menu_items(
+                context.language,
+                &context.refs,
+                context.tab_id,
+                remote.clone(),
+                name.clone(),
+                context.current_branch.clone(),
+                context.can_rebase,
+            )
+        }
+        CommitRefTarget::Tag { name } => crate::features::refs::view::tag_menu_items(
+            context.language,
+            &context.refs,
+            context.tab_id,
+            name.clone(),
+            context.remotes.clone(),
+        ),
+    }
+}
+
 /// 稳定地把分支名映射到图线使用的四种设计颜色。
 fn branch_color(name: &str) -> usize {
     let hash = name.bytes().fold(2_166_136_261_u32, |hash, byte| {
@@ -2040,6 +2251,20 @@ fn fast_selection_matches(tab_id: u64, sha: &str, selection: Option<(u64, String
         .is_some_and(|(selected_tab, selected_sha)| selected_tab == tab_id && selected_sha == sha);
 }
 
+fn history_context_keeps_selection(
+    index: usize,
+    sha: &str,
+    tab_id: u64,
+    compare_selection: &[usize],
+    multi_selection: Option<&super::state::MultiCommitSelection>,
+) -> bool {
+    let selected_by_multi = multi_selection.is_some_and(|selection| {
+        selection.tab_id == tab_id && selection.shas.iter().any(|selected| selected == sha)
+    });
+    let selected_by_compare = compare_selection.contains(&index);
+    return selected_by_multi || selected_by_compare;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2057,10 +2282,22 @@ mod tests {
         .map(String::from)
         .collect();
         let remotes = std::collections::HashMap::from([
-            (String::from("origin/main"), String::from("main")),
-            (String::from("upstream/main"), String::from("main")),
+            (
+                String::from("origin/main"),
+                git::RemoteBranch {
+                    remote: String::from("origin"),
+                    name: String::from("main"),
+                },
+            ),
+            (
+                String::from("upstream/main"),
+                git::RemoteBranch {
+                    remote: String::from("upstream"),
+                    name: String::from("main"),
+                },
+            ),
         ]);
-        return ref_chips(refs, std::sync::Arc::new(remotes));
+        return render_ref_chips(commit_ref_chips(refs, &remotes), None);
     }
 
     #[test]
@@ -2087,6 +2324,104 @@ mod tests {
             main_count, 1,
             "local and remote refs share one branch badge"
         );
+    }
+
+    #[test]
+    fn merged_branch_badge_keeps_each_exact_reference_before_display_limit() {
+        let refs = [
+            "HEAD -> main",
+            "main",
+            "origin/main",
+            "upstream/main",
+            "tag: v1.0",
+            "tag: v2.0",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let remotes = std::collections::HashMap::from([
+            (
+                String::from("origin/main"),
+                git::RemoteBranch {
+                    remote: String::from("origin"),
+                    name: String::from("main"),
+                },
+            ),
+            (
+                String::from("upstream/main"),
+                git::RemoteBranch {
+                    remote: String::from("upstream"),
+                    name: String::from("main"),
+                },
+            ),
+        ]);
+
+        let chips = commit_ref_chips(refs, &remotes);
+        let main = chips
+            .iter()
+            .find(|chip| chip.kind == CommitRefKind::Branch && chip.label == "main")
+            .unwrap();
+
+        assert_eq!(chips.len(), 3);
+        assert_eq!(
+            main.targets,
+            vec![
+                CommitRefTarget::LocalBranch {
+                    name: String::from("main"),
+                },
+                CommitRefTarget::RemoteBranch {
+                    remote: String::from("origin"),
+                    name: String::from("main"),
+                },
+                CommitRefTarget::RemoteBranch {
+                    remote: String::from("upstream"),
+                    name: String::from("main"),
+                },
+            ]
+        );
+        assert!(chips.iter().any(|chip| {
+            chip.kind == CommitRefKind::Tag
+                && chip.targets
+                    == vec![CommitRefTarget::Tag {
+                        name: String::from("v1.0"),
+                    }]
+        }));
+    }
+
+    #[test]
+    fn badge_context_selection_matches_history_row_context_rules() {
+        let multi = super::super::state::MultiCommitSelection {
+            tab_id: 7,
+            shas: vec![String::from("selected-sha")],
+        };
+        assert!(history_context_keeps_selection(
+            2,
+            "selected-sha",
+            7,
+            &[],
+            Some(&multi)
+        ));
+        assert!(!history_context_keeps_selection(
+            2,
+            "selected-sha",
+            8,
+            &[],
+            Some(&multi)
+        ));
+        assert!(history_context_keeps_selection(
+            2,
+            "other-sha",
+            7,
+            &[2],
+            None
+        ));
+        assert!(!history_context_keeps_selection(
+            2,
+            "other-sha",
+            7,
+            &[],
+            None
+        ));
     }
 
     #[test]

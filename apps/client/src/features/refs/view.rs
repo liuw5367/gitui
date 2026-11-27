@@ -838,109 +838,30 @@ fn remote_branch_row(
     prefix_descendants: Vec<String>,
     depth: usize,
 ) -> AnyElement {
-    let full_name = branch.full_name();
     let remote = branch.remote.clone();
     let branch_name = branch.name.clone();
     let menu_cmd = cmd.clone();
-    let menu_full_name = full_name.clone();
-    let menu_remote = remote.clone();
     let menu_branch = branch_name.clone();
     let menu_current = current_branch.to_string();
     let prefix_cmd = cmd.clone();
     let prefix_menu_key = prefix_key.clone();
     let prefix_menu_descendants = prefix_descendants.clone();
     let history_cmd = cmd.history.clone();
-    let history_ref = format!("refs/remotes/{full_name}");
-    let compare_ref = history_ref.clone();
+    let history_ref = format!("refs/remotes/{}", branch.full_name());
     let label = branch_item_label(branch_name.as_str()).to_string();
     let row = view()
         .w_full()
         .pl(px(19.0 + depth as f32 * 12.0))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let mut items = Vec::new();
-            let search = menu_cmd.search.clone();
-            let local_name = menu_branch.clone();
-            let remote_name = menu_full_name.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "remote.checkoutAsNew"),
-                true,
-                move || {
-                    search.open_tracking_branch_form(
-                        tab_id,
-                        local_name.clone(),
-                        remote_name.clone(),
-                    )
-                },
-            ));
-            items.push(ui::menu::divider());
-            let compare_history = menu_cmd.history.clone();
-            let compare_base = format!("refs/heads/{}", menu_current);
-            let compare_target = compare_ref.clone();
-            let can_compare = !menu_current.is_empty();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "remote.compareCurrent"),
-                can_compare,
-                move || {
-                    compare_history.set_compare_refs_at(
-                        tab_id,
-                        Some(compare_base.clone()),
-                        Some(compare_target.clone()),
-                    )
-                },
-            ));
-            let merge_cmd = menu_cmd.clone();
-            let merge_ref = menu_full_name.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "remote.mergeInto"),
+            let mut items = remote_branch_menu_items(
+                language,
+                &menu_cmd,
+                tab_id,
+                remote.clone(),
+                menu_branch.clone(),
+                menu_current.clone(),
                 can_rebase,
-                move || merge_cmd.merge_reference_at(tab_id, merge_ref.clone()),
-            ));
-            let rebase_cmd = menu_cmd.clone();
-            let rebase_target = menu_full_name.clone();
-            let rebase_current = menu_current.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "remote.rebaseCurrent"),
-                can_rebase && !rebase_current.is_empty(),
-                move || {
-                    rebase_cmd.rebase_current_on(
-                        tab_id,
-                        rebase_current.clone(),
-                        rebase_target.clone(),
-                    )
-                },
-            ));
-            let pull_cmd = menu_cmd.clone();
-            let pull_remote = menu_remote.clone();
-            let pull_branch = menu_branch.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "remote.pullIntoCurrent"),
-                can_rebase,
-                move || {
-                    pull_cmd.pull_remote_branch_at(tab_id, pull_remote.clone(), pull_branch.clone())
-                },
-            ));
-            items.push(ui::menu::divider());
-            let delete_cmd = menu_cmd.clone();
-            let delete_remote = menu_remote.clone();
-            let delete_branch = menu_branch.clone();
-            items.push(ui::menu::danger(
-                i18n::t(language.get().as_str(), "remote.deleteBranch"),
-                true,
-                move || {
-                    delete_cmd.delete_remote_branch_at(
-                        tab_id,
-                        delete_remote.clone(),
-                        delete_branch.clone(),
-                    )
-                },
-            ));
-            let copy_notice = menu_cmd.notice;
-            let copy_name = menu_full_name.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "remote.copyName"),
-                true,
-                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
-            ));
+            );
             if has_children {
                 items.push(ui::menu::divider());
                 let fold_cmd = prefix_cmd.clone();
@@ -1165,146 +1086,25 @@ fn branch_row(
 ) -> AnyElement {
     let label = branch_item_label(branch.name.as_str()).to_string();
     let current = branch.current;
-    let branch_checkout = branch.name.clone();
-    let branch_new = branch.name.clone();
-    let branch_rebase = branch.name.clone();
-    let branch_merge = branch.name.clone();
-    let branch_new_tag = branch.name.clone();
-    let branch_rename = branch.name.clone();
-    let branch_delete = branch.name.clone();
-    let branch_copy = branch.name.clone();
-    let branch_push = branch.name.clone();
+    let branch_name = branch.name.clone();
     let history_cmd = cmd.history.clone();
     let history_ref = format!("refs/heads/{}", branch.name);
-    let compare_ref = history_ref.clone();
-    let can_compare = !current && !current_branch.is_empty();
     let menu_cmd = cmd.clone();
     let menu_current_branch = current_branch.to_string();
     let row = view()
         .w_full()
         .pl(px(7.0 + depth as f32 * 12.0))
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let mut items = Vec::with_capacity(12);
-            let checkout_cmd = menu_cmd.clone();
-            let checkout_name = branch_checkout.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "branch.menuCheckout"),
-                !current,
-                move || checkout_cmd.checkout_branch_at(tab_id, checkout_name.clone()),
-            ));
-            let new_search = menu_cmd.search.clone();
-            let new_name = branch_new.clone();
-            items.push(ui::menu::action(
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "branch.newFrom",
-                    &[("name", new_name.clone())],
-                ),
-                true,
-                move || {
-                    new_search.open_form_from_tab(
-                        tab_id,
-                        crate::features::search::FormKind::NewBranch,
-                        new_name.clone(),
-                    )
-                },
-            ));
-            items.push(ui::menu::divider());
-            let compare_history = menu_cmd.history.clone();
-            let current_for_compare = format!("refs/heads/{}", menu_current_branch);
-            let compare_name = compare_ref.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "branch.compareCurrent"),
-                can_compare,
-                move || {
-                    compare_history.set_compare_refs_at(
-                        tab_id,
-                        Some(current_for_compare.clone()),
-                        Some(compare_name.clone()),
-                    )
-                },
-            ));
-            let rebase_cmd = menu_cmd.clone();
-            let current_for_rebase = menu_current_branch.clone();
-            let rebase_name = branch_rebase.clone();
-            items.push(ui::menu::action(
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "branch.rebaseCurrentOnto",
-                    &[("name", rebase_name.clone())],
-                ),
-                !current && can_rebase,
-                move || {
-                    rebase_cmd.rebase_current_on(
-                        tab_id,
-                        current_for_rebase.clone(),
-                        rebase_name.clone(),
-                    )
-                },
-            ));
-            let merge_cmd = menu_cmd.clone();
-            let merge_name = branch_merge.clone();
-            items.push(ui::menu::action(
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "branch.mergeNamedIntoCurrent",
-                    &[("name", merge_name.clone())],
-                ),
-                !current,
-                move || merge_cmd.merge_reference_at(tab_id, merge_name.clone()),
-            ));
-            items.push(ui::menu::divider());
-            let new_tag_search = menu_cmd.search.clone();
-            let new_tag_name = branch_new_tag.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "branch.newTag"),
-                true,
-                move || {
-                    new_tag_search.open_form_from_tab(
-                        tab_id,
-                        crate::features::search::FormKind::NewTag,
-                        new_tag_name.clone(),
-                    )
-                },
-            ));
-            let rename_search = menu_cmd.search.clone();
-            let rename_name = branch_rename.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "branch.rename"),
-                true,
-                move || {
-                    rename_search.open_form_from_tab(
-                        tab_id,
-                        crate::features::search::FormKind::RenameBranch,
-                        rename_name.clone(),
-                    )
-                },
-            ));
-            let delete_cmd = menu_cmd.clone();
-            let delete_name = branch_delete.clone();
-            items.push(ui::menu::danger(
-                i18n::t(language.get().as_str(), "branch.deleteMenu"),
-                !current,
-                move || delete_cmd.delete_branch_at(tab_id, delete_name.clone()),
-            ));
-            let copy_notice = menu_cmd.notice;
-            let copy_name = branch_copy.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "branch.copyName"),
-                true,
-                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
-            ));
-            let push_cmd = menu_cmd.clone();
-            let push_name = branch_push.clone();
-            items.push(ui::menu::action(
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "branch.pushOrigin",
-                    &[("name", push_name.clone())],
-                ),
+            let items = local_branch_menu_items(
+                language,
+                &menu_cmd,
+                tab_id,
+                branch_name.clone(),
+                current,
+                menu_current_branch.clone(),
+                can_rebase,
                 has_origin,
-                move || push_cmd.push_branch_at(tab_id, push_name.clone()),
-            ));
+            );
             ui::menu::popup_at(items, event.page_position);
         })
         .child(crate::ui::row::row_sized(
@@ -1323,6 +1123,249 @@ fn branch_row(
 /// 斜杠路径已由树节点表示，行内只显示当前层级的分支名称。
 fn branch_item_label(name: &str) -> &str {
     return name.rsplit('/').next().unwrap_or(name);
+}
+
+/// 本地分支侧栏和 History 徽标共用同一组原生菜单项。
+pub(crate) fn local_branch_menu_items(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    branch_name: String,
+    current: bool,
+    current_branch: String,
+    can_rebase: bool,
+    has_origin: bool,
+) -> Vec<MenuItem> {
+    let mut items = Vec::with_capacity(12);
+    let checkout_cmd = cmd.clone();
+    let checkout_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "branch.menuCheckout"),
+        !current,
+        move || checkout_cmd.checkout_branch_at(tab_id, checkout_name.clone()),
+    ));
+    let new_search = cmd.search.clone();
+    let new_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::with_arguments(
+            language.get().as_str(),
+            "branch.newFrom",
+            &[("name", new_name.clone())],
+        ),
+        true,
+        move || {
+            new_search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::NewBranch,
+                new_name.clone(),
+            )
+        },
+    ));
+    items.push(ui::menu::divider());
+    let compare_history = cmd.history.clone();
+    let current_for_compare = format!("refs/heads/{current_branch}");
+    let compare_name = format!("refs/heads/{branch_name}");
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "branch.compareCurrent"),
+        !current && !current_branch.is_empty(),
+        move || {
+            compare_history.set_compare_refs_at(
+                tab_id,
+                Some(current_for_compare.clone()),
+                Some(compare_name.clone()),
+            )
+        },
+    ));
+    let rebase_cmd = cmd.clone();
+    let rebase_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::with_arguments(
+            language.get().as_str(),
+            "branch.rebaseCurrentOnto",
+            &[("name", rebase_name.clone())],
+        ),
+        !current && can_rebase,
+        move || rebase_cmd.rebase_current_on(tab_id, current_branch.clone(), rebase_name.clone()),
+    ));
+    let merge_cmd = cmd.clone();
+    let merge_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::with_arguments(
+            language.get().as_str(),
+            "branch.mergeNamedIntoCurrent",
+            &[("name", merge_name.clone())],
+        ),
+        !current,
+        move || merge_cmd.merge_reference_at(tab_id, merge_name.clone()),
+    ));
+    items.push(ui::menu::divider());
+    let new_tag_search = cmd.search.clone();
+    let new_tag_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "branch.newTag"),
+        true,
+        move || {
+            new_tag_search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::NewTag,
+                new_tag_name.clone(),
+            )
+        },
+    ));
+    let rename_search = cmd.search.clone();
+    let rename_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "branch.rename"),
+        true,
+        move || {
+            rename_search.open_form_from_tab(
+                tab_id,
+                crate::features::search::FormKind::RenameBranch,
+                rename_name.clone(),
+            )
+        },
+    ));
+    let delete_cmd = cmd.clone();
+    let delete_name = branch_name.clone();
+    items.push(ui::menu::danger(
+        i18n::t(language.get().as_str(), "branch.deleteMenu"),
+        !current,
+        move || delete_cmd.delete_branch_at(tab_id, delete_name.clone()),
+    ));
+    let copy_notice = cmd.notice;
+    let copy_name = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "branch.copyName"),
+        true,
+        move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
+    ));
+    let push_cmd = cmd.clone();
+    let push_name = branch_name;
+    items.push(ui::menu::action(
+        i18n::with_arguments(
+            language.get().as_str(),
+            "branch.pushOrigin",
+            &[("name", push_name.clone())],
+        ),
+        has_origin,
+        move || push_cmd.push_branch_at(tab_id, push_name.clone()),
+    ));
+    return items;
+}
+
+/// 远端分支侧栏和 History 徽标共用同一组原生菜单项。
+pub(crate) fn remote_branch_menu_items(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    remote: String,
+    branch_name: String,
+    current_branch: String,
+    can_rebase: bool,
+) -> Vec<MenuItem> {
+    let full_name = format!("{remote}/{branch_name}");
+    let mut items = Vec::with_capacity(8);
+    let search = cmd.search.clone();
+    let local_name = branch_name.clone();
+    let remote_name = full_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "remote.checkoutAsNew"),
+        true,
+        move || search.open_tracking_branch_form(tab_id, local_name.clone(), remote_name.clone()),
+    ));
+    items.push(ui::menu::divider());
+    let compare_history = cmd.history.clone();
+    let compare_base = format!("refs/heads/{current_branch}");
+    let compare_target = format!("refs/remotes/{full_name}");
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "remote.compareCurrent"),
+        !current_branch.is_empty(),
+        move || {
+            compare_history.set_compare_refs_at(
+                tab_id,
+                Some(compare_base.clone()),
+                Some(compare_target.clone()),
+            )
+        },
+    ));
+    let merge_cmd = cmd.clone();
+    let merge_ref = full_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "remote.mergeInto"),
+        can_rebase,
+        move || merge_cmd.merge_reference_at(tab_id, merge_ref.clone()),
+    ));
+    let rebase_cmd = cmd.clone();
+    let rebase_target = full_name.clone();
+    let rebase_current = current_branch.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "remote.rebaseCurrent"),
+        can_rebase && !rebase_current.is_empty(),
+        move || rebase_cmd.rebase_current_on(tab_id, rebase_current.clone(), rebase_target.clone()),
+    ));
+    let pull_cmd = cmd.clone();
+    let pull_remote = remote.clone();
+    let pull_branch = branch_name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "remote.pullIntoCurrent"),
+        can_rebase,
+        move || pull_cmd.pull_remote_branch_at(tab_id, pull_remote.clone(), pull_branch.clone()),
+    ));
+    items.push(ui::menu::divider());
+    let delete_cmd = cmd.clone();
+    let delete_remote = remote;
+    let delete_branch = branch_name;
+    items.push(ui::menu::danger(
+        i18n::t(language.get().as_str(), "remote.deleteBranch"),
+        true,
+        move || {
+            delete_cmd.delete_remote_branch_at(tab_id, delete_remote.clone(), delete_branch.clone())
+        },
+    ));
+    let copy_notice = cmd.notice;
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "remote.copyName"),
+        true,
+        move || crate::shared::os::copy_text(copy_notice, language, full_name.clone()),
+    ));
+    return items;
+}
+
+/// Tag 侧栏和 History 徽标共用推送、复制与删除动作。
+pub(crate) fn tag_menu_items(
+    language: Signal<SharedString>,
+    cmd: &RefsCommands,
+    tab_id: u64,
+    name: String,
+    remotes: Vec<String>,
+) -> Vec<MenuItem> {
+    let push_items = remotes.iter().map(|remote| {
+        let push_cmd = cmd.clone();
+        let push_name = name.clone();
+        let push_remote = remote.clone();
+        ui::menu::action(remote.clone(), true, move || {
+            push_cmd.push_tag_to_remote_at(tab_id, push_name.clone(), push_remote.clone())
+        })
+    });
+    let mut items = vec![
+        MenuItem::submenu(i18n::t(language.get().as_str(), "tag.pushTag"), push_items)
+            .disabled(remotes.is_empty()),
+    ];
+    let copy_notice = cmd.notice;
+    let copy_name = name.clone();
+    items.push(ui::menu::action(
+        i18n::t(language.get().as_str(), "tag.copyName"),
+        true,
+        move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
+    ));
+    items.push(ui::menu::divider());
+    let delete_cmd = cmd.clone();
+    items.push(ui::menu::danger(
+        i18n::t(language.get().as_str(), "tag.deleteTag"),
+        true,
+        move || delete_cmd.drop_tag_at(tab_id, name.clone()),
+    ));
+    return items;
 }
 
 fn worktree_row(
@@ -1582,40 +1625,19 @@ fn tag_row(
     remotes: Vec<String>,
 ) -> AnyElement {
     let menu_cmd = cmd.clone();
-    let menu_name = name.clone();
-    let menu_remotes = remotes.clone();
+    let row_name = name.clone();
     let history_cmd = cmd.history.clone();
     let history_ref = format!("refs/tags/{name}");
     return view()
         .w_full()
         .on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-            let push_items = menu_remotes.iter().map(|remote| {
-                let push_cmd = menu_cmd.clone();
-                let push_name = menu_name.clone();
-                let push_remote = remote.clone();
-                ui::menu::action(remote.clone(), true, move || {
-                    push_cmd.push_tag_to_remote_at(tab_id, push_name.clone(), push_remote.clone())
-                })
-            });
-            let mut items = vec![
-                MenuItem::submenu(i18n::t(language.get().as_str(), "tag.pushTag"), push_items)
-                    .disabled(menu_remotes.is_empty()),
-            ];
-            let copy_notice = menu_cmd.notice;
-            let copy_name = menu_name.clone();
-            items.push(ui::menu::action(
-                i18n::t(language.get().as_str(), "tag.copyName"),
-                true,
-                move || crate::shared::os::copy_text(copy_notice, language, copy_name.clone()),
-            ));
-            items.push(ui::menu::divider());
-            let delete_cmd = menu_cmd.clone();
-            let delete_name = menu_name.clone();
-            items.push(ui::menu::danger(
-                i18n::t(language.get().as_str(), "tag.deleteTag"),
-                true,
-                move || delete_cmd.drop_tag_at(tab_id, delete_name.clone()),
-            ));
+            let items = tag_menu_items(
+                language,
+                &menu_cmd,
+                tab_id,
+                row_name.clone(),
+                remotes.clone(),
+            );
             ui::menu::popup_at(items, event.page_position);
         })
         .child(crate::ui::row::row_sized(
