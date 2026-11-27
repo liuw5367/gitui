@@ -82,17 +82,6 @@ pub(crate) fn sync_dialog(
                         .and_then(|tab| tab.refs.remotes.first().cloned())
                         .unwrap_or_else(|| "origin".to_string())
                 });
-                let repo_name = current_tab
-                    .as_ref()
-                    .map(Tab::label)
-                    .or_else(|| {
-                        target_path.as_deref().and_then(|path| {
-                            path.rsplit(['/', '\\'])
-                                .find(|segment| !segment.is_empty())
-                                .map(str::to_string)
-                        })
-                    })
-                    .unwrap_or_default();
                 let branch = current_tab
                     .as_ref()
                     .map(|tab| tab.branch.clone())
@@ -352,12 +341,9 @@ pub(crate) fn sync_dialog(
                     options.clone(),
                     is_running,
                     result.is_some(),
-                    repo_name,
                     branch,
                     remote,
                     remote_url,
-                    ahead,
-                    behind,
                     set_option,
                     branch_fields,
                     move || missing_source || (needs_name && new_target.get().trim().is_empty()),
@@ -368,7 +354,6 @@ pub(crate) fn sync_dialog(
                 let footer = sync_footer(
                     language,
                     is_running,
-                    result,
                     ahead,
                     behind,
                     task,
@@ -489,12 +474,9 @@ fn action_panel(
     options: SyncOptions,
     running: bool,
     finished: bool,
-    repo_name: String,
     branch: String,
     remote: String,
     remote_url: String,
-    ahead: u32,
-    behind: u32,
     set_option: std::sync::Arc<dyn Fn(&'static str, bool)>,
     branch_fields: Option<AnyElement>,
     invalid_target: impl Fn() -> bool + 'static,
@@ -509,50 +491,44 @@ fn action_panel(
         .p(px(ui::GAP_XL))
         .overflow_hidden()
         .child(
-            text(move || i18n::t(language.get().as_str(), sync_kind_key(kind)))
-                .text_size(px(ui::SECONDARY))
-                .line_height(px(ui::SECONDARY_LINE))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(move || design::text2()),
-        )
-        .child(
             view()
                 .w_full()
+                .min_w_0()
                 .flex_col()
                 .gap(px(ui::GAP_XS))
                 .child(
-                    text(format!("{repo_name} · {remote}"))
+                    text(branch)
                         .text_size(px(ui::BODY))
                         .line_height(px(ui::BODY_LINE))
-                        .text_color(move || design::text()),
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .number_of_lines(1)
+                        .text_overflow(nsh_core::EllipsizeMode::Tail)
+                        .text_color(design::text),
                 )
                 .child(
-                    text(if remote_url.is_empty() {
-                        branch.clone()
-                    } else {
-                        format!("{branch} · {remote_url}")
-                    })
-                    .text_size(px(ui::CODE))
-                    .line_height(px(ui::CODE_LINE))
-                    .text_color(move || design::text3())
-                    .text_overflow(nsh_core::EllipsizeMode::Head),
+                    view()
+                        .w_full()
+                        .min_w_0()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(ui::GAP_SM))
+                        .child(
+                            text(remote)
+                                .flex_shrink_0()
+                                .text_size(px(ui::SECONDARY))
+                                .text_color(design::text2),
+                        )
+                        .child(
+                            text(remote_url)
+                                .flex_1()
+                                .min_w_0()
+                                .number_of_lines(1)
+                                .text_size(px(ui::CODE))
+                                .line_height(px(ui::CODE_LINE))
+                                .text_overflow(nsh_core::EllipsizeMode::Head)
+                                .text_color(design::text3),
+                        ),
                 ),
-        )
-        .child(
-            text(move || {
-                i18n::with_arguments(
-                    language.get().as_str(),
-                    "sync.tracking",
-                    &[
-                        ("branch", branch.clone()),
-                        ("ahead", ahead.to_string()),
-                        ("behind", behind.to_string()),
-                    ],
-                )
-            })
-            .text_size(px(ui::SECONDARY))
-            .line_height(px(ui::SECONDARY_LINE))
-            .text_color(move || design::text2()),
         );
 
     if let Some(fields) = branch_fields {
@@ -1140,7 +1116,6 @@ fn sync_log_title_key(kind: Sync) -> &'static str {
 fn sync_footer(
     language: Signal<SharedString>,
     running: bool,
-    result: Option<Result<String, String>>,
     ahead: u32,
     behind: u32,
     task: Signal<Option<SyncTaskState>>,
@@ -1150,13 +1125,6 @@ fn sync_footer(
     target_remote: Option<String>,
     on_close: std::sync::Arc<dyn Fn()>,
 ) -> impl IntoElement {
-    let status_task = task;
-    let status_path = target_path.clone();
-    let status_remote = target_remote.clone();
-    let color_task = task;
-    let color_path = target_path;
-    let color_remote = target_remote;
-    let color_result = result.clone();
     return view()
         .w_full()
         .h(px(metrics::SYNC_FOOT_H))
@@ -1168,50 +1136,72 @@ fn sync_footer(
         .border_t_1()
         .border_color(move || design::line())
         .child(
-            text(move || {
-                let cancelled = status_task.get().is_some_and(|task| {
-                    sync_task_matches(
-                        &task,
-                        kind,
-                        target_tab_id,
-                        status_path.as_deref(),
-                        status_remote.as_deref(),
-                    ) && task.cancelled
-                });
-                if cancelled {
-                    return i18n::t(language.get().as_str(), "sync.cancelled");
-                }
-                if running {
-                    i18n::t(language.get().as_str(), "sync.background")
-                } else {
-                    i18n::with_arguments(
-                        language.get().as_str(),
-                        "sync.trackingSummary",
-                        &[("ahead", ahead.to_string()), ("behind", behind.to_string())],
-                    )
-                }
-            })
-            .flex_1()
-            .min_w_0()
-            .text_size(px(ui::SECONDARY))
-            .line_height(px(ui::SECONDARY_LINE))
-            .text_color(move || {
-                let cancelled = color_task.get().is_some_and(|task| {
-                    sync_task_matches(
-                        &task,
-                        kind,
-                        target_tab_id,
-                        color_path.as_deref(),
-                        color_remote.as_deref(),
-                    ) && task.cancelled
-                });
-                if color_result.as_ref().is_some_and(Result::is_err) && !cancelled {
-                    design::danger()
-                } else {
-                    design::text3()
-                }
-            })
-            .text_overflow(nsh_core::EllipsizeMode::Tail),
+            view()
+                .flex_1()
+                .min_w_0()
+                .child(dynamic(move || -> AnyElement {
+                    let cancelled = task.get().is_some_and(|task| {
+                        sync_task_matches(
+                            &task,
+                            kind,
+                            target_tab_id,
+                            target_path.as_deref(),
+                            target_remote.as_deref(),
+                        ) && task.cancelled
+                    });
+                    if cancelled || running {
+                        let key = if cancelled {
+                            "sync.cancelled"
+                        } else {
+                            "sync.background"
+                        };
+                        return text(move || i18n::t(language.get().as_str(), key))
+                            .text_size(px(ui::SECONDARY))
+                            .line_height(px(ui::SECONDARY_LINE))
+                            .text_color(design::text3)
+                            .into_element();
+                    }
+                    let count = |key, value: String, color| {
+                        text(move || {
+                            i18n::with_arguments(
+                                language.get().as_str(),
+                                key,
+                                &[("count", value.clone())],
+                            )
+                        })
+                        .text_size(px(ui::SECONDARY))
+                        .line_height(px(ui::SECONDARY_LINE))
+                        .text_color(color)
+                    };
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(ui::GAP_XS))
+                        .child(count(
+                            "sync.aheadCount",
+                            ahead.to_string(),
+                            if ahead > 0 {
+                                design::ok()
+                            } else {
+                                design::text3()
+                            },
+                        ))
+                        .child(
+                            text("·")
+                                .text_size(px(ui::SECONDARY))
+                                .text_color(design::text3),
+                        )
+                        .child(count(
+                            "sync.behindCount",
+                            behind.to_string(),
+                            if behind > 0 {
+                                design::warn()
+                            } else {
+                                design::text3()
+                            },
+                        ))
+                        .into_element()
+                })),
         )
         .child(crate::ui::button::button(
             move || i18n::t(language.get().as_str(), "sync.close"),

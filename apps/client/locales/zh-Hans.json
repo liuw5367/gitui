@@ -1114,6 +1114,8 @@
     "includeUntracked": "包含未跟踪文件"
   },
   "sync": {
+    "aheadCount": "↑%{count} 领先",
+    "behindCount": "↓%{count} 落后",
     "pushRemote": "远端",
     "sourceBranch": "源分支",
     "targetBranch": "目标分支",

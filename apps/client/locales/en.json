@@ -1114,6 +1114,8 @@
     "includeUntracked": "Include untracked files"
   },
   "sync": {
+    "aheadCount": "↑%{count} ahead",
+    "behindCount": "↓%{count} behind",
     "pushRemote": "Remote",
     "sourceBranch": "Source branch",
     "targetBranch": "Target branch",
