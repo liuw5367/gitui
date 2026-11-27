@@ -273,6 +273,27 @@ pub(crate) fn repository_tabs(
                                     ),
                                     crate::ui::menu::divider(),
                                     crate::ui::menu::action(
+                                        i18n::t(lang.as_str(), "menu.copyPath"),
+                                        true,
+                                        {
+                                            let tabs = tabs;
+                                            let notice = context_session.notice;
+                                            let language = language;
+                                            move || {
+                                                let path = tabs.with_untracked(|list| {
+                                                    list.iter()
+                                                        .find(|tab| tab.id == id)
+                                                        .map(|tab| tab.path.clone())
+                                                });
+                                                if let Some(path) = path {
+                                                    crate::shared::os::copy_text(
+                                                        notice, language, path,
+                                                    );
+                                                }
+                                            }
+                                        },
+                                    ),
+                                    crate::ui::menu::action(
                                         i18n::t(lang.as_str(), "menu.reveal"),
                                         true,
                                         {

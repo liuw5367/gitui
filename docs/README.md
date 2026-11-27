@@ -16,7 +16,7 @@ General 的日期格式设置统一用于 History、Refs / Reflog、Git 扫描�
 
 Credentials 与 Git 执行能力的实施范围：移除 GitHub / GitLab 账号连接入口；只有 Git credential helper 未提供可用凭据、Git 实际调用 AskPass 时，应用才询问 HTTP(S) 凭据，保存交给 Git credential helper；Credentials 页面管理本地 `~/.ssh` 密钥对，并让 Git 可执行文件设置作用于应用发起的 Git 命令。规划已获批准；三个阶段均已实施，每阶段分别提交，完整记录见本地计划。
 
-仓库窗口与左侧引用面板的开发需求包括启动时恢复会话或显示欢迎页、仓库标签的打开与关闭及排序，以及引用分组的折叠与右键动作。无打开仓库时，主窗口默认显示不可关闭的 Welcome 模态层；打开仓库后可通过主窗口 `+`、Help > Welcome 或 Repository Manager 再次打开并关闭它。主窗口标题栏的仓库页签根据 NSH 提供的原生窗口按钮占位动态缩进，工具栏 Agent 仅显示图标。仓库会话恢复时优先后台加载活动仓库，其余标签在首次激活时再加载；切换到已加载标签或主窗口重新聚焦时，只刷新当前仓库，按 status、HEAD、引用 OID、操作和可见 diff 比较结果，数据未变时不写回仓库状态。页面状态与刷新验收边界见[页面验收规范](development/verification.md)。设计入口见[欢迎页](pages/welcome.md)、[常规设置](pages/settings.md)、[工作区](pages/workspace.md)与[菜单和对话框](pages/menus.md)。
+仓库窗口与左侧引用面板的开发需求包括启动时恢复会话或显示欢迎页、仓库标签的打开与关闭及排序，以及引用分组的折叠与右键动作；标签右键菜单可复制仓库路径、在 Finder 中显示目录并关闭单个或多个标签。无打开仓库时，主窗口默认显示不可关闭的 Welcome 模态层；打开仓库后可通过主窗口 `+`、Help > Welcome 或 Repository Manager 再次打开并关闭它。主窗口标题栏的仓库页签根据 NSH 提供的原生窗口按钮占位动态缩进，工具栏 Agent 仅显示图标。仓库会话恢复时优先后台加载活动仓库，其余标签在首次激活时再加载；切换到已加载标签或主窗口重新聚焦时，只刷新当前仓库，按 status、HEAD、引用 OID、操作和可见 diff 比较结果，数据未变时不写回仓库状态。页面状态与刷新验收边界见[页面验收规范](development/verification.md)。设计入口见[欢迎页](pages/welcome.md)、[常规设置](pages/settings.md)、[工作区](pages/workspace.md)与[菜单和对话框](pages/menus.md)。
 
 欢迎页历史仅记录成功打开过的仓库；空查询显示历史，输入后同时搜索历史与全部已扫描仓库，扫描独占项不能从历史移除。Git 设置中的扫描复选框只控制扫描结果能否进入命令面板搜索。命令面板默认把常用命令放在仓库之前，输入后仍按命令、打开仓库、最近仓库、已启用扫描仓库分组。页面背景见[欢迎页](pages/welcome.md)、[Git 设置](pages/settings-git.md)与[命令面板](pages/command-palette.md)，实现差异见[DEVIATIONS](design/DEVIATIONS.md)。
 
