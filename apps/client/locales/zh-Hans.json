@@ -901,7 +901,15 @@
     "copyName": "复制分支名",
     "pushOrigin": "将“%{name}”推送到 origin",
     "targetChanged": "菜单打开期间分支状态已变化，请重新打开菜单后重试。",
-    "rebaseRequiresClean": "变基要求工作区干净，且当前没有进行中的操作。"
+    "rebaseRequiresClean": "变基要求工作区干净，且当前没有进行中的操作。",
+    "select": "选择分支",
+    "selectCurrent": "当前分支：%{name}。选择分支",
+    "search": "搜索分支…",
+    "localBranches": "本地分支",
+    "remoteBranches": "远端分支",
+    "current": "当前分支",
+    "noMatches": "没有匹配的分支",
+    "showInHistory": "在历史中显示 %{name}"
   },
   "remote": {
     "addRemote": "添加远端…",

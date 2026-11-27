@@ -901,7 +901,15 @@
     "copyName": "Copy Branch Name",
     "pushOrigin": "Push '%{name}' to origin",
     "targetChanged": "The branch changed while the menu was open. Reopen it and try again.",
-    "rebaseRequiresClean": "Rebase requires a clean working tree and no operation in progress."
+    "rebaseRequiresClean": "Rebase requires a clean working tree and no operation in progress.",
+    "select": "Select branch",
+    "selectCurrent": "Current branch: %{name}. Select branch",
+    "search": "Search branches…",
+    "localBranches": "Local branches",
+    "remoteBranches": "Remote branches",
+    "current": "Current",
+    "noMatches": "No branches match",
+    "showInHistory": "Show %{name} in History"
   },
   "remote": {
     "addRemote": "Add Remote…",

@@ -8,7 +8,186 @@ use crate::design::{self, metrics};
 use crate::features::search::commands::SearchCommands;
 use crate::i18n;
 use nsh_core::prelude::*;
+use std::collections::BTreeMap;
 use std::sync::Arc;
+
+const BRANCH_PICKER_W: f32 = 320.0;
+const BRANCH_PICKER_LIST_H: f32 = 288.0;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BranchPickerChoice {
+    /// 本地分支名，或带 remote 前缀的远端分支名。
+    label: String,
+    /// Git 命令使用的本地分支名。
+    name: String,
+    /// 供 History 导航与远端跟踪表单使用的完整 ref。
+    reference: String,
+    remote: Option<String>,
+    current: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum BranchPickerGroupKind {
+    Local,
+    Remote(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BranchPickerGroup {
+    kind: BranchPickerGroupKind,
+    choices: Vec<BranchPickerChoice>,
+}
+
+#[derive(Clone, Copy)]
+enum BranchPickerActionKind {
+    Primary,
+    History,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum BranchPickerAction {
+    Checkout {
+        tab_id: u64,
+        branch: String,
+    },
+    TrackRemote {
+        tab_id: u64,
+        local_name: String,
+        remote_reference: String,
+    },
+    ShowHistory {
+        tab_id: u64,
+        reference: String,
+    },
+}
+
+fn branch_picker_groups(
+    branches: &[git::Branch],
+    remote_branches: &[git::RemoteBranch],
+    current_branch: &str,
+) -> Vec<BranchPickerGroup> {
+    let mut groups = Vec::new();
+    let mut local = branches
+        .iter()
+        .map(|branch| BranchPickerChoice {
+            label: branch.name.clone(),
+            name: branch.name.clone(),
+            reference: format!("refs/heads/{}", branch.name),
+            remote: None,
+            current: branch.current || branch.name == current_branch,
+        })
+        .collect::<Vec<_>>();
+    local.sort_by(|left, right| {
+        right
+            .current
+            .cmp(&left.current)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    if !local.is_empty() {
+        groups.push(BranchPickerGroup {
+            kind: BranchPickerGroupKind::Local,
+            choices: local,
+        });
+    }
+
+    let mut remotes = BTreeMap::<String, Vec<BranchPickerChoice>>::new();
+    for branch in remote_branches {
+        let full_name = branch.full_name();
+        remotes
+            .entry(branch.remote.clone())
+            .or_default()
+            .push(BranchPickerChoice {
+                label: full_name.clone(),
+                name: branch.name.clone(),
+                reference: format!("refs/remotes/{full_name}"),
+                remote: Some(branch.remote.clone()),
+                current: false,
+            });
+    }
+    for (remote, mut choices) in remotes {
+        choices.sort_by(|left, right| left.name.cmp(&right.name));
+        groups.push(BranchPickerGroup {
+            kind: BranchPickerGroupKind::Remote(remote),
+            choices,
+        });
+    }
+    return groups;
+}
+
+fn filter_branch_picker_groups(
+    groups: &[BranchPickerGroup],
+    query: &str,
+) -> Vec<BranchPickerGroup> {
+    let query = query.trim().to_lowercase();
+    return groups
+        .iter()
+        .filter_map(|group| {
+            let choices = group
+                .choices
+                .iter()
+                .filter(|choice| {
+                    if query.is_empty() {
+                        return true;
+                    }
+                    let full_name = choice.label.to_lowercase();
+                    let leaf_name = choice.name.rsplit('/').next().unwrap_or(&choice.name);
+                    full_name.contains(&query) || leaf_name.to_lowercase().contains(&query)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if choices.is_empty() {
+                return None;
+            }
+            return Some(BranchPickerGroup {
+                kind: group.kind.clone(),
+                choices,
+            });
+        })
+        .collect();
+}
+
+fn branch_picker_action(
+    tab_id: u64,
+    choice: &BranchPickerChoice,
+    kind: BranchPickerActionKind,
+) -> BranchPickerAction {
+    if matches!(kind, BranchPickerActionKind::History) {
+        return BranchPickerAction::ShowHistory {
+            tab_id,
+            reference: choice.reference.clone(),
+        };
+    }
+    return match &choice.remote {
+        Some(remote) => BranchPickerAction::TrackRemote {
+            tab_id,
+            local_name: choice.name.clone(),
+            remote_reference: format!("{remote}/{}", choice.name),
+        },
+        None => BranchPickerAction::Checkout {
+            tab_id,
+            branch: choice.name.clone(),
+        },
+    };
+}
+
+fn run_branch_picker_action(
+    action: BranchPickerAction,
+    refs: &crate::features::refs::commands::RefsCommands,
+) {
+    match action {
+        BranchPickerAction::Checkout { tab_id, branch } => refs.checkout_branch_at(tab_id, branch),
+        BranchPickerAction::TrackRemote {
+            tab_id,
+            local_name,
+            remote_reference,
+        } => refs
+            .search
+            .open_tracking_branch_form(tab_id, local_name, remote_reference),
+        BranchPickerAction::ShowHistory { tab_id, reference } => {
+            refs.history.show_reference_at(tab_id, reference)
+        }
+    }
+}
 
 /// 标题栏：左侧留出系统窗口按钮，其后是仓库标签页与状态。
 pub(crate) fn titlebar(
@@ -17,6 +196,7 @@ pub(crate) fn titlebar(
     active: Signal<usize>,
     session: crate::features::SessionHandle,
     settings: crate::features::settings::commands::SettingsCommands,
+    refs: crate::features::refs::commands::RefsCommands,
 ) -> impl IntoElement {
     let auxiliary = session.auxiliary;
     let open = session;
@@ -101,33 +281,7 @@ pub(crate) fn titlebar(
                 .items_center()
                 .gap(px(6.0))
                 .flex_shrink_0()
-                .child(
-                    view()
-                        .w(px(6.0))
-                        .h(px(6.0))
-                        .rounded(px(3.0))
-                        .bg(move || design::ok()),
-                )
-                .child(
-                    text(move || {
-                        let index = active.get();
-                        tabs.with(|list| match list.get(index) {
-                            Some(tab) => {
-                                let mut text = tab.branch.clone();
-                                if tab.ahead > 0 {
-                                    text.push_str(&format!(" ↑{}", tab.ahead));
-                                }
-                                if tab.behind > 0 {
-                                    text.push_str(&format!(" ↓{}", tab.behind));
-                                }
-                                return text;
-                            }
-                            None => String::new(),
-                        })
-                    })
-                    .text_size(px(crate::ui::SECONDARY))
-                    .text_color(move || design::text3()),
-                )
+                .child(branch_picker(language, tabs, active, refs))
                 .child(
                     view()
                         .w(px(26.0))
@@ -153,6 +307,355 @@ pub(crate) fn titlebar(
                         ),
                 ),
         );
+}
+
+fn branch_picker(
+    language: Signal<SharedString>,
+    tabs: Signal<Vec<Tab>>,
+    active: Signal<usize>,
+    refs: crate::features::refs::commands::RefsCommands,
+) -> impl IntoElement + use<> {
+    let open = signal(false);
+    let query = signal(String::new());
+    let groups = signal(Vec::<BranchPickerGroup>::new());
+    let opened_tab_id = signal(None::<u64>);
+    let trigger_ref = element_ref();
+    let search_ref = element_ref();
+
+    // 弹层绑定到打开时的仓库；活动标签页变化时关闭，避免旧列表操作新仓库。
+    effect({
+        let open = open;
+        let opened_tab_id = opened_tab_id;
+        let tabs = tabs;
+        let active = active;
+        let trigger_ref = trigger_ref;
+        let search_ref = search_ref;
+        move || {
+            let current_tab_id = tabs.with(|list| list.get(active.get()).map(|tab| tab.id));
+            if open.get() && opened_tab_id.get() != current_tab_id {
+                trigger_ref.focus_back(search_ref);
+                open.set(false);
+            }
+        }
+    });
+
+    let toggle = {
+        let open = open;
+        let query = query;
+        let groups = groups;
+        let opened_tab_id = opened_tab_id;
+        move || {
+            if open.get_untracked() {
+                open.set(false);
+                return;
+            }
+            let index = active.get_untracked();
+            let Some(tab) = tabs.with_untracked(|list| list.get(index).cloned()) else {
+                return;
+            };
+            opened_tab_id.set(Some(tab.id));
+            groups.set(branch_picker_groups(
+                &tab.refs.branches,
+                &tab.refs.remote_branches,
+                &tab.branch,
+            ));
+            query.set(String::new());
+            open.set(true);
+        }
+    };
+
+    return view()
+        .flex_shrink_0()
+        .child(
+            view()
+                .element_ref(&trigger_ref)
+                .window_drag(false)
+                .role(AccessibilityRole::Button)
+                .label(move || {
+                    let branch = tabs
+                        .with(|list| list.get(active.get()).map(|tab| tab.branch.clone()))
+                        .filter(|branch| !branch.is_empty());
+                    SharedString::from(match branch {
+                        Some(branch) => i18n::with_arguments(
+                            language.get().as_str(),
+                            "branch.selectCurrent",
+                            &[("name", branch)],
+                        ),
+                        None => i18n::t(language.get().as_str(), "branch.select"),
+                    })
+                })
+                .max_w(px(320.0))
+                .h(px(28.0))
+                .px(px(8.0))
+                .flex_row()
+                .items_center()
+                .gap(px(crate::ui::GAP_SM))
+                .rounded(px(metrics::RADIUS_CONTROL))
+                .bg(move || {
+                    if open.get() {
+                        design::hover()
+                    } else {
+                        AdaptiveColor::TRANSPARENT
+                    }
+                })
+                .hover(|style| style.bg(move || design::hover()))
+                .active(|style| style.bg(move || design::line_soft()))
+                .focus_visible(move |style| {
+                    style
+                        .outline(px(crate::ui::FOCUS_WIDTH))
+                        .outline_color(move || crate::ui::focus_color())
+                })
+                .on_press(toggle)
+                .child(
+                    view()
+                        .w(px(6.0))
+                        .h(px(6.0))
+                        .flex_shrink_0()
+                        .rounded(px(3.0))
+                        .bg(move || design::ok()),
+                )
+                .child(
+                    text(move || {
+                        tabs.with(|list| {
+                            list.get(active.get())
+                                .map(|tab| tab.branch.clone())
+                                .unwrap_or_default()
+                        })
+                    })
+                    .flex_1()
+                    .min_w_0()
+                    .number_of_lines(1)
+                    .text_overflow(nsh_core::EllipsizeMode::Tail)
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+                )
+                .child(
+                    text(move || {
+                        tabs.with(|list| {
+                            list.get(active.get()).map_or_else(String::new, |tab| {
+                                let mut tracking = Vec::new();
+                                if tab.ahead > 0 {
+                                    tracking.push(format!("↑{}", tab.ahead));
+                                }
+                                if tab.behind > 0 {
+                                    tracking.push(format!("↓{}", tab.behind));
+                                }
+                                tracking.join(" ")
+                            })
+                        })
+                    })
+                    .flex_shrink_0()
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::text3()),
+                )
+                .child(crate::ui::icon::icon_view(
+                    "chev-down",
+                    crate::ui::icon::IconSize::Compact,
+                    design::text3,
+                )),
+        )
+        .child(when(
+            move || open.get(),
+            move || {
+                let Some(tab_id) = opened_tab_id.get() else {
+                    return view().w(px(0.0)).h(px(0.0)).into_element();
+                };
+                branch_picker_overlay(
+                    language,
+                    open,
+                    query,
+                    groups,
+                    search_ref,
+                    trigger_ref,
+                    tab_id,
+                    refs.clone(),
+                )
+                .into_element()
+            },
+        ));
+}
+
+fn branch_picker_overlay(
+    language: Signal<SharedString>,
+    open: Signal<bool>,
+    query: Signal<String>,
+    groups: Signal<Vec<BranchPickerGroup>>,
+    search_ref: ElementRef,
+    trigger_ref: ElementRef,
+    tab_id: u64,
+    refs: crate::features::refs::commands::RefsCommands,
+) -> impl IntoElement {
+    let filtered = computed(move || filter_branch_picker_groups(&groups.get(), &query.get()));
+    let outside_open = open;
+    let escape_open = open;
+    let escape_trigger = trigger_ref;
+    let escape_search = search_ref;
+    return overlay()
+        .anchor(&trigger_ref)
+        .placement(Placement::Bottom)
+        .align(Align::End)
+        .offset(px(4.0))
+        .margin(px(8.0))
+        .on_press_outside(move |_: &Point<Points>| outside_open.set(false))
+        .on_cancel(move || {
+            escape_trigger.focus_back(escape_search);
+            escape_open.set(false);
+        })
+        .child(branch_picker_panel(
+            language, query, search_ref, filtered, tab_id, open, refs,
+        ));
+}
+
+fn branch_picker_panel(
+    language: Signal<SharedString>,
+    query: Signal<String>,
+    search_ref: ElementRef,
+    filtered: Memo<Vec<BranchPickerGroup>>,
+    tab_id: u64,
+    open: Signal<bool>,
+    refs: crate::features::refs::commands::RefsCommands,
+) -> impl IntoElement {
+    return view()
+        .w(px(BRANCH_PICKER_W))
+        .p(px(10.0))
+        .flex_col()
+        .gap(px(crate::ui::GAP))
+        .rounded(px(metrics::RADIUS_PANEL))
+        .border_1()
+        .border_color(design::line_strong)
+        .bg(|| design::token("popover"))
+        .shadow_lg()
+        .child(crate::ui::text_input::text_input_auto_focus(
+            query,
+            move || i18n::t(language.get().as_str(), "branch.search"),
+            false,
+            search_ref,
+            move |value| query.set(value.to_string()),
+        ))
+        .child(scroll().w_full().h(px(BRANCH_PICKER_LIST_H)).child(dynamic(
+            move || -> AnyElement {
+                let groups = filtered.get();
+                if groups.is_empty() {
+                    return text(move || i18n::t(language.get().as_str(), "branch.noMatches"))
+                        .text_size(px(crate::ui::SECONDARY))
+                        .text_color(design::text3)
+                        .into_element();
+                }
+                let mut list = view().w_full().flex_col().gap(px(crate::ui::GAP_XS));
+                let mut remote_section_shown = false;
+                for group in groups {
+                    match &group.kind {
+                        BranchPickerGroupKind::Local => {
+                            list = list.child(branch_picker_section_heading(
+                                language,
+                                "branch.localBranches",
+                            ));
+                        }
+                        BranchPickerGroupKind::Remote(remote) => {
+                            if !remote_section_shown {
+                                list = list.child(branch_picker_section_heading(
+                                    language,
+                                    "branch.remoteBranches",
+                                ));
+                                remote_section_shown = true;
+                            }
+                            list = list.child(
+                                text(remote.clone())
+                                    .pt(px(crate::ui::GAP_XS))
+                                    .text_size(px(crate::ui::SECONDARY))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(move || design::text3()),
+                            );
+                        }
+                    }
+                    for choice in group.choices {
+                        list = list.child(branch_picker_row(
+                            language,
+                            tab_id,
+                            choice,
+                            open,
+                            refs.clone(),
+                        ));
+                    }
+                }
+                return list.into_element();
+            },
+        )));
+}
+
+fn branch_picker_section_heading(
+    language: Signal<SharedString>,
+    key: &'static str,
+) -> impl IntoElement {
+    return text(move || i18n::t(language.get().as_str(), key))
+        .pt(px(crate::ui::GAP_XS))
+        .text_size(px(crate::ui::SECONDARY))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(move || design::text3());
+}
+
+fn branch_picker_row(
+    language: Signal<SharedString>,
+    tab_id: u64,
+    choice: BranchPickerChoice,
+    open: Signal<bool>,
+    refs: crate::features::refs::commands::RefsCommands,
+) -> AnyElement {
+    let current = choice.current;
+    let label = choice.label.clone();
+    let primary = branch_picker_action(tab_id, &choice, BranchPickerActionKind::Primary);
+    let history = branch_picker_action(tab_id, &choice, BranchPickerActionKind::History);
+    let primary_refs = refs.clone();
+    let main = view().flex_1().min_w_0().child(crate::ui::row::row_sized(
+        move || label.clone(),
+        None,
+        current.then(|| {
+            crate::ui::icon::icon_view("check", crate::ui::icon::IconSize::Compact, design::accent)
+                .into_element()
+        }),
+        if current {
+            vec![
+                text(move || i18n::t(language.get().as_str(), "branch.current"))
+                    .text_size(px(crate::ui::SECONDARY))
+                    .text_color(move || design::accent())
+                    .into_element(),
+            ]
+        } else {
+            Vec::new()
+        },
+        current,
+        current,
+        crate::ui::ROW,
+        move || {
+            open.set(false);
+            run_branch_picker_action(primary.clone(), &primary_refs);
+        },
+    ));
+    let history_name = choice.label.clone();
+    let history_refs = refs;
+    return view()
+        .w_full()
+        .flex_row()
+        .items_center()
+        .gap(px(crate::ui::GAP_XS))
+        .child(main)
+        .child(crate::ui::button::icon_button(
+            "clock",
+            move || {
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "branch.showInHistory",
+                    &[("name", history_name.clone())],
+                )
+            },
+            crate::ui::button::ButtonSize::Small,
+            false,
+            move || {
+                open.set(false);
+                run_branch_picker_action(history.clone(), &history_refs);
+            },
+        ))
+        .into_element();
 }
 
 /// 工具栏：仓库操作、主区切换与 Agent 入口。
@@ -697,7 +1200,7 @@ pub(crate) fn op_banner(
             .into_element();
         }));
 }
-/// 状态栏：分支、操作状态、变更数量与编码信息。
+/// 状态栏：临时操作提示、变更数量与编码信息。
 pub(crate) fn statusbar(
     language: Signal<SharedString>,
     tab: Memo<Option<Tab>>,
@@ -713,22 +1216,8 @@ pub(crate) fn statusbar(
         .bg(move || design::status())
         .border_t_1()
         .border_color(move || design::line())
-        .child(crate::ui::icon::icon_view(
-            "branch",
-            crate::ui::icon::IconSize::Compact,
-            design::text3,
-        ))
-        .child(
-            text(move || {
-                return tab.get().map(|tab| tab.branch).unwrap_or_default();
-            })
-            .text_size(px(crate::ui::SECONDARY))
-            .line_height(px(crate::ui::SECONDARY_LINE))
-            .text_color(move || design::text3()),
-        )
-        .child(view().flex_1())
         .child(dynamic(move || -> AnyElement {
-            // 提示只占右端一小段，出现时不挤动左侧状态。
+            // 提示只占左端一小段，出现时不挤动右侧编码信息。
             let Some(message) = notice.get() else {
                 return view().w(px(0.0)).h(px(0.0)).into_element();
             };
@@ -751,12 +1240,13 @@ pub(crate) fn statusbar(
                 )
                 .into_element();
         }))
+        .child(view().flex_1())
         .child(
             text(move || {
                 let count = tab.get().map(|tab| tab.status.len()).unwrap_or(0);
                 return i18n::with_arguments(
                     language.get().as_str(),
-                    "history.commits",
+                    "changes.changesCount",
                     &[("count", count.to_string())],
                 );
             })
@@ -843,4 +1333,114 @@ fn tool_button(
         false,
         on_press,
     );
+}
+
+#[cfg(test)]
+mod branch_picker_tests {
+    use super::*;
+
+    fn branch(name: &str, current: bool) -> git::Branch {
+        git::Branch {
+            name: name.into(),
+            current,
+            ..git::Branch::default()
+        }
+    }
+
+    fn remote(remote: &str, name: &str) -> git::RemoteBranch {
+        git::RemoteBranch {
+            remote: remote.into(),
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn groups_local_first_and_keeps_full_remote_names() {
+        let groups = branch_picker_groups(
+            &[
+                branch("feature/z", false),
+                branch("main", false),
+                branch("develop", false),
+            ],
+            &[
+                remote("upstream", "main"),
+                remote("origin", "feature/ui"),
+                remote("origin", "main"),
+            ],
+            "develop",
+        );
+
+        assert_eq!(groups.len(), 3);
+        assert_eq!(groups[0].kind, BranchPickerGroupKind::Local);
+        assert_eq!(groups[0].choices[0].name, "develop");
+        assert!(groups[0].choices[0].current);
+        assert_eq!(groups[0].choices[1].name, "feature/z");
+        assert_eq!(
+            groups[1].kind,
+            BranchPickerGroupKind::Remote("origin".into())
+        );
+        assert_eq!(groups[1].choices[0].label, "origin/feature/ui");
+        assert_eq!(groups[1].choices[1].label, "origin/main");
+        assert_eq!(
+            groups[2].kind,
+            BranchPickerGroupKind::Remote("upstream".into())
+        );
+    }
+
+    #[test]
+    fn search_matches_case_insensitive_full_name_and_leaf_and_drops_empty_groups() {
+        let groups = branch_picker_groups(
+            &[branch("feature/search-panel", false), branch("main", true)],
+            &[
+                remote("origin", "feature/search-panel"),
+                remote("upstream", "main"),
+            ],
+            "main",
+        );
+
+        let full = filter_branch_picker_groups(&groups, "ORIGIN/FEATURE/SEARCH-PANEL");
+        assert_eq!(full.len(), 1);
+        assert_eq!(full[0].kind, BranchPickerGroupKind::Remote("origin".into()));
+        assert_eq!(full[0].choices[0].label, "origin/feature/search-panel");
+
+        let leaf = filter_branch_picker_groups(&groups, "PANEL");
+        assert_eq!(leaf.len(), 2);
+        assert!(leaf.iter().all(|group| group.choices.len() == 1));
+        assert!(filter_branch_picker_groups(&groups, "not-found").is_empty());
+        assert_eq!(filter_branch_picker_groups(&groups, "").len(), groups.len());
+    }
+
+    #[test]
+    fn actions_keep_the_opened_tab_and_exact_branch_references() {
+        let groups = branch_picker_groups(
+            &[branch("main", true)],
+            &[remote("origin", "feature/ui")],
+            "main",
+        );
+        let local = &groups[0].choices[0];
+        let remote = &groups[1].choices[0];
+
+        assert_eq!(
+            branch_picker_action(73, local, BranchPickerActionKind::Primary),
+            BranchPickerAction::Checkout {
+                tab_id: 73,
+                branch: "main".into(),
+            }
+        );
+        assert_eq!(
+            branch_picker_action(73, remote, BranchPickerActionKind::Primary),
+            BranchPickerAction::TrackRemote {
+                tab_id: 73,
+                local_name: "feature/ui".into(),
+                remote_reference: "origin/feature/ui".into(),
+            }
+        );
+        assert_eq!(
+            branch_picker_action(73, remote, BranchPickerActionKind::History),
+            BranchPickerAction::ShowHistory {
+                tab_id: 73,
+                reference: "refs/remotes/origin/feature/ui".into(),
+            }
+        );
+    }
 }

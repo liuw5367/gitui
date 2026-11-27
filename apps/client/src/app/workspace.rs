@@ -61,6 +61,7 @@ pub(crate) fn workspace(handles: &AppHandles) -> impl IntoElement + use<> {
             active,
             session.clone(),
             settings.clone(),
+            refs.clone(),
         ))
         .child(shell::toolbar(
             language,

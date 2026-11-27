@@ -31,6 +31,31 @@ pub(crate) fn text_input(
     );
 }
 
+/// 弹层打开时自动聚焦的单行输入框。
+///
+/// `handle` 供弹层在按 Esc 关闭时把键盘焦点还给触发按钮。
+pub(crate) fn text_input_auto_focus(
+    value: Signal<String>,
+    placeholder: impl Fn() -> String + 'static,
+    invalid: bool,
+    handle: ElementRef,
+    on_change: impl Fn(&str) + 'static,
+) -> impl IntoElement {
+    return style_input(
+        nsh_base::input()
+            .value(value)
+            .placeholder(placeholder)
+            .on_change(move |text: &str| on_change(text))
+            .auto_focus(true)
+            .element_ref(&handle),
+        invalid,
+        Some(ui::CONTROL),
+        None,
+        ui::BODY,
+        None,
+    );
+}
+
 pub(crate) fn text_input_sized(
     value: Signal<String>,
     placeholder: impl Fn() -> String + 'static,
