@@ -113,6 +113,7 @@ pub(crate) struct ReflogFileDiffState {
 
 #[derive(Clone)]
 pub(crate) struct RefsState {
+    pub(crate) push_tag: Signal<Option<(u64, String)>>,
     pub(crate) delete_tag: Signal<Option<(u64, String, Option<String>)>>,
     /// Refs / Reflog 的页签选择，工具栏直达入口与中栏页签共用这份状态。
     pub(crate) selected_tab: Signal<RefsTab>,

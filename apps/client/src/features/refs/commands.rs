@@ -47,7 +47,7 @@ fn reflog_selection_exists(entries: &[git::ReflogEntry], selection: &ReflogEntry
 enum RemoteOperation {
     PushTag {
         name: String,
-        remote: Option<String>,
+        remote: String,
     },
     ReadTags {
         remote: String,
@@ -78,10 +78,6 @@ impl RemoteOperation {
     fn run(&self, tab: &mut crate::app::session::Tab) -> Result<(), String> {
         match self {
             Self::PushTag { name, remote } => {
-                let remote = remote
-                    .as_deref()
-                    .or_else(|| tab.refs.remotes.first().map(String::as_str))
-                    .unwrap_or("origin");
                 let repo = tab.open_repo().map_err(|error| error.detail())?;
                 repo.push_tag(name, Some(remote))
                     .map_err(|error| error.detail())?;
@@ -179,10 +175,6 @@ impl RemoteOperation {
                 }
             }
             Self::PushTag { name, remote } => {
-                let remote = remote
-                    .as_deref()
-                    .or_else(|| updated.refs.remotes.first().map(String::as_str))
-                    .unwrap_or("origin");
                 if let Some(tag) = updated
                     .remote_tags
                     .get(remote)
@@ -1358,8 +1350,12 @@ impl RefsCommands {
     /// 推送标签（原 `push_tag`）。
     pub(crate) fn push_tag(&self, name: String) {
         if let Some(tab_id) = self.active_tab_id() {
-            self.run_remote_operation(tab_id, RemoteOperation::PushTag { name, remote: None });
+            self.open_push_tag_at(tab_id, name);
         }
+    }
+
+    pub(crate) fn open_push_tag_at(&self, tab_id: u64, name: String) {
+        self.state.push_tag.set(Some((tab_id, name)));
     }
 
     pub(crate) fn push_tag_to_remote_at(&self, tab_id: u64, name: String, remote: String) {
@@ -1383,14 +1379,8 @@ impl RefsCommands {
             );
             return;
         }
-        let _ = (notice, language);
-        self.run_remote_operation(
-            tab_id,
-            RemoteOperation::PushTag {
-                name,
-                remote: Some(remote),
-            },
-        );
+        self.state.push_tag.set(None);
+        self.run_remote_operation(tab_id, RemoteOperation::PushTag { name, remote });
     }
 
     pub(crate) fn update_submodule_at(&self, tab_id: u64, path: String, latest: bool) {

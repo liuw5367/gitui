@@ -695,6 +695,7 @@ pub(crate) fn app() -> impl IntoElement {
     // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。
     // 「切到某个提交」的确认流程归恢复功能，这里只是持有它的用例。
     let refs_state = features::refs::state::RefsState {
+        push_tag: signal(None),
         delete_tag: signal(None),
         selected_tab: refs_selected_tab,
         reflog_query,
@@ -929,6 +930,7 @@ pub(crate) fn app() -> impl IntoElement {
             &welcome_commands,
         ))
         .child(features::refs::view::delete_tag_dialog(&handles.refs))
+        .child(features::refs::view::push_tag_dialog(&handles.refs))
         .child(crate::app::windows::windows(&handles))
         .child(features::commit::rewrite_dialog::rewrite_dialog(
             &handles.commit.state,

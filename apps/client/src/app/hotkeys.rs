@@ -87,6 +87,7 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
         let tabs = handles.session.tabs;
         let welcome_open = handles.session.welcome_open;
         let delete_tag = handles.refs.state.delete_tag;
+        let push_tag = handles.refs.state.push_tag;
         let active = handles.session.active;
         let recording = handles.settings.state.recording_shortcut;
         move |_| {
@@ -97,6 +98,10 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
             // 录制中按 Esc 只取消录制，不继续关下面的浮层。
             if recording.get_untracked().is_some() {
                 recording.set(None);
+                return;
+            }
+            if push_tag.get_untracked().is_some() {
+                push_tag.set(None);
                 return;
             }
             if delete_tag.get_untracked().is_some() {

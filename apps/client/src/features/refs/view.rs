@@ -1372,18 +1372,13 @@ pub(crate) fn tag_menu_items(
             .find(|tab| tab.id == tab_id)
             .is_some_and(|tab| local_tag_oid(tab, &name, commit.as_deref()).is_some())
     });
-    let push_items = remotes.iter().map(|remote| {
-        let push_cmd = cmd.clone();
-        let push_name = name.clone();
-        let push_remote = remote.clone();
-        ui::menu::action(remote.clone(), true, move || {
-            push_cmd.push_tag_to_remote_at(tab_id, push_name.clone(), push_remote.clone())
-        })
-    });
-    let mut items = vec![
-        MenuItem::submenu(i18n::t(language.get().as_str(), "tag.pushTag"), push_items)
-            .disabled(remotes.is_empty() || !has_local),
-    ];
+    let push_cmd = cmd.clone();
+    let push_name = name.clone();
+    let mut items = vec![ui::menu::action(
+        i18n::t(language.get().as_str(), "tag.pushTag"),
+        has_local && !remotes.is_empty(),
+        move || push_cmd.open_push_tag_at(tab_id, push_name.clone()),
+    )];
     let copy_notice = cmd.notice;
     let copy_name = name.clone();
     items.push(ui::menu::action(
@@ -1420,6 +1415,116 @@ fn local_tag_oid(tab: &Tab, name: &str, commit: Option<&str>) -> Option<String> 
         return None;
     }
     Some(oid)
+}
+
+pub(crate) fn push_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
+    let pending = cmd.state.push_tag;
+    let tabs = cmd.session.tabs;
+    let language = cmd.language;
+    let cmd = cmd.clone();
+    ui::dialog::modal(
+        move || pending.get().is_some(),
+        move || i18n::t(language.get().as_str(), "tag.pushTag"),
+        210,
+        move || {
+            let Some((id, name)) = pending.get_untracked() else {
+                return view().into_element();
+            };
+            let remotes = computed(move || {
+                tabs.with(|tabs| {
+                    tabs.iter()
+                        .find(|tab| tab.id == id)
+                        .map(|tab| tab.refs.remotes.clone())
+                        .unwrap_or_default()
+                })
+            });
+            let default = remotes.with_untracked(|remotes| {
+                remotes
+                    .iter()
+                    .find(|name| name.as_str() == "origin")
+                    .or_else(|| remotes.first())
+                    .cloned()
+                    .unwrap_or_default()
+            });
+            let remote = signal(default);
+            let cmd = cmd.clone();
+            let display_name = name.clone();
+            let tag_exists = move || {
+                tabs.with(|tabs| {
+                    tabs.iter()
+                        .find(|tab| tab.id == id)
+                        .is_some_and(|tab| tab.refs.tags.contains(&display_name))
+                })
+            };
+            ui::dialog::modality(
+                view()
+                    .w(px(440.0))
+                    .flex_col()
+                    .gap(px(ui::GAP))
+                    .p(px(ui::GAP_XL))
+                    .rounded(px(crate::design::metrics::RADIUS_PANEL))
+                    .bg(move || design::token("popover"))
+                    .child(
+                        text(name.clone())
+                            .text_size(px(ui::BODY))
+                            .text_color(move || design::text()),
+                    )
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "sync.pushRemote"))
+                            .text_size(px(ui::SECONDARY))
+                            .text_color(move || design::text2()),
+                    )
+                    .child(dynamic(move || {
+                        let entries = remotes
+                            .get()
+                            .into_iter()
+                            .map(|name| {
+                                ui::select::SelectOption::new(name.clone(), move || name.clone())
+                            })
+                            .collect();
+                        ui::select::select_with_limit(
+                            entries,
+                            remote.get(),
+                            None,
+                            remotes.with(|list| list.is_empty()),
+                            Some(224.0),
+                            move |name| remote.set(name),
+                        )
+                    }))
+                    .child(
+                        view()
+                            .flex_row()
+                            .justify_end()
+                            .gap(px(ui::GAP_SM))
+                            .child(ui::button::button(
+                                move || i18n::t(language.get().as_str(), "common.cancel"),
+                                ui::button::ButtonVariant::Secondary,
+                                ui::button::ButtonSize::Regular,
+                                false,
+                                move || pending.set(None),
+                            ))
+                            .child(ui::button::button(
+                                move || i18n::t(language.get().as_str(), "sync.push"),
+                                ui::button::ButtonVariant::Primary,
+                                ui::button::ButtonSize::Regular,
+                                move || {
+                                    !tag_exists()
+                                        || !remotes.with(|list| list.contains(&remote.get()))
+                                },
+                                move || {
+                                    cmd.push_tag_to_remote_at(
+                                        id,
+                                        name.clone(),
+                                        remote.get_untracked(),
+                                    )
+                                },
+                            )),
+                    ),
+            )
+            .into_element()
+        },
+        move || pending.set(None),
+    )
 }
 
 pub(crate) fn delete_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
@@ -2398,7 +2503,7 @@ fn refs_table(
         let items = vec![
             ui::menu::action(
                 i18n::t(language.get_untracked().as_str(), "menu.pushTag"),
-                true,
+                !tab.refs.remotes.is_empty(),
                 {
                     let push = push.clone();
                     let name = name.clone();
