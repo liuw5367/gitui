@@ -1467,12 +1467,17 @@ pub(crate) fn push_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
                         .flex_row()
                         .items_center()
                         .gap(px(ui::GAP))
-                        .child(view().flex_shrink_0().child(
-                            crate::features::search::form_dialog::field_label(
-                                language,
-                                "form.name",
-                            ),
-                        ))
+                        .child(
+                            view()
+                                .w(px(
+                                    crate::features::search::form_dialog::TAG_FIELD_LABEL_WIDTH,
+                                ))
+                                .flex_shrink_0()
+                                .child(crate::features::search::form_dialog::field_label(
+                                    language,
+                                    "form.name",
+                                )),
+                        )
                         .child(
                             text(name.clone())
                                 .flex_1()

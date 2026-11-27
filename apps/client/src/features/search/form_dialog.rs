@@ -452,6 +452,8 @@ fn tag_push_fields(
         }))
 }
 
+pub(crate) const TAG_FIELD_LABEL_WIDTH: f32 = 56.0;
+
 pub(crate) fn tag_remote_field(
     language: Signal<SharedString>,
     remotes: Vec<String>,
@@ -470,6 +472,7 @@ pub(crate) fn tag_remote_field(
         .gap(px(crate::ui::GAP))
         .child(
             view()
+                .w(px(TAG_FIELD_LABEL_WIDTH))
                 .flex_shrink_0()
                 .child(field_label(language, "sync.pushRemote")),
         )
