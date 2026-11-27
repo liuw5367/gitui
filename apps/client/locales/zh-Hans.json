@@ -884,6 +884,13 @@
     "manualSummary": "手动计划"
   },
   "branch": {
+    "forceDeleteTitle": "强制删除分支？",
+    "forceDeleteMessage": "分支 %{name} 尚未完全合并。强制删除会移除该分支引用，包括仍有提交未合并的情况。",
+    "confirmDelete": "确认删除",
+    "confirmForceDelete": "确认强制删除",
+    "deleteRemoteAlso": "同时删除远端分支 %{name}",
+    "noRemoteToDelete": "没有对应的远端分支",
+    "forceDeleteAction": "强制删除",
     "noReturnBranch": "没有可回到的本地分支。",
     "pushBranch": "推送 %{name}…",
     "checkout": "切换到此分支",

@@ -884,6 +884,13 @@
     "manualSummary": "Manual plan"
   },
   "branch": {
+    "forceDeleteTitle": "Force delete branch?",
+    "forceDeleteMessage": "Branch %{name} is not fully merged. Force deleting it removes the branch reference even if some commits are unmerged.",
+    "confirmDelete": "Confirm deletion",
+    "confirmForceDelete": "Confirm force deletion",
+    "deleteRemoteAlso": "Also delete remote branch %{name}",
+    "noRemoteToDelete": "No matching remote branch",
+    "forceDeleteAction": "Force Delete",
     "noReturnBranch": "No local branch to return to.",
     "pushBranch": "Push %{name}…",
     "checkout": "Check Out",

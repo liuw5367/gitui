@@ -1530,6 +1530,148 @@ pub(crate) fn push_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
     )
 }
 
+pub(crate) fn delete_branch_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
+    let pending = cmd.state.delete_branch;
+    let language = cmd.language;
+    let cmd = cmd.clone();
+    ui::dialog::modal(
+        move || pending.get().is_some(),
+        move || i18n::t(language.get().as_str(), "branch.deleteTitle"),
+        210,
+        move || {
+            let cmd = cmd.clone();
+            dynamic(move || -> AnyElement {
+                let Some(request) = pending.get() else {
+                    return view().into_element();
+                };
+                let force = request.force;
+                let can_delete = force || request.error.is_none();
+                let title = if force {
+                    "branch.forceDeleteTitle"
+                } else {
+                    "branch.deleteTitle"
+                };
+                let message = if force {
+                    "branch.forceDeleteMessage"
+                } else {
+                    "branch.deleteMessage"
+                };
+                let name = request.name.clone();
+                let confirmed = signal(false);
+                let remote_checked = signal(force && request.remote.is_some());
+                let mut body = view().w_full().flex_col().gap(px(ui::GAP)).child(
+                    text(move || {
+                        i18n::with_arguments(
+                            language.get().as_str(),
+                            message,
+                            &[("name", name.clone())],
+                        )
+                    })
+                    .text_size(px(ui::BODY))
+                    .text_color(design::text),
+                );
+                if can_delete {
+                    body = body.child(ui::check::check_row(
+                        move || {
+                            i18n::t(
+                                language.get().as_str(),
+                                if force {
+                                    "branch.confirmForceDelete"
+                                } else {
+                                    "branch.confirmDelete"
+                                },
+                            )
+                        },
+                        confirmed,
+                        false,
+                        move |value| confirmed.set(value),
+                    ));
+                    let remote = request.remote.as_ref().map(|remote| remote.full_name());
+                    let disabled = remote.is_none();
+                    body = body.child(ui::check::check_row(
+                        move || match &remote {
+                            Some(remote) => i18n::with_arguments(
+                                language.get().as_str(),
+                                "branch.deleteRemoteAlso",
+                                &[("name", remote.clone())],
+                            ),
+                            None => i18n::t(language.get().as_str(), "branch.noRemoteToDelete"),
+                        },
+                        remote_checked,
+                        disabled,
+                        move |value| remote_checked.set(value),
+                    ));
+                } else if let Some(detail) = &request.error {
+                    body = body.child(
+                        text(detail.clone())
+                            .text_size(px(ui::BODY))
+                            .text_color(design::danger),
+                    );
+                }
+                let mut footer = vec![
+                    ui::button::button(
+                        move || {
+                            i18n::t(
+                                language.get().as_str(),
+                                if can_delete {
+                                    "common.cancel"
+                                } else {
+                                    "common.close"
+                                },
+                            )
+                        },
+                        ui::button::ButtonVariant::Secondary,
+                        ui::button::ButtonSize::Regular,
+                        false,
+                        move || pending.set(None),
+                    )
+                    .into_element(),
+                ];
+                if can_delete {
+                    let cmd = cmd.clone();
+                    footer.push(
+                        ui::button::button(
+                            move || {
+                                i18n::t(
+                                    language.get().as_str(),
+                                    if force {
+                                        "branch.forceDeleteAction"
+                                    } else {
+                                        "branch.deleteAction"
+                                    },
+                                )
+                            },
+                            ui::button::ButtonVariant::Danger,
+                            ui::button::ButtonSize::Regular,
+                            move || !confirmed.get(),
+                            move || {
+                                let mut request = request.clone();
+                                if !remote_checked.get_untracked() {
+                                    request.remote = None;
+                                }
+                                cmd.confirm_delete_branch(request);
+                            },
+                        )
+                        .into_element(),
+                    );
+                }
+                ui::dialog::dialog_panel(
+                    420.0,
+                    move || i18n::t(language.get().as_str(), title),
+                    Some(std::rc::Rc::new(move || {
+                        i18n::t(language.get().as_str(), "common.close")
+                    })),
+                    body,
+                    footer,
+                    move || pending.set(None),
+                )
+            })
+            .into_element()
+        },
+        move || pending.set(None),
+    )
+}
+
 pub(crate) fn delete_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
     let pending = cmd.state.delete_tag;
     let tabs = cmd.session.tabs;

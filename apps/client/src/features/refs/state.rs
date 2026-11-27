@@ -114,6 +114,7 @@ pub(crate) struct ReflogFileDiffState {
 #[derive(Clone)]
 pub(crate) struct RefsState {
     pub(crate) push_tag: Signal<Option<(u64, String)>>,
+    pub(crate) delete_branch: Signal<Option<BranchDelete>>,
     pub(crate) delete_tag: Signal<Option<(u64, String, Option<String>)>>,
     /// Refs / Reflog 的页签选择，工具栏直达入口与中栏页签共用这份状态。
     pub(crate) selected_tab: Signal<RefsTab>,
@@ -152,4 +153,13 @@ mod tests {
         assert!(!first.matches_entry(8, "/repo", 0, &entry));
         assert!(!first.matches_entry(7, "/other", 0, &entry));
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BranchDelete {
+    pub tab_id: u64,
+    pub name: String,
+    pub remote: Option<git::RemoteBranch>,
+    pub force: bool,
+    pub error: Option<String>,
 }

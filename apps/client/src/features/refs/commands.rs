@@ -1333,33 +1333,72 @@ impl RefsCommands {
     }
 
     pub(crate) fn delete_branch_at(&self, tab_id: u64, branch: String) {
-        let tabs = self.session.tabs;
-        let language = self.language;
-        let language_now = language.get_untracked();
-        let pending = crate::ui::dialog::confirm_destructive(
-            crate::i18n::t(language_now.as_str(), "branch.deleteTitle"),
-            crate::i18n::with_arguments(
-                language_now.as_str(),
-                "branch.deleteMessage",
-                &[("name", branch.clone())],
-            ),
-            crate::i18n::t(language_now.as_str(), "branch.deleteAction"),
-            crate::i18n::t(language_now.as_str(), "common.cancel"),
-        );
-        Owner::detached().run(|| {
-            spawn(async move {
-                if let Ok(result) = pending.await {
-                    if result.action.as_deref() != Some("confirm") {
-                        return;
-                    }
-                    let mut list = tabs.get_untracked();
-                    if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
-                        ops::delete_branch(tab, branch.as_str());
-                        tabs.set(list);
-                    }
-                }
-            });
+        let remote = self.session.tabs.with_untracked(|tabs| {
+            let tab = tabs.iter().find(|tab| tab.id == tab_id)?;
+            tab.refs
+                .remote_branches
+                .iter()
+                .find(|remote| remote.remote == "origin" && remote.name == branch)
+                .or_else(|| {
+                    tab.refs
+                        .remote_branches
+                        .iter()
+                        .find(|remote| remote.name == branch)
+                })
+                .cloned()
         });
+        self.state
+            .delete_branch
+            .set(Some(super::state::BranchDelete {
+                tab_id,
+                name: branch,
+                remote,
+                force: false,
+                error: None,
+            }));
+    }
+
+    pub(crate) fn confirm_delete_branch(&self, mut request: super::state::BranchDelete) {
+        let tabs = self.session.tabs;
+        let mut list = tabs.get_untracked();
+        let Some(tab) = list.iter_mut().find(|tab| tab.id == request.tab_id) else {
+            self.state.delete_branch.set(None);
+            return;
+        };
+        let result = tab.open_repo().and_then(|repo| {
+            if request.force {
+                repo.force_delete_branch(&request.name)
+            } else {
+                repo.delete_branch(&request.name)
+            }
+        });
+        match result {
+            Ok(()) => {
+                tab.refs
+                    .branches
+                    .retain(|branch| branch.name != request.name);
+                tab.ref_oids.remove(&format!("refs/heads/{}", request.name));
+                tab.new_history_refs
+                    .remove(&format!("refs/heads/{}", request.name));
+                tabs.set(list);
+                self.state.delete_branch.set(None);
+                if let Some(remote) = request.remote {
+                    self.run_remote_operation(
+                        request.tab_id,
+                        RemoteOperation::DeleteBranch {
+                            remote: remote.remote,
+                            branch: remote.name,
+                        },
+                    );
+                }
+            }
+            Err(error) => {
+                let detail = error.detail();
+                request.force = !request.force && detail.contains("not fully merged");
+                request.error = Some(detail);
+                self.state.delete_branch.set(Some(request));
+            }
+        }
     }
 
     /// 推送标签（原 `push_tag`）。

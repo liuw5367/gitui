@@ -60,8 +60,14 @@ impl Repo {
                 detail: "不能删除当前分支".to_string(),
             });
         }
-        self.run_git(&["branch", "-d", branch])?;
+        let executable = self.executable.clone().with_env("LC_ALL", "C");
+        crate::exec::run_git_with(&executable, self.root(), &["branch", "-d", "--", branch])?;
         return Ok(());
+    }
+
+    pub fn force_delete_branch(&self, branch: &str) -> Result<(), GitError> {
+        self.run_git(&["branch", "-D", "--", branch])?;
+        Ok(())
     }
 
     /// 切换到 `branch`（`git checkout <branch>`）。
