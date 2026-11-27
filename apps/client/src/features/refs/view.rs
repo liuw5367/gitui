@@ -1464,14 +1464,22 @@ pub(crate) fn push_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
                 .child(
                     view()
                         .w_full()
-                        .flex_col()
-                        .gap(px(ui::GAP_XS))
-                        .child(crate::features::search::form_dialog::field_label(
-                            language,
-                            "form.name",
+                        .flex_row()
+                        .items_center()
+                        .gap(px(ui::GAP))
+                        .child(view().flex_shrink_0().child(
+                            crate::features::search::form_dialog::field_label(
+                                language,
+                                "form.name",
+                            ),
                         ))
                         .child(
                             text(name.clone())
+                                .flex_1()
+                                .min_w_0()
+                                .number_of_lines(1)
+                                .text_overflow(nsh_core::EllipsizeMode::Tail)
+                                .tooltip(ui::button::text_tooltip(name.clone()))
                                 .text_size(px(ui::BODY))
                                 .text_color(move || design::text()),
                         ),
