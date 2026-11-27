@@ -68,6 +68,7 @@
     "cloneHttpHint": "http:// 可用于本地镜像。"
   },
   "shell": {
+    "refreshTaskFailed": "仓库刷新任务失败：%{error}",
     "stash": "贮藏",
     "history": "历史",
     "changes": "变更",
@@ -347,6 +348,9 @@
     "noHistory": "没有可用的文件历史"
   },
   "changes": {
+    "discardOverlappingHunk": "这一段与其他暂存改动交叠，无法安全单独丢弃。",
+    "noDiscardableFileChanges": "文件已没有待丢弃的改动。",
+    "noDiscardableHunk": "这一段没有可丢弃的内容。",
     "changesCount": "%{count} 项改动",
     "staged": "已暂存",
     "unstaged": "未暂存",
@@ -374,6 +378,8 @@
     "pieceApplied": "已应用"
   },
   "commit": {
+    "completedSha": "已提交 %{sha}",
+    "summaryRequired": "提交说明不能为空。",
     "tab": "提交",
     "summary": "摘要",
     "summaryPlaceholder": "修复编辑器状态",
@@ -878,6 +884,7 @@
     "manualSummary": "手动计划"
   },
   "branch": {
+    "noReturnBranch": "没有可回到的本地分支。",
     "pushBranch": "推送 %{name}…",
     "checkout": "切换到此分支",
     "delete": "删除分支…",
@@ -1052,6 +1059,7 @@
     "descTab": "按标签编号打开仓库。"
   },
   "form": {
+    "nameRequired": "名称不能为空。",
     "placeholders": {
       "branchName": "例如 feature/my-change",
       "tagMessage": "输入标签说明",

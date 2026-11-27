@@ -68,6 +68,7 @@
     "cloneHttpHint": "http:// works for local mirrors."
   },
   "shell": {
+    "refreshTaskFailed": "Repository refresh failed: %{error}",
     "stash": "Stash",
     "history": "History",
     "changes": "Changes",
@@ -347,6 +348,9 @@
     "noHistory": "No file history is available"
   },
   "changes": {
+    "discardOverlappingHunk": "This hunk overlaps other staged changes and cannot be discarded separately.",
+    "noDiscardableFileChanges": "This file has no changes left to discard.",
+    "noDiscardableHunk": "This hunk has no changes to discard.",
     "changesCount": "%{count} changed",
     "staged": "Staged",
     "unstaged": "Unstaged",
@@ -374,6 +378,8 @@
     "pieceApplied": "Applied"
   },
   "commit": {
+    "completedSha": "Committed %{sha}",
+    "summaryRequired": "Enter a commit summary.",
     "tab": "Commit",
     "summary": "Summary",
     "summaryPlaceholder": "Fix the composer state",
@@ -878,6 +884,7 @@
     "manualSummary": "Manual plan"
   },
   "branch": {
+    "noReturnBranch": "No local branch to return to.",
     "pushBranch": "Push %{name}…",
     "checkout": "Check Out",
     "delete": "Delete Branch…",
@@ -1052,6 +1059,7 @@
     "descTab": "Open a repository by its tab number."
   },
   "form": {
+    "nameRequired": "Enter a name.",
     "placeholders": {
       "branchName": "feature/my-change",
       "tagMessage": "Describe this release",

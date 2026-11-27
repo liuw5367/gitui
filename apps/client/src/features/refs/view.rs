@@ -2341,7 +2341,7 @@ fn refs_table(
             format!("↑{} ↓{}", branch.ahead, branch.behind)
         };
         let note = if branch.current {
-            i18n::t(language.get_untracked().as_str(), "shell.branch.current")
+            i18n::t(language.get_untracked().as_str(), "branch.current")
         } else {
             String::new()
         };

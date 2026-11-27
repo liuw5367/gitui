@@ -2190,7 +2190,10 @@ impl RefsCommands {
                         crate::i18n::t(lang.as_str(), "toast.historyDone"),
                     );
                 }
-                Err(detail) => crate::interactions::notify(notice, detail),
+                Err(detail) => crate::interactions::notify(
+                    notice,
+                    crate::i18n::t(language.get_untracked().as_str(), &detail),
+                ),
             }
             tabs.set(list);
         }

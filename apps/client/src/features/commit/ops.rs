@@ -62,18 +62,18 @@ pub(crate) fn rewrite_blocker(tab: &Tab) -> Option<String> {
 
 /// 提交暂存区；无论成败都保留钩子输出。
 pub(crate) fn commit_staged(tab: &mut Tab) {
-    return commit_staged_with(tab, false);
+    return commit_staged_with(tab, false, crate::i18n::DEFAULT_LANGUAGE);
 }
 
 /// 提交暂存区；`no_verify` 为真时跳过钩子（界面走强确认）。
 ///
 /// 面板上的「改写上一条」、「sign-off」与「no-verify」来自 `Tab` 的开关，成功后归位，
 /// 避免下一次提交意外沿用。
-pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
+pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool, language: &str) {
     tab.commit_feedback_progress = None;
     let summary = tab.summary.trim().to_string();
     if summary.is_empty() {
-        tab.hook_log = Some("提交说明不能为空".to_string());
+        tab.hook_log = Some(crate::i18n::t(language, "commit.summaryRequired"));
         tab.hook_ok = false;
         tab.commit_feedback_kind = CommitFeedbackKind::Commit;
         return;
@@ -99,7 +99,11 @@ pub(crate) fn commit_staged_with(tab: &mut Tab, no_verify: bool) {
             tab.hook_ok = true;
             tab.commit_feedback_kind = CommitFeedbackKind::Hooks;
             tab.hook_log = Some(if outcome.log.is_empty() {
-                format!("已提交 {}", &outcome.sha[..7.min(outcome.sha.len())])
+                crate::i18n::with_arguments(
+                    language,
+                    "commit.completedSha",
+                    &[("sha", outcome.sha.chars().take(7).collect())],
+                )
             } else {
                 outcome.log
             });
@@ -204,7 +208,7 @@ mod tests {
         assert!(!tab.hook_ok, "钩子应拦住普通提交");
 
         tab.no_verify = true;
-        commit_staged_with(&mut tab, true);
+        commit_staged_with(&mut tab, true, crate::i18n::DEFAULT_LANGUAGE);
         assert!(tab.hook_ok, "跳过钩子应成功：{:?}", tab.hook_log);
         assert_eq!(tab.commits[0].summary, "Blocked");
         assert!(!tab.no_verify, "成功后 no-verify 开关应归位");

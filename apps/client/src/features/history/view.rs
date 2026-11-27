@@ -1736,7 +1736,7 @@ fn quick_filter_pop(
                 )
                 .child(crate::ui::button::icon_button(
                     "x",
-                    move || i18n::t(language.get().as_str(), "shell.close"),
+                    move || i18n::t(language.get().as_str(), "common.close"),
                     crate::ui::button::ButtonSize::Small,
                     false,
                     move || {
@@ -1964,7 +1964,7 @@ fn filter_pop(
                     "x",
                     {
                         let language = language;
-                        move || i18n::t(language.get().as_str(), "shell.close")
+                        move || i18n::t(language.get().as_str(), "common.close")
                     },
                     crate::ui::button::ButtonSize::Small,
                     false,
@@ -2868,7 +2868,7 @@ fn compare_refs_dialog(
         true,
         COMPARE_DIALOG_W,
         move || i18n::t(language.get().as_str(), "compare.dialogTitle"),
-        move || i18n::t(language.get().as_str(), "shell.close"),
+        move || i18n::t(language.get().as_str(), "common.close"),
         body,
         footer,
         move || dismiss_open.set(false),

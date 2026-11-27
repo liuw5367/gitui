@@ -162,7 +162,7 @@ impl SessionHandle {
                     .await
                     {
                         Ok(result) => result,
-                        Err(error) => Err(format!("仓库刷新任务失败：{error}")),
+                        Err(error) => Err(crate::i18n::with_arguments(session.language.get_untracked().as_str(), "shell.refreshTaskFailed", &[("error", error.to_string())])),
                     };
                     match refresh_result {
                         Ok(snapshot) => {
@@ -216,7 +216,7 @@ impl SessionHandle {
                                     continue;
                                 }
                                 Err(error) => {
-                                    let detail = format!("仓库刷新任务失败：{error}");
+                                    let detail = crate::i18n::with_arguments(session.language.get_untracked().as_str(), "shell.refreshTaskFailed", &[("error", error.to_string())]);
                                     log::warn!(
                                         target: "gitui::history",
                                         "event=repo_refresh.failed tab_id={} elapsed_ms={} reason={}",

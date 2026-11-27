@@ -571,14 +571,14 @@ pub(crate) fn discard_hunk(
         .files
         .first()
         .and_then(|file| file.hunks.first())
-        .ok_or_else(|| "这一段没有可丢弃的内容".to_string())?;
+        .ok_or_else(|| "changes.noDiscardableHunk".to_string())?;
     let worktree_patch = sections
         .hunk_patch(0, 0)
-        .ok_or_else(|| "这一段没有可丢弃的内容".to_string())?;
+        .ok_or_else(|| "changes.noDiscardableHunk".to_string())?;
     let repo = tab.open_repo().map_err(|error| error.detail())?;
     let status = repo.status().map_err(|error| error.detail())?;
     let Some(entry) = status.iter().find(|entry| entry.path == path) else {
-        return Err("文件已没有待丢弃的改动".to_string());
+        return Err("changes.noDiscardableFileChanges".to_string());
     };
     let staged_patch = if entry.index == '?' {
         String::new()
@@ -617,7 +617,7 @@ fn staged_patch_for_hunk(
     };
     let target_marks = hunk_change_marks(target);
     if target_marks.is_empty() {
-        return Err("这一段没有可丢弃的内容".to_string());
+        return Err("changes.noDiscardableHunk".to_string());
     }
     let overlapping = file
         .hunks
@@ -636,7 +636,7 @@ fn staged_patch_for_hunk(
             .iter()
             .any(|mark| !target_marks.contains(mark))
         {
-            return Err("这一段与其他暂存改动交叠，无法安全单独丢弃".to_string());
+            return Err("changes.discardOverlappingHunk".to_string());
         }
     }
     let indices = overlapping

@@ -156,7 +156,7 @@ pub(crate) fn checkout_default_branch(tab: &mut Tab) -> Result<(), String> {
     } else if branches.iter().any(|branch| branch.name == "master") {
         "master".to_string()
     } else {
-        return Err("没有可回到的本地分支".to_string());
+        return Err("branch.noReturnBranch".to_string());
     };
     repo.checkout_branch(target.as_str())
         .map_err(|error| error.detail())?;

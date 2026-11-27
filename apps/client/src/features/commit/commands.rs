@@ -46,7 +46,7 @@ impl CommitCommands {
         let push_after_requested = tab.push_after_commit;
         tab.summary = commit_summary.get_untracked();
         tab.description = commit_description.get_untracked();
-        ops::commit_staged_with(tab, no_verify);
+        ops::commit_staged_with(tab, no_verify, self.language.get_untracked().as_str());
         if push_after_requested {
             let commit_succeeded = tab.hook_ok;
             tab.commit_feedback_progress = Some(WorkflowProgress {

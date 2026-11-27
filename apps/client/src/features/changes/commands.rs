@@ -255,7 +255,7 @@ impl ChangesCommands {
             if let Err(error) =
                 ops::discard_hunk(tab, path.as_str(), patch.as_str(), ignore_whitespace)
             {
-                tab.error = Some(error);
+                tab.error = Some(crate::i18n::t(language.as_str(), &error));
             }
             tabs.set(list);
         });

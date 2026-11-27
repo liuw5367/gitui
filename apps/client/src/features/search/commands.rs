@@ -200,7 +200,10 @@ impl SearchCommands {
         }
         if first.is_empty() && form.kind != FormKind::StashSelectedFiles {
             let mut next = form.clone();
-            next.error = Some("名称不能为空".to_string());
+            next.error = Some(crate::i18n::t(
+                self.language.get_untracked().as_str(),
+                "form.nameRequired",
+            ));
             form_state.set(Some(next));
             return;
         }
