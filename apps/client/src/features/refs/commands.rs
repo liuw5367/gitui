@@ -49,6 +49,14 @@ enum RemoteOperation {
         name: String,
         remote: Option<String>,
     },
+    ReadTags {
+        remote: String,
+    },
+    DeleteTag {
+        name: String,
+        local_target: Option<String>,
+        remotes: Vec<String>,
+    },
     UpdateSubmodule {
         path: String,
         latest: bool,
@@ -70,12 +78,67 @@ impl RemoteOperation {
     fn run(&self, tab: &mut crate::app::session::Tab) -> Result<(), String> {
         match self {
             Self::PushTag { name, remote } => {
-                let result = if let Some(remote) = remote {
-                    ops::push_tag_to_remote(tab, name, remote)
+                let remote = remote
+                    .as_deref()
+                    .or_else(|| tab.refs.remotes.first().map(String::as_str))
+                    .unwrap_or("origin");
+                let repo = tab.open_repo().map_err(|error| error.detail())?;
+                repo.push_tag(name, Some(remote))
+                    .map_err(|error| error.detail())?;
+                let reference = format!("refs/tags/{name}");
+                if let Some(oid) = repo
+                    .ref_oid_snapshot()
+                    .ok()
+                    .and_then(|mut refs| refs.remove(&reference))
+                    && let Ok(target) = repo.resolve_commit(&reference)
+                {
+                    let tags = tab.remote_tags.entry(remote.to_string()).or_default();
+                    tags.retain(|tag| tag.name != *name);
+                    tags.push(git::RemoteTag {
+                        name: name.clone(),
+                        oid,
+                        target,
+                    });
+                }
+                Ok(())
+            }
+            Self::ReadTags { remote } => {
+                let repo = tab.open_repo().map_err(|error| error.detail())?;
+                let tags = repo.remote_tags(remote).map_err(|error| error.detail())?;
+                tab.remote_tags.insert(remote.clone(), tags);
+                Ok(())
+            }
+            Self::DeleteTag {
+                name,
+                local_target,
+                remotes,
+            } => {
+                let repo = tab.open_repo().map_err(|error| error.detail())?;
+                if let Some(oid) = local_target {
+                    repo.delete_tag_if_matches(name, oid)
+                        .map_err(|error| error.detail())?;
+                    tab.refs.tags.retain(|tag| tag != name);
+                }
+                let mut failures = Vec::new();
+                for remote in remotes {
+                    let result = repo.remote_tags(remote).and_then(|tags| {
+                        if let Some(tag) = tags.iter().find(|tag| &tag.name == name) {
+                            repo.delete_remote_tag(remote, tag)?;
+                        }
+                        Ok(tags.into_iter().filter(|tag| &tag.name != name).collect())
+                    });
+                    match result {
+                        Ok(tags) => {
+                            tab.remote_tags.insert(remote.clone(), tags);
+                        }
+                        Err(error) => failures.push(format!("{remote}: {}", error.detail())),
+                    }
+                }
+                if failures.is_empty() {
+                    Ok(())
                 } else {
-                    ops::push_tag(tab, name)
-                };
-                result.map(|_| ())
+                    Err(failures.join("\n"))
+                }
             }
             Self::UpdateSubmodule { path, latest } => {
                 ops::update_submodule(tab, path, *latest).map_err(|error| error.detail())
@@ -108,7 +171,52 @@ impl RemoteOperation {
         updated: &crate::app::session::Tab,
     ) {
         match self {
-            Self::PushTag { .. } => {}
+            Self::ReadTags { remote } => {
+                if target.refs.remotes.contains(remote)
+                    && let Some(tags) = updated.remote_tags.get(remote)
+                {
+                    target.remote_tags.insert(remote.clone(), tags.clone());
+                }
+            }
+            Self::PushTag { name, remote } => {
+                let remote = remote
+                    .as_deref()
+                    .or_else(|| updated.refs.remotes.first().map(String::as_str))
+                    .unwrap_or("origin");
+                if let Some(tag) = updated
+                    .remote_tags
+                    .get(remote)
+                    .and_then(|tags| tags.iter().find(|tag| tag.name == *name))
+                {
+                    let tags = target.remote_tags.entry(remote.to_string()).or_default();
+                    tags.retain(|old| old.name != *name);
+                    tags.push(tag.clone());
+                }
+            }
+            Self::DeleteTag {
+                name,
+                local_target,
+                remotes,
+            } => {
+                if let Some(oid) = local_target
+                    && !updated.refs.tags.contains(name)
+                    && target.ref_oids.get(&format!("refs/tags/{name}")) == Some(oid)
+                {
+                    target.refs.tags.retain(|tag| tag != name);
+                    target.ref_oids.remove(&format!("refs/tags/{name}"));
+                    target.new_history_refs.remove(&format!("refs/tags/{name}"));
+                }
+                for remote in remotes {
+                    if updated
+                        .remote_tags
+                        .get(remote)
+                        .is_some_and(|tags| !tags.iter().any(|tag| &tag.name == name))
+                        && let Some(tags) = target.remote_tags.get_mut(remote)
+                    {
+                        tags.retain(|tag| &tag.name != name);
+                    }
+                }
+            }
             Self::DeleteBranch { .. } => {
                 target.refs = updated.refs.clone();
                 target.remote_urls = updated.remote_urls.clone();
@@ -139,6 +247,7 @@ impl RemoteOperation {
     fn success_notice_key(&self) -> &'static str {
         match self {
             Self::PushTag { .. } => "toast.pushed",
+            Self::ReadTags { .. } | Self::DeleteTag { .. } => "toast.historyDone",
             Self::UpdateSubmodule { latest: true, .. } => "submodule.updatedLatest",
             Self::UpdateSubmodule { latest: false, .. } => "submodule.updated",
             Self::UpdateSubmodules { .. } => "submodule.updatedAll",
@@ -187,6 +296,12 @@ impl RefsCommands {
         else {
             return;
         };
+        let read_before = match &operation {
+            RemoteOperation::ReadTags { remote } => {
+                Some((remote.clone(), tab.remote_tags.get(remote).cloned()))
+            }
+            _ => None,
+        };
         let path = tab.path.clone();
         let (sender, receiver) = mpsc::channel();
         let askpass = self.askpass.clone();
@@ -194,6 +309,15 @@ impl RefsCommands {
         std::thread::spawn(move || {
             let executable = tab.git_executable.clone();
             let mut tab = tab;
+            if matches!(operation_for_worker, RemoteOperation::ReadTags { .. }) {
+                let result = operation_for_worker.run(&mut tab);
+                let _ = sender.send(RemoteOperationResult {
+                    tab,
+                    result,
+                    cancelled: false,
+                });
+                return;
+            }
             let result = match crate::askpass::AskPassSession::new(executable.clone(), askpass) {
                 Ok(session) => {
                     tab.git_executable = session.executable().clone();
@@ -224,13 +348,26 @@ impl RefsCommands {
                 loop {
                     match receiver.try_recv() {
                         Ok(result) => {
+                            if matches!(operation_for_ui, RemoteOperation::ReadTags { .. })
+                                && result.result.is_err()
+                            {
+                                return;
+                            }
                             let mut current_tabs = tabs.get_untracked();
                             if let Some(current) = current_tabs
                                 .iter_mut()
                                 .find(|tab| tab.id == tab_id && tab.path == path)
                             {
+                                if let Some((remote, before)) = &read_before
+                                    && current.remote_tags.get(remote) != before.as_ref()
+                                {
+                                    return;
+                                }
                                 operation_for_ui.apply_tab_updates(current, &result.tab);
                                 tabs.set(current_tabs);
+                            }
+                            if matches!(operation_for_ui, RemoteOperation::ReadTags { .. }) {
+                                return;
                             }
                             let lang = language.get_untracked();
                             if result.cancelled {
@@ -1692,78 +1829,40 @@ impl RefsCommands {
         });
     }
 
-    /// 删除标签（原 `drop_tag`）：先确认。
+    pub(crate) fn read_remote_tags_at(&self, tab_id: u64, remote: String) {
+        self.run_remote_operation(tab_id, RemoteOperation::ReadTags { remote });
+    }
+
     pub(crate) fn drop_tag(&self, name: String) {
-        let tabs = self.session.tabs;
-        let active = self.session.active;
-        let language = self.language;
-        let language_now = language.get_untracked();
-        let pending = crate::interactions::confirm(
-            crate::i18n::t(language_now.as_str(), "confirm.dropTagTitle"),
-            crate::i18n::with_arguments(
-                language_now.as_str(),
-                "confirm.dropTagMessage",
-                &[("name", name.clone())],
-            ),
-            "drop",
-            crate::i18n::t(language_now.as_str(), "confirm.deleteAction"),
-            crate::i18n::t(language_now.as_str(), "common.cancel"),
-            true,
-        );
-        spawn(async move {
-            if !pending.await {
-                return;
-            }
-            let current = active.get_untracked();
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.get_mut(current) {
-                let _ = ops::drop_tag(tab, name.as_str());
-                tabs.set(list);
-            }
-        });
+        if let Some(tab_id) = self.active_tab_id() {
+            self.drop_tag_at(tab_id, name);
+        }
     }
 
     pub(crate) fn drop_tag_at(&self, tab_id: u64, name: String) {
-        let tabs = self.session.tabs;
-        let language = self.language;
-        let notice = self.notice;
-        let language_now = language.get_untracked();
-        let pending = crate::interactions::confirm(
-            crate::i18n::t(language_now.as_str(), "confirm.dropTagTitle"),
-            crate::i18n::with_arguments(
-                language_now.as_str(),
-                "confirm.dropTagMessage",
-                &[("name", name.clone())],
-            ),
-            "drop",
-            crate::i18n::t(language_now.as_str(), "confirm.deleteAction"),
-            crate::i18n::t(language_now.as_str(), "common.cancel"),
-            true,
+        self.drop_tag_on_commit(tab_id, name, None);
+    }
+
+    pub(crate) fn drop_tag_on_commit(&self, tab_id: u64, name: String, sha: Option<String>) {
+        self.state.delete_tag.set(Some((tab_id, name, sha)));
+    }
+
+    pub(crate) fn confirm_drop_tag(
+        &self,
+        tab_id: u64,
+        name: String,
+        local_target: Option<String>,
+        remotes: Vec<String>,
+    ) {
+        self.state.delete_tag.set(None);
+        self.run_remote_operation(
+            tab_id,
+            RemoteOperation::DeleteTag {
+                name,
+                local_target,
+                remotes,
+            },
         );
-        spawn(async move {
-            if !pending.await {
-                return;
-            }
-            let mut list = tabs.get_untracked();
-            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
-                return;
-            };
-            if !tab.refs.tags.iter().any(|tag| tag == &name) {
-                crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(language.get_untracked().as_str(), "tag.targetChanged"),
-                );
-                return;
-            }
-            match ops::drop_tag(tab, name.as_str()) {
-                Ok(()) => crate::interactions::notify(
-                    notice,
-                    crate::i18n::t(language.get_untracked().as_str(), "toast.historyDone"),
-                ),
-                Err(detail) => crate::interactions::notify(notice, detail),
-            }
-            tabs.set(list);
-        });
     }
 
     /// 移除远程（原 `drop_remote`）：先确认。

@@ -182,6 +182,26 @@ pub(crate) fn history(
                 .unwrap_or_default()
         })
     });
+    let remote_tags_by_commit = computed(move || {
+        tabs.with(|tabs| {
+            let mut by_commit =
+                std::collections::BTreeMap::<String, std::collections::BTreeSet<String>>::new();
+            if let Some(tab) = tabs.iter().find(|tab| tab.id == tab_id) {
+                for (remote, tags) in &tab.remote_tags {
+                    if !tab.refs.remotes.contains(remote) {
+                        continue;
+                    }
+                    for tag in tags {
+                        by_commit
+                            .entry(tag.target.clone())
+                            .or_default()
+                            .insert(tag.name.clone());
+                    }
+                }
+            }
+            by_commit
+        })
+    });
     let row_badge_refs = move |sha: &str, raw: &[String], tracked: bool| {
         let branches = if tracked {
             local_branches.get()
@@ -216,6 +236,14 @@ pub(crate) fn history(
                 .strip_prefix("tag: ")
                 .is_none_or(|name| tags.iter().any(|tag| tag == name))
         });
+        let remote_tags = if tracked {
+            remote_tags_by_commit.get()
+        } else {
+            remote_tags_by_commit.get_untracked()
+        };
+        if let Some(tags) = remote_tags.get(sha) {
+            refs.extend(tags.iter().map(|tag| format!("remote-tag: {tag}")));
+        }
         (refs, branches)
     };
     let mut configured_remotes = if tab.refs.remote_info.is_empty() {
@@ -785,7 +813,7 @@ pub(crate) fn history(
                                                 ref_context.has_origin = tab.refs.remotes.iter().any(|name| name == "origin");
                                             }
                                         });
-                                        let mut items = commit_ref_menu_items(&targets, &ref_context);
+                                        let mut items = commit_ref_menu_items(&targets, &ref_context, &commit.sha);
                                         if !items.is_empty() {
                                             items.push(crate::ui::menu::divider());
                                         }
@@ -2036,6 +2064,7 @@ fn live_commit_refs(
             label == "HEAD"
                 || label.starts_with("HEAD -> ")
                 || label.starts_with("tag: ")
+                || label.starts_with("remote-tag: ")
                 || label.starts_with("stash: ")
                 || branches.contains(label)
                 || remote_branches.contains_key(label)
@@ -2051,6 +2080,10 @@ fn commit_ref_chips(
     let mut references = Vec::<CommitRefChip>::new();
     let mut branch_indices = std::collections::HashMap::<String, usize>::new();
     let mut seen_tags = std::collections::HashSet::<String>::new();
+    let remote_tags = refs
+        .iter()
+        .filter_map(|reference| reference.strip_prefix("remote-tag: ").map(str::to_string))
+        .collect::<std::collections::HashSet<_>>();
     let mut seen_stashes = std::collections::HashSet::<String>::new();
     let mut has_head = false;
     for reference in refs {
@@ -2079,12 +2112,15 @@ fn commit_ref_chips(
         } else {
             reference
         };
-        if let Some(label) = label.strip_prefix("tag: ") {
+        if let Some(label) = label
+            .strip_prefix("tag: ")
+            .or_else(|| label.strip_prefix("remote-tag: "))
+        {
             if seen_tags.insert(label.to_string()) {
                 references.push(CommitRefChip {
                     label: label.to_string(),
                     kind: CommitRefKind::Tag,
-                    remote: false,
+                    remote: remote_tags.contains(label),
                     targets: vec![CommitRefTarget::Tag {
                         name: label.to_string(),
                     }],
@@ -2203,7 +2239,7 @@ fn render_ref_chips(references: Vec<CommitRefChip>) -> impl IntoElement {
             badge = badge.child(crate::ui::icon::icon_view(
                 "globe",
                 crate::ui::icon::IconSize::Compact,
-                move || branch_ink,
+                move || if is_tag { design::tag_fg() } else { branch_ink },
             ));
         }
         chips.push(
@@ -2244,13 +2280,14 @@ fn render_ref_chips(references: Vec<CommitRefChip>) -> impl IntoElement {
 fn commit_ref_menu_items(
     targets: &[CommitRefTarget],
     context: &RefBadgeMenuContext,
+    sha: &str,
 ) -> Vec<MenuItem> {
     return targets
         .iter()
         .map(|target| {
             MenuItem::submenu(
                 target.full_reference(),
-                commit_ref_target_menu_items(target, context),
+                commit_ref_target_menu_items(target, context, sha),
             )
         })
         .collect();
@@ -2259,6 +2296,7 @@ fn commit_ref_menu_items(
 fn commit_ref_target_menu_items(
     target: &CommitRefTarget,
     context: &RefBadgeMenuContext,
+    sha: &str,
 ) -> Vec<MenuItem> {
     match target {
         CommitRefTarget::LocalBranch { name } => {
@@ -2290,6 +2328,7 @@ fn commit_ref_target_menu_items(
             context.tab_id,
             name.clone(),
             context.remotes.clone(),
+            Some(sha.to_string()),
         ),
     }
 }

@@ -120,7 +120,18 @@ pub(crate) fn refs_sidebar(
         vec![("remote.addRemote", true, add_remote)],
     ));
 
+    let remote_tags = tab
+        .remote_tags
+        .iter()
+        .filter(|(remote, _)| refs.remotes.contains(remote))
+        .flat_map(|(_, tags)| tags.iter())
+        .collect::<Vec<_>>();
     let mut tags = refs.tags.clone();
+    for tag in &remote_tags {
+        if !tags.contains(&tag.name) {
+            tags.push(tag.name.clone());
+        }
+    }
     tags.sort_by(|left, right| {
         left.to_lowercase()
             .cmp(&right.to_lowercase())
@@ -137,7 +148,20 @@ pub(crate) fn refs_sidebar(
     });
     let tag_rows: Vec<AnyElement> = tags
         .into_iter()
-        .map(|tag| tag_row(language, cmd, tab_id, tag, configured_remotes.clone()))
+        .map(|tag| {
+            let remote = remote_tags.iter().find(|remote| remote.name == tag);
+            let remote_target = remote.map(|tag| tag.target.clone());
+            let has_local = refs.tags.contains(&tag);
+            tag_row(
+                language,
+                cmd,
+                tab_id,
+                tag,
+                configured_remotes.clone(),
+                has_local,
+                remote_target,
+            )
+        })
         .collect();
     let new_tag: std::sync::Arc<dyn Fn()> = {
         let search = cmd.search.clone();
@@ -155,7 +179,7 @@ pub(crate) fn refs_sidebar(
         tab_id,
         "group:tags",
         "sidebar.tags",
-        refs.tags.len(),
+        tag_rows.len(),
         collapsed.contains("group:tags"),
         tag_rows,
         vec![("tag.newTag", true, new_tag)],
@@ -1341,7 +1365,13 @@ pub(crate) fn tag_menu_items(
     tab_id: u64,
     name: String,
     remotes: Vec<String>,
+    commit: Option<String>,
 ) -> Vec<MenuItem> {
+    let has_local = cmd.session.tabs.with_untracked(|tabs| {
+        tabs.iter()
+            .find(|tab| tab.id == tab_id)
+            .is_some_and(|tab| local_tag_oid(tab, &name, commit.as_deref()).is_some())
+    });
     let push_items = remotes.iter().map(|remote| {
         let push_cmd = cmd.clone();
         let push_name = name.clone();
@@ -1352,7 +1382,7 @@ pub(crate) fn tag_menu_items(
     });
     let mut items = vec![
         MenuItem::submenu(i18n::t(language.get().as_str(), "tag.pushTag"), push_items)
-            .disabled(remotes.is_empty()),
+            .disabled(remotes.is_empty() || !has_local),
     ];
     let copy_notice = cmd.notice;
     let copy_name = name.clone();
@@ -1366,9 +1396,147 @@ pub(crate) fn tag_menu_items(
     items.push(ui::menu::danger(
         i18n::t(language.get().as_str(), "tag.deleteTag"),
         true,
-        move || delete_cmd.drop_tag_at(tab_id, name.clone()),
+        move || delete_cmd.drop_tag_on_commit(tab_id, name.clone(), commit.clone()),
     ));
     return items;
+}
+
+fn local_tag_oid(tab: &Tab, name: &str, commit: Option<&str>) -> Option<String> {
+    let reference = format!("refs/tags/{name}");
+    if !tab.refs.tags.iter().any(|tag| tag == name) {
+        return None;
+    }
+    let oid = tab.ref_oids.get(&reference)?.clone();
+    if let Some(commit) = commit
+        && oid != commit
+        && tab
+            .open_repo()
+            .ok()?
+            .resolve_commit(&reference)
+            .ok()?
+            .as_str()
+            != commit
+    {
+        return None;
+    }
+    Some(oid)
+}
+
+pub(crate) fn delete_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> {
+    let pending = cmd.state.delete_tag;
+    let tabs = cmd.session.tabs;
+    let language = cmd.language;
+    let cmd = cmd.clone();
+    ui::dialog::modal(
+        move || pending.get().is_some(),
+        move || i18n::t(language.get().as_str(), "confirm.dropTagTitle"),
+        210,
+        move || {
+            let Some((id, name, commit)) = pending.get_untracked() else {
+                return view().into_element();
+            };
+            let Some(tab) =
+                tabs.with_untracked(|tabs| tabs.iter().find(|tab| tab.id == id).cloned())
+            else {
+                return view().into_element();
+            };
+            let local = local_tag_oid(&tab, &name, commit.as_deref());
+            let remote_options = tab.refs.remotes.clone();
+            let checked = signal(Vec::<String>::new());
+            let rows = remote_options
+                .iter()
+                .map(|remote| {
+                    let remote = remote.clone();
+                    let label = remote.clone();
+                    let key = remote.clone();
+                    ui::check::check_row(
+                        move || {
+                            i18n::with_arguments(
+                                language.get().as_str(),
+                                "tag.deleteRemoteAlso",
+                                &[("remote", label.clone())],
+                            )
+                        },
+                        move || checked.with(|list| list.contains(&key)),
+                        false,
+                        move |value| {
+                            checked.update(|list| {
+                                list.retain(|item| item != &remote);
+                                if value {
+                                    list.push(remote.clone());
+                                }
+                            })
+                        },
+                    )
+                    .into_element()
+                })
+                .collect::<Vec<_>>();
+            let local_present = local.is_some();
+            let cmd = cmd.clone();
+            let message = if local_present {
+                "confirm.dropTagMessage"
+            } else {
+                "tag.deleteRemoteOnly"
+            };
+            let message_name = name.clone();
+            ui::dialog::modality(
+                view()
+                    .w(px(440.0))
+                    .max_h(px(500.0))
+                    .flex_col()
+                    .gap(px(ui::GAP))
+                    .p(px(ui::GAP_XL))
+                    .rounded(px(crate::design::metrics::RADIUS_PANEL))
+                    .bg(move || design::token("popover"))
+                    .child(
+                        text(move || i18n::t(language.get().as_str(), "confirm.dropTagTitle"))
+                            .text_size(px(ui::BODY))
+                            .text_color(move || design::text()),
+                    )
+                    .child(
+                        text(move || {
+                            i18n::with_arguments(
+                                language.get().as_str(),
+                                message,
+                                &[("name", message_name.clone())],
+                            )
+                        })
+                        .text_size(px(ui::BODY))
+                        .text_color(move || design::text2()),
+                    )
+                    .child(
+                        scroll()
+                            .max_h(px(240.0))
+                            .child(view().flex_col().child(rows)),
+                    )
+                    .child(
+                        view()
+                            .flex_row()
+                            .justify_end()
+                            .gap(px(ui::GAP_SM))
+                            .child(ui::button::button(
+                                move || i18n::t(language.get().as_str(), "common.cancel"),
+                                ui::button::ButtonVariant::Secondary,
+                                ui::button::ButtonSize::Regular,
+                                false,
+                                move || pending.set(None),
+                            ))
+                            .child(ui::button::button(
+                                move || i18n::t(language.get().as_str(), "confirm.deleteAction"),
+                                ui::button::ButtonVariant::Danger,
+                                ui::button::ButtonSize::Regular,
+                                move || !local_present && checked.with(|list| list.is_empty()),
+                                move || {
+                                    let remotes = checked.get_untracked();
+                                    cmd.confirm_drop_tag(id, name.clone(), local.clone(), remotes);
+                                },
+                            )),
+                    ),
+            )
+            .into_element()
+        },
+        move || pending.set(None),
+    )
 }
 
 fn worktree_row(
@@ -1626,6 +1794,8 @@ fn tag_row(
     tab_id: u64,
     name: String,
     remotes: Vec<String>,
+    has_local: bool,
+    remote_target: Option<String>,
 ) -> AnyElement {
     let menu_cmd = cmd.clone();
     let row_name = name.clone();
@@ -1640,6 +1810,7 @@ fn tag_row(
                 tab_id,
                 row_name.clone(),
                 remotes.clone(),
+                None,
             );
             ui::menu::popup_at(items, event.page_position);
         })
@@ -1649,7 +1820,11 @@ fn tag_row(
             None,
             vec![
                 crate::ui::icon::icon_view(
-                    "tag",
+                    if remote_target.is_some() {
+                        "globe"
+                    } else {
+                        "tag"
+                    },
                     crate::ui::icon::IconSize::Compact,
                     design::tag_fg,
                 )
@@ -1658,7 +1833,13 @@ fn tag_row(
             false,
             false,
             metrics::SIDE_ROW_H,
-            move || history_cmd.show_reference_at(tab_id, history_ref.clone()),
+            move || {
+                if has_local {
+                    history_cmd.show_reference_at(tab_id, history_ref.clone());
+                } else if let Some(sha) = &remote_target {
+                    history_cmd.show_commit_at(tab_id, sha.clone());
+                }
+            },
         ))
         .into_element();
 }

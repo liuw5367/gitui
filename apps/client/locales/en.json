@@ -459,7 +459,7 @@
     "abortMessage": "The operation is aborted and the repository returns to how it was before it started. Conflicts in the working tree are discarded.",
     "abortAction": "Abort",
     "dropTagTitle": "Delete tag?",
-    "dropTagMessage": "Tag %{name} is deleted from this repository. Copies already pushed to a remote are not affected.",
+    "dropTagMessage": "Delete local tag %{name}? Select any remotes where you also want to delete it.",
     "deleteAction": "Delete",
     "dropRemoteTitle": "Remove remote?",
     "dropRemoteMessage": "Remote %{name} and its remote-tracking branches are removed. The remote server itself is not touched.",
@@ -937,6 +937,8 @@
     "targetChanged": "The remote reference changed while the menu was open. Reopen it and try again."
   },
   "tag": {
+    "deleteRemoteAlso": "Also delete from %{remote}",
+    "deleteRemoteOnly": "Select the remotes where you want to delete %{name}.",
     "newTag": "New Tag…",
     "pushTag": "Push Tag…",
     "copyName": "Copy Name",

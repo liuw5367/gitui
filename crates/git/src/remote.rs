@@ -87,6 +87,13 @@ pub struct PushOptions {
     pub branches: Option<(String, String)>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteTag {
+    pub name: String,
+    pub oid: String,
+    pub target: String,
+}
+
 const MAX_SYNC_OUTPUT: usize = 256 * 1024;
 
 /// A single status row emitted by `git push --porcelain`.
@@ -722,10 +729,54 @@ impl Repo {
         return Ok(args);
     }
 
+    /// Read remote tags without importing them into the local tag namespace.
+    pub fn remote_tags(&self, remote: &str) -> Result<Vec<RemoteTag>, GitError> {
+        let output = self.run_git(&["ls-remote", "--tags", "--", remote])?;
+        let output = String::from_utf8_lossy(&output);
+        let mut tags = std::collections::BTreeMap::new();
+        let mut peeled = std::collections::BTreeMap::new();
+        for line in output.lines() {
+            let Some((oid, reference)) = line.split_once('\t') else {
+                continue;
+            };
+            let Some(name) = reference.strip_prefix("refs/tags/") else {
+                continue;
+            };
+            if let Some(name) = name.strip_suffix("^{}") {
+                peeled.insert(name, oid);
+            } else {
+                tags.insert(name, oid);
+            }
+        }
+        Ok(tags
+            .into_iter()
+            .map(|(name, oid)| RemoteTag {
+                name: name.to_string(),
+                oid: oid.to_string(),
+                target: peeled.get(name).copied().unwrap_or(oid).to_string(),
+            })
+            .collect())
+    }
+
+    /// Delete exactly the advertised tag, failing if it moved since confirmation.
+    pub fn delete_remote_tag(&self, remote: &str, tag: &RemoteTag) -> Result<(), GitError> {
+        let reference = format!("refs/tags/{}", tag.name);
+        self.run_git(&["check-ref-format", &reference])?;
+        self.run_git(&[
+            "push",
+            &format!("--force-with-lease={reference}:{}", tag.oid),
+            "--",
+            remote,
+            &format!(":{reference}"),
+        ])?;
+        Ok(())
+    }
+
     /// 推送一个标签（`git push <remote> <tag>`）。
     pub fn push_tag(&self, tag: &str, remote: Option<&str>) -> Result<String, GitError> {
         let remote = remote.unwrap_or("origin");
-        let output = self.run_git_combined(&["push", remote, tag])?;
+        let reference = format!("refs/tags/{tag}");
+        let output = self.run_git_combined(&["push", "--", remote, &reference])?;
         return Ok(summarise(&output));
     }
 

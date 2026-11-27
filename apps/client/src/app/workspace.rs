@@ -186,6 +186,7 @@ fn refs_sidebar_content(
             current.as_ref().map(|tab| Tab {
                 id: tab.id,
                 refs: tab.refs.clone(),
+                remote_tags: tab.remote_tags.clone(),
                 branch: tab.branch.clone(),
                 head: tab.head.clone(),
                 sidebar_collapsed: tab.sidebar_collapsed.clone(),

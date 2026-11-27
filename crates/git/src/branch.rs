@@ -108,6 +108,13 @@ impl Repo {
         return Ok(());
     }
 
+    pub fn delete_tag_if_matches(&self, name: &str, oid: &str) -> Result<(), GitError> {
+        let reference = format!("refs/tags/{name}");
+        self.run_git(&["check-ref-format", &reference])?;
+        self.run_git(&["update-ref", "-d", &reference, oid])?;
+        Ok(())
+    }
+
     /// 添加远程（`git remote add <name> <url>`）。
     pub fn add_remote(&self, name: &str, url: &str) -> Result<(), GitError> {
         self.run_git(&["remote", "add", name, url])?;

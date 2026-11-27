@@ -695,6 +695,7 @@ pub(crate) fn app() -> impl IntoElement {
     // 引用管理（P3 批 A）：页签与 reflog 过滤收进 RefsState，用例收进 RefsCommands。
     // 「切到某个提交」的确认流程归恢复功能，这里只是持有它的用例。
     let refs_state = features::refs::state::RefsState {
+        delete_tag: signal(None),
         selected_tab: refs_selected_tab,
         reflog_query,
         reflog_entries,
@@ -846,6 +847,60 @@ pub(crate) fn app() -> impl IntoElement {
         });
     }
 
+    let remote_tag_targets = computed(move || {
+        tabs.with(|items| {
+            items
+                .get(active.get())
+                .filter(|tab| tab.loaded)
+                .map(|tab| (tab.id, tab.refs.remotes.clone()))
+        })
+    });
+    effect({
+        let refs = handles.refs.clone();
+        move || {
+            if let Some((id, remotes)) = remote_tag_targets.get() {
+                for remote in remotes {
+                    refs.read_remote_tags_at(id, remote);
+                }
+            }
+        }
+    });
+
+    let sync_task = handles.sync.state.task;
+    let remote_tag_sync = computed(move || {
+        sync_task.with(|task| {
+            task.as_ref()
+                .filter(|task| !task.cancelled && task.result.is_some())
+                .map(|task| {
+                    (
+                        task.target_tab_id,
+                        task.remote.clone(),
+                        task.kind == crate::app::session::Sync::Fetch
+                            && task.options.fetch.all_remotes,
+                    )
+                })
+        })
+    });
+    effect({
+        let refs = handles.refs.clone();
+        move || {
+            let Some((id, selected, all_remotes)) = remote_tag_sync.get() else {
+                return;
+            };
+            let remotes = tabs.with_untracked(|tabs| {
+                tabs.iter()
+                    .find(|tab| tab.id == id)
+                    .map(|tab| tab.refs.remotes.clone())
+                    .unwrap_or_default()
+            });
+            for remote in remotes {
+                if all_remotes || selected.as_ref().is_none_or(|name| name == &remote) {
+                    refs.read_remote_tags_at(id, remote);
+                }
+            }
+        }
+    });
+
     // 快捷键与命令面板导航；Esc 的浮层退出顺序也按同一份状态处理。
     crate::app::hotkeys::install(&handles, gallery_open);
 
@@ -873,6 +928,7 @@ pub(crate) fn app() -> impl IntoElement {
             &welcome_commands.state,
             &welcome_commands,
         ))
+        .child(features::refs::view::delete_tag_dialog(&handles.refs))
         .child(crate::app::windows::windows(&handles))
         .child(features::commit::rewrite_dialog::rewrite_dialog(
             &handles.commit.state,

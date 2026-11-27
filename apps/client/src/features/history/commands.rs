@@ -942,6 +942,7 @@ impl HistoryCommands {
                                 .find(|tab| tab.id == tab_id && tab.load_id == load_id)
                             {
                                 loaded.sidebar_collapsed = tab.sidebar_collapsed.clone();
+                                loaded.remote_tags = tab.remote_tags.clone();
                                 loaded.summary = tab.summary.clone();
                                 loaded.description = tab.description.clone();
                                 *tab = loaded;

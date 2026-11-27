@@ -459,7 +459,7 @@
     "abortMessage": "放弃后仓库回到操作开始前的状态，工作区里未解决的冲突会被丢弃。",
     "abortAction": "放弃",
     "dropTagTitle": "删除标签？",
-    "dropTagMessage": "标签 %{name} 会从本仓库删除。已推送到远端的副本不受影响。",
+    "dropTagMessage": "删除本地标签 %{name}？可以勾选要同时删除该标签的远端。",
     "deleteAction": "删除",
     "dropRemoteTitle": "移除远端？",
     "dropRemoteMessage": "远端 %{name} 及其远程跟踪分支会被移除，远端服务器本身不受影响。",
@@ -937,6 +937,8 @@
     "targetChanged": "菜单打开期间远端引用已变化，请重新打开菜单后重试。"
   },
   "tag": {
+    "deleteRemoteAlso": "同时从 %{remote} 删除",
+    "deleteRemoteOnly": "选择要删除 %{name} 的远端。",
     "newTag": "新建标签…",
     "pushTag": "推送标签…",
     "copyName": "复制名称",

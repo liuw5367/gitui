@@ -310,31 +310,6 @@ pub(crate) fn show_stash_diff(
     }));
 }
 
-/// 推送标签到首个远端。
-pub(crate) fn push_tag(tab: &mut Tab, name: &str) -> Result<String, String> {
-    let repo = tab.open_repo().map_err(|error| error.detail())?;
-    let remote = repo
-        .refs()
-        .ok()
-        .and_then(|refs| refs.remotes.first().cloned())
-        .unwrap_or_else(|| "origin".to_string());
-    return repo
-        .push_tag(name, Some(remote.as_str()))
-        .map_err(|error| error.detail());
-}
-
-/// 推送标签到明确指定的远端。
-pub(crate) fn push_tag_to_remote(
-    tab: &mut Tab,
-    name: &str,
-    remote: &str,
-) -> Result<String, String> {
-    let repo = tab.open_repo().map_err(|error| error.detail())?;
-    return repo
-        .push_tag(name, Some(remote))
-        .map_err(|error| error.detail());
-}
-
 /// 应用贮藏但保留条目。
 pub(crate) fn apply_stash(tab: &mut Tab, reference: &str) -> Result<(), String> {
     let repo = tab.open_repo().map_err(|error| error.detail())?;
@@ -382,14 +357,6 @@ pub(crate) fn clear_identity(tab: &Tab) -> Result<(), String> {
         .map_err(|error| error.detail())?;
     repo.config_unset("user.email")
         .map_err(|error| error.detail())?;
-    return Ok(());
-}
-
-/// 删除标签。
-pub(crate) fn drop_tag(tab: &mut Tab, name: &str) -> Result<(), String> {
-    let repo = tab.open_repo().map_err(|error| error.detail())?;
-    repo.delete_tag(name).map_err(|error| error.detail())?;
-    refresh_refs(tab, &repo);
     return Ok(());
 }
 
