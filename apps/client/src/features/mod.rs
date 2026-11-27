@@ -739,7 +739,13 @@ impl SessionHandle {
         if let Some(index) = next_active {
             self.active.set(index);
         }
-        self.persist();
+        let session = self.clone();
+        self.task_owner.run(|| {
+            spawn(async move {
+                next_frame().await;
+                session.persist();
+            });
+        });
     }
 
     fn schedule_active_tab_work(&self, tab_id: u64) {

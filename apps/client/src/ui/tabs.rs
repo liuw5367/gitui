@@ -276,8 +276,10 @@ pub(crate) fn repository_tabs(
                                     &order,
                                     &measured,
                                 );
-                                drag_preview.set(None);
-                                move_tabs.move_tab(id, destination);
+                                batch(|| {
+                                    move_tabs.move_tab(id, destination);
+                                    drag_preview.set(None);
+                                });
                             })
                             .on_responder_terminate(move |_: &ResponderEvent| {
                                 drag_preview.set(None);
