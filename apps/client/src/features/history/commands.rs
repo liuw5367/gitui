@@ -943,6 +943,7 @@ impl HistoryCommands {
                             {
                                 loaded.sidebar_collapsed = tab.sidebar_collapsed.clone();
                                 loaded.remote_tags = tab.remote_tags.clone();
+                                loaded.hidden_remote_tags = tab.hidden_remote_tags.clone();
                                 loaded.summary = tab.summary.clone();
                                 loaded.description = tab.description.clone();
                                 *tab = loaded;

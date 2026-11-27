@@ -187,6 +187,7 @@ fn refs_sidebar_content(
                 id: tab.id,
                 refs: tab.refs.clone(),
                 remote_tags: tab.remote_tags.clone(),
+                hidden_remote_tags: tab.hidden_remote_tags.clone(),
                 branch: tab.branch.clone(),
                 head: tab.head.clone(),
                 sidebar_collapsed: tab.sidebar_collapsed.clone(),

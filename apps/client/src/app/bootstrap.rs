@@ -861,7 +861,7 @@ pub(crate) fn app() -> impl IntoElement {
         move || {
             if let Some((id, remotes)) = remote_tag_targets.get() {
                 for remote in remotes {
-                    refs.read_remote_tags_at(id, remote);
+                    refs.read_remote_tags_at(id, remote, false);
                 }
             }
         }
@@ -871,13 +871,18 @@ pub(crate) fn app() -> impl IntoElement {
     let remote_tag_sync = computed(move || {
         sync_task.with(|task| {
             task.as_ref()
-                .filter(|task| !task.cancelled && task.result.is_some())
+                .filter(|task| {
+                    !task.cancelled
+                        && task.result.as_ref().is_some_and(Result::is_ok)
+                        && matches!(
+                            task.kind,
+                            crate::app::session::Sync::Fetch | crate::app::session::Sync::Pull
+                        )
+                })
                 .map(|task| {
                     (
                         task.target_tab_id,
-                        task.remote.clone(),
-                        task.kind == crate::app::session::Sync::Fetch
-                            && task.options.fetch.all_remotes,
+                        task.kind != crate::app::session::Sync::Push,
                     )
                 })
         })
@@ -885,7 +890,7 @@ pub(crate) fn app() -> impl IntoElement {
     effect({
         let refs = handles.refs.clone();
         move || {
-            let Some((id, selected, all_remotes)) = remote_tag_sync.get() else {
+            let Some((id, restore)) = remote_tag_sync.get() else {
                 return;
             };
             let remotes = tabs.with_untracked(|tabs| {
@@ -895,9 +900,7 @@ pub(crate) fn app() -> impl IntoElement {
                     .unwrap_or_default()
             });
             for remote in remotes {
-                if all_remotes || selected.as_ref().is_none_or(|name| name == &remote) {
-                    refs.read_remote_tags_at(id, remote);
-                }
+                refs.read_remote_tags_at(id, remote, restore);
             }
         }
     });

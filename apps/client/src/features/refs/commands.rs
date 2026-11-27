@@ -51,6 +51,7 @@ enum RemoteOperation {
     },
     ReadTags {
         remote: String,
+        restore_visibility: bool,
     },
     DeleteTag {
         name: String,
@@ -98,7 +99,7 @@ impl RemoteOperation {
                 }
                 Ok(())
             }
-            Self::ReadTags { remote } => {
+            Self::ReadTags { remote, .. } => {
                 let repo = tab.open_repo().map_err(|error| error.detail())?;
                 let tags = repo.remote_tags(remote).map_err(|error| error.detail())?;
                 tab.remote_tags.insert(remote.clone(), tags);
@@ -167,10 +168,18 @@ impl RemoteOperation {
         updated: &crate::app::session::Tab,
     ) {
         match self {
-            Self::ReadTags { remote } => {
+            Self::ReadTags {
+                remote,
+                restore_visibility,
+            } => {
                 if target.refs.remotes.contains(remote)
                     && let Some(tags) = updated.remote_tags.get(remote)
                 {
+                    if *restore_visibility {
+                        for tag in tags {
+                            target.hidden_remote_tags.remove(&tag.name);
+                        }
+                    }
                     target.remote_tags.insert(remote.clone(), tags.clone());
                 }
             }
@@ -289,7 +298,7 @@ impl RefsCommands {
             return;
         };
         let read_before = match &operation {
-            RemoteOperation::ReadTags { remote } => {
+            RemoteOperation::ReadTags { remote, .. } => {
                 Some((remote.clone(), tab.remote_tags.get(remote).cloned()))
             }
             _ => None,
@@ -354,6 +363,15 @@ impl RefsCommands {
                                     && current.remote_tags.get(remote) != before.as_ref()
                                 {
                                     return;
+                                }
+                                if let RemoteOperation::DeleteTag {
+                                    name, local_target, ..
+                                } = &operation_for_ui
+                                    && (result.result.is_ok()
+                                        || (local_target.is_some()
+                                            && !result.tab.refs.tags.contains(name)))
+                                {
+                                    current.hidden_remote_tags.insert(name.clone());
                                 }
                                 operation_for_ui.apply_tab_updates(current, &result.tab);
                                 tabs.set(current_tabs);
@@ -1819,8 +1837,19 @@ impl RefsCommands {
         });
     }
 
-    pub(crate) fn read_remote_tags_at(&self, tab_id: u64, remote: String) {
-        self.run_remote_operation(tab_id, RemoteOperation::ReadTags { remote });
+    pub(crate) fn read_remote_tags_at(
+        &self,
+        tab_id: u64,
+        remote: String,
+        restore_visibility: bool,
+    ) {
+        self.run_remote_operation(
+            tab_id,
+            RemoteOperation::ReadTags {
+                remote,
+                restore_visibility,
+            },
+        );
     }
 
     pub(crate) fn drop_tag(&self, name: String) {

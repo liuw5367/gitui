@@ -125,6 +125,7 @@ pub(crate) fn refs_sidebar(
         .iter()
         .filter(|(remote, _)| refs.remotes.contains(remote))
         .flat_map(|(_, tags)| tags.iter())
+        .filter(|tag| !tab.hidden_remote_tags.contains(&tag.name))
         .collect::<Vec<_>>();
     let mut tags = refs.tags.clone();
     for tag in &remote_tags {
@@ -1914,11 +1915,7 @@ fn tag_row(
             None,
             vec![
                 crate::ui::icon::icon_view(
-                    if remote_target.is_some() {
-                        "globe"
-                    } else {
-                        "tag"
-                    },
+                    "tag",
                     crate::ui::icon::IconSize::Compact,
                     design::tag_fg,
                 )

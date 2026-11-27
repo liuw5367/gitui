@@ -191,7 +191,10 @@ pub(crate) fn history(
                     if !tab.refs.remotes.contains(remote) {
                         continue;
                     }
-                    for tag in tags {
+                    for tag in tags
+                        .iter()
+                        .filter(|tag| !tab.hidden_remote_tags.contains(&tag.name))
+                    {
                         by_commit
                             .entry(tag.target.clone())
                             .or_default()

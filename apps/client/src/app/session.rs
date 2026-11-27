@@ -100,6 +100,7 @@ pub(crate) struct Tab {
     /// 普通 History 浏览只显示提交图；右键菜单可临时切到提交补丁。
     pub(crate) show_commit_diff: bool,
     pub(crate) refs: Refs,
+    pub(crate) hidden_remote_tags: BTreeSet<String>,
     pub(crate) remote_tags: BTreeMap<String, Vec<git::RemoteTag>>,
     /// 侧栏分组与引用树的折叠键，只在对应仓库标签的运行期保存。
     pub(crate) sidebar_collapsed: BTreeSet<String>,
@@ -578,6 +579,7 @@ pub(crate) fn reload(tab: &mut Tab) {
     let id = tab.id;
     let load_id = next_tab_id();
     let sidebar_collapsed = tab.sidebar_collapsed.clone();
+    let hidden_remote_tags = std::mem::take(&mut tab.hidden_remote_tags);
     let remote_tags = std::mem::take(&mut tab.remote_tags);
     let path = tab.path.clone();
     let filter = tab.filter.clone();
@@ -587,6 +589,7 @@ pub(crate) fn reload(tab: &mut Tab) {
     tab.load_id = load_id;
     tab.sidebar_collapsed = sidebar_collapsed;
     tab.remote_tags = remote_tags;
+    tab.hidden_remote_tags = hidden_remote_tags;
 }
 
 /// 后台仓库校验的结果；只含 Git 数据，不包含提交草稿、筛选与布局状态。
