@@ -78,6 +78,9 @@ impl SearchCommands {
     pub(crate) fn open_form_from(&self, kind: FormKind, from: String) {
         let mut state = FormState::new(kind);
         state.target_tab_id = self.active_tab_id();
+        if matches!(kind, FormKind::RenameBranch) {
+            state.first = from.clone();
+        }
         state.second = from;
         self.state.form.set(Some(state));
     }
@@ -86,6 +89,9 @@ impl SearchCommands {
     pub(crate) fn open_form_from_tab(&self, tab_id: u64, kind: FormKind, from: String) {
         let mut state = FormState::new(kind);
         state.target_tab_id = Some(tab_id);
+        if matches!(kind, FormKind::RenameBranch) {
+            state.first = from.clone();
+        }
         state.second = from;
         self.state.form.set(Some(state));
     }

@@ -1207,17 +1207,19 @@ impl RefsCommands {
             crate::i18n::t(language_now.as_str(), "branch.deleteAction"),
             crate::i18n::t(language_now.as_str(), "common.cancel"),
         );
-        spawn(async move {
-            if let Ok(result) = pending.await {
-                if result.action.as_deref() != Some("delete") {
-                    return;
+        Owner::detached().run(|| {
+            spawn(async move {
+                if let Ok(result) = pending.await {
+                    if result.action.as_deref() != Some("confirm") {
+                        return;
+                    }
+                    let mut list = tabs.get_untracked();
+                    if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+                        ops::delete_branch(tab, branch.as_str());
+                        tabs.set(list);
+                    }
                 }
-                let mut list = tabs.get_untracked();
-                if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
-                    ops::delete_branch(tab, branch.as_str());
-                    tabs.set(list);
-                }
-            }
+            });
         });
     }
 
