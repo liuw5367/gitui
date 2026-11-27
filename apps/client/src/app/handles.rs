@@ -132,6 +132,7 @@ impl AppHandles {
             commit_info_loading: signal(handles.history.state.commit_info_loading.get_untracked()),
             commit_load_queue: std::sync::Arc::default(),
             table_ref: component_ref(),
+            diff_history_anchor: signal(Default::default()),
             scroll_request: signal(None),
             filter: filter.clone(),
             author_column_width: signal(handles.history.state.author_column_width.get_untracked()),

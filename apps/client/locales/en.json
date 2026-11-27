@@ -347,6 +347,7 @@
     "noHistory": "No file history is available"
   },
   "changes": {
+    "changesCount": "%{count} changed",
     "staged": "Staged",
     "unstaged": "Unstaged",
     "stageAll": "Stage all",

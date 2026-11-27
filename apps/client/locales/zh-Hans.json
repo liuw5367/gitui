@@ -347,6 +347,7 @@
     "noHistory": "没有可用的文件历史"
   },
   "changes": {
+    "changesCount": "%{count} 项改动",
     "staged": "已暂存",
     "unstaged": "未暂存",
     "stageAll": "全部暂存",

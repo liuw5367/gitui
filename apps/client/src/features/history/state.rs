@@ -129,6 +129,7 @@ pub(crate) struct HistoryState {
     /// 虚拟化历史表的引用，用于引用点击后的行级滚动。
     pub(crate) table_ref: ComponentRef<nsh_base::DataTable>,
     /// 下次历史表布局完成后要滚动到的可见行。
+    pub(crate) diff_history_anchor: Signal<std::collections::HashMap<u64, String>>,
     pub(crate) scroll_request: Signal<Option<usize>>,
     /// 当前活动标签页已应用的条件；`open_path` 也通过它初始化新标签页。
     pub(crate) filter: Arc<dyn Fn() -> LogFilter>,

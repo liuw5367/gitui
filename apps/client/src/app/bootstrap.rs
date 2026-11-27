@@ -465,6 +465,7 @@ pub(crate) fn app() -> impl IntoElement {
         commit_info_loading: signal(Vec::new()),
         commit_load_queue: std::sync::Arc::default(),
         table_ref: component_ref(),
+        diff_history_anchor: signal(Default::default()),
         scroll_request: signal(None),
         filter: current_filter.clone(),
         author_column_width: signal(features::history::state::DEFAULT_AUTHOR_COLUMN_WIDTH),

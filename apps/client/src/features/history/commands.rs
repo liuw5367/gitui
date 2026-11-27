@@ -430,7 +430,29 @@ impl HistoryCommands {
         let current = self.session.active.get_untracked();
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
-            ops::return_to_history(tab);
+            let mut anchors = self.state.diff_history_anchor.get_untracked();
+            if let Some(anchor) = anchors.remove(&tab.id) {
+                let visible = ops::visible_commit_indices(
+                    &tab.commits,
+                    self.state.query.get_untracked().as_str(),
+                    tab.selected,
+                );
+                self.state.scroll_request.set(
+                    visible
+                        .iter()
+                        .position(|&index| tab.commits[index].sha == anchor),
+                );
+                self.state.diff_history_anchor.set(anchors);
+            }
+            if tab.selected_file.is_some()
+                && !tab.comparing
+                && tab.compare_base.is_none()
+                && tab.compare_target.is_none()
+            {
+                tab.show_commit_diff = false;
+            } else {
+                ops::return_to_history(tab);
+            }
             self.session.tabs.set(list);
         }
     }
@@ -444,6 +466,19 @@ impl HistoryCommands {
         let mut list = self.session.tabs.get_untracked();
         if let Some(tab) = list.get_mut(current) {
             if let Some(index) = tab.files.iter().position(|file| file.path == path) {
+                if let Some(api) = self.state.table_ref.api::<nsh_base::DataTableApi>() {
+                    let visible = ops::visible_commit_indices(
+                        &tab.commits,
+                        self.state.query.get_untracked().as_str(),
+                        tab.selected,
+                    );
+                    if let Some(&top) = visible.get(api.visible_rows().start as usize) {
+                        let sha = tab.commits[top].sha.clone();
+                        self.state.diff_history_anchor.update(|anchors| {
+                            anchors.insert(tab.id, sha);
+                        });
+                    }
+                }
                 ops::select_file(tab, index);
             }
             self.session.tabs.set(list);

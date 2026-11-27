@@ -219,18 +219,26 @@ fn table_inner(
             if bounds.size.width.0 != viewport_width.get_untracked() {
                 viewport_width.set(bounds.size.width.0);
             }
-            if let Some((table_ref, scroll_request)) = mounted_scroll {
-                let Some(row) = scroll_request.get_untracked() else {
-                    return;
-                };
-                if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
-                    api.scroll_to_row(row as u32, Some(false));
-                    if !loading_more {
-                        scroll_request.set(None);
-                    }
+        })
+        .child(dynamic(move || {
+            if let Some((table_ref, request)) = mounted_scroll {
+                if let Some(row) = request.get() {
+                    // 等待表格挂载与活动行同步，再明确将目标放到视口顶部。
+                    spawn(async move {
+                        next_frame().await;
+                        if request.get_untracked() == Some(row) {
+                            if let Some(api) = table_ref.api::<nsh_base::DataTableApi>() {
+                                api.scroll_to_row(row as u32, Some(false));
+                                if !loading_more {
+                                    request.set(None);
+                                }
+                            }
+                        }
+                    });
                 }
             }
-        });
+            view().w(px(0.0)).h(px(0.0))
+        }));
 }
 
 /// 把列定义转成 `data_table` 的列。
