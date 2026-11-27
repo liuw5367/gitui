@@ -65,13 +65,26 @@ impl PullStrategy {
 }
 
 /// 拉取选项（设计板 29）。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PullOptions {
     pub strategy: PullStrategy,
-    /// 拉取前自动贮藏、完成后恢复。
+    /// 拉取前自动贮藏已跟踪文件的改动。
     pub autostash: bool,
+    /// 拉取流程结束时由 Git 恢复自动贮藏。
+    pub autostash_pop: bool,
     /// 变基时把本地所有提交一起移动。
     pub rebase_local: bool,
+}
+
+impl Default for PullOptions {
+    fn default() -> Self {
+        Self {
+            strategy: PullStrategy::default(),
+            autostash: false,
+            autostash_pop: true,
+            rebase_local: false,
+        }
+    }
 }
 
 /// 推送选项（设计板 15）。
@@ -595,31 +608,33 @@ impl Repo {
 
     /// 带选项的拉取：整合方式、自动贮藏、整体变基。
     pub fn pull_with(&self, options: &PullOptions) -> Result<String, GitError> {
-        let mut args: Vec<&str> = vec!["pull", options.strategy.flag(), "--no-edit"];
-        if options.autostash {
-            args.push("--autostash");
-        }
-        if options.rebase_local && options.strategy == PullStrategy::Rebase {
-            args.push("--rebase-merges");
-        }
+        let args = self.prepare_pull_args(options)?;
         let output = self.run_git_combined(&args)?;
         return Ok(summarise(&output));
     }
 
     pub fn start_pull_with(&self, options: &PullOptions) -> Result<SyncRun, GitError> {
-        let mut args = vec![
-            "pull".to_string(),
-            "--progress".to_string(),
-            "--no-edit".to_string(),
-        ];
-        args.push(options.strategy.flag().to_string());
+        let mut args = self.prepare_pull_args(options)?;
+        args.insert(1, "--progress");
+        let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+        return SyncRun::start(&self.executable, &self.root, &args);
+    }
+
+    fn prepare_pull_args(&self, options: &PullOptions) -> Result<Vec<&'static str>, GitError> {
+        let mut args = vec!["pull", options.strategy.flag(), "--no-edit"];
         if options.autostash {
-            args.push("--autostash".to_string());
+            if options.autostash_pop {
+                args.push("--autostash");
+            } else {
+                // Git 的 --autostash 会恢复改动。此模式使用普通 stash，让它留在列表中。
+                self.stash_push_with("Auto stash before pull", false)?;
+                args.push("--no-autostash");
+            }
         }
         if options.rebase_local && options.strategy == PullStrategy::Rebase {
-            args.push("--rebase-merges".to_string());
+            args.push("--rebase-merges");
         }
-        return SyncRun::start(&self.executable, &self.root, &args);
+        Ok(args)
     }
 
     /// 从指定远端分支拉取并合并到当前分支。

@@ -654,6 +654,10 @@ fn sync_options(
         ],
         Sync::Pull => vec![
             ("sync.optAutostash", options.pull.autostash),
+            (
+                "sync.optAutostashPop",
+                options.pull.autostash && options.pull.autostash_pop,
+            ),
             ("sync.optRebaseLocal", options.pull.rebase_local),
         ],
         Sync::Push => vec![
@@ -668,6 +672,7 @@ fn sync_options(
             "sync.optTags" => "fetchTags",
             "sync.optAllRemotes" => "allRemotes",
             "sync.optAutostash" => "autostash",
+            "sync.optAutostashPop" => "autostashPop",
             "sync.optRebaseLocal" => "rebaseLocal",
             "sync.optPushTags" => "pushTags",
             "sync.optForceLease" => "forceLease",
@@ -676,6 +681,7 @@ fn sync_options(
         };
         let set_option = set_option.clone();
         let row_disabled = disabled
+            || (key == "sync.optAutostashPop" && !options.pull.autostash)
             || (key == "sync.optRebaseLocal" && options.pull.strategy != git::PullStrategy::Rebase);
         rows = rows.child(option_row(
             language,

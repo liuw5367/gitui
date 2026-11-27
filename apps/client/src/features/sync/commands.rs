@@ -738,6 +738,7 @@ impl SyncCommands {
             "fetchTags" => state.options.fetch.tags = value,
             "allRemotes" => state.options.fetch.all_remotes = value,
             "autostash" => state.options.pull.autostash = value,
+            "autostashPop" => state.options.pull.autostash_pop = value,
             "rebaseLocal" => state.options.pull.rebase_local = value,
             "pushTags" => state.options.push.tags = value,
             "forceLease" => state.options.push.force_with_lease = value,

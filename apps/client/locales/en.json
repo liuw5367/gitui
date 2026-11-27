@@ -1157,6 +1157,7 @@
     "optPrune": "Prune deleted branches",
     "optTags": "Fetch tags",
     "optAllRemotes": "Fetch all remotes",
+    "optAutostashPop": "Auto stash pop",
     "optAutostash": "Autostash local changes",
     "optRebaseLocal": "Rebase all local commits",
     "optPushTags": "Push tags",

@@ -154,3 +154,5 @@ Merge、Rebase 与 FF only 分别映射到 Git 的 `--no-rebase`、`--rebase` �
 | 04 Commits | `×`、`Close` 与底层返回条 `Commits` 三处都链 `Workspace.dc.html` |
 | 10 Changes / 12 Agent / 18 Files at commit | 底层工具条 `Changes 12`、`Agent`，检查器 `Files` 页签 |
 | 23 Settings / 01 Welcome | 底层标题栏齿轮、页签 `+`；凭据归属板上没给链接 |
+
+启用自动贮藏后，可以选择「拉取后自动恢复贮藏」，默认启用。取消勾选时，已跟踪文件的改动会先存为普通 Stash，拉取结束后可从 Stashes 手动恢复。

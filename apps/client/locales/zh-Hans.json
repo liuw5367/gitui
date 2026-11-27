@@ -1157,6 +1157,7 @@
     "optPrune": "清理远端已删除的分支",
     "optTags": "同步标签",
     "optAllRemotes": "对所有远端执行",
+    "optAutostashPop": "拉取后自动恢复贮藏",
     "optAutostash": "自动贮藏本地改动",
     "optRebaseLocal": "变基包含本地全部提交",
     "optPushTags": "推送标签",
