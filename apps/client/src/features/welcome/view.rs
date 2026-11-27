@@ -78,6 +78,87 @@ pub(crate) fn welcome(state: &WelcomeState, cmd: &WelcomeCommands) -> impl IntoE
         );
 }
 
+/// 空会话直接呈现卡片，标题区域不受模态遮罩拦截。
+pub(crate) fn empty_welcome(
+    state: &WelcomeState,
+    cmd: &WelcomeCommands,
+) -> impl IntoElement + use<> {
+    let tabs = cmd.session.tabs;
+    let state = state.clone();
+    let cmd = cmd.clone();
+    when(
+        move || tabs.with(|tabs| tabs.is_empty()),
+        move || {
+            let graph = |left: f32, first: f32| {
+                view()
+                    .absolute()
+                    .left(px(left))
+                    .top(px(0.0))
+                    .bottom(px(0.0))
+                    .w(px(1.0))
+                    .bg(move || design::line_soft())
+                    .child(
+                        (0..8)
+                            .map(move |index| {
+                                view()
+                                    .absolute()
+                                    .left(px(-3.0))
+                                    .top(px(first + index as f32 * 92.0))
+                                    .w(px(7.0))
+                                    .h(px(7.0))
+                                    .rounded(px(4.0))
+                                    .border_1()
+                                    .border_color(move || design::line_strong())
+                                    .bg(move || design::content())
+                                    .into_element()
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+            };
+            view()
+                .w_full()
+                .flex_1()
+                .min_h_0()
+                .flex_col()
+                .child(
+                    view()
+                        .w_full()
+                        .h(px(crate::design::metrics::TITLEBAR_H))
+                        .flex_shrink_0()
+                        .bg(move || design::titlebar())
+                        .window_drag(true),
+                )
+                .child(
+                    view()
+                        .relative()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_hidden()
+                        .items_center()
+                        .justify_center()
+                        .p(px(ui::GAP_XL))
+                        .child(graph(64.0, 26.0))
+                        .child(graph(106.0, 72.0))
+                        .child(
+                            view()
+                                .relative()
+                                .w_full()
+                                .h_full()
+                                .max_w(px(900.0))
+                                .max_h(px(600.0))
+                                .rounded(px(crate::design::metrics::RADIUS_PANEL + 2.0))
+                                .overflow_hidden()
+                                .border_1()
+                                .border_color(move || design::line_strong())
+                                .shadow_lg()
+                                .child(welcome(&state, &cmd)),
+                        ),
+                )
+        },
+    )
+}
+
 /// 在主窗口内显示仓库选择模态层；空会话时必须先打开仓库才能关闭。
 pub(crate) fn welcome_modal(
     state: &WelcomeState,
@@ -95,7 +176,7 @@ pub(crate) fn welcome_modal(
     let welcome_cmd = cmd.clone();
 
     return ui::dialog::modal_with_dismissal(
-        move || open.get(),
+        move || open.get() && tabs.with(|tabs| !tabs.is_empty()),
         move || i18n::t(title_language.get().as_str(), "welcome.windowTitle"),
         200,
         move || {

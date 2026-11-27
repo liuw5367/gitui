@@ -865,6 +865,10 @@ pub(crate) fn app() -> impl IntoElement {
         .child(workspace_host(tabs, move || {
             crate::app::workspace::workspace(&handles_for_screen).into_element()
         }))
+        .child(features::welcome::view::empty_welcome(
+            &welcome_commands.state,
+            &welcome_commands,
+        ))
         .child(features::welcome::view::welcome_modal(
             &welcome_commands.state,
             &welcome_commands,

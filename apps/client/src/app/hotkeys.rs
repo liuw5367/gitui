@@ -85,6 +85,7 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
         let form_state = search_state.form;
         let rewrite_state = handles.commit.state.rewrite;
         let tabs = handles.session.tabs;
+        let welcome_open = handles.session.welcome_open;
         let active = handles.session.active;
         let recording = handles.settings.state.recording_shortcut;
         move |_| {
@@ -111,6 +112,12 @@ pub(crate) fn install(handles: &AppHandles, gallery_open: Signal<bool>) {
             }
             if palette_open.get_untracked() {
                 palette_open.set(false);
+                return;
+            }
+            if welcome_open.get_untracked() {
+                if tabs.with_untracked(|tabs| !tabs.is_empty()) {
+                    welcome_open.set(false);
+                }
                 return;
             }
             let current = active.get_untracked();

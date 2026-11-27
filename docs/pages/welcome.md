@@ -195,7 +195,7 @@ Repository name            Initial branch
 
 - `Restore last session` 且保存会话非空时，按已存顺序恢复主窗口标签与活动仓库，不显示 Welcome；空会话仍显示主窗口和必需的 Welcome 模态层。
 - `Show Welcome` 跳过会话恢复并打开主窗口内的模态层。若应用在没有打开仓库时退出，保存的会话为空，下次仍显示不可关闭的 Welcome。
-- 主窗口标题栏的 `+`、Help > Welcome 与 Repository Manager 打开 Welcome 模态层。已有仓库时可用 Escape、遮罩或关闭按钮关闭；没有仓库时这些关闭方式均无效。成功打开仓库后自动关闭模态层并进入主窗口；同一规范化仓库只聚焦已有标签。
+- 主窗口标题栏的 `+`、Help > Welcome 与 Repository Manager 打开 Welcome 模态层。已有仓库时可用 Escape、遮罩或关闭按钮关闭。没有仓库时，主窗口直接显示欢迎卡片，外侧使用淡色提交线装饰，顶部留有窗口拖动区。成功打开仓库后自动关闭模态层并进入主窗口；同一规范化仓库只聚焦已有标签。
 - 最近仓库打开失败时切到 Open 表单，保留路径并显示错误；不会加入打开标签。
 
 ## 5. 按钮与链接清单
