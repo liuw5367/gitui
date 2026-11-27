@@ -10,24 +10,63 @@ pub(crate) fn is_dirty(tab: &Tab) -> bool {
     return !tab.status.is_empty();
 }
 
-/// 切换分支并刷新标签页；`stash` 为真时先贮藏改动再切换。
+/// 切换分支并刷新标签页；`stash` 为真时先贮藏改动，切换后按原 OID 恢复。
 ///
-/// 带改动切换会让 git 在会覆盖本地修改时拒绝；由界面先问「贮藏 / 带过去 / 取消」。
-pub(crate) fn checkout_branch_with(tab: &mut Tab, branch: &str, stash: bool) {
-    if stash {
-        let repo = match tab.open_repo() {
-            Ok(repo) => repo,
+/// 返回恢复改动时是否产生冲突；贮藏、检出或恢复失败时返回错误。
+pub(crate) fn checkout_branch_with(
+    tab: &mut Tab,
+    branch: &str,
+    stash: bool,
+) -> Result<bool, String> {
+    tab.error = None;
+    let stash_oid = if stash {
+        let repo = tab.open_repo().map_err(|error| error.detail())?;
+        let existing_stash_count = repo.refs().map_err(|error| error.detail())?.stashes.len();
+        if let Err(error) = repo.stash_push_with("", true) {
+            let detail = error.detail();
+            reload_branch_state(tab);
+            return Err(detail);
+        }
+        let stashes = match repo.refs() {
+            Ok(refs) => refs.stashes,
             Err(error) => {
-                tab.error = Some(error.detail());
-                return;
+                let detail = error.detail();
+                reload_branch_state(tab);
+                return Err(detail);
             }
         };
-        if let Err(error) = repo.stash_push_with("", true) {
-            tab.error = Some(error.detail());
-            return;
-        }
-    }
+        let Some(stash_oid) = stashes
+            .first()
+            .filter(|_| stashes.len() > existing_stash_count)
+            .map(|entry| entry.oid.clone())
+        else {
+            reload_branch_state(tab);
+            return Err(String::from(
+                "Git did not create a stash; branch switch was canceled.",
+            ));
+        };
+        Some(stash_oid)
+    } else {
+        None
+    };
+
     checkout_branch(tab, branch);
+    if let Some(detail) = tab.error.clone() {
+        if stash_oid.is_some() {
+            reload_branch_state(tab);
+            tab.error = Some(detail.clone());
+        }
+        return Err(detail);
+    }
+    let Some(stash_oid) = stash_oid else {
+        return Ok(false);
+    };
+    if !pop_stash_by_oid(tab, stash_oid.as_str())? {
+        return Err(String::from(
+            "The stash created for this branch switch is no longer available.",
+        ));
+    }
+    return Ok(tab.operation == git::Operation::None && !tab.conflicts.is_empty());
 }
 
 /// 切换分支并刷新标签页（历史、引用、变更都要跟着变）。
@@ -43,6 +82,10 @@ pub(crate) fn checkout_branch(tab: &mut Tab, branch: &str) {
         tab.error = Some(error.detail());
         return;
     }
+    reload_branch_state(tab);
+}
+
+fn reload_branch_state(tab: &mut Tab) {
     let filter = tab.filter.clone();
     let refreshed = crate::app::session::load_tab_with_executable(
         tab.path.as_str(),
@@ -745,15 +788,15 @@ mod tests {
         std::fs::write(root.path.join("a.txt"), "two\n").expect("write");
         let tab_dirty = load_tab(root.path.display().to_string().as_str(), &filter);
         assert!(is_dirty(&tab_dirty));
-        // 先贮藏再切换：工作区干净，改动在贮藏里。
-        checkout_branch_with(&mut tab, branch, true);
+        // 先贮藏、切换，再把这次改动恢复到目标分支。
+        checkout_branch_with(&mut tab, branch, true).expect("stash, switch, and restore");
         assert_eq!(tab.branch, branch);
-        assert!(!is_dirty(&tab), "贮藏后工作区应干净");
-        assert_eq!(tab.refs.stashes.len(), 1, "改动应在贮藏里");
+        assert!(is_dirty(&tab), "恢复后改动应在目标分支工作区");
+        assert!(tab.refs.stashes.is_empty(), "恢复成功后应删除 stash 条目");
         assert_eq!(
             std::fs::read_to_string(root.path.join("a.txt")).expect("read"),
-            "one\n",
-            "切分支后文件回到分支上的内容"
+            "two\n",
+            "切分支后应恢复原改动"
         );
     }
 }

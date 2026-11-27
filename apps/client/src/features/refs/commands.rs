@@ -1130,32 +1130,44 @@ impl RefsCommands {
         );
         let language = language;
         let notice = notice;
-        spawn(async move {
-            let Ok(result) = pending.await else {
-                return;
-            };
-            let Some(action) = result.action else {
-                return;
-            };
-            if action.as_str() == "cancel" {
-                return;
-            }
-            let stash = action.as_str() == "stash";
-            let mut list = tabs.get_untracked();
-            if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
-                ops::checkout_branch_with(tab, branch.as_str(), stash);
-                let failed = tab.error.clone();
-                tabs.set(list);
-                if let Some(detail) = failed {
-                    crate::interactions::notify(notice, detail);
-                } else if stash {
-                    let lang = language.get_untracked();
-                    crate::interactions::notify(
-                        notice,
-                        crate::i18n::t(lang.as_str(), "toast.stashedBeforeCheckout"),
-                    );
+        // 确认流程必须比触发它的浮层活得更久；关闭分支选择器时不能取消后续切换。
+        Owner::detached().run(|| {
+            spawn(async move {
+                let Ok(result) = pending.await else {
+                    return;
+                };
+                let Some(action) = result.action else {
+                    return;
+                };
+                if action.as_str() == "cancel" {
+                    return;
                 }
-            }
+                let stash = action.as_str() == "stash";
+                let mut list = tabs.get_untracked();
+                if let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) {
+                    let result = ops::checkout_branch_with(tab, branch.as_str(), stash);
+                    if let Err(detail) = &result {
+                        tab.error = Some(detail.clone());
+                    }
+                    let failed = tab.error.clone();
+                    tabs.set(list);
+                    if let Some(detail) = failed {
+                        crate::interactions::notify(notice, detail);
+                    } else if result.as_ref().is_ok_and(|conflicted| *conflicted) {
+                        let lang = language.get_untracked();
+                        crate::interactions::notify(
+                            notice,
+                            crate::i18n::t(lang.as_str(), "conflicts.stashApply"),
+                        );
+                    } else if stash {
+                        let lang = language.get_untracked();
+                        crate::interactions::notify(
+                            notice,
+                            crate::i18n::t(lang.as_str(), "toast.stashRestoredAfterCheckout"),
+                        );
+                    }
+                }
+            });
         });
     }
 

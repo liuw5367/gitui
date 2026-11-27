@@ -28,6 +28,8 @@ const DATE_MIN_W: f32 = 80.0;
 const DATE_MAX_W: f32 = 250.0;
 const GRAPH_LANE_W: f32 = 10.0;
 const GRAPH_NODE_D: f32 = 7.0;
+/// 保留可视区附近的徽标命中信息，避免滚过大量提交后缓存持续增长。
+const REF_BADGE_LAYOUT_WINDOW_ROWS: usize = 256;
 
 /// 浮层宽度（设计板 `.filter-pop`）。
 const POP_W: f32 = 432.0;
@@ -127,6 +129,16 @@ struct RefBadgeMenuContext {
     has_origin: bool,
     remotes: Vec<String>,
     select_context: std::sync::Arc<dyn Fn(usize, String)>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct RefBadgeHit {
+    /// 徽标在当前窗口根坐标中的位置，与 DataTable 右键事件坐标一致。
+    bounds: Bounds<Points>,
+    /// 防止虚拟行复用后命中旧提交的徽标区域。
+    commit_sha: String,
+    /// 该徽标对应的分支或 tag 操作目标。
+    targets: Vec<CommitRefTarget>,
 }
 
 /// `use<>`：返回的元素只持有克隆出来的信号，不借用入参（edition 2024 的
@@ -283,6 +295,8 @@ pub(crate) fn history(
         remotes: configured_remotes,
         select_context: select_context_for_badge,
     };
+    let ref_badge_bounds = signal(std::collections::HashMap::<usize, Vec<RefBadgeHit>>::new());
+    let ref_badge_layout_generations = signal(std::collections::HashMap::<usize, u64>::new());
     let visible = {
         let commits = commits.clone();
         computed(move || {
@@ -478,7 +492,9 @@ pub(crate) fn history(
                                 .collect();
                             let commits_for_render = rows_snapshot.clone();
                             let remote_branches_for_render = remote_branches_by_name.clone();
-                            let ref_badge_menu_for_render = ref_badge_menu_context.clone();
+                            let ref_badge_bounds_for_render = ref_badge_bounds;
+                            let ref_badge_layout_generations_for_render =
+                                ref_badge_layout_generations;
                             let compare_for_render = compare_for_rows.clone();
                             let fast_selection = fast_selection;
                             let multi_selection_for_render = multi_commit_selection;
@@ -504,6 +520,8 @@ pub(crate) fn history(
                             let menu_recovery = recovery_for_menu.clone();
                             let commits_for_press = rows_snapshot.clone();
                             let commits_for_menu = rows_snapshot.clone();
+                            let ref_badge_menu_for_menu = ref_badge_menu_context.clone();
+                            let ref_badge_bounds_for_menu = ref_badge_bounds;
                             let selected_sha = selected_commit
                                 .get_untracked()
                                 .filter(|(selected_tab, _)| *selected_tab == tab_id)
@@ -550,6 +568,28 @@ pub(crate) fn history(
                                             std::sync::Arc::new(move || row_selected.get());
                                         let in_compare = compare_for_render.contains(&index);
                                         let has_refs = !commit.refs.is_empty();
+                                        let visible_row = row as usize;
+                                        let mut layout_generation = 0;
+                                        ref_badge_layout_generations_for_render.update(
+                                            |generations| {
+                                                generations.retain(|row, _| {
+                                                    row.abs_diff(visible_row)
+                                                        <= REF_BADGE_LAYOUT_WINDOW_ROWS
+                                                });
+                                                let generation =
+                                                    generations.entry(visible_row).or_default();
+                                                *generation = generation.wrapping_add(1);
+                                                layout_generation = *generation;
+                                            },
+                                        );
+                                        ref_badge_bounds_for_render
+                                            .update(|bounds| {
+                                                bounds.retain(|row, _| {
+                                                    row.abs_diff(visible_row)
+                                                        <= REF_BADGE_LAYOUT_WINDOW_ROWS
+                                                });
+                                                bounds.remove(&visible_row);
+                                            });
                                         let row_selected_for_bg = selected_now.clone();
                                         let row_selected_for_hover = selected_now.clone();
                                         let row_selected_for_graph = selected_now;
@@ -558,7 +598,6 @@ pub(crate) fn history(
                                             .cloned()
                                             .unwrap_or_default();
                                         let remote_branches = remote_branches_for_render.clone();
-                                        let ref_badge_menu = ref_badge_menu_for_render.clone();
                                         return view()
                                             .w_full()
                                             .h(px(metrics::COMMIT_ROW_H))
@@ -616,9 +655,11 @@ pub(crate) fn history(
                                                                 this.child(ref_chips(
                                                                     commit.refs.clone(),
                                                                     remote_branches,
-                                                                    ref_badge_menu,
-                                                                    index,
+                                                                    visible_row,
                                                                     commit.sha.clone(),
+                                                                    layout_generation,
+                                                                    ref_badge_bounds_for_render,
+                                                                    ref_badge_layout_generations_for_render,
                                                                 ))
                                                             }),
                                                     ),
@@ -677,6 +718,29 @@ pub(crate) fn history(
                                         else {
                                             return;
                                         };
+                                        let point = nsh_core::Point {
+                                            x: Points(x),
+                                            y: Points(y),
+                                        };
+                                        let bounds = ref_badge_bounds_for_menu.get_untracked();
+                                        // DataTable 的命中层接管整行右键；先按徽标实际位置分流，再打开提交菜单。
+                                        if let Some(targets) = ref_badge_targets_at(
+                                            &bounds,
+                                            row as usize,
+                                            &commit.sha,
+                                            &point,
+                                        ) {
+                                            (ref_badge_menu_for_menu.select_context)(
+                                                index,
+                                                commit.sha.clone(),
+                                            );
+                                            let items = commit_ref_menu_items(
+                                                &targets,
+                                                &ref_badge_menu_for_menu,
+                                            );
+                                            crate::ui::menu::popup_at(items, point);
+                                            return;
+                                        }
                                         let multi_selection = multi_selection_for_menu
                                             .get_untracked()
                                             .filter(|selection| selection.tab_id == tab_id);
@@ -1939,26 +2003,45 @@ fn filter_choice_row(
 fn ref_chips(
     refs: Vec<String>,
     remote_branches: std::sync::Arc<std::collections::HashMap<String, git::RemoteBranch>>,
-    context: RefBadgeMenuContext,
-    commit_index: usize,
+    visible_row: usize,
     commit_sha: String,
+    layout_generation: u64,
+    bounds: Signal<std::collections::HashMap<usize, Vec<RefBadgeHit>>>,
+    generations: Signal<std::collections::HashMap<usize, u64>>,
 ) -> impl IntoElement {
     let chips = commit_ref_chips(refs, &remote_branches);
     return render_ref_chips(
         chips,
         Some(RefBadgeInteraction {
-            context,
-            commit_index,
+            visible_row,
             commit_sha,
+            layout_generation,
+            bounds,
+            generations,
         }),
     );
 }
 
 #[derive(Clone)]
 struct RefBadgeInteraction {
-    context: RefBadgeMenuContext,
-    commit_index: usize,
+    visible_row: usize,
     commit_sha: String,
+    layout_generation: u64,
+    bounds: Signal<std::collections::HashMap<usize, Vec<RefBadgeHit>>>,
+    generations: Signal<std::collections::HashMap<usize, u64>>,
+}
+
+fn ref_badge_targets_at(
+    bounds: &std::collections::HashMap<usize, Vec<RefBadgeHit>>,
+    row: usize,
+    commit_sha: &str,
+    point: &Point<Points>,
+) -> Option<Vec<CommitRefTarget>> {
+    return bounds
+        .get(&row)?
+        .iter()
+        .find(|hit| hit.commit_sha == commit_sha && hit.bounds.contains(point))
+        .map(|hit| hit.targets.clone());
 }
 
 fn commit_ref_chips(
@@ -2122,14 +2205,49 @@ fn render_ref_chips(
         if matches!(chip.kind, CommitRefKind::Branch | CommitRefKind::Tag) {
             if let Some(interaction) = interaction.clone() {
                 let targets = chip.targets.clone();
-                badge = badge.on_context_menu(move |event: &nsh_core::ContextMenuEvent| {
-                    (interaction.context.select_context)(
-                        interaction.commit_index,
-                        interaction.commit_sha.clone(),
-                    );
-                    let items = commit_ref_menu_items(&targets, &interaction.context);
-                    crate::ui::menu::popup_at(items, event.page_position);
-                });
+                let badge_ref = element_ref();
+                let layout_revision = std::rc::Rc::new(std::cell::Cell::new(0_u64));
+                badge = badge
+                    .element_ref(&badge_ref)
+                    .on_layout(move |_: &Bounds<Points>| {
+                        let revision = layout_revision.get().wrapping_add(1);
+                        layout_revision.set(revision);
+                        let badge_ref = badge_ref;
+                        let hit_bounds = interaction.bounds;
+                        let generations = interaction.generations;
+                        let visible_row = interaction.visible_row;
+                        let commit_sha = interaction.commit_sha.clone();
+                        let layout_generation = interaction.layout_generation;
+                        let targets = targets.clone();
+                        let layout_revision = layout_revision.clone();
+                        spawn(async move {
+                            let Some(measurement) = badge_ref.measure().await else {
+                                return;
+                            };
+                            if layout_revision.get() != revision
+                                || generations.get_untracked().get(&visible_row)
+                                    != Some(&layout_generation)
+                            {
+                                return;
+                            }
+                            let badge_bounds =
+                                Bounds::new(measurement.page, measurement.frame.size);
+                            hit_bounds.update(|rows| {
+                                let row = rows.entry(visible_row).or_default();
+                                if let Some(hit) = row.iter_mut().find(|hit| {
+                                    hit.commit_sha == commit_sha && hit.targets == targets
+                                }) {
+                                    hit.bounds = badge_bounds;
+                                } else {
+                                    row.push(RefBadgeHit {
+                                        bounds: badge_bounds,
+                                        commit_sha,
+                                        targets,
+                                    });
+                                }
+                            });
+                        });
+                    });
             }
         }
         if is_remote {
@@ -2422,6 +2540,62 @@ mod tests {
             &[],
             None
         ));
+    }
+
+    #[test]
+    fn context_menu_hit_test_routes_only_points_inside_the_badge() {
+        let target = CommitRefTarget::RemoteBranch {
+            remote: String::from("origin"),
+            name: String::from("main"),
+        };
+        let bounds = std::collections::HashMap::from([(
+            4,
+            vec![RefBadgeHit {
+                bounds: Bounds::new(
+                    Point::new(Points(30.0), Points(40.0)),
+                    Size::new(Points(72.0), Points(16.0)),
+                ),
+                commit_sha: String::from("abc123"),
+                targets: vec![target.clone()],
+            }],
+        )]);
+
+        assert_eq!(
+            ref_badge_targets_at(
+                &bounds,
+                4,
+                "abc123",
+                &Point::new(Points(50.0), Points(48.0))
+            ),
+            Some(vec![target])
+        );
+        assert_eq!(
+            ref_badge_targets_at(
+                &bounds,
+                4,
+                "abc123",
+                &Point::new(Points(102.0), Points(48.0))
+            ),
+            None
+        );
+        assert_eq!(
+            ref_badge_targets_at(
+                &bounds,
+                4,
+                "other-commit",
+                &Point::new(Points(50.0), Points(48.0))
+            ),
+            None
+        );
+        assert_eq!(
+            ref_badge_targets_at(
+                &bounds,
+                3,
+                "abc123",
+                &Point::new(Points(50.0), Points(48.0))
+            ),
+            None
+        );
     }
 
     #[test]

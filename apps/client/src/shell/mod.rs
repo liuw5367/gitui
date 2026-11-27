@@ -517,7 +517,8 @@ fn branch_picker_panel(
 ) -> impl IntoElement {
     return view()
         .w(px(BRANCH_PICKER_W))
-        .p(px(10.0))
+        .py(px(10.0))
+        .px(px(0.0))
         .flex_col()
         .gap(px(crate::ui::GAP))
         .rounded(px(metrics::RADIUS_PANEL))
@@ -525,23 +526,37 @@ fn branch_picker_panel(
         .border_color(design::line_strong)
         .bg(|| design::token("popover"))
         .shadow_lg()
-        .child(crate::ui::text_input::text_input_auto_focus(
-            query,
-            move || i18n::t(language.get().as_str(), "branch.search"),
-            false,
-            search_ref,
-            move |value| query.set(value.to_string()),
-        ))
+        .child(
+            view()
+                .w_full()
+                .px(px(10.0))
+                .child(crate::ui::text_input::text_input_auto_focus(
+                    query,
+                    move || i18n::t(language.get().as_str(), "branch.search"),
+                    false,
+                    search_ref,
+                    move |value| query.set(value.to_string()),
+                )),
+        )
         .child(scroll().w_full().h(px(BRANCH_PICKER_LIST_H)).child(dynamic(
             move || -> AnyElement {
                 let groups = filtered.get();
                 if groups.is_empty() {
-                    return text(move || i18n::t(language.get().as_str(), "branch.noMatches"))
-                        .text_size(px(crate::ui::SECONDARY))
-                        .text_color(design::text3)
+                    return view()
+                        .w_full()
+                        .px(px(10.0))
+                        .child(
+                            text(move || i18n::t(language.get().as_str(), "branch.noMatches"))
+                                .text_size(px(crate::ui::SECONDARY))
+                                .text_color(design::text3),
+                        )
                         .into_element();
                 }
-                let mut list = view().w_full().flex_col().gap(px(crate::ui::GAP_XS));
+                let mut list = view()
+                    .w_full()
+                    .px(px(10.0))
+                    .flex_col()
+                    .gap(px(crate::ui::GAP_XS));
                 let mut remote_section_shown = false;
                 for group in groups {
                     match &group.kind {
@@ -632,6 +647,7 @@ fn branch_picker_row(
         },
     ));
     let history_name = choice.label.clone();
+    let history_tip_name = choice.label.clone();
     let history_refs = refs;
     return view()
         .w_full()
@@ -639,7 +655,7 @@ fn branch_picker_row(
         .items_center()
         .gap(px(crate::ui::GAP_XS))
         .child(main)
-        .child(crate::ui::button::icon_button(
+        .child(crate::ui::button::icon_button_tip(
             "clock",
             move || {
                 i18n::with_arguments(
@@ -650,6 +666,13 @@ fn branch_picker_row(
             },
             crate::ui::button::ButtonSize::Small,
             false,
+            move || {
+                i18n::with_arguments(
+                    language.get().as_str(),
+                    "branch.showInHistory",
+                    &[("name", history_tip_name.clone())],
+                )
+            },
             move || {
                 open.set(false);
                 run_branch_picker_action(history.clone(), &history_refs);

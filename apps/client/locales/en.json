@@ -483,7 +483,7 @@
     "restoreShortcutsAction": "Restore Defaults",
     "dirtyCheckoutTitle": "Switch branch with local changes",
     "dirtyCheckoutMessage": "%{branch} would carry your uncommitted changes. Stash them first, or take them with you.",
-    "dirtyCheckoutStash": "Stash and Switch",
+    "dirtyCheckoutStash": "Stash, Switch & Reapply",
     "dirtyCheckoutCarry": "Carry Changes",
     "rebaseBranchTitle": "Rebase %{current} onto %{target}?",
     "rebaseBranchMessage": "Commits on %{current} will be replayed on %{target}. Conflicts may need to be resolved before the rebase can finish.",
@@ -504,7 +504,7 @@
     "stashDone": "Stash applied",
     "identityCleared": "Repository identity cleared",
     "initDone": "Repository initialized",
-    "stashedBeforeCheckout": "Changes stashed — restore them from Stashes"
+    "stashRestoredAfterCheckout": "Changes restored on the switched branch"
   },
   "conflicts": {
     "title": "Conflicted",

@@ -483,7 +483,7 @@
     "restoreShortcutsAction": "恢复默认",
     "dirtyCheckoutTitle": "有未提交改动时切换分支",
     "dirtyCheckoutMessage": "切到 %{branch} 会带上未提交的改动：可以先贮藏，也可以直接带过去。",
-    "dirtyCheckoutStash": "贮藏并切换",
+    "dirtyCheckoutStash": "贮藏后切换并恢复",
     "dirtyCheckoutCarry": "带过去",
     "rebaseBranchTitle": "将 %{current} 变基到 %{target}？",
     "rebaseBranchMessage": "会把 %{current} 上的提交重放到 %{target} 之后。若发生冲突，需要先解决才能完成变基。",
@@ -504,7 +504,7 @@
     "stashDone": "贮藏已应用",
     "identityCleared": "已清除仓库级身份",
     "initDone": "仓库已初始化",
-    "stashedBeforeCheckout": "改动已贮藏，可在「贮藏」里恢复"
+    "stashRestoredAfterCheckout": "改动已恢复到切换后的分支"
   },
   "conflicts": {
     "title": "冲突",
