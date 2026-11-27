@@ -2692,7 +2692,7 @@ fn reflog_list(
         let press_all_entries = all_entries.clone();
         let press_commands = commands.clone();
         let press_path = path.clone();
-        let on_row_press: Box<dyn Fn(u32, bool)> = Box::new(move |row, _| {
+        let on_row_press: Box<dyn Fn(u32, bool, bool)> = Box::new(move |row, _, _| {
             if let Some(index) = press_entries.get(row as usize).copied()
                 && let Some(entry) = press_all_entries.get(index)
             {

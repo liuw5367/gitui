@@ -69,7 +69,7 @@ pub(crate) struct TableSpec {
     pub(crate) render: Option<Box<dyn Fn(u32, &str, String) -> AnyElement>>,
     /// 行被按压（含修饰键）：`(行, ⌘ 是否按下)`。给了它就由调用方决定选中还是
     /// 加入对比，而不是走默认的「点击即选中」。
-    pub(crate) on_row_press: Option<Box<dyn Fn(u32, bool)>>,
+    pub(crate) on_row_press: Option<Box<dyn Fn(u32, bool, bool)>>,
     /// 行被右键：`(行, x, y)`。坐标是根视图坐标，可直接给 `popup_menu_at`。
     pub(crate) on_context_menu: Option<Box<dyn Fn(u32, f32, f32)>>,
 }
@@ -176,7 +176,7 @@ fn table_inner(
         .on_row_press(move |press: &DataTablePress| {
             if let Some(handler) = &row_press {
                 // 有 ⌘/Shift 时不走默认选中，交给调用方（历史表的对比集合）。
-                handler(press.row, press.platform);
+                handler(press.row, press.platform, press.shift);
             }
         })
         .on_context_menu(move |event: &DataTableContextMenu| {

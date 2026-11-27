@@ -82,8 +82,6 @@ impl HistoryCommands {
             return;
         }
 
-        self.state.file_tree_expanded.set(None);
-        self.state.fast_selection.set(None);
         let current_selection = self.state.multi_commit_selection.get_untracked();
         let has_multi_selection = current_selection
             .as_ref()
@@ -108,6 +106,37 @@ impl HistoryCommands {
                 shas.push(sha);
             }
         }
+        self.set_multi_commit_selection(tab, shas);
+    }
+
+    pub(crate) fn select_commit_range(&self, tab_id: u64, mut shas: Vec<String>, additive: bool) {
+        let tabs = self.session.tabs.get_untracked();
+        let Some(tab) = tabs
+            .get(self.session.active.get_untracked())
+            .filter(|tab| tab.id == tab_id)
+        else {
+            return;
+        };
+        if additive
+            && let Some(selection) = self
+                .state
+                .multi_commit_selection
+                .get_untracked()
+                .filter(|selection| selection.tab_id == tab_id)
+        {
+            for sha in selection.shas {
+                if !shas.contains(&sha) {
+                    shas.push(sha);
+                }
+            }
+        }
+        self.set_multi_commit_selection(tab, shas);
+    }
+
+    fn set_multi_commit_selection(&self, tab: &crate::app::session::Tab, mut shas: Vec<String>) {
+        let tab_id = tab.id;
+        self.state.file_tree_expanded.set(None);
+        self.state.fast_selection.set(None);
         if shas.is_empty() {
             self.state.multi_commit_selection.set(None);
             self.state.multi_commit_data.set(None);
