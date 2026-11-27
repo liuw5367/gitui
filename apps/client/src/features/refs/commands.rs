@@ -199,10 +199,7 @@ impl RemoteOperation {
                 local_target,
                 remotes,
             } => {
-                if let Some(oid) = local_target
-                    && !updated.refs.tags.contains(name)
-                    && target.ref_oids.get(&format!("refs/tags/{name}")) == Some(oid)
-                {
+                if local_target.is_some() && !updated.refs.tags.contains(name) {
                     target.refs.tags.retain(|tag| tag != name);
                     target.ref_oids.remove(&format!("refs/tags/{name}"));
                     target.new_history_refs.remove(&format!("refs/tags/{name}"));

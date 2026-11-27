@@ -1527,7 +1527,7 @@ pub(crate) fn delete_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> 
         move || i18n::t(language.get().as_str(), "confirm.dropTagTitle"),
         210,
         move || {
-            let Some((id, name, commit)) = pending.get_untracked() else {
+            let Some((id, name, _commit)) = pending.get_untracked() else {
                 return view().into_element();
             };
             let Some(tab) =
@@ -1535,7 +1535,24 @@ pub(crate) fn delete_tag_dialog(cmd: &RefsCommands) -> impl IntoElement + use<> 
             else {
                 return view().into_element();
             };
-            let local = local_tag_oid(&tab, &name, commit.as_deref());
+            // 删除按合并后的标签名操作。以 Git 当前引用为准，避免使用过期的列表快照。
+            let local = match tab.open_repo().and_then(|repo| repo.ref_oid_snapshot()) {
+                Ok(mut refs) => refs.remove(&format!("refs/tags/{name}")),
+                Err(error) => {
+                    return ui::dialog::dialog_panel(
+                        420.0,
+                        move || i18n::t(language.get().as_str(), "confirm.dropTagTitle"),
+                        Some(std::rc::Rc::new(move || {
+                            i18n::t(language.get().as_str(), "common.close")
+                        })),
+                        text(error.detail())
+                            .text_size(px(ui::BODY))
+                            .text_color(design::danger),
+                        Vec::new(),
+                        move || pending.set(None),
+                    );
+                }
+            };
             let remote_options = tab.refs.remotes.clone();
             let checked = signal(Vec::<String>::new());
             let rows = remote_options
