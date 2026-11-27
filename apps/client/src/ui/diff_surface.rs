@@ -154,6 +154,7 @@ pub(crate) struct StagingActions {
     /// 原始 Git patch，保留真实 hunk 边界供全文视图重建分组。
     pub(crate) location_patch: SharedString,
     pub(crate) on_piece: std::sync::Arc<dyn Fn(usize, bool)>,
+    pub(crate) on_discard: std::sync::Arc<dyn Fn(usize)>,
 }
 
 pub(crate) fn configured_surface(
@@ -248,6 +249,7 @@ pub(crate) fn configured_surface(
         });
     if let Some(staging) = staging {
         let on_piece = staging.on_piece.clone();
+        let on_discard = staging.on_discard.clone();
         let hunk_staged = staging.hunk_staged.clone();
         let stage_handle = handle.clone();
         surface = surface.render_separator(move |separator: &DiffSeparator| -> AnyElement {
@@ -258,9 +260,11 @@ pub(crate) fn configured_surface(
             let mut row = view()
                 .w_full()
                 .h_full()
-                .px(px(ui::GAP_SM))
+                .pl(px(ui::GAP_SM))
+                .pr(px(ui::GAP_XL))
                 .flex_row()
                 .items_center()
+                .gap(px(ui::GAP_SM))
                 .justify_between()
                 .bg(move || crate::design::panel2());
             if lines > 0 {
@@ -304,6 +308,22 @@ pub(crate) fn configured_surface(
                     12.0,
                     false,
                     move |next| apply(gap, !next),
+                ));
+                let on_discard = on_discard.clone();
+                let discard_label =
+                    move || crate::i18n::t(language.get().as_str(), "changes.discardHunk");
+                let discard_tip =
+                    move || crate::i18n::t(language.get().as_str(), "changes.discardHunk");
+                row = row.child(crate::ui::button::icon_button_tuned_tip(
+                    "x",
+                    discard_label,
+                    crate::ui::button::ButtonSize::Small,
+                    Some(crate::ui::icon::IconSize::Compact),
+                    Some(std::rc::Rc::new(crate::design::danger)),
+                    None,
+                    false,
+                    discard_tip,
+                    move || on_discard(gap),
                 ));
             }
             row.into_element()
@@ -391,6 +411,7 @@ pub(crate) fn staging_surface(
     staged: bool,
     language: Signal<SharedString>,
     on_piece: std::sync::Arc<dyn Fn(usize, bool)>,
+    on_discard: std::sync::Arc<dyn Fn(usize)>,
 ) -> impl IntoElement {
     let handle = DiffHandle::new();
     let location_patch = patch.clone();
@@ -406,6 +427,7 @@ pub(crate) fn staging_surface(
             hunk_staged: std::rc::Rc::new(move |_| staged),
             location_patch,
             on_piece,
+            on_discard,
         }),
     );
 }
@@ -502,6 +524,7 @@ mod tests {
 
     const STAGING_PATCH: &str = "diff --git a/main.rs b/main.rs\n--- a/main.rs\n+++ b/main.rs\n@@ -1,2 +1,3 @@\n fn main() {\n+    let count = 42;\n }\n";
     static ACTIONS: std::sync::Mutex<Vec<(usize, bool)>> = std::sync::Mutex::new(Vec::new());
+    static DISCARDED: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
 
     #[component]
     fn StagingFixture() -> impl IntoElement {
@@ -510,12 +533,14 @@ mod tests {
             false,
             signal(SharedString::from("en")),
             std::sync::Arc::new(|hunk, reverse| ACTIONS.lock().unwrap().push((hunk, reverse))),
+            std::sync::Arc::new(|hunk| DISCARDED.lock().unwrap().push(hunk)),
         )
     }
 
     #[test]
     fn staging_exposes_hunk_action() {
         ACTIONS.lock().unwrap().clear();
+        DISCARDED.lock().unwrap().clear();
         let mut app = nsh_testing::Headless::start(nsh_engine::EngineConfig {
             viewport: Size::new(px(800.0), px(600.0)),
             ..nsh_engine::EngineConfig::new(nsh_core::element::Root::of::<StagingFixture>())
@@ -524,6 +549,8 @@ mod tests {
         app.first_render().unwrap();
         app.press("Stage Hunk").unwrap();
         assert_eq!(*ACTIONS.lock().unwrap(), vec![(0, false)]);
+        app.press("Discard Hunk").unwrap();
+        assert_eq!(*DISCARDED.lock().unwrap(), vec![0]);
     }
 
     #[test]

@@ -69,6 +69,10 @@ pub(crate) fn change_diff(
             cmd.apply_piece(hunk, reverse, ignore_whitespace)
         })
     };
+    let discard_hunk: std::sync::Arc<dyn Fn(usize)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |hunk| cmd.discard_hunk(hunk, ignore_whitespace))
+    };
     let clear = cmd.clone();
     let open_blame: std::sync::Arc<dyn Fn()> = {
         let cmd = cmd.clone();
@@ -142,6 +146,7 @@ pub(crate) fn change_diff(
                 hunk_staged,
                 location_patch,
                 on_piece: apply_piece,
+                on_discard: discard_hunk,
             }),
         ))
         .into_element();
@@ -272,6 +277,10 @@ pub(crate) fn changelists_panel(
     let discard_change: std::sync::Arc<dyn Fn(usize)> = {
         let cmd = cmd.clone();
         std::sync::Arc::new(move |index| cmd.discard_change(index))
+    };
+    let delete_new_file: std::sync::Arc<dyn Fn(String)> = {
+        let cmd = cmd.clone();
+        std::sync::Arc::new(move |path| cmd.delete_new_file(path))
     };
     let move_to_changelist: std::sync::Arc<dyn Fn(String, Option<String>)> = {
         let cmd = cmd.clone();
@@ -532,6 +541,7 @@ pub(crate) fn changelists_panel(
         let command_for_rows = cmd.clone();
         let toggle_for_rows = toggle_stage.clone();
         let discard_for_rows = discard_change.clone();
+        let delete_for_rows = delete_new_file.clone();
         let copy_for_rows = copy_text.clone();
         let open_for_rows = open_editor.clone();
         let reveal_for_rows = reveal_path.clone();
@@ -599,6 +609,7 @@ pub(crate) fn changelists_panel(
                 let render_toggle = toggle_for_rows.clone();
                 let render_set_stage_path = set_stage_path_for_rows.clone();
                 let render_discard = discard_for_rows.clone();
+                let render_delete = delete_for_rows.clone();
                 let render_copy = copy_for_rows.clone();
                 let render_open = open_for_rows.clone();
                 let render_reveal = reveal_for_rows.clone();
@@ -762,6 +773,7 @@ pub(crate) fn changelists_panel(
                         let lists_for_menu = render_lists.clone();
                         let toggle_for_menu = render_toggle.clone();
                         let discard_for_menu = render_discard.clone();
+                        let delete_for_menu = render_delete.clone();
                         let copy_for_menu = render_copy.clone();
                         let open_for_menu = render_open.clone();
                         let reveal_for_menu = render_reveal.clone();
@@ -860,9 +872,11 @@ pub(crate) fn changelists_panel(
                                     lists_for_menu.clone(),
                                     menu_entry.is_fully_staged(),
                                     menu_entry.untracked,
+                                    menu_entry.untracked || menu_entry.index == 'A',
                                     index,
                                     toggle_for_menu.clone(),
                                     discard_for_menu.clone(),
+                                    delete_for_menu.clone(),
                                     copy_for_menu.clone(),
                                     open_for_menu.clone(),
                                     reveal_for_menu.clone(),
@@ -891,6 +905,7 @@ pub(crate) fn changelists_panel(
                 let drop_cmd = command_for_rows.clone();
                 let toggle_for_menu = toggle_for_rows.clone();
                 let discard_for_menu = discard_for_rows.clone();
+                let delete_for_menu = delete_for_rows.clone();
                 let copy_for_menu = copy_for_rows.clone();
                 let open_for_menu = open_for_rows.clone();
                 let reveal_for_menu = reveal_for_rows.clone();
@@ -1044,9 +1059,11 @@ pub(crate) fn changelists_panel(
                                 lists_for_menu.clone(),
                                 menu_entry.is_fully_staged(),
                                 menu_entry.untracked,
+                                menu_entry.untracked || menu_entry.index == 'A',
                                 index,
                                 toggle_for_menu.clone(),
                                 discard_for_menu.clone(),
+                                delete_for_menu.clone(),
                                 copy_for_menu.clone(),
                                 open_for_menu.clone(),
                                 reveal_for_menu.clone(),
@@ -1375,7 +1392,7 @@ fn rename_changelist_dialog(
 /// 文件行的右键菜单（设计板 10 的 `file-menu`）。
 ///
 /// 顺序：暂存/取消暂存 → 外部打开与复制 → 移入清单 → 撤销修改（破坏性，靠后且
-/// 需确认）。未跟踪文件没有「撤销修改」：那等于删文件，不属于撤销。
+/// 需确认）。新文件提供独立的删除动作，避免把删除隐藏在撤销文案下。
 #[allow(clippy::too_many_arguments)]
 fn file_menu(
     language: Signal<SharedString>,
@@ -1384,9 +1401,11 @@ fn file_menu(
     changelists: Vec<store::Changelist>,
     is_staged: bool,
     is_untracked: bool,
+    is_new_file: bool,
     index: usize,
     toggle_stage: std::sync::Arc<dyn Fn(usize)>,
     discard_change: std::sync::Arc<dyn Fn(usize)>,
+    delete_new_file: std::sync::Arc<dyn Fn(String)>,
     copy_text: std::sync::Arc<dyn Fn(String)>,
     open_editor: std::sync::Arc<dyn Fn(String)>,
     reveal_path: std::sync::Arc<dyn Fn(String)>,
@@ -1464,6 +1483,17 @@ fn file_menu(
                 move || discard_change(index)
             }),
     );
+    if is_new_file {
+        items.push(crate::ui::menu::danger(
+            i18n::t(lang, "changes.deleteFile"),
+            true,
+            {
+                let delete_new_file = delete_new_file.clone();
+                let path = path.to_string();
+                move || delete_new_file(path.clone())
+            },
+        ));
+    }
     return items;
 }
 

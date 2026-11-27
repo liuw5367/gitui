@@ -1,6 +1,7 @@
 //! 本模块负责工作区与暂存区的读写：状态、暂存、取消暂存、丢弃改动。
 
 use domain::{GitError, StatusEntry};
+use std::path::PathBuf;
 
 use crate::parse::parse_status;
 use crate::query::Repo;
@@ -61,6 +62,73 @@ impl Repo {
         self.run_git(&args)?;
         return Ok(());
     }
+
+    /// 删除一个未跟踪或已暂存新增的文件；拒绝删除状态已变化的 tracked 文件。
+    pub fn delete_new_file(&self, path: &str) -> Result<(), GitError> {
+        let entry = self.status()?.into_iter().find(|entry| entry.path == path);
+        let pathspec = format!(":(literal){path}");
+        match entry {
+            Some(StatusEntry {
+                index: '?',
+                worktree: '?',
+                ..
+            }) => {
+                self.run_git(&["clean", "-f", "--", pathspec.as_str()])?;
+            }
+            Some(StatusEntry { index: 'A', .. }) => {
+                self.run_git(&["rm", "--force", "--", pathspec.as_str()])?;
+            }
+            _ => {
+                return Err(GitError::CommandFailed {
+                    program: "git".to_string(),
+                    args: "delete new file".to_string(),
+                    code: None,
+                    detail: format!("{path} is no longer an untracked or added file"),
+                });
+            }
+        }
+        return Ok(());
+    }
+
+    /// 把补丁应用到工作区；`reverse` 为真时反向应用，用于丢弃单个 hunk。
+    pub fn apply_worktree(&self, patch: &str, reverse: bool) -> Result<(), GitError> {
+        if patch.trim().is_empty() {
+            return Err(GitError::CommandFailed {
+                program: "git".to_string(),
+                args: "apply".to_string(),
+                code: None,
+                detail: "补丁为空".to_string(),
+            });
+        }
+        let path = write_apply_patch(patch)?;
+        let patch_path = path.to_str().unwrap_or_default();
+        let result = if reverse {
+            self.run_git(&["apply", "--unidiff-zero", "--reverse", patch_path])
+        } else {
+            self.run_git(&["apply", "--unidiff-zero", patch_path])
+        };
+        let _ = std::fs::remove_file(path);
+        result?;
+        return Ok(());
+    }
+}
+
+fn write_apply_patch(patch: &str) -> Result<PathBuf, GitError> {
+    let directory = std::env::temp_dir();
+    let stamp = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    );
+    let path = directory.join(format!("gitui-apply-{stamp}.patch"));
+    std::fs::write(&path, patch.as_bytes()).map_err(|error| GitError::Unreadable {
+        path: path.display().to_string(),
+        reason: error.to_string(),
+    })?;
+    return Ok(path);
 }
 
 #[cfg(test)]
@@ -143,6 +211,79 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
             "one\n"
+        );
+        assert!(repo.status().expect("status").is_empty());
+    }
+
+    #[test]
+    fn delete_new_file_removes_only_the_literal_untracked_path() {
+        let (_guard, path) = fixture("delete-untracked", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let target = repo.root().join("draft[1].txt");
+        let similar = repo.root().join("draft1.txt");
+        std::fs::write(&target, "new\n").expect("write target");
+        std::fs::write(&similar, "keep\n").expect("write similar");
+
+        repo.delete_new_file("draft[1].txt")
+            .expect("delete new file");
+
+        assert!(!target.exists(), "the requested untracked file is deleted");
+        assert!(
+            similar.exists(),
+            "literal path matching keeps similar files"
+        );
+        assert!(
+            repo.status()
+                .expect("status")
+                .iter()
+                .any(|entry| entry.path == "draft1.txt"),
+            "the other untracked file remains"
+        );
+    }
+
+    #[test]
+    fn delete_new_file_removes_a_staged_addition_from_index_and_worktree() {
+        let (_guard, path) = fixture("delete-staged-add", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let target = repo.root().join("new.txt");
+        std::fs::write(&target, "new\n").expect("write");
+        repo.stage(&["new.txt".to_string()])
+            .expect("stage new file");
+
+        repo.delete_new_file("new.txt")
+            .expect("delete staged addition");
+
+        assert!(!target.exists(), "the worktree copy is deleted");
+        assert!(repo.status().expect("status").is_empty(), "index is clean");
+    }
+
+    #[test]
+    fn delete_new_file_refuses_a_tracked_modification() {
+        let (_guard, path) = fixture("delete-tracked", &[("a.txt", "one\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        let target = repo.root().join("a.txt");
+        std::fs::write(&target, "changed\n").expect("write");
+
+        assert!(repo.delete_new_file("a.txt").is_err());
+        assert_eq!(std::fs::read_to_string(target).expect("read"), "changed\n");
+    }
+
+    #[test]
+    fn reverse_apply_discards_a_worktree_hunk() {
+        let (_guard, path) = fixture("discard-worktree-hunk", &[("a.txt", "one\ntwo\n")], "base");
+        let repo = Repo::open(&path).expect("open");
+        std::fs::write(repo.root().join("a.txt"), "ONE\ntwo\n").expect("write");
+        let diff = run_git(repo.root(), &["diff", "--", "a.txt"]).expect("diff");
+        let patch = String::from_utf8_lossy(&diff).to_string();
+        let sections = domain::stage::Sections::parse(&patch);
+        let hunk = sections.hunk_patch(0, 0).expect("hunk");
+
+        repo.apply_worktree(hunk.as_str(), true)
+            .expect("reverse apply");
+
+        assert_eq!(
+            std::fs::read_to_string(repo.root().join("a.txt")).expect("read"),
+            "one\ntwo\n"
         );
         assert!(repo.status().expect("status").is_empty());
     }

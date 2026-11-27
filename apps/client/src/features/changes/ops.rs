@@ -559,6 +559,93 @@ pub(crate) fn apply_piece_with_whitespace(
     return Ok(());
 }
 
+/// 丢弃显示的 HEAD → 工作区 hunk，并移除暂存区内对应片段。
+pub(crate) fn discard_hunk(
+    tab: &mut Tab,
+    path: &str,
+    patch: &str,
+    ignore_whitespace: bool,
+) -> Result<(), String> {
+    let sections = domain::stage::Sections::parse(patch);
+    let target = sections
+        .files
+        .first()
+        .and_then(|file| file.hunks.first())
+        .ok_or_else(|| "这一段没有可丢弃的内容".to_string())?;
+    let worktree_patch = sections
+        .hunk_patch(0, 0)
+        .ok_or_else(|| "这一段没有可丢弃的内容".to_string())?;
+    let repo = tab.open_repo().map_err(|error| error.detail())?;
+    let status = repo.status().map_err(|error| error.detail())?;
+    let Some(entry) = status.iter().find(|entry| entry.path == path) else {
+        return Err("文件已没有待丢弃的改动".to_string());
+    };
+    let staged_patch = if entry.index == '?' {
+        String::new()
+    } else {
+        repo.staged_file_patch_from_head_with_whitespace(path, ignore_whitespace)
+            .map_err(|error| error.detail())?
+    };
+    let staged_patch = staged_patch_for_hunk(target, staged_patch.as_str())?;
+
+    repo.apply_worktree(worktree_patch.as_str(), true)
+        .map_err(|error| error.detail())?;
+    if let Some(staged_patch) = staged_patch {
+        if let Err(error) = repo.apply_cached(staged_patch.as_str(), true) {
+            let rollback = repo.apply_worktree(worktree_patch.as_str(), false);
+            return Err(match rollback {
+                Ok(()) => error.detail(),
+                Err(rollback_error) => format!(
+                    "{}；恢复工作区失败：{}",
+                    error.detail(),
+                    rollback_error.detail()
+                ),
+            });
+        }
+    }
+    refresh_changes(tab);
+    return Ok(());
+}
+
+fn staged_patch_for_hunk(
+    target: &domain::stage::Hunk,
+    staged_patch: &str,
+) -> Result<Option<String>, String> {
+    let staged = domain::stage::Sections::parse(staged_patch);
+    let Some(file) = staged.files.first() else {
+        return Ok(None);
+    };
+    let target_marks = hunk_change_marks(target);
+    if target_marks.is_empty() {
+        return Err("这一段没有可丢弃的内容".to_string());
+    }
+    let overlapping = file
+        .hunks
+        .iter()
+        .enumerate()
+        .filter(|(_, hunk)| {
+            let marks = hunk_change_marks(hunk);
+            target_marks
+                .iter()
+                .any(|target| marks.iter().any(|mark| mark == target))
+        })
+        .map(|(index, hunk)| (index, hunk))
+        .collect::<Vec<_>>();
+    for (_, hunk) in &overlapping {
+        if hunk_change_marks(hunk)
+            .iter()
+            .any(|mark| !target_marks.contains(mark))
+        {
+            return Err("这一段与其他暂存改动交叠，无法安全单独丢弃".to_string());
+        }
+    }
+    let indices = overlapping
+        .into_iter()
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    return Ok(hunks_patch(file, &indices));
+}
+
 /// 补丁应用冲突时，只把 index 中与显示 hunk 重叠的 staged 片段反向应用。
 fn unstage_overlapping_hunks(
     repo: &Repo,
@@ -669,12 +756,37 @@ pub(crate) fn discard_change(tab: &mut Tab, index: usize) {
     }
 }
 
+/// 删除新的未跟踪文件或暂存区新增文件。
+pub(crate) fn delete_new_file(tab: &mut Tab, path: &str) {
+    let repo = match tab.open_repo() {
+        Ok(repo) => repo,
+        Err(error) => {
+            tab.error = Some(error.detail());
+            return;
+        }
+    };
+    match repo.delete_new_file(path) {
+        Ok(()) => refresh_changes(tab),
+        Err(error) => tab.error = Some(error.detail()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::session::load_tab;
     use crate::test_support::TempRepo;
     use git::LogFilter;
+
+    fn run_test_git(path: &std::path::Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
 
     #[test]
     fn changes_list_splits_staged_and_unstaged() {
@@ -902,6 +1014,74 @@ mod tests {
             "one\n"
         );
         assert!(tab.changes.is_empty());
+    }
+
+    #[test]
+    fn discard_hunk_removes_only_the_selected_worktree_and_staged_changes() {
+        let repo = TempRepo::new("discard-hunk");
+        let lines: String = (1..=36).map(|index| format!("line{index}\n")).collect();
+        std::fs::write(repo.path.join("a.txt"), lines).expect("write base");
+        run_test_git(&repo.path, &["add", "-A"]);
+        run_test_git(&repo.path, &["commit", "-q", "-m", "base"]);
+
+        let mut changed: Vec<String> = (1..=36).map(|index| format!("line{index}")).collect();
+        changed[1] = "line2-staged".to_string();
+        changed[13] = "line14-unstaged".to_string();
+        changed[27] = "line28-kept".to_string();
+        std::fs::write(repo.path.join("a.txt"), format!("{}\n", changed.join("\n")))
+            .expect("write changes");
+
+        let mut tab = load_tab(&repo.path.display().to_string(), &LogFilter::default());
+        let index = tab
+            .changes
+            .iter()
+            .position(|entry| entry.path == "a.txt")
+            .expect("a.txt");
+        load_change_diff(&mut tab, index);
+        assert_eq!(tab.change_hunk_staged, vec![false, false, false]);
+        apply_piece(&mut tab, 0, false).expect("stage first hunk");
+
+        let second_hunk = domain::stage::Sections::parse(tab.change_diff.raw.as_str())
+            .hunk_patch(0, 1)
+            .expect("second hunk");
+        discard_hunk(&mut tab, "a.txt", second_hunk.as_str(), false)
+            .expect("discard unstaged middle hunk");
+        let content = std::fs::read_to_string(repo.path.join("a.txt")).expect("read worktree");
+        assert!(content.contains("line2-staged"));
+        assert!(content.contains("line28-kept"));
+        assert!(content.contains("line14\n"));
+        assert_eq!(tab.change_hunk_staged, vec![true, false]);
+
+        let first_hunk = domain::stage::Sections::parse(tab.change_diff.raw.as_str())
+            .hunk_patch(0, 0)
+            .expect("first hunk");
+        discard_hunk(&mut tab, "a.txt", first_hunk.as_str(), false)
+            .expect("discard staged first hunk");
+        let content = std::fs::read_to_string(repo.path.join("a.txt")).expect("read worktree");
+        assert!(content.contains("line2\n"));
+        assert!(content.contains("line28-kept"));
+        assert!(!content.contains("line2-staged"));
+        let staged = tab
+            .open_repo()
+            .expect("repo")
+            .staged_file_patch_from_head_with_whitespace("a.txt", false)
+            .expect("staged patch");
+        assert!(!staged.contains("line2-staged"));
+        assert_eq!(tab.change_hunk_staged, vec![false]);
+    }
+
+    #[test]
+    fn delete_new_file_refreshes_the_changes_tree() {
+        let repo = TempRepo::new("delete-new-file");
+        let path = repo.path.display().to_string();
+        std::fs::write(repo.path.join("new.txt"), "new\n").expect("write");
+        let mut tab = load_tab(&path, &LogFilter::default());
+        assert!(tab.changes.iter().any(|entry| entry.path == "new.txt"));
+
+        delete_new_file(&mut tab, "new.txt");
+
+        assert!(!repo.path.join("new.txt").exists());
+        assert!(!tab.changes.iter().any(|entry| entry.path == "new.txt"));
     }
 
     #[test]

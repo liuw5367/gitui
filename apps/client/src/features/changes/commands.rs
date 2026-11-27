@@ -173,29 +173,132 @@ impl ChangesCommands {
         let Some(entry) = tab.changes.get(index).cloned() else {
             return;
         };
+        let tab_id = tab.id;
+        let path = entry.path.clone();
         let language_now = language.get_untracked();
         let pending = crate::ui::dialog::confirm_destructive(
             crate::i18n::t(language_now.as_str(), "changes.discardTitle"),
             crate::i18n::with_arguments(
                 language_now.as_str(),
                 "changes.discardMessage",
-                &[("path", entry.path.clone())],
+                &[("path", path.clone())],
             ),
             crate::i18n::t(language_now.as_str(), "changes.discardAction"),
             crate::i18n::t(language_now.as_str(), "common.cancel"),
         );
         spawn(async move {
             if let Ok(result) = pending.await {
-                if result.action.as_deref() != Some("discard") {
+                if result.action.as_deref() != Some("confirm") {
                     return;
                 }
-                let current = active.get_untracked();
                 let mut list = tabs.get_untracked();
-                if let Some(tab) = list.get_mut(current) {
-                    ops::discard_change(tab, index);
-                    tabs.set(list);
-                }
+                let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                    return;
+                };
+                let Some(index) = tab.changes.iter().position(|entry| entry.path == path) else {
+                    return;
+                };
+                ops::discard_change(tab, index);
+                tabs.set(list);
             }
+        });
+    }
+
+    /// 丢弃当前 Diff 中的一个 hunk；确认后按稳定文件路径重取活动标签页。
+    pub(crate) fn discard_hunk(&self, hunk_index: usize, ignore_whitespace: bool) {
+        let tabs = self.session.tabs;
+        let active = self.session.active;
+        let current = active.get_untracked();
+        let list = tabs.get_untracked();
+        let Some(tab) = list.get(current) else {
+            return;
+        };
+        let Some(path) = tab
+            .selected_change
+            .and_then(|index| tab.changes.get(index))
+            .map(|entry| entry.path.clone())
+        else {
+            return;
+        };
+        let sections = domain::stage::Sections::parse(tab.change_diff.raw.as_str());
+        let Some(hunk) = sections
+            .files
+            .first()
+            .and_then(|file| file.hunks.get(hunk_index))
+        else {
+            return;
+        };
+        let Some(patch) = sections.hunk_patch(0, hunk_index) else {
+            return;
+        };
+        let hunk_header = hunk.header.clone();
+        let tab_id = tab.id;
+        let language = self.language.get_untracked();
+        let pending = crate::ui::dialog::confirm_destructive(
+            crate::i18n::t(language.as_str(), "changes.discardHunkTitle"),
+            crate::i18n::with_arguments(
+                language.as_str(),
+                "changes.discardHunkMessage",
+                &[("path", path.clone()), ("hunk", hunk_header)],
+            ),
+            crate::i18n::t(language.as_str(), "changes.discardAction"),
+            crate::i18n::t(language.as_str(), "common.cancel"),
+        );
+        spawn(async move {
+            if !matches!(pending.await, Ok(result) if result.action.as_deref() == Some("confirm")) {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            if let Err(error) =
+                ops::discard_hunk(tab, path.as_str(), patch.as_str(), ignore_whitespace)
+            {
+                tab.error = Some(error);
+            }
+            tabs.set(list);
+        });
+    }
+
+    /// 删除未跟踪或暂存新增的文件；确认后重新检查 Git 状态并按标签页 ID 定位仓库。
+    pub(crate) fn delete_new_file(&self, path: String) {
+        let tabs = self.session.tabs;
+        let current = self.session.active.get_untracked();
+        let list = tabs.get_untracked();
+        let Some(tab) = list.get(current) else {
+            return;
+        };
+        let is_new_file = tab
+            .changes
+            .iter()
+            .find(|entry| entry.path == path)
+            .is_some_and(|entry| entry.untracked || entry.index == 'A');
+        if !is_new_file {
+            return;
+        }
+        let tab_id = tab.id;
+        let language = self.language.get_untracked();
+        let pending = crate::ui::dialog::confirm_destructive(
+            crate::i18n::t(language.as_str(), "changes.deleteFileTitle"),
+            crate::i18n::with_arguments(
+                language.as_str(),
+                "changes.deleteFileMessage",
+                &[("path", path.clone())],
+            ),
+            crate::i18n::t(language.as_str(), "changes.deleteFileAction"),
+            crate::i18n::t(language.as_str(), "common.cancel"),
+        );
+        spawn(async move {
+            if !matches!(pending.await, Ok(result) if result.action.as_deref() == Some("confirm")) {
+                return;
+            }
+            let mut list = tabs.get_untracked();
+            let Some(tab) = list.iter_mut().find(|tab| tab.id == tab_id) else {
+                return;
+            };
+            ops::delete_new_file(tab, path.as_str());
+            tabs.set(list);
         });
     }
 
